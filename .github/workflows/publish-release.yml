@@ -12,8 +12,9 @@ on:
         required: true
         type: string
       macos_run_id:
-        description: Successful build-macos run ID containing macos-arm64
-        required: true
+        description: Optional successful build-macos run ID containing macos-arm64
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -31,10 +32,21 @@ jobs:
           WINDOWS_RUN_ID: ${{ inputs.windows_run_id }}
           MACOS_RUN_ID: ${{ inputs.macos_run_id }}
         run: |
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev$ ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-dev)?$ ]]
           [[ "$WINDOWS_RUN_ID" =~ ^[0-9]+$ ]]
-          [[ "$MACOS_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ -z "$MACOS_RUN_ID" || "$MACOS_RUN_ID" =~ ^[0-9]+$ ]]
           test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          RELEASE_SHA="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          RUNS=("$WINDOWS_RUN_ID:build-windows.yml")
+          if [[ -n "$MACOS_RUN_ID" ]]; then RUNS+=("$MACOS_RUN_ID:build-macos.yml"); fi
+          for PAIR in "${RUNS[@]}"; do
+            RUN_ID="${PAIR%%:*}"
+            WORKFLOW="${PAIR#*:}"
+            RUN="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
+            test "$(jq -r .conclusion <<< "$RUN")" = success
+            test "$(jq -r .head_sha <<< "$RUN")" = "$RELEASE_SHA"
+            test "$(jq -r .path <<< "$RUN")" = ".github/workflows/$WORKFLOW"
+          done
 
       - name: Download successful build artifacts
         env:
@@ -45,11 +57,14 @@ jobs:
           mkdir release-assets
           gh run download "$WINDOWS_RUN_ID" --repo "$GITHUB_REPOSITORY" --name windows-x64-installer --dir release-assets
           gh run download "$WINDOWS_RUN_ID" --repo "$GITHUB_REPOSITORY" --name windows-x64-portable --dir release-assets
-          gh run download "$MACOS_RUN_ID" --repo "$GITHUB_REPOSITORY" --name macos-arm64 --dir release-assets
+          if [[ -n "$MACOS_RUN_ID" ]]; then
+            gh run download "$MACOS_RUN_ID" --repo "$GITHUB_REPOSITORY" --name macos-arm64 --dir release-assets
+          fi
 
       - name: Verify names and generate checksums
         env:
           RELEASE_TAG: ${{ inputs.tag }}
+          MACOS_RUN_ID: ${{ inputs.macos_run_id }}
         run: |
           VERSION="${RELEASE_TAG#v}"
           EXE="TigerestTheater-${VERSION}-x64.exe"
@@ -58,11 +73,15 @@ jobs:
           CHECKSUMS="TigerestTheater-${VERSION}-SHA256SUMS.txt"
           test -f "release-assets/$EXE"
           test -f "release-assets/$ZIP"
-          test -f "release-assets/$DMG"
-          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 3
+          FILES=("$EXE" "$ZIP")
+          if [[ -n "$MACOS_RUN_ID" ]]; then
+            test -f "release-assets/$DMG"
+            FILES+=("$DMG")
+          fi
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq "${#FILES[@]}"
           (
             cd release-assets
-            sha256sum "$EXE" "$ZIP" "$DMG" > "$CHECKSUMS"
+            sha256sum "${FILES[@]}" > "$CHECKSUMS"
           )
           {
             echo '### Release SHA-256'
