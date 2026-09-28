@@ -34,7 +34,7 @@ jobs:
     - name: Install dependencies
       run: |
         brew update
-        brew install mpv
+        brew install mpv molten-vk
     - name: Release build
       run: |
         cmake -B build -G Ninja \
@@ -47,7 +47,9 @@ jobs:
           -DUSE_STATIC_MPVQT=ON
         cmake --build build --target install
     - name: Run unit tests
-      run: ctest --test-dir build --output-on-failure
+      run: |
+        ctest --test-dir build --output-on-failure
+        python3 tests/test_macos_bundle.py "build/output/Tigerest Theater.app"
     - name: Sign and create dmg
       run: |
         codesign --force --deep -s - "./build/output/Tigerest Theater.app/"

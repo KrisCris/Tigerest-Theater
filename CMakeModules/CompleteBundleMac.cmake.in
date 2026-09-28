@@ -217,6 +217,34 @@ function(fix_lib_dependencies lib framework_libs_var)
   endforeach()
 endfunction()
 
+# Vulkan discovers MoltenVK with dlopen through its ICD manifest, so neither
+# macdeployqt nor otool's dependency walk can discover this required driver.
+# Keep its manifest relative to the bundle so native macvk playback also works
+# on Macs without Homebrew. Preserve the installed driver's API version.
+set(moltenvk_root "${brew_prefix}/opt/molten-vk")
+set(moltenvk_source "${moltenvk_root}/lib/libMoltenVK.dylib")
+set(moltenvk_manifest "${moltenvk_root}/etc/vulkan/icd.d/MoltenVK_icd.json")
+if(NOT EXISTS "${moltenvk_source}" OR NOT EXISTS "${moltenvk_manifest}")
+  message(FATAL_ERROR "MoltenVK is required for native macOS playback; install it with brew install molten-vk")
+endif()
+get_filename_component(moltenvk_real "${moltenvk_source}" REALPATH)
+file(COPY "${moltenvk_real}" DESTINATION "${framework_path}")
+execute_process(
+  COMMAND install_name_tool -id "@rpath/libMoltenVK.dylib" "${framework_path}/libMoltenVK.dylib"
+  RESULT_VARIABLE moltenvk_id_result
+)
+if(NOT moltenvk_id_result EQUAL 0)
+  message(FATAL_ERROR "Failed to set the bundled MoltenVK install name")
+endif()
+file(READ "${moltenvk_manifest}" moltenvk_json)
+string(REGEX REPLACE "\"library_path\"[ \t\r\n]*:[ \t\r\n]*\"[^\"]+\""
+  "\"library_path\": \"../../../Frameworks/libMoltenVK.dylib\""
+  moltenvk_json "${moltenvk_json}")
+file(MAKE_DIRECTORY "${app}/Contents/Resources/vulkan/icd.d")
+file(WRITE "${app}/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json" "${moltenvk_json}")
+file(MAKE_DIRECTORY "${app}/Contents/Resources/licenses/MoltenVK")
+file(COPY "${moltenvk_root}/LICENSE" DESTINATION "${app}/Contents/Resources/licenses/MoltenVK")
+
 # Build initial list of framework libs
 file(GLOB existing_dylibs "${framework_path}/*.dylib")
 file(GLOB existing_sos "${framework_path}/*.so")

@@ -15,7 +15,7 @@
 ### 下载
 
 - Windows 10 1903+ / Windows 11 x64：EXE 安装版或 ZIP 便携版。
-- macOS 26+：由维护者在 Mac 本机单独构建，本次 Release 先提供 Windows 包。
+- macOS 26+，Apple Silicon（M 系列）：提供 DMG 安装包，内含 Qt、MPV 和原生 GPU-Next 播放所需的 MoltenVK 驱动；无需另装 Homebrew。本版暂未提供 Intel Mac 安装包。
 - 附带 `TigerestTheater-2.0.18-SHA256SUMS.txt`，可核验下载文件。
 
 ### 升级说明

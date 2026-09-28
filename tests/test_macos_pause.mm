@@ -67,13 +67,17 @@ void TestMacosPause::nativeWindowPause()
   QTRY_VERIFY_WITH_TIMEOUT(loaded.count() > 0, 15000);
 
   NSWindow* native = nil;
-  for (NSWindow* candidate in NSApp.windows) {
-    qInfo() << "Native window:" << QString::fromNSString(NSStringFromClass(candidate.class))
-            << QString::fromNSString(NSStringFromClass(candidate.contentView.class));
-    if (candidate.visible && [NSStringFromClass(candidate.class) hasSuffix:@".Window"])
-      native = candidate;
-  }
-  QVERIFY(native != nil);
+  // fileLoaded can arrive before Cocoa has made the native window visible.
+  const auto findNativeWindow = [&]() {
+    for (NSWindow* candidate in NSApp.windows) {
+      if (candidate.visible && [NSStringFromClass(candidate.class) hasSuffix:@".Window"]) {
+        native = candidate;
+        return true;
+      }
+    }
+    return false;
+  };
+  QTRY_VERIFY_WITH_TIMEOUT(findNativeWindow(), 5000);
   [native makeKeyAndOrderFront:nil];
   [NSApp activateIgnoringOtherApps:YES];
   auto key = [&](NSEventType type, bool repeat = false, NSEventModifierFlags modifiers = 0,

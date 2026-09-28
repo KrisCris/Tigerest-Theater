@@ -12,10 +12,11 @@
 | --- | --- | --- |
 | Windows 10 1903+ / Windows 11，x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.18/TigerestTheater-2.0.18-x64.exe) | 运行安装程序，按向导安装 |
 | Windows 10 1903+ / Windows 11，x64 | [便携版 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.18/TigerestTheater-2.0.18-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
+| macOS 26+，Apple Silicon（M 系列） | [DMG 安装包](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.18/TigerestTheater-2.0.18-arm64.dmg) | 打开 DMG，将应用拖入「应用程序」 |
 
 本次发布附带 SHA-256 校验文件。Windows 安装版和便携版都包含所需运行库，无需另装 MPV。
 
-项目也支持 macOS 26+。macOS 安装包由维护者在 Mac 本机单独构建，本次 Release 先提供 Windows 包；源码构建方式见 [macOS 构建文档](dev/macos/README.md)。
+Mac 安装包内含 Qt、MPV、MoltenVK 及运行依赖，无需另装 Homebrew 或 MPV。安装包使用本地 ad-hoc 签名，未经过 Apple 公证；若被系统拦截，可在确认下载来源后进入「系统设置 → 隐私与安全性」允许打开。本版暂未提供 Intel Mac 安装包；源码构建方式见 [macOS 构建文档](dev/macos/README.md)。
 
 ## 第一次使用
 
