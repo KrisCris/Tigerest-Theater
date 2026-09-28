@@ -106,6 +106,8 @@ endif()
 
 find_program(Node_EXECUTABLE node)
 if(Node_EXECUTABLE)
+  add_test(NAME test_server_onboarding
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_server_onboarding.js)
   execute_process(COMMAND ${Node_EXECUTABLE} -p "typeof WebSocket === 'function' && typeof fetch === 'function'"
                   OUTPUT_VARIABLE NODE_HAS_WEBENGINE_TEST_APIS OUTPUT_STRIP_TRAILING_WHITESPACE)
   if(WIN32 AND NODE_HAS_WEBENGINE_TEST_APIS STREQUAL "true")
@@ -113,6 +115,10 @@ if(Node_EXECUTABLE)
              COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_webengine_startup.js
                      $<TARGET_FILE:${MAIN_TARGET}>)
     set_tests_properties(test_webengine_startup PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+    add_test(NAME test_server_onboarding_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_server_onboarding_webengine.js
+                     $<TARGET_FILE:${MAIN_TARGET}>)
+    set_tests_properties(test_server_onboarding_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   endif()
   add_test(NAME test_player_lifecycle
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_player_lifecycle.js)

@@ -123,6 +123,7 @@ private slots:
   void structuredEmbyMetadataTakesPriority();
   void enabledStreamRequiresInitializationWithoutLocalDirectory();
   void loadingAndDisplayAnimationLifecycle();
+  void routesManagedApiAndHistoryWithThePlaybackConnection();
 };
 
 void TestDanmakuMetadata::structuredEmbyMetadataTakesPriority()
@@ -163,6 +164,15 @@ void TestDanmakuMetadata::loadingAndDisplayAnimationLifecycle()
   MpvProbe probe(QStringLiteral(SOURCE_ROOT) + QStringLiteral("/tests/fixtures/tigerest_danmaku_runtime_probe.lua"));
   QVERIFY(probe.isValid());
   QVERIFY(probe.probe("tigerest-danmaku-runtime-probe"));
+  const QString error = probe.getString("user-data/tigerest-test/error");
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+}
+
+void TestDanmakuMetadata::routesManagedApiAndHistoryWithThePlaybackConnection()
+{
+  MpvProbe probe(QStringLiteral(SOURCE_ROOT) + QStringLiteral("/tests/fixtures/tigerest_danmaku_metadata_probe.lua"));
+  QVERIFY(probe.isValid());
+  QVERIFY(probe.probe("tigerest-danmaku-routing-probe"));
   const QString error = probe.getString("user-data/tigerest-test/error");
   QVERIFY2(error.isEmpty(), qPrintable(error));
 }

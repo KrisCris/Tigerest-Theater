@@ -1,5 +1,7 @@
 #include <QtTest/QtTest>
 #include <initializer_list>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include "../src/system/SystemComponent.h"
 #include "../src/settings/SettingsComponent.h"
 #include "../src/settings/SettingsSection.h"
@@ -13,6 +15,9 @@ private slots:
   void testExtractBaseUrl_data();
   void testExtractBaseUrl();
   void testWebAppearanceScriptIsSeparatedFromNativeShellBundle();
+  void testConnectivityUsesEnteredAddressBeforeWebRedirects();
+  void testConnectivityUsesEnteredAddressBeforeWebRedirects_data();
+  void testConnectivityReportsHttpStatus();
 };
 
 void TestSystemComponent::testExtractBaseUrl_data()
@@ -77,7 +82,7 @@ void TestSystemComponent::testExtractBaseUrl_data()
 
   QTest::newRow("https with path but no /web")
     << "https://server.com/some/path"
-    << "https://server.com";
+    << "https://server.com/some/path";
 
   QTest::newRow("http root without /web")
     << "http://server.com"
@@ -99,11 +104,11 @@ void TestSystemComponent::testExtractBaseUrl_data()
   // Edge cases - partial matches
   QTest::newRow("https with /website (not /web)")
     << "https://server.com/website/"
-    << "https://server.com";
+    << "https://server.com/website";
 
   QTest::newRow("https with /webdav (not /web)")
     << "https://server.com/webdav/"
-    << "https://server.com";
+    << "https://server.com/webdav";
 
   // Edge cases - multiple /web occurrences (should use last)
   QTest::newRow("https with multiple /web - uses last")
@@ -121,24 +126,28 @@ void TestSystemComponent::testExtractBaseUrl_data()
 
   QTest::newRow("IPv6 address")
     << "http://[::1]:8096/web/"
-    << "http://::1:8096";
+    << "http://[::1]:8096";
+
+  QTest::newRow("routed IP keeps external port and proxy prefix")
+    << "http://192.168.114.114:8097/Emby/#/login"
+    << "http://192.168.114.114:8097/Emby";
 
   // Edge cases - malformed/empty
   QTest::newRow("empty string")
     << ""
-    << "://";
+    << "";
 
   QTest::newRow("no scheme")
     << "server.com/web/"
-    << "://server.com";
+    << "";
 
   QTest::newRow("only scheme")
     << "https://"
-    << "https://";
+    << "";
 
   QTest::newRow("no host")
     << "https:///web/"
-    << "https://";
+    << "";
 }
 
 void TestSystemComponent::testExtractBaseUrl()
@@ -184,6 +193,72 @@ void TestSystemComponent::testWebAppearanceScriptIsSeparatedFromNativeShellBundl
   QVERIFY2(webAppearance.contains(QStringLiteral("web-appearance")),
            "standalone appearance getter did not return the owned appearance script");
   QCOMPARE(webAppearance.count(ownershipMarker), 1);
+}
+
+void TestSystemComponent::testConnectivityUsesEnteredAddressBeforeWebRedirects_data()
+{
+  QTest::addColumn<bool>("discoverPrefix");
+  QTest::newRow("explicit prefix avoids misleading root redirect") << false;
+  QTest::newRow("API redirect preserves discovered prefix") << true;
+}
+
+void TestSystemComponent::testConnectivityUsesEnteredAddressBeforeWebRedirects()
+{
+  QFETCH(bool, discoverPrefix);
+  QTcpServer server;
+  QVERIFY(server.listen(QHostAddress::LocalHost));
+  QStringList requests;
+  connect(&server, &QTcpServer::newConnection, &server, [&]() {
+    auto* socket = server.nextPendingConnection();
+    connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+    connect(socket, &QTcpSocket::readyRead, socket, [&, socket]() {
+      QByteArray buffer = socket->property("request").toByteArray() + socket->readAll();
+      socket->setProperty("request", buffer);
+      if (!buffer.contains("\r\n\r\n")) return;
+      requests << QString::fromUtf8(buffer.left(buffer.indexOf("\r\n")));
+      if (requests.last() == "GET /emby/System/Info/Public HTTP/1.1")
+        socket->write("HTTP/1.1 200 OK\r\nContent-Length: 18\r\nConnection: close\r\n\r\n{\"Id\":\"server-id\"}");
+      else if (discoverPrefix && requests.last() == "GET /System/Info/Public HTTP/1.1")
+        socket->write("HTTP/1.1 302 Found\r\nLocation: /emby/System/Info/Public\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+      else
+        socket->write("HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:1/web/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+      socket->disconnectFromHost();
+    });
+  });
+  auto& system = SystemComponent::Get();
+  QSignalSpy results(&system, &SystemComponent::serverConnectivityResult);
+  const QString origin = QString("http://127.0.0.1:%1").arg(server.serverPort());
+  const QString address = origin + (discoverPrefix ? "/" : "/emby/");
+  system.checkServerConnectivity(address);
+  QTRY_COMPARE_WITH_TIMEOUT(results.count(), 1, 8000);
+  QVERIFY(results.first().at(1).toBool());
+  QCOMPARE(results.first().at(2).toString(), origin + "/emby/web/index.html");
+  QStringList expected;
+  if (discoverPrefix) expected << "GET /System/Info/Public HTTP/1.1";
+  expected << "GET /emby/System/Info/Public HTTP/1.1";
+  QCOMPARE(requests, expected);
+}
+
+void TestSystemComponent::testConnectivityReportsHttpStatus()
+{
+  QTcpServer server;
+  QVERIFY(server.listen(QHostAddress::LocalHost));
+  connect(&server, &QTcpServer::newConnection, &server, [&]() {
+    auto* socket = server.nextPendingConnection();
+    connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+    connect(socket, &QTcpSocket::readyRead, socket, [socket]() {
+      socket->readAll();
+      socket->write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+      socket->disconnectFromHost();
+    });
+  });
+  auto& system = SystemComponent::Get();
+  QSignalSpy results(&system, &SystemComponent::serverConnectivityResult);
+  system.checkServerConnectivity(QString("http://127.0.0.1:%1").arg(server.serverPort()));
+  QTRY_COMPARE_WITH_TIMEOUT(results.count(), 1, 8000);
+  QVERIFY(!results.first().at(1).toBool());
+  QVERIFY(results.first().size() >= 4);
+  QVERIFY(results.first().at(3).toString().contains("403"));
 }
 
 QTEST_GUILESS_MAIN(TestSystemComponent)

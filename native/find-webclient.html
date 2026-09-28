@@ -2,20 +2,44 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tigerest Theater / 大河影院</title>
     <link rel="stylesheet" href="find-webclient.css">
 </head>
 <body>
     <div id="container">
-        <img class="logo" src="logo.png">
-        <form id="connect-form">
+        <img class="logo" src="logo.png" alt="Tigerest Theater / 大河影院">
+        <section id="server-choice" aria-labelledby="choice-title">
+            <p class="eyebrow">欢迎来到大河影院</p>
+            <h1 id="choice-title">你的影院，从这里开始</h1>
+            <p class="intro">选择要连接的 EMBY 服务器</p>
+            <div class="server-options">
+                <button id="choose-tigerest" class="server-option" type="button" aria-describedby="choice-description">
+                    <span class="option-number" aria-hidden="true">01</span>
+                    <span>连接大河李斯特专属<br>EMBY 服务器</span>
+                    <span class="option-arrow" aria-hidden="true">↗</span>
+                </button>
+                <button id="choose-custom" class="server-option" type="button" aria-describedby="choice-description">
+                    <span class="option-number" aria-hidden="true">02</span>
+                    <span>连接自建<br>EMBY 服务器</span>
+                    <span class="option-arrow" aria-hidden="true">↗</span>
+                </button>
+            </div>
+            <p id="choice-description" aria-live="polite">请选择你要连接的服务器。</p>
+        </section>
+        <form id="connect-form" hidden>
+            <button id="back-button" class="text-button" type="button">← 返回选择服务器</button>
             <h1 id="title"></h1>
-            <div id="spinner"></div>
-            <input type="text" id="address" autofocus>
+            <p class="address-help">填写完整地址，包含 http / https 和端口。</p>
+            <label class="sr-only" for="address">EMBY 服务器地址</label>
+            <input type="text" id="address" spellcheck="false" autocomplete="url" inputmode="url">
+            <div class="connection-progress"><span id="spinner" hidden></span><span id="connection-status" role="status"></span></div>
+            <p id="connection-error" role="alert" hidden></p>
             <button id="connect-button" type="submit"></button>
-            <button id="offline-button" type="button">离线媒体</button>
         </form>
+        <button id="offline-button" class="text-button" type="button">打开离线媒体</button>
     </div>
     <script src="find-webclient.lang.js"></script>
     <script src="find-webclient.js"></script>
+</body>
 </html>

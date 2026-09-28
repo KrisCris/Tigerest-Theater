@@ -46,7 +46,7 @@ public:
 
   Q_INVOKABLE void checkServerConnectivity(QString url);
   Q_INVOKABLE void cancelServerConnectivity();
-  Q_SIGNAL void serverConnectivityResult(QString url, bool success, QString resolvedUrl);
+  Q_SIGNAL void serverConnectivityResult(QString url, bool success, QString resolvedUrl, QString errorMessage);
   Q_INVOKABLE bool isAddressOnLocalSubnet(const QString& address) const;
 
   static QString extractBaseUrl(const QString& url);
@@ -147,6 +147,7 @@ private:
   bool platformIsFreeBSD() const { return m_platformType == platformTypeFreeBSD; }
 
   void setReplyTimeout(QNetworkReply* reply, int ms);
+  void checkServerBase(const QString& url, const QString& base, bool discoverPath, quint64 generation);
   void loadDownloadIndex();
   void saveDownloadIndex() const;
   void startDownloadRequest(const QString& id, const QUrl& url, bool resume);
@@ -169,6 +170,7 @@ private:
   qreal m_scale;
   QNetworkReply* m_connectivityCheckReply;
   QNetworkReply* m_resolveUrlReply;
+  quint64 m_connectivityGeneration = 0;
   QHash<QString, QVariantMap> m_downloads;
   QHash<QString, QUrl> m_downloadUrls;
   QHash<QString, ActiveDownload*> m_activeDownloads;

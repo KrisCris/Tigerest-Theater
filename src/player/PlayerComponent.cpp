@@ -432,6 +432,11 @@ bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
   };
 
   const QString identityRoot = QStringLiteral("user-data/tigerest/emby/");
+  auto& settings = SettingsComponent::Get();
+  setIdentityProperty(QStringLiteral("user-data/tigerest/danmaku/api-server"),
+    MpvConfigManager::danmakuApiServer(
+      settings.value(SETTINGS_SECTION_MAIN, "userWebClient").toString(),
+      settings.value(SETTINGS_SECTION_MAIN, "serverConnectionMode").toString()));
   setIdentityProperty(identityRoot + QStringLiteral("valid"), false);
   bool identityReady = true;
   identityReady = setIdentityProperty(identityRoot + QStringLiteral("item-id"),

@@ -13,6 +13,7 @@
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QDebug>
+#include <QUrl>
 
 namespace
 {
@@ -222,6 +223,16 @@ bool writeSystemCompanionConfig(const QString& bundleDir, QString& companionPath
   }
   return true;
 }
+}
+
+QString MpvConfigManager::danmakuApiServer(const QString& serverUrl, const QString& connectionMode)
+{
+  const QUrl server(serverUrl);
+  const bool dedicatedLan = connectionMode != "custom" &&
+    server.host() == "192.168.5.150" && server.port() == 8095 &&
+    (server.scheme() == "http" || server.scheme() == "https");
+  return dedicatedLan ? QStringLiteral("http://192.168.5.150:18443")
+                      : QStringLiteral("http://nas.tigerest.top:18443");
 }
 
 QString MpvConfigManager::profileName(const QString& preset)

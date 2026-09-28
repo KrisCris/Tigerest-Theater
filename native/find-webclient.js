@@ -1,228 +1,152 @@
 const DEFAULT_LOCAL_SERVER_IP = '192.168.5.150';
 const DEFAULT_LOCAL_SERVER = `http://${DEFAULT_LOCAL_SERVER_IP}:8095/`;
 const DEFAULT_REMOTE_SERVER = 'http://nas.tigerest.top:8095/';
+const descriptions = {
+    tigerest: '连接大河李斯特专属 EMBY 服务器。服务器访问权限及说明详见 B站充电页面。',
+    custom: '连接你自己搭建的 EMBY 服务器。本应用只是播放器，不包含服务器，也不提供自建服务器的影视资源。',
+};
+const el = id => document.getElementById(id);
+let isConnecting = false;
+let connectionGeneration = 0;
+let mode = '';
 
-function normalizeServer(server) {
-    return (server || '').trim().replace(/\/+$/, '').toLowerCase();
+function normalizeServer(input) {
+    let value = (input || '').trim();
+    if (!value) throw new Error('请填写你的 EMBY 服务器地址。');
+    if (!/^[a-z][a-z\d+.-]*:\/\//i.test(value)) value = 'http://' + value;
+    let url;
+    try { url = new URL(value); } catch { throw new Error('地址格式不正确，请填写完整的主机和端口。'); }
+    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) {
+        throw new Error('请使用 HTTP 或 HTTPS 服务器地址，不要在地址中填写账号密码。');
+    }
+    return url.href;
 }
 
 function isTigerestDefaultServer(server) {
-    const normalized = normalizeServer(server);
-    return normalized === normalizeServer(DEFAULT_LOCAL_SERVER) ||
-        normalized === normalizeServer(DEFAULT_REMOTE_SERVER);
-}
-
-async function tryConnect(server) {
     try {
-        if (!server.startsWith("http")) {
-            server = "http://" + server;
+        const url = new URL(normalizeServer(server));
+        return url.port === '8095' && [DEFAULT_LOCAL_SERVER_IP, 'nas.tigerest.top'].includes(url.hostname);
+    } catch { return false; }
+}
+
+function setConnecting(active) {
+    isConnecting = active;
+    el('address').disabled = active;
+    el('spinner').hidden = !active;
+    el('connect-button').disabled = active || !el('address').value.trim();
+    el('connect-button').textContent = active ? '正在连接…' : '连接服务器';
+    el('connect-form').setAttribute('aria-busy', String(active));
+}
+
+function showManualConnection(address = '', error = '') {
+    el('server-choice').hidden = true;
+    el('connect-form').hidden = false;
+    el('title').textContent = mode === 'custom' ? '连接自建 EMBY 服务器' : '连接大河专属 EMBY';
+    el('address').value = address;
+    el('connection-error').textContent = error;
+    el('connection-error').hidden = !error;
+    el('connection-status').textContent = '';
+    setConnecting(false);
+    el('address').focus();
+}
+
+function cancelConnection() {
+    ++connectionGeneration;
+    window.jmpCheckServerConnectivity.abort?.();
+    window.api?.system.cancelServerConnectivity();
+    setConnecting(false);
+}
+
+function showChoices() {
+    cancelConnection();
+    el('server-choice').hidden = false;
+    el('connect-form').hidden = true;
+    el('choice-description').textContent = '请选择你要连接的服务器。';
+}
+
+async function connectServers(servers) {
+    if (isConnecting) return;
+    const generation = ++connectionGeneration;
+    setConnecting(true);
+    el('connection-error').hidden = true;
+    let error = '';
+    for (const input of [...new Set(servers)]) {
+        if (generation !== connectionGeneration) return;
+        try {
+            const server = normalizeServer(input);
+            el('address').value = server;
+            el('connection-status').textContent = `正在连接 ${server}`;
+            const resolvedUrl = await window.jmpCheckServerConnectivity(server);
+            if (generation !== connectionGeneration) return;
+            // Keep the address and external port chosen by this user.
+            window.jmpInfo.settings.main.userWebClient = server;
+            window.jmpInfo.settings.main.serverConnectionMode = mode;
+            window.location = resolvedUrl;
+            return;
+        } catch (failure) {
+            if (generation !== connectionGeneration) return;
+            error = failure.message || '无法连接服务器';
         }
+    }
+    showManualConnection(el('address').value,
+        `${error}。请检查地址、端口及当前网络是否能访问该服务器。`);
+}
 
-        console.log("Checking connectivity to:", server);
-
-        const resolvedUrl = await window.jmpCheckServerConnectivity(server);
-        console.log("Server connectivity check passed");
-        console.log("Resolved URL:", resolvedUrl);
-
-        // Save the human-readable server URL, but navigate to the resolved web client.
-        window.jmpInfo.settings.main.userWebClient = server;
-
-        // Navigation will clean up handlers, but do it explicitly
-        window.location = resolvedUrl;
-
-        return true;
-    } catch (e) {
-        console.error("Server connectivity check failed:", e);
-        return false;
+async function chooseMode(selected) {
+    mode = selected;
+    window.jmpInfo.settings.main.serverConnectionMode = mode;
+    window.jmpInfo.settings.main.userWebClient = '';
+    showManualConnection();
+    if (mode === 'tigerest') {
+        const generation = connectionGeneration;
+        const onLan = await window.api.system.isAddressOnLocalSubnet(DEFAULT_LOCAL_SERVER_IP);
+        if (generation !== connectionGeneration || mode !== 'tigerest') return;
+        await connectServers(onLan ? [DEFAULT_LOCAL_SERVER, DEFAULT_REMOTE_SERVER] : [DEFAULT_REMOTE_SERVER]);
     }
 }
 
-let isConnecting = false;
-
-const updateButtonState = () => {
-    const address = document.getElementById('address');
-    const button = document.getElementById('connect-button');
-    const hasValue = address.value.trim().length > 0;
-
-    if (!isConnecting) {
-        button.disabled = !hasValue;
+for (const selected of ['tigerest', 'custom']) {
+    const button = el(`choose-${selected}`);
+    button.addEventListener('click', () => chooseMode(selected));
+    for (const event of ['mouseenter', 'focus']) {
+        button.addEventListener(event, () => { el('choice-description').textContent = descriptions[selected]; });
     }
-};
-
-const cancelOnEscape = (e) => {
-    if (isConnecting && e.key === 'Escape') {
+}
+el('connect-form').addEventListener('submit', event => {
+    event.preventDefault();
+    if (!isConnecting) return connectServers([el('address').value]);
+});
+el('address').addEventListener('input', () => {
+    if (!isConnecting) el('connect-button').disabled = !el('address').value.trim();
+});
+el('back-button').addEventListener('click', showChoices);
+el('offline-button').addEventListener('click', () => window.tigerestOpenOfflineLibrary());
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && isConnecting) {
+        event.preventDefault();
         cancelConnection();
-    }
-};
-
-const startConnecting = async () => {
-    const address = document.getElementById('address');
-    const title = document.getElementById('title');
-    const spinner = document.getElementById('spinner');
-    const button = document.getElementById('connect-button');
-    const server = address.value;
-
-    isConnecting = true;
-    title.textContent = '';
-    title.style.visibility = 'hidden';
-    address.classList.add('connecting');
-    address.style.visibility = 'hidden';
-    address.disabled = true;
-    spinner.style.display = 'block';
-    button.style.visibility = 'hidden';
-    document.addEventListener('keydown', cancelOnEscape);
-
-    // C++ handles retries, just wait for result
-    const connected = await tryConnect(server);
-
-    if (!connected) {
-        isConnecting = false;
-        title.textContent = document.getElementById('title').getAttribute('data-original-text');
-        title.style.visibility = 'visible';
-        address.classList.remove('connecting');
-        address.style.visibility = 'visible';
-        address.disabled = false;
-        spinner.style.display = 'none';
-        button.style.visibility = 'visible';
-        document.removeEventListener('keydown', cancelOnEscape);
-        updateButtonState();
-    }
-};
-
-const cancelConnection = () => {
-    if (!isConnecting) return;
-
-    console.log("Cancelling connection");
-    isConnecting = false;
-
-    // Cancel C++ connectivity check and abort JS promise
-    if (window.api && window.api.system) {
-        window.api.system.cancelServerConnectivity();
-    }
-    if (window.jmpCheckServerConnectivity.abort) {
-        window.jmpCheckServerConnectivity.abort();
-    }
-
-    const address = document.getElementById('address');
-    const title = document.getElementById('title');
-    const spinner = document.getElementById('spinner');
-    const button = document.getElementById('connect-button');
-
-    title.textContent = document.getElementById('title').getAttribute('data-original-text');
-    title.style.visibility = 'visible';
-    address.classList.remove('connecting');
-    address.style.visibility = 'visible';
-    address.disabled = false;
-    spinner.style.display = 'none';
-    button.style.visibility = 'visible';
-    document.removeEventListener('keydown', cancelOnEscape);
-    updateButtonState();
-};
-
-// Button click handler
-document.getElementById('connect-button').addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!e.target.disabled) {
-        startConnecting();
+        showManualConnection(el('address').value);
     }
 });
 
-// Form submit handler
-document.getElementById('connect-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (!isConnecting) {
-        startConnecting();
-    }
-});
-
-// Input change handler
-document.getElementById('address').addEventListener('input', updateButtonState);
-
-document.getElementById('offline-button').addEventListener('click', () => {
-    window.tigerestOpenOfflineLibrary();
-});
-
-
-// Enter key handler
-document.addEventListener('keydown', (e) => {
-    const address = document.getElementById('address');
-    if (e.key === 'Enter' && !isConnecting && !address.disabled && address.value.trim()) {
-        e.preventDefault();
-        startConnecting();
-    }
-});
-
-function showManualConnection(savedServer) {
-    const title = document.getElementById('title');
-    const address = document.getElementById('address');
-    const spinner = document.getElementById('spinner');
-    const button = document.getElementById('connect-button');
-
-    isConnecting = false;
-    title.textContent = document.getElementById('title').getAttribute('data-original-text');
-    title.style.visibility = 'visible';
-    address.classList.remove('connecting');
-    address.style.visibility = 'visible';
-    address.disabled = false;
-    address.value = savedServer || DEFAULT_REMOTE_SERVER;
-    spinner.style.display = 'none';
-    button.style.visibility = 'visible';
-    document.removeEventListener('keydown', cancelOnEscape);
-    address.focus();
-    updateButtonState();
-}
-
-async function autoConnect(servers) {
-    const uniqueServers = [...new Set(servers.filter(Boolean))];
-    const title = document.getElementById('title');
-    const address = document.getElementById('address');
-    const spinner = document.getElementById('spinner');
-    const button = document.getElementById('connect-button');
-
-    isConnecting = true;
-    title.style.visibility = 'visible';
-    address.classList.add('connecting');
-    address.style.visibility = 'hidden';
-    address.disabled = true;
-    spinner.style.display = 'block';
-    button.style.visibility = 'hidden';
-    document.addEventListener('keydown', cancelOnEscape);
-
-    for (const server of uniqueServers) {
-        if (!isConnecting) return false;
-        address.value = server;
-        title.textContent = `正在连接 ${server}`;
-        if (await tryConnect(server)) return true;
-    }
-
-    return false;
-}
-
-// Auto-connect on load. The private address is only attempted when an active
-// interface is on the NAS subnet; outside the LAN the public domain is used
-// immediately. Custom saved servers still take precedence.
 (async () => {
-    console.log('Auto-connect: starting');
-
+    el('server-choice').hidden = false;
+    el('connect-form').hidden = true;
+    el('choose-tigerest').disabled = el('choose-custom').disabled = true;
     await window.apiPromise;
-
-    const savedServer = window.jmpInfo.settings.main.userWebClient;
-    console.log('Auto-connect: savedServer =', savedServer);
-
-    const isOnServerLan = window.api.system.isAddressOnLocalSubnet(DEFAULT_LOCAL_SERVER_IP);
-    console.log('Auto-connect: on server LAN =', isOnServerLan);
-
-    const defaultCandidates = isOnServerLan
-        ? [DEFAULT_LOCAL_SERVER, DEFAULT_REMOTE_SERVER]
-        : [DEFAULT_REMOTE_SERVER];
-    const candidates = savedServer && !isTigerestDefaultServer(savedServer)
-        ? [savedServer, ...defaultCandidates]
-        : defaultCandidates;
-    const connected = await autoConnect(candidates);
-    const manualDefault = savedServer && !isTigerestDefaultServer(savedServer)
-        ? savedServer
-        : DEFAULT_REMOTE_SERVER;
-    if (!connected && isConnecting) showManualConnection(manualDefault);
+    el('choose-tigerest').disabled = el('choose-custom').disabled = false;
+    const main = window.jmpInfo.settings.main;
+    const saved = main.userWebClient || '';
+    mode = main.serverConnectionMode || (saved ? (isTigerestDefaultServer(saved) ? 'tigerest' : 'custom') : '');
+    if (!['tigerest', 'custom'].includes(mode)) return showChoices();
+    main.serverConnectionMode = mode;
+    showManualConnection(saved);
+    if (mode === 'custom') {
+        if (saved) await connectServers([saved]);
+    } else {
+        const generation = connectionGeneration;
+        const onLan = await window.api.system.isAddressOnLocalSubnet(DEFAULT_LOCAL_SERVER_IP);
+        if (generation !== connectionGeneration || mode !== 'tigerest') return;
+        await connectServers(onLan ? [DEFAULT_LOCAL_SERVER, DEFAULT_REMOTE_SERVER] : [DEFAULT_REMOTE_SERVER]);
+    }
 })();

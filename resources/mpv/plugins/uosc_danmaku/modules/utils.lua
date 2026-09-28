@@ -439,6 +439,28 @@ function contains_any(tab, val)
     return false
 end
 
+-- Follow the initial Emby connection for managed endpoints, including old
+-- configuration/history. Explicit third-party providers remain untouched.
+function resolve_api_server(server)
+    if not server then return nil end
+    local normalized = server:gsub('/+$', '')
+    local local_api = 'http://192.168.5.150:18443'
+    local remote_api = 'http://nas.tigerest.top:18443'
+    if normalized == 'https://danmaku-api.152468.xyz'
+        or normalized == local_api or normalized == remote_api then
+        local active = mp.get_property_native('user-data/tigerest/danmaku/api-server', remote_api)
+        return active == local_api and local_api or remote_api
+    end
+    return server
+end
+
+function resolve_managed_api_url(url)
+    if not url then return nil end
+    local origin, path = url:match('^(https?://[^/]+)(/.*)$')
+    if origin then return resolve_api_server(origin) .. path end
+    return resolve_api_server(url)
+end
+
 -- 将一个逗号分隔的 api_server 字符串解析为有序列表
 function get_api_server_list(api_server_str, meta)
     local want_meta = meta or false
@@ -461,12 +483,12 @@ function get_api_server_list(api_server_str, meta)
                 url = s:gsub('^%s*(.-)%s*$', '%1')
                 note = nil
             end
-            table.insert(metas, { url = url, note = note })
+            table.insert(metas, { url = resolve_api_server(url), note = note })
         end
     end
 
     if #metas == 0 and api_server_str ~= '' then
-        table.insert(metas, { url = api_server_str, note = nil })
+        table.insert(metas, { url = resolve_api_server(api_server_str), note = nil })
     end
 
     if want_meta then return metas end

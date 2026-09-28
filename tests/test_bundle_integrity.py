@@ -426,7 +426,8 @@ def test_default_server_seed() -> None:
         "isAddressOnLocalSubnet(DEFAULT_LOCAL_SERVER_IP)",
         "[DEFAULT_LOCAL_SERVER, DEFAULT_REMOTE_SERVER]",
         "[DEFAULT_REMOTE_SERVER]",
-        "savedServer && !isTigerestDefaultServer(savedServer)",
+        "if (mode === 'custom')",
+        "if (saved) await connectServers([saved])",
     ):
         require(marker in startup, f"LAN/WAN startup routing is missing: {marker}")
 

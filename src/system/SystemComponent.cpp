@@ -538,37 +538,26 @@ void SystemComponent::jsLog(int level, QString text)
 QString SystemComponent::extractBaseUrl(const QString& url)
 {
   QUrl parsedUrl(url);
+  if (!parsedUrl.isValid() || parsedUrl.host().isEmpty() ||
+      (parsedUrl.scheme() != "http" && parsedUrl.scheme() != "https"))
+    return QString();
   QString path = parsedUrl.path();
-
-  // Find last occurrence of "/web" in path only (case-insensitive)
-  qsizetype webIndex = path.toLower().lastIndexOf("/web");
-
-  if (webIndex >= 0) {
-    // Truncate path at /web
-    path = path.left(webIndex);
-
-    // Build URL without fragment/query
-    QString result = parsedUrl.scheme() + "://" + parsedUrl.host();
-    int port = parsedUrl.port();
-    if (port != -1 &&
-        !((parsedUrl.scheme() == "https" && port == 443) ||
-          (parsedUrl.scheme() == "http" && port == 80))) {
-      result += ":" + QString::number(port);
-    }
-    result += path;
-    return result;
-  }
-
-  // Fallback to origin (scheme://host:port, excluding default ports and userinfo)
-  QString origin = parsedUrl.scheme() + "://" + parsedUrl.host();
-  int port = parsedUrl.port();
-  // Only add port if non-default (443 for https, 80 for http)
-  if (port != -1 &&
-      !((parsedUrl.scheme() == "https" && port == 443) ||
-        (parsedUrl.scheme() == "http" && port == 80))) {
-    origin += ":" + QString::number(port);
-  }
-  return origin;
+  // Only a complete /web segment marks the web client, not /webdav.
+  const QRegularExpression webSegment(QStringLiteral("/web(?=/|$)"),
+                                      QRegularExpression::CaseInsensitiveOption);
+  auto matches = webSegment.globalMatch(path);
+  qsizetype webIndex = -1;
+  while (matches.hasNext()) webIndex = matches.next().capturedStart();
+  if (webIndex >= 0) path.truncate(webIndex);
+  while (path.endsWith('/')) path.chop(1);
+  parsedUrl.setPath(path);
+  parsedUrl.setQuery(QString());
+  parsedUrl.setFragment(QString());
+  parsedUrl.setUserInfo(QString());
+  if ((parsedUrl.scheme() == "https" && parsedUrl.port() == 443) ||
+      (parsedUrl.scheme() == "http" && parsedUrl.port() == 80))
+    parsedUrl.setPort(-1);
+  return parsedUrl.toString(QUrl::FullyEncoded);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -654,78 +643,87 @@ void SystemComponent::resolveUrl(const QString& url, std::function<void(const QS
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void SystemComponent::checkServerConnectivity(QString url)
 {
-  if (m_connectivityCheckReply) {
-    QNetworkReply* previousReply = m_connectivityCheckReply;
-    m_connectivityCheckReply = nullptr;
-    previousReply->abort();
-    previousReply->deleteLater();
+  cancelServerConnectivity();
+  const QString base = extractBaseUrl(url);
+  if (base.isEmpty()) {
+    emit serverConnectivityResult(url, false, QString(), tr("服务器地址无效，请使用 HTTP 或 HTTPS 地址"));
+    return;
   }
+  checkServerBase(url, base, true, m_connectivityGeneration);
+}
 
-  resolveUrl(url, [this, url](const QString& fullResolvedUrl) {
-    if (fullResolvedUrl.isEmpty()) {
-      qWarning() << "checkServerConnectivity: URL resolution timed out for" << url;
-      emit serverConnectivityResult(url, false, QString());
+void SystemComponent::checkServerBase(const QString& url, const QString& base,
+                                      bool discoverPath, quint64 generation)
+{
+  QNetworkRequest request(base + "/System/Info/Public");
+  request.setHeader(QNetworkRequest::UserAgentHeader, getUserAgent());
+  request.setRawHeader("Cache-Control", "no-cache");
+  request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+  request.setSslConfiguration(getSSLConfiguration());
+  auto* reply = m_networkManager->get(request);
+  m_connectivityCheckReply = reply;
+  setReplyTimeout(reply, CONNECTIVITY_REQUEST_TIMEOUT_MS);
+  if (SettingsComponent::Get().ignoreSSLErrors()) {
+    connect(reply, QOverload<const QList<QSslError>&>::of(&QNetworkReply::sslErrors),
+            reply, QOverload<>::of(&QNetworkReply::ignoreSslErrors));
+  }
+  connect(reply, &QNetworkReply::finished, this, [this, reply, url, base, discoverPath, generation]() {
+    reply->deleteLater();
+    if (generation != m_connectivityGeneration || m_connectivityCheckReply != reply) return;
+    m_connectivityCheckReply = nullptr;
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const bool networkOk = reply->error() == QNetworkReply::NoError;
+    const auto doc = networkOk ? QJsonDocument::fromJson(reply->readAll()) : QJsonDocument();
+    if (doc.isObject() && !doc.object().value("Id").toString().isEmpty()) {
+      // Keep the authority supplied by the user, including forwarded ports.
+      // A successful API redirect can also reveal a reverse-proxy prefix.
+      QUrl webUrl(base);
+      QString apiPath = reply->url().path();
+      const QString apiSuffix = QStringLiteral("/System/Info/Public");
+      if (apiPath.endsWith(apiSuffix, Qt::CaseInsensitive)) {
+        apiPath.chop(apiSuffix.size());
+        webUrl.setPath(apiPath + "/web/index.html");
+      } else {
+        webUrl.setPath(webUrl.path() + "/web/index.html");
+      }
+      emit serverConnectivityResult(url, true, webUrl.toString(QUrl::FullyEncoded), QString());
       return;
     }
+    QString error;
+    if (reply->error() == QNetworkReply::OperationCanceledError)
+      error = tr("连接超时（5 秒）");
+    else if (status >= 400)
+      error = tr("服务器返回 HTTP %1").arg(status);
+    else if (!networkOk)
+      error = tr("网络连接失败：%1").arg(reply->errorString());
+    else
+      error = tr("此地址未返回有效的 Emby 服务器信息");
 
-    QString baseUrl = extractBaseUrl(fullResolvedUrl);
-
-    QString checkUrl = baseUrl + "/System/Info/Public";
-
-    QNetworkRequest request(checkUrl);
-    request.setHeader(QNetworkRequest::UserAgentHeader, getUserAgent());
-    request.setRawHeader("Cache-Control", "no-cache");
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    request.setSslConfiguration(getSSLConfiguration());
-
-    m_connectivityCheckReply = m_networkManager->get(request);
-
-    QNetworkReply* reply = m_connectivityCheckReply;
-    setReplyTimeout(reply, CONNECTIVITY_REQUEST_TIMEOUT_MS);
-
-    if (SettingsComponent::Get().ignoreSSLErrors()) {
-      connect(reply, QOverload<const QList<QSslError>&>::of(&QNetworkReply::sslErrors),
-              reply, QOverload<>::of(&QNetworkReply::ignoreSslErrors));
+    // A root URL may redirect to an installation under /emby or /jellyfin.
+    // Discover that path only after the exact API failed; never replace the
+    // user's host/port with an internal authority advertised by a proxy.
+    if (discoverPath && (status == 404 || networkOk)) {
+      resolveUrl(url, [this, url, base, generation, error](const QString& resolved) {
+        if (generation != m_connectivityGeneration) return;
+        QUrl candidate(base);
+        const QString resolvedBase = extractBaseUrl(resolved);
+        if (!resolvedBase.isEmpty()) candidate.setPath(QUrl(resolvedBase).path());
+        const QString nextBase = extractBaseUrl(candidate.toString());
+        if (!nextBase.isEmpty() && nextBase != base)
+          checkServerBase(url, nextBase, false, generation);
+        else
+          emit serverConnectivityResult(url, false, QString(), error);
+      }, CONNECTIVITY_REQUEST_TIMEOUT_MS);
+      return;
     }
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply, url, fullResolvedUrl]() {
-      if (reply->error() == QNetworkReply::OperationCanceledError) {
-        const bool timedOut = m_connectivityCheckReply == reply;
-        reply->deleteLater();
-        if (timedOut) {
-          m_connectivityCheckReply = nullptr;
-          qWarning() << "checkServerConnectivity: request timed out for" << url;
-          emit serverConnectivityResult(url, false, QString());
-        }
-        return;
-      }
-
-      bool success = false;
-      if (reply->error() == QNetworkReply::NoError) {
-        QByteArray data = reply->readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(data);
-        if (doc.isObject() && doc.object().contains("Id") && !doc.object()["Id"].toString().isEmpty()) {
-          success = true;
-        } else {
-          qWarning() << "checkServerConnectivity: invalid response";
-        }
-      } else {
-        qWarning() << "checkServerConnectivity: error:" << reply->errorString();
-      }
-
-      emit serverConnectivityResult(url, success, success ? fullResolvedUrl : QString());
-
-      reply->deleteLater();
-      if (m_connectivityCheckReply == reply) {
-        m_connectivityCheckReply = nullptr;
-      }
-    });
-  }, CONNECTIVITY_REQUEST_TIMEOUT_MS);
+    emit serverConnectivityResult(url, false, QString(), error);
+  });
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void SystemComponent::cancelServerConnectivity()
 {
+  ++m_connectivityGeneration;
   // Save pointers before abort() since it synchronously triggers finished handlers
   // which may set member variables to nullptr
   if (m_resolveUrlReply) {

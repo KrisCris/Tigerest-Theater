@@ -85,12 +85,14 @@ local function sandbox()
     env.get_danmaku_visibility = function() return visible end
     env.set_danmaku_visibility = function(value) visible = value end
     env.toggle_danmaku_switch = function() end
+    local restore_sources = env.read_danmaku_source_record
     env.read_danmaku_source_record = function() end
     env.show_message = function() end
     env.show_loaded = function() end
     env.file_exists = function() return false end
     env.save_danmaku = function() end
-    local state = {env = env, props = props, overlays = overlays, requests = requests, messages = messages}
+    local state = {env = env, props = props, overlays = overlays, requests = requests,
+        messages = messages, restore_sources = restore_sources}
     function state.emit(name)
         for _, fn in ipairs(events[name] or {}) do fn({}) end
     end
@@ -129,6 +131,26 @@ local function sandbox()
 end
 
 local cases = {}
+function cases.relay_history_keeps_source_preferences()
+    local s = sandbox()
+    local remote = 'http://nas.tigerest.top:18443'
+    local old = 'https://danmaku-api.152468.xyz/api/v2/comment/123?withRelated=true&chConvert=0'
+    local custom = 'https://custom.example/api/v2/comment/456'
+    local utils = require('mp.utils')
+    s.props['user-data/tigerest/danmaku/api-server'] = remote
+    s.env.read_file = function() return utils.format_json({movie = {sources = {
+        [old] = {from = 'api_server', blocked = true, delay_segments = {{start = 0, delay = 3}}},
+        [custom] = {from = 'user_custom', blocked = true},
+    }}}) end
+    s.env.DANMAKU.sources = {}
+    s.restore_sources('movie')
+    local active = remote .. '/api/v2/comment/123?withRelated=true&chConvert=0'
+    assert(s.env.DANMAKU.sources[old] == nil, 'Stale history source was retained')
+    local restored = s.env.DANMAKU.sources[active]
+    assert(restored and restored.blocked and restored.from_history, 'History lost blocked state')
+    assert(restored.delay_segments[1].delay == 3, 'History lost timing correction')
+    assert(s.env.DANMAKU.sources[custom].blocked, 'Custom source was overwritten')
+end
 function cases.late_media_properties()
     local s = sandbox()
     local calls = 0; s.env.init = function() calls = calls + 1 end

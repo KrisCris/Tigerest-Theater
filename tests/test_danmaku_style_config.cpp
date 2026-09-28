@@ -14,6 +14,7 @@ private slots:
   void rendersPluginCompatibleOptions();
   void rendersMpvScriptOptionsForTheMacCompanionConfig();
   void writesOptionsIntoTheManagedScriptOptsDirectory();
+  void selectsRelayForTheInitialServer();
 };
 
 namespace
@@ -72,6 +73,20 @@ void TestDanmakuStyleConfig::writesOptionsIntoTheManagedScriptOptsDirectory()
   QFile output(configRoot.filePath(QStringLiteral("script-opts/uosc_danmaku.conf")));
   QVERIFY(output.open(QIODevice::ReadOnly | QIODevice::Text));
   QCOMPARE(QString::fromUtf8(output.readAll()), expectedConfig);
+}
+
+void TestDanmakuStyleConfig::selectsRelayForTheInitialServer()
+{
+  const QString local = "http://192.168.5.150:18443";
+  const QString remote = "http://nas.tigerest.top:18443";
+  QCOMPARE(MpvConfigManager::danmakuApiServer("http://192.168.5.150:8095/", "tigerest"), local);
+  QCOMPARE(MpvConfigManager::danmakuApiServer("http://192.168.5.150:8095/", ""), local);
+  QCOMPARE(MpvConfigManager::danmakuApiServer("http://nas.tigerest.top:8095/", "tigerest"), remote);
+  QCOMPARE(MpvConfigManager::danmakuApiServer("http://192.168.114.114:8097/", "custom"), remote);
+  QCOMPARE(MpvConfigManager::danmakuApiServer("http://192.168.5.150:8095/", "custom"), remote);
+  QCOMPARE(MpvConfigManager::danmakuApiServer("http://192.168.5.150:8097/", "tigerest"), remote);
+  QCOMPARE(MpvConfigManager::danmakuApiServer("http://emby.example/", "custom"), remote);
+  QCOMPARE(MpvConfigManager::danmakuApiServer("", ""), remote);
 }
 
 QTEST_GUILESS_MAIN(TestDanmakuStyleConfig)

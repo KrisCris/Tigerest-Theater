@@ -30,7 +30,7 @@ window.jmpCheckServerConnectivity = (() => {
                 reject(new Error('Connection cancelled'));
             });
 
-            let handler = (resultUrl, success, resolvedUrl) => {
+            let handler = (resultUrl, success, resolvedUrl, errorMessage) => {
                 if (resultUrl === url && !controller.signal.aborted) {
                     window.api.system.serverConnectivityResult.disconnect(handler);
                     handler = null;
@@ -40,7 +40,7 @@ window.jmpCheckServerConnectivity = (() => {
                     if (success) {
                         resolve(resolvedUrl);
                     } else {
-                        reject(new Error('Connection failed'));
+                        reject(new Error(errorMessage || '无法连接服务器'));
                     }
                 }
             };

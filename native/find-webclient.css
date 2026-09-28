@@ -1,144 +1,36 @@
-* {
-    box-sizing: border-box;
-}
-body {
-    background-color: #101010;
-    color: #ddd;
-    color: rgba(255, 255, 255, 0.8);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    font-size: 1em;
-    padding: 1em;
-}
-.logo {
-    max-width: 500px;
-    margin-bottom: 2em;
-    margin-left: auto;
-    margin-right: auto;
-    display: block;
-}
-input[type=text] {
-    display: block;
-    width: 100%;
-    font-size: 1em;
-    color: inherit;
-    background: #292929;
-    border: 0.16em solid #292929;
-    border-radius: 0.2em;
-    padding: 0.6em 0.8em;
-    font-family: inherit;
-}
-input[type=text]:focus {
-    border-color: #ffb714;
-    outline: none;
-}
-input[type=text]::placeholder {
-    color: #666;
-    color: rgba(255, 255, 255, 0.3);
-    opacity: 1;
-}
-
-button {
-    width: 100%;
-    color: #fff;
-    background: #b77a00;
-    border: none;
-    border-radius: 0.2em;
-    font-size: 1em;
-    padding: 0.75em 1.5em;
-    cursor: pointer;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.025em;
-    outline: none;
-    font-family: inherit;
-}
-button:hover:not(:disabled) {
-    background: #d89400;
-}
-button:disabled {
-    background-color: #292929;
-    cursor: default;
-    opacity: 0.6;
-}
-#container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    right: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-.logo {
-    max-width: 500px;
-    margin-bottom: 2em;
-    margin-left: auto;
-    margin-right: auto;
-    display: block;
-}
-#title {
-    margin-top: 1em;
-    margin-bottom: 0;
-    font-size: 1.5em;
-    font-weight: 400;
-    color: #ddd;
-    color: rgba(255, 255, 255, 0.8);
-    min-height: 1.5em;
-    height: 1.5em;
-    max-width: 450px;
-    width: 100%;
-    text-align: left;
-    visibility: hidden;
-}
-#connect-form {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 100%;
-    position: relative;
-}
-#address {
-    margin-bottom: 1em;
-    max-width: 450px;
-    height: 2.5em;
-    visibility: hidden;
-}
-#address.connecting {
-    visibility: hidden;
-}
-#spinner {
-    border: 6px solid #292929;
-    border-top: 6px solid #ffb714;
-    border-radius: 50%;
-    width: 80px;
-    height: 80px;
-    animation: spin 1s linear infinite;
-    display: none;
-    position: absolute;
-    top: calc(1em + 1.5em + 1.25em);
-    left: 50%;
-    margin-left: -40px;
-}
-#connect-button {
-    max-width: 450px;
-    min-height: 2.5em;
-    visibility: hidden;
-}
-#offline-button {
-    max-width: 450px;
-    margin-top: 0.75em;
-    background: #3a3b40;
-    visibility: visible;
-}
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-#connect-button.cancel {
-    background: #cb272a;
-}
-#connect-button.cancel:hover:not(:disabled) {
-    background: #d93134;
-}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at 50% 0, #342717 0, #151515 48%, #101010 100%); color: #eee9df; font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif; }
+#container { width: min(820px, 100%); margin: auto; padding: 48px 28px 28px; }
+.logo { display: block; width: min(350px, 75%); height: auto; margin: 0 auto 34px; }
+#server-choice { text-align: center; }
+.eyebrow { color: #e4b258; font-size: 13px; letter-spacing: .2em; margin: 0 0 12px; }
+h1 { font-size: clamp(24px, 3vw, 34px); font-weight: 600; line-height: 1.35; margin: 0 0 12px; }
+.intro, .address-help { color: #aaa59d; font-size: 14px; line-height: 1.8; }
+.intro { margin: 0 0 30px; }
+.server-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+.server-option { display: flex; flex-direction: column; align-items: flex-start; position: relative; min-height: 186px; padding: 24px; gap: 24px; text-align: left; border: 1px solid #4b4335; border-radius: 16px; background: #22201de6; color: inherit; font-size: 19px; line-height: 1.65; transition: background .16s, border-color .16s, transform .16s; }
+.option-number { color: #bda982; font-size: 13px; letter-spacing: .15em; }
+.option-arrow { position: absolute; top: 18px; right: 24px; font-size: 26px; color: #cba362; }
+.server-option:hover, .server-option:focus-visible { border-color: #e3b35c; background: #3b2e1c; transform: translateY(-3px); }
+button:focus-visible, input:focus-visible { outline: 2px solid #f3c46f; outline-offset: 4px; }
+button:disabled { opacity: .55; cursor: default; }
+#choice-description { color: #c8bdab; font-size: 14px; line-height: 1.8; min-height: 76px; margin: 22px 0 0; }
+#connect-form { max-width: 560px; margin: auto; }
+#title { margin-top: 22px; }
+#address { display: block; width: 100%; margin: 20px 0 8px; padding: 14px 16px; background: #242424; color: #fff; border: 1px solid #514a3d; border-radius: 9px; }
+#address::placeholder { color: #888; }
+#connect-button { width: 100%; margin-top: 18px; padding: 14px; border: 0; border-radius: 9px; color: #20170b; font-weight: 600; background: #e4b258; }
+#connect-button:hover:not(:disabled) { background: #f0c675; }
+.text-button { display: block; padding: 8px 0; background: none; border: 0; color: #b8afa2; font-size: 14px; }
+.text-button:hover { color: #f0c675; }
+#offline-button { margin: 16px auto 0; }
+.connection-progress { display: flex; align-items: center; gap: 10px; min-height: 30px; color: #c6b99f; font-size: 13px; overflow-wrap: anywhere; }
+#spinner { display: inline-block; flex-shrink: 0; width: 18px; height: 18px; border: 2px solid #5a4b32; border-top-color: #e4b258; border-radius: 50%; animation: spin .8s linear infinite; }
+#connection-error { color: #f0aaa0; background: #402625; border-radius: 8px; padding: 12px; line-height: 1.7; font-size: 14px; overflow-wrap: anywhere; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 580px) { #container { padding: 26px 18px; } .logo { margin-bottom: 26px; } .server-options { grid-template-columns: 1fr; gap: 12px; } .server-option { min-height: 135px; padding: 20px; gap: 12px; font-size: 17px; } }
+@media (prefers-reduced-motion: reduce) { .server-option { transition: none; } }

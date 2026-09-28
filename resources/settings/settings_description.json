@@ -152,6 +152,11 @@
         "hidden": true
       },
       {
+        "value": "serverConnectionMode",
+        "default": "",
+        "hidden": true
+      },
+      {
         "value": "enableWindowsMediaIntegration",
         "display_name": "启用 Windows 媒体控制",
         "default": true,

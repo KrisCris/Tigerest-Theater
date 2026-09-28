@@ -11,6 +11,7 @@ namespace MpvConfigManager
   bool usingSystemConfig();
   QString detectSystemConfigDir(const QString& configuredPath = QString());
   QString profileName(const QString& preset);
+  QString danmakuApiServer(const QString& serverUrl, const QString& connectionMode);
   QString danmakuStyleConfigText(const QVariantMap& values);
   QString danmakuStyleMpvOptionsText(const QVariantMap& values);
   bool writeDanmakuStyleConfig(const QString& configDir,

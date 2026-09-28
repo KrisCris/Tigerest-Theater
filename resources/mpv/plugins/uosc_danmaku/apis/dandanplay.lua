@@ -46,6 +46,7 @@ function set_episode_id(input, from_menu, api_server)
         end
     end
 
+    selected_server = resolve_api_server(selected_server)
     DANMAKU.api_server = selected_server
 
     local episodeId = tonumber(input)
@@ -133,6 +134,7 @@ end
 
 -- 返回弹幕请求参数
 function make_danmaku_request_args(method, url, headers, body)
+    url = resolve_managed_api_url(url)
     local args = {
         "curl",
         "-L",
@@ -507,6 +509,7 @@ end
 -- 匹配弹幕库 comment, 仅匹配dandan本身弹幕库
 -- 通过danmaku api（url）+id获取弹幕
 function fetch_danmaku(episodeId, from_menu, api_server)
+    api_server = resolve_api_server(api_server)
     local url = api_server .. "/api/v2/comment/" .. episodeId .. "?withRelated=true&chConvert=0"
     show_message("弹幕加载中...", 30)
     msg.verbose("尝试获取弹幕：" .. url)

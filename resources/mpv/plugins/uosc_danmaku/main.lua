@@ -435,6 +435,14 @@ function read_danmaku_source_record(path)
 
     local sources = record.sources
     local upgraded_sources = {}
+    local function restore_source(source, data)
+        local active_source = resolve_managed_api_url(source)
+        -- If both an old and current address exist, prefer the current record.
+        if active_source == source or DANMAKU.sources[active_source] == nil then
+            DANMAKU.sources[active_source] = data
+        end
+        return active_source
+    end
 
     if is_nested_table(sources) then
         for source, data in pairs(sources) do
@@ -455,12 +463,12 @@ function read_danmaku_source_record(path)
                 delay_segments = nil
             end
 
-            DANMAKU.sources[source] = {
+            restore_source(source, {
                 from = from,
                 blocked = blocked,
                 delay_segments = delay_segments,
                 from_history = true,
-            }
+            })
         end
     else
         for _, raw in ipairs(sources) do
@@ -484,12 +492,12 @@ function read_danmaku_source_record(path)
                 }
             end
 
-            DANMAKU.sources[source] = {
+            source = restore_source(source, {
                 from = from or "user_custom",
                 blocked = blocked,
                 delay_segments = delay_segments,
                 from_history = true,
-            }
+            })
 
             upgraded_sources[source] = shallow_copy(DANMAKU.sources[source])
         end
@@ -609,7 +617,7 @@ function auto_load_danmaku(path, dir, filename, number)
                 local history_id = history_dir.episodeId
                 local history_fname = history_dir.fname
                 local history_extra = history_dir.extra
-                local history_api_server = history_dir.api_server
+                local history_api_server = resolve_api_server(history_dir.api_server)
                 local playing_number = nil
 
                 if history_fname then

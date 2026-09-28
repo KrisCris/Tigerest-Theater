@@ -562,6 +562,7 @@ async function showLegacySettingsModal() {
         resetSavedServer.style.maxWidth = "50%";
         resetSavedServer.addEventListener("click", async () => {
             window.jmpInfo.settings.main.userWebClient = '';
+            window.jmpInfo.settings.main.serverConnectionMode = '';
             window.location.href = jmpInfo.scriptPath + "/find-webclient.html";
         });
         group.appendChild(resetSavedServer);
@@ -1002,6 +1003,7 @@ async function showSettingsModal() {
                 const resetServer = element('button', 'tgs-action', '重置已保存的服务器地址');
                 resetServer.addEventListener('click', () => {
                     window.jmpInfo.settings.main.userWebClient = '';
+                    window.jmpInfo.settings.main.serverConnectionMode = '';
                     window.location.href = jmpInfo.scriptPath + '/find-webclient.html';
                 });
                 actions.appendChild(resetServer);
