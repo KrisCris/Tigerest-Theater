@@ -4,7 +4,7 @@ These tools build and verify the bundled model; they are not required on users�
 
 Use the pinned `requirements-build.txt` in an isolated Python environment. `prepare_model.py` verifies the source and weights against `model_source.json`; `convert_model.py` and `split_model.py` write model manifests and reference fixtures. Generated environments, models and benchmark reports belong in ignored `build/rife/`.
 
-The selected experimental pipeline is `split-metal` with `cpu-ane`: Encoder and Refine use Core ML’s CPU/Neural Engine configuration, Coarse uses CPU/GPU, and final warping uses Metal. Actual device execution and full playback performance require separate qualification; configuration names do not prove Neural Engine execution. The monolithic GPU path remains available for comparison.
+The selected experimental pipeline is `split-coarse-metal` with `cpu-ane`: Encoder and Refine use Core ML’s CPU/Neural Engine configuration, four FP32 coarse convolution stages use CPU/GPU, and spatial warping/resizing/packing uses fused Metal kernels. Actual device execution and full playback performance require separate qualification; configuration names do not prove Neural Engine execution. The monolithic GPU path remains available for comparison.
 
 ## Streaming integration
 
@@ -27,6 +27,6 @@ The model inference code runs natively. The embedded Python bridge only coordina
 
 Use Xcode's toolchain (set `DEVELOPER_DIR` to Xcode-beta on the beta host). `build_mpv.py` downloads and verifies mpv 0.41.0, applies the included API/EOF patches and sets both C/Objective-C and Swift deployment targets to macOS 26.0. It refuses to reuse a source tree with different patch provenance. The Homebrew libraries are build inputs only.
 
-`dev/macos/build.sh` prepares the pinned model and playback runtime. CMake accepts `TIGEREST_RIFE_MODEL_DIR` pointing to the verified split packages and `MPV_LIBRARY_mpv` pointing to the resulting library. Installation compiles Encoder/Coarse/Refine into `Contents/Resources/rife/model`; development fixtures, PyTorch and conversion tools are excluded. The runtime recipe is verified against VapourSynth R79 and records Python/VS versions in its manifest.
+`dev/macos/build.sh` prepares the pinned model and playback runtime. CMake accepts `TIGEREST_RIFE_MODEL_DIR` pointing to the verified split packages and `MPV_LIBRARY_mpv` pointing to the resulting library. Installation compiles Encoder/Stage0–3/Refine into `Contents/Resources/rife/model`; development fixtures, PyTorch and conversion tools are excluded. The runtime recipe is verified against VapourSynth R79 and records Python/VS versions in its manifest.
 
 `dev/macos/sign_bundle.py` removes development rpaths, signs leaf code and then containers. `tests/test_macos_bundle.py` checks the model manifest, dependency closure, signatures' prerequisites and isolated Python/VS registration. For actual relocated playback, run `tests/test_rife_portable.py APP TEST_RIFE_CONTROLLER_LIVE`: it makes a disposable copy with Chinese/spaces in the path, adds a temporary native test probe, runs the bundled split pipeline with a clean environment, verifies loaded-library paths, and checks that playback has not changed the signed bundle. The probe is never included in the delivered app.

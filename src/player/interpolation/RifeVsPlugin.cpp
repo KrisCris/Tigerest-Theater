@@ -174,6 +174,7 @@ void VS_CC create(const VSMap* in, VSMap* out, void*, VSCore* core, const VSAPI*
         if (!error && pipeline) {
             std::string name=pipeline;
             if(name=="split-metal")d->config.pipeline=rife::Pipeline::SplitEncoderRefineMetal;
+            else if(name=="split-coarse-metal")d->config.pipeline=rife::Pipeline::SplitCoarseMetal;
             else if(name=="split")d->config.pipeline=rife::Pipeline::SplitEncoderRefine;
             else if(name!="monolithic")throw std::runtime_error("Unknown RIFE pipeline");
         }

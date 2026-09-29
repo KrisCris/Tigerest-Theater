@@ -28,8 +28,8 @@ static void parity(const FrameBuffer& frame, const std::vector<float>& reference
 int main(int argc, char** argv) {
     try {
         check(argc>=2 && argc<=4, "usage: test_rife_split_engine <model-dir> [--metal] [--benchmark]");
-        bool metal=false,benchmark=false;
-        for(int i=2;i<argc;++i) {metal|=std::string(argv[i])=="--metal";benchmark|=std::string(argv[i])=="--benchmark";}
+        bool metal=false,coarse=false,benchmark=false;
+        for(int i=2;i<argc;++i) {metal|=std::string(argv[i])=="--metal";coarse|=std::string(argv[i])=="--coarse";benchmark|=std::string(argv[i])=="--benchmark";}
         const std::string directory=argv[1];
         constexpr int w=1920,h=1080;
         const size_t count=size_t(w)*h*3;
@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
             result.identity={generation,index};return result;
         };
         EngineConfig config{directory,ComputePolicy::CPUAndNeuralEngine,w,h};
-        config.pipeline=metal?Pipeline::SplitEncoderRefineMetal:Pipeline::SplitEncoderRefine;
+        config.pipeline=coarse?Pipeline::SplitCoarseMetal:(metal?Pipeline::SplitEncoderRefineMetal:Pipeline::SplitEncoderRefine);
         auto engine=RifeEngine::create(config);
         auto evaluate=[&](const FrameView& first,const FrameView& second,bool hit,const std::vector<float>& expected) {
             auto out=engine->interpolate(first,second,.5f);

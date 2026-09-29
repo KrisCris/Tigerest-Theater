@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='rife 搬迁 空白环境 ',dir='/tmp') 
         VSSCRIPT_PATH=str(paths['library']),XDG_CONFIG_HOME=str(root/'fresh-config'),DYLD_PRINT_LIBRARIES='1')
     result=subprocess.run([str(binary),str(moved/'Contents/Resources/rife/model'),
         str(moved/'Contents/Frameworks/tigerest-rife-vs.dylib'),
-        str(moved/'Contents/Resources/rife/interpolate.vpy'),str(clip),'split-metal'],
+        str(moved/'Contents/Resources/rife/interpolate.vpy'),str(clip),'split-coarse-metal'],
         env=env,text=True,capture_output=True,timeout=60)
     if result.returncode:raise RuntimeError(result.stdout+result.stderr)
     assert (root/'fresh-config/vapoursynth/vapoursynth.toml').is_file(),'VSScript borrowed prior registration'

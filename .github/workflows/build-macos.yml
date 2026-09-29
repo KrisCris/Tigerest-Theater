@@ -45,6 +45,9 @@ jobs:
           build/rife/venv/bin/python dev/macos/rife/split_model.py \
             --source build/rife/source --output build/rife/models/1080-split-refine \
             --width 1920 --height 1080 --grid-scale 0.5 --offload-refine
+          build/rife/venv/bin/python dev/macos/rife/coarse_model.py \
+            --source build/rife/source --output build/rife/models/1080-split-refine \
+            --width 1920 --height 1080
           echo "TIGEREST_RIFE_MODEL_DIR=$PWD/build/rife/models/1080-split-refine" >> "$GITHUB_ENV"
         fi
         build/rife/venv/bin/python dev/macos/rife/build_mpv.py \

@@ -7,7 +7,7 @@
 
 namespace rife {
 enum class ComputePolicy { All, CPUAndGPU, CPUAndNeuralEngine };
-enum class Pipeline { Monolithic, SplitEncoderRefine, SplitEncoderRefineMetal };
+enum class Pipeline { Monolithic, SplitEncoderRefine, SplitEncoderRefineMetal, SplitCoarseMetal };
 enum class ErrorCode { InvalidConfiguration, InvalidFrame, Busy, ModelLoad, Inference, NonFinite };
 
 class EngineError : public std::runtime_error {

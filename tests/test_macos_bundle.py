@@ -75,7 +75,7 @@ def verify_rife_models(app: Path) -> None:
     assert manifest['width']==1920 and manifest['height']==1080
     assert manifest['grid_scale']==0.5
     assert manifest['pipeline']=='ane-encoder-refine-gpu-motion'
-    assert manifest['runtime_pipeline']=='split-metal'
+    assert manifest['runtime_pipeline']=='split-coarse-metal'
     pinned=json.loads((app/'Contents/Resources/licenses/Practical-RIFE/model_source.json').read_text())
     assert manifest['revision']==pinned['revision']
     assert manifest['weights_sha256']==pinned['files']['train_log/flownet.pkl']
@@ -83,10 +83,11 @@ def verify_rife_models(app: Path) -> None:
         path=(root/'model'/relative).resolve()
         assert path.is_relative_to(root.resolve()),'Escaping compiled model path'
         assert hashlib.sha256(path.read_bytes()).hexdigest()==digest,f'Changed compiled model: {relative}'
-    for name in ('Encoder','Coarse','Refine'):
+    for name in ('Encoder','Stage0','Stage1','Stage2','Stage3','Refine'):
         compiled=root/'model'/f'{name}.mlmodelc'
         assert compiled.is_dir(),f'Missing compiled {name} model'
         assert any(compiled.iterdir()),f'Empty compiled {name} model'
+    assert not (root/'model/Coarse.mlmodelc').exists(),'Obsolete coarse model must not be shipped'
     for file in (app/'Contents/Frameworks/libtigerest-rife.dylib',
                  app/'Contents/Frameworks/tigerest-rife-vs.dylib',root/'interpolate.vpy'):
         assert file.is_file(),f'Missing RIFE component: {file}'

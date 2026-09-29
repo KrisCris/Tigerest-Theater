@@ -6,7 +6,7 @@
 #include <functional>
 namespace rife {
 enum class State {Off,Preparing,Active,Bypassed,DisabledForCurrentItem};
-struct RuntimePaths {QString model,plugin,script;bool available=false;QString pipeline="split-metal",compute="cpu-ane";};
+struct RuntimePaths {QString model,plugin,script;bool available=false;QString pipeline="split-coarse-metal",compute="cpu-ane";};
 struct MpvAccess {
     std::function<QVariant(const QString&)> read;
     std::function<bool(const QString&,const QVariant&)> set;

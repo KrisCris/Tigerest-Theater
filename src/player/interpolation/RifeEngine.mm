@@ -1,5 +1,6 @@
 #include "RifeEngine.h"
 #include "RifeMetalWarp.h"
+#include "RifeCoarseMetal.h"
 #import <Foundation/Foundation.h>
 #import <CoreML/CoreML.h>
 #include <atomic>
@@ -70,6 +71,8 @@ struct RifeEngine::Impl {
     MLModel* refine = nil;
     MLModel* warp = nil;
     std::unique_ptr<MetalWarp> metalWarp;
+    std::unique_ptr<CoarseMetal> metalCoarse;
+    MLModel* coarseStages[4] = {nil,nil,nil,nil};
     MLMultiArray* inputs[2] = {nil, nil};
     MLMultiArray* low[2] = {nil,nil};
     MLMultiArray* cachedFeatures = nil;
@@ -86,6 +89,7 @@ struct RifeEngine::Impl {
             inputs[0] = nil; inputs[1] = nil;
             low[0]=nil;low[1]=nil;cachedFeatures=nil;
             model=nil;encoder=nil;coarse=nil;refine=nil;warp=nil;
+            for(auto& stage:coarseStages)stage=nil;
             for (NSURL* url in temporaryModels) [[NSFileManager defaultManager] removeItemAtURL:url error:nil];
         }
     }
@@ -169,12 +173,23 @@ struct RifeEngine::Impl {
         if (!hit) {copyInput(a,first);prepareLow(first);features0=tensor(predict(encoder,@{@"rgb":low[first]}),@"features");}
         copyInput(b,second);prepareLow(second);
         MLMultiArray* features1=tensor(predict(encoder,@{@"rgb":low[second]}),@"features");
-        id<MLFeatureProvider> motion=predict(coarse,@{@"low0":low[first],@"low1":low[second],
+        MLMultiArray* packed=nil;MLMultiArray* flow=nil;
+        if(metalCoarse) {
+            metalCoarse->begin(low[first],low[second],features0,features1);
+            for(int i=0;i<4;++i) {
+                auto prediction=predict(coarseStages[i],@{@"packed":metalCoarse->pack(i)},metalCoarse->options(i));
+                metalCoarse->accept(i,tensor(prediction,@"block_output"));
+            }
+            packed=metalCoarse->pack(4);flow=metalCoarse->flow();
+        } else {
+            id<MLFeatureProvider> motion=predict(coarse,@{@"low0":low[first],@"low1":low[second],
                                                     @"features0":features0,@"features1":features1},metalWarp?metalWarp->coarseOptions():nil);
-        id<MLFeatureProvider> fine=predict(refine,@{@"refine_input":tensor(motion,@"refine_input")},metalWarp?metalWarp->refineOptions():nil);
-        MLMultiArray* result=metalWarp ? metalWarp->predict(tensor(motion,@"coarse_flow"),tensor(fine,@"delta"),tensor(fine,@"mask"),first,second)
+            packed=tensor(motion,@"refine_input");flow=tensor(motion,@"coarse_flow");
+        }
+        id<MLFeatureProvider> fine=predict(refine,@{@"refine_input":packed},metalWarp?metalWarp->refineOptions():nil);
+        MLMultiArray* result=metalWarp ? metalWarp->predict(flow,tensor(fine,@"delta"),tensor(fine,@"mask"),first,second)
             : tensor(predict(warp,@{@"frame0":inputs[first],@"frame1":inputs[second],
-                @"coarse_flow":tensor(motion,@"coarse_flow"),@"delta":tensor(fine,@"delta"),@"mask":tensor(fine,@"mask")}),@"interpolated");
+                @"coarse_flow":flow,@"delta":tensor(fine,@"delta"),@"mask":tensor(fine,@"mask")}),@"interpolated");
         if (adjacent) {cachedFeatures=features1;cachedIdentity=b.identity;cachedSlot=second;}
         output.featureCacheHit=hit;output.encoderPredictions=hit?1:2;
         output.directWarpBuffers=metalWarp?metalWarp->directBufferCount():0;
@@ -196,7 +211,8 @@ std::unique_ptr<RifeEngine> RifeEngine::create(const EngineConfig& config) {
         NSError* err = nil;
         const MLComputeUnits units=computeUnits(config.computePolicy);
         NSArray* expected=shape(3,config.width,config.height);
-        const bool metal=config.pipeline==Pipeline::SplitEncoderRefineMetal;
+        const bool fused=config.pipeline==Pipeline::SplitCoarseMetal;
+        const bool metal=config.pipeline==Pipeline::SplitEncoderRefineMetal || fused;
         if (!metal) for (int i=0;i<2;++i) state->inputs[i]=allocate(expected);
         if (config.pipeline==Pipeline::Monolithic) {
             state->model=state->load(directory,@"RIFE",units);
@@ -222,17 +238,27 @@ std::unique_ptr<RifeEngine> RifeEngine::create(const EngineConfig& config) {
                 throw EngineError(ErrorCode::InvalidConfiguration,"Invalid split RIFE motion grid");
             state->lowWidth=lw;state->lowHeight=lh;
             state->encoder=state->load(directory,@"Encoder",units);
-            state->coarse=state->load(directory,@"Coarse",MLComputeUnitsCPUAndGPU);
+            if(fused) {
+                state->metalCoarse=CoarseMetal::create(lw,lh);
+                for(int i=0;i<4;++i) {
+                    auto model=state->load(directory,[NSString stringWithFormat:@"Stage%d",i],MLComputeUnitsCPUAndGPU);
+                    state->coarseStages[i]=model;const int scale=32>>i;
+                    checkTensor(model,@"packed",shape(i==0?15:28,lw/scale,lh/scale),MLMultiArrayDataTypeFloat32);
+                    checkTensor(model,@"block_output",shape(13,lw/scale,lh/scale),MLMultiArrayDataTypeFloat32,true);
+                }
+            } else state->coarse=state->load(directory,@"Coarse",MLComputeUnitsCPUAndGPU);
             state->refine=state->load(directory,@"Refine",units);
             if (!metal) state->warp=state->load(directory,@"Warp",MLComputeUnitsCPUAndGPU);
             const auto f32=MLMultiArrayDataTypeFloat32,f16=MLMultiArrayDataTypeFloat16;
             NSArray* rgb=shape(3,lw,lh),*features=shape(4,lw,lh),*packed=shape(28,lw,lh),*mask=shape(1,lw,lh);
             checkTensor(state->encoder,@"rgb",rgb,f32);
             checkTensor(state->encoder,@"features",features,f32,true);
-            for (NSString* name in @[@"low0",@"low1"]) checkTensor(state->coarse,name,rgb,f32);
-            for (NSString* name in @[@"features0",@"features1"]) checkTensor(state->coarse,name,features,f32);
-            checkTensor(state->coarse,@"refine_input",packed,f16,true);
-            checkTensor(state->coarse,@"coarse_flow",features,f32,true);
+            if(!fused) {
+                for (NSString* name in @[@"low0",@"low1"]) checkTensor(state->coarse,name,rgb,f32);
+                for (NSString* name in @[@"features0",@"features1"]) checkTensor(state->coarse,name,features,f32);
+                checkTensor(state->coarse,@"refine_input",packed,f16,true);
+                checkTensor(state->coarse,@"coarse_flow",features,f32,true);
+            }
             checkTensor(state->refine,@"refine_input",packed,f16);
             checkTensor(state->refine,@"delta",features,f16,true);
             checkTensor(state->refine,@"mask",mask,f16,true);

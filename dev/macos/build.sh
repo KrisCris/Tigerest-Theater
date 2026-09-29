@@ -39,6 +39,11 @@ if [ "$(uname -m)" = arm64 ]; then
             --source "${RIFE_BUILD}/source" --output "${RIFE_MODEL}" \
             --width 1920 --height 1080 --grid-scale 0.5 --offload-refine
     fi
+    if [ ! -d "${RIFE_MODEL}/Stage3.mlpackage" ]; then
+        "${RIFE_PYTHON}" "${SCRIPT_DIR}/rife/coarse_model.py" \
+            --source "${RIFE_BUILD}/source" --output "${RIFE_MODEL}" \
+            --width 1920 --height 1080
+    fi
 fi
 "${RIFE_PYTHON}" "${SCRIPT_DIR}/rife/build_mpv.py" --output "${RIFE_BUILD}/playback" \
     --meson "${RIFE_BUILD}/venv/bin/meson"

@@ -100,6 +100,20 @@ borders, odd image sizes, non-contiguous tensors and full-network parity.
 
 Build the complete-call benchmark against the CMake-built native library:
 
+The `split-coarse-metal` candidate additionally exports the four coarse
+convolution stages with `coarse_model.py`. Their FP32 weights and arithmetic
+are preserved. Metal fuses each stage's warp/resize/packing; it must resize
+the warped image, in that order. The final packed tensor feeds the existing
+ANE refinement model. Intermediate PyTorch fixtures and the complete engine
+tests cover these separate boundaries. This candidate does not move FP32
+coarse convolutions to the ANE.
+
+```sh
+build/rife/venv/bin/python dev/macos/rife/coarse_model.py \
+  --source build/rife/source --output build/rife/models/1080-split-refine \
+  --width 1920 --height 1080
+```
+
 ```sh
 xcrun clang++ -std=c++17 -O3 -fobjc-arc -mmacosx-version-min=26.0 \
   -I src/player/interpolation -L "$RIFE_BUILD_DIR/src/player/interpolation" \
@@ -107,9 +121,9 @@ xcrun clang++ -std=c++17 -O3 -fobjc-arc -mmacosx-version-min=26.0 \
   -framework Foundation dev/macos/rife/benchmark_engine.mm \
   -o build/rife/rife-engine-benchmark
 build/rife/rife-engine-benchmark \
-  --model-dir build/rife/models/1080-split-refine --pipeline split-metal \
+  --model-dir build/rife/models/1080-split-refine --pipeline split-coarse-metal \
   --compute cpu-ane --warmup 30 --iterations 600 --interval-ms 33.333333 \
-  --output build/rife/results/engine-split-metal-ane.json
+  --output build/rife/results/engine-split-coarse-metal-ane.json
 ```
 
 Set `RIFE_BUILD_DIR` to the configured CMake build directory. An interval of
