@@ -14,7 +14,7 @@
 | Windows 10 1903+ / Windows 11，x64 | [便携版 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.18/TigerestTheater-2.0.18-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
 | macOS 26+，Apple Silicon（M 系列） | [DMG 安装包](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.18/TigerestTheater-2.0.18-arm64.dmg) | 打开 DMG，将应用拖入「应用程序」 |
 
-想试用 Mac 内置 AI 补帧，可下载 [v2.1.0 Mac 预览版](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.1.0)。
+想试用 Mac 内置 AI 补帧，可下载 [v2.1.1 Mac 预览版](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.1.1)。
 
 安装包已包含所需组件，无需另装 MPV。Mac 版目前支持 M 系列芯片。需要核验下载文件时，可使用发布页中的 SHA-256 校验文件。
 
@@ -45,7 +45,7 @@ https://example.com/emby
 - **媒体库与播放：** 浏览、搜索 Emby 媒体库，使用 MPV 播放视频，切换音轨和字幕，并同步观看进度。
 - **弹幕：** 支持匹配、搜索和加载弹幕，可调整字号、透明度、速度与显示区域。使用内置弹幕服务时，搜索和匹配信息会发送至该服务。
 - **画质预设：** 提供默认、真人影视和激进测试三档预设，可在播放菜单中选择，或通过 `Alt+1`～`Alt+3` 切换。
-- **Mac AI 补帧（v2.1.0 预览版）：** M 系列 Mac 可将最高 1080p、30 fps 的 SDR 恒定帧率视频补至两倍帧率，组件和模型随包提供。
+- **Mac AI 补帧（v2.1.1 预览版）：** M 系列 Mac 可将最高 1080p、30 fps 的 SDR 恒定帧率视频补至两倍帧率，组件和模型随包提供。
 - **MPV 配置：** 可直接使用大河内置配置，也可切换到已有的系统 MPV 配置。
 - **下载与离线：** 支持下载任务的暂停、恢复和删除；下载完成后，可从「打开离线媒体」进入播放。下载功能需服务器允许。
 - **独立配置档：** 可分别保存不同的设置和离线内容。
@@ -62,7 +62,7 @@ https://example.com/emby
 
 **在哪里调整播放与弹幕设置？** 使用主页面的「MPV 设置」及视频播放菜单。
 
-**如何开启 Mac 内置补帧？** v2.1.0 预览版在视频设置中提供「AI 补帧（RIFE）」，默认关闭，开启后重新打开视频。需使用内置播放配置；HDR、4K、变帧率及色彩信息不完整的视频保持原帧播放，性能不足时也会自动关闭当前视频的补帧。
+**如何开启 Mac 内置补帧？** v2.1.1 预览版在视频设置中提供「AI 补帧（RIFE）」，默认关闭，开启后重新打开视频。如果曾显示“补帧组件不可用”，更新安装包后请完全退出并重启客户端。需使用内置播放配置；HDR、4K、变帧率及色彩信息不完整的视频保持原帧播放，性能不足时也会自动关闭当前视频的补帧。
 
 **如何使用 SVP 补帧？** 先启动 SVP，再打开客户端，将「硬件解码方式」设为「硬解后复制回显」。Mac 用户需先按 [SVP 官方指南](https://www.svp-team.com/docs/mac/)安装其 mpv 组件，并退出其他正在使用 SVP 的播放器。
 

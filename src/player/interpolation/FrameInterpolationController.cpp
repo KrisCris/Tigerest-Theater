@@ -139,7 +139,7 @@ QString FrameInterpolationController::status()const{
     return message(reason);
 }
 QVariantMap FrameInterpolationController::diagnostics()const{return {
-    {"requestedForItem",requested},{"state",int(current)},{"status",status()},{"reason",reason},
+    {"requestedForItem",requested},{"runtimeAvailable",paths.available},{"state",int(current)},{"status",status()},{"reason",reason},
     {"generation",qulonglong(serial)},{"epoch",qulonglong(latest.epoch)},
     {"generatedFrames",qulonglong(latest.predictions)},{"cutBypasses",qulonglong(latest.cuts)},
     {"p95Ms",latest.p95Ms},{"pipeline","Core ML + Metal (split)"}};}

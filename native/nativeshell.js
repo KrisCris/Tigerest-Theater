@@ -844,7 +844,26 @@ async function showSettingsModal() {
 
     const saveSetting = (section, key, value) => {
         jmpInfo.settings[section][key] = value;
+        if (section === 'video' && key === 'aiRife') updateRifeStatus();
         showSaved(restartSettings.has(`${section}.${key}`) ? '已保存；此项将在重启后生效。' : '已保存并应用。');
+    };
+
+    let rifeCallout = null;
+    const updateRifeStatus = () => {
+        if (!rifeCallout) return;
+        const enabled = Boolean(jmpInfo.settings.video.aiRife);
+        const rife = mpvDiagnostics.rife;
+        if (jmpInfo.mpvConfigMode === 'system') {
+            rifeCallout.textContent = 'AI 补帧需要使用内置播放配置。';
+        } else if (enabled && !rife.runtimeAvailable) {
+            rifeCallout.textContent = 'AI 补帧已开启，但内置组件尚未加载。请完全退出并重新启动客户端；若仍不可用，请检查安装包是否完整。';
+        } else if (enabled && rife.state === 0) {
+            rifeCallout.textContent = 'AI 补帧已开启；重新打开视频后生效。';
+        } else if (!enabled && (rife.state === 1 || rife.state === 2)) {
+            rifeCallout.textContent = 'AI 补帧设置已关闭；当前视频在重新打开后才会停止补帧。';
+        } else {
+            rifeCallout.textContent = enabled ? rife.status : 'AI 补帧已关闭。';
+        }
     };
 
     const activate = section => {
@@ -936,10 +955,9 @@ async function showSettingsModal() {
         group.appendChild(groupHead);
 
         if (section === 'video' && mpvDiagnostics.rife) {
-            const actualStatus = jmpInfo.mpvConfigMode === 'system'
-                ? 'AI 补帧需要使用内置播放配置。'
-                : mpvDiagnostics.rife.status;
-            group.appendChild(element('div', 'tgs-callout', actualStatus));
+            rifeCallout = element('div', 'tgs-callout');
+            updateRifeStatus();
+            group.appendChild(rifeCallout);
         }
         if (section === 'mpv') {
             const activeMode = jmpInfo.mpvConfigMode === 'system' ? '系统用户配置' : '大河内置配置';

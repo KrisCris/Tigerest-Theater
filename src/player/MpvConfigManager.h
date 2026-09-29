@@ -10,7 +10,7 @@ namespace MpvConfigManager
   bool prepare();
   void configureBundledVulkan(const QString& executableDirectory);
   void configureVapourSynth(const QStringList& installationRoots);
-  bool configureBundledVapourSynth(const QString& executableDirectory,const QString& registrationDirectory);
+  bool configureBundledVapourSynth(const QString& executableDirectory,const QString& registrationDirectory,bool preferBundled=false);
   QString activeConfigDir();
   bool usingSystemConfig();
   bool ownsDefaultSvpIpc();

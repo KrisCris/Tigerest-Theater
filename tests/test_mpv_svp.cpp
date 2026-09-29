@@ -24,6 +24,7 @@ private slots:
   void worksWithoutVapourSynthInstalled();
   void rifeSuppressesOnlyManagedDiscovery();
   void bundledRuntimeUsesPrivatePaths();
+  void rifePrefersBundledRuntimeOverExternalPath();
   void bundledVulkanOverridesDiscoveryOnly();
 private:
   QTemporaryDir m_root;
@@ -185,6 +186,29 @@ void TestMpvSvp::bundledRuntimeUsesPrivatePaths()
   manifest.write("{\"library\":\"../../../outside.dylib\",\"pythonHome\":\"../Resources/python\",\"pythonPath\":\"../Resources/python/site-packages\"}");manifest.close();
   QVERIFY(!MpvConfigManager::configureBundledVapourSynth(bin,registration));
   QVERIFY(!qEnvironmentVariableIsSet("VSSCRIPT_PATH"));
+}
+
+void TestMpvSvp::rifePrefersBundledRuntimeOverExternalPath()
+{
+  const auto previous=qgetenv("VSSCRIPT_PATH");
+  const auto restore=qScopeGuard([&]{
+    if(previous.isNull())qunsetenv("VSSCRIPT_PATH");
+    else qputenv("VSSCRIPT_PATH",previous);
+  });
+  QTemporaryDir root;QVERIFY(root.isValid());
+  const QString contents=root.filePath("Tigerest Theater.app/Contents");
+  const QString bin=contents+"/MacOS",python=contents+"/Resources/python";
+  QVERIFY(QDir().mkpath(bin));QVERIFY(QDir().mkpath(python+"/site-packages"));
+  for(const auto& path:QStringList{bin+"/vapoursynth",bin+"/tigerest-python",python+"/libvsscript.dylib"}){
+    QFile f(path);QVERIFY(f.open(QIODevice::WriteOnly));f.close();
+    QVERIFY(f.setPermissions(QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner));
+  }
+  QFile manifest(contents+"/Resources/vapoursynth-runtime.json");
+  QVERIFY(manifest.open(QIODevice::WriteOnly));
+  manifest.write("{\"library\":\"../Resources/python/libvsscript.dylib\",\"pythonHome\":\"../Resources/python\",\"pythonPath\":\"../Resources/python/site-packages\"}");manifest.close();
+  qputenv("VSSCRIPT_PATH","/opt/homebrew/Cellar/vapoursynth/79/libexec/lib/python3.14/site-packages/vapoursynth/libvsscript.dylib");
+  QVERIFY(MpvConfigManager::configureBundledVapourSynth(bin,root.filePath("private-config"),true));
+  QCOMPARE(qEnvironmentVariable("VSSCRIPT_PATH"),QFileInfo(python+"/libvsscript.dylib").canonicalFilePath());
 }
 
 void TestMpvSvp::discoversVapourSynth()

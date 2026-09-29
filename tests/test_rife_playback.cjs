@@ -71,6 +71,7 @@ async function devtools(url) {
     const pausedStart=process.argv[6]==='paused';
     const matrix=process.argv[6]==='matrix';
     const review=process.argv[6]==='review';
+    const externalRuntime=process.argv[6]==='external-runtime';
     const root=fs.mkdtempSync(path.join(os.tmpdir(),'tigerest-rife-player-'));
     const installed=path.join(root,'Applications','Tigerest Theater.app');
     fs.mkdirSync(path.dirname(installed));
@@ -96,6 +97,7 @@ async function devtools(url) {
     await new Promise(resolve=>reservation.close(resolve));
     const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!k.startsWith('PYTHON')&&!k.startsWith('DYLD_')&&!k.startsWith('VSSCRIPT')&&!k.startsWith('TIGEREST_')&&!k.startsWith('QT_')&&!k.startsWith('QML_')&&!k.startsWith('VK_')));
     env.PATH='/usr/bin:/bin:/usr/sbin:/sbin';
+    if(externalRuntime)env.VSSCRIPT_PATH=process.env.VSSCRIPT_PATH || '/external/vapoursynth/libvsscript.dylib';
     env.DYLD_PRINT_LIBRARIES='1';
     const log=fs.openSync(output+'.app.log','w');
     const child=spawn(executable,['--log-level','warn','--config-dir',root,'--profile',id,'--remote-debugging-port',`127.0.0.1:${port}`],{env,stdio:['ignore',log,log]});
@@ -114,6 +116,14 @@ async function devtools(url) {
         },'app devtools');
         cdp=await devtools(target.webSocketDebuggerUrl);
         await until(()=>cdp.evaluate('Boolean(window.api && window.api.player)'),'native player API');
+        if(externalRuntime){
+            await cdp.evaluate('window.tigerestOpenMpvSettings()');
+            await until(()=>cdp.evaluate("document.querySelector('#tigerest-settings-overlay .tgs-section[data-section=video] .tgs-callout')?.textContent"),'RIFE settings status');
+            const banner=await cdp.evaluate("document.querySelector('#tigerest-settings-overlay .tgs-section[data-section=video] .tgs-callout').textContent");
+            assert.match(banner,/已开启；重新打开视频后生效/);
+            await cdp.evaluate("document.querySelector('#tigerest-settings-overlay').remove()");
+            result.settingsStatus=banner;
+        }
         await until(()=>fs.existsSync(ipcPath),'private IPC');
         ipc=net.createConnection(ipcPath);await new Promise((resolve,reject)=>{ipc.once('connect',resolve);ipc.once('error',reject);});
         let buffer='',sequence=0;const pending=new Map();
@@ -247,6 +257,10 @@ async function devtools(url) {
         result.startupDrops=start.metrics['frame-drop-count'];
         assert.ok(result.startupDrops<=2,`startup dropped ${result.startupDrops} frames`);
         result.metadata=await cdp.evaluate('window.api.player.mpvDiagnostics()');
+        if(externalRuntime){
+            assert.equal(result.metadata.rife.runtimeAvailable,true,'external environment blocked bundled runtime');
+            assert.ok(fs.existsSync(path.join(profile,'rife-runtime')),'bundled VSScript registration was not configured');
+        }
         result.renderPasses=await cmd('get_property','vo-passes');
         assert.equal(start.metrics['current-vo'],'gpu-next');
         assert.equal(start.metrics['current-gpu-context'],'macvk');

@@ -393,7 +393,7 @@ void MpvConfigManager::configureVapourSynth(const QStringList& installationRoots
 }
 
 bool MpvConfigManager::configureBundledVapourSynth(const QString& executableDirectory,
-                                                  const QString& registrationDirectory)
+                                                  const QString& registrationDirectory,bool preferBundled)
 {
   const QDir binaryDir(executableDirectory);
   QFile manifest(binaryDir.filePath("../Resources/vapoursynth-runtime.json"));
@@ -410,9 +410,9 @@ bool MpvConfigManager::configureBundledVapourSynth(const QString& executableDire
   if(!QFileInfo(library).isFile()||!QDir(home).exists()||!QDir(packages).exists()||
      !QFileInfo(binaryDir.filePath("vapoursynth")).isExecutable()||
      !QFileInfo(binaryDir.filePath("tigerest-python")).isExecutable())return false;
-  // Preserve an explicit external runtime. Built-in RIFE then reports its
-  // runtime unavailable instead of feeding it an incompatible native plugin.
-  if(qEnvironmentVariableIsSet("VSSCRIPT_PATH")&&
+  // Preserve an explicit external runtime for SVP. When built-in RIFE is
+  // selected, its native plugin needs the matching runtime shipped in this app.
+  if(!preferBundled&&qEnvironmentVariableIsSet("VSSCRIPT_PATH")&&
       QFileInfo(qEnvironmentVariable("VSSCRIPT_PATH")).canonicalFilePath()!=library)return false;
   if(!QDir().mkpath(registrationDirectory))return false;
   qputenv("VSSCRIPT_PATH",library.toUtf8());
@@ -443,9 +443,11 @@ void MpvConfigManager::configureBundledVulkan(const QString& executableDirectory
 bool MpvConfigManager::prepare()
 {
 #if defined(Q_OS_MAC)
+  const bool preferBundledRife=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool()&&
+      SettingsComponent::Get().value(SETTINGS_SECTION_MPV,"configMode").toString()!="system";
   configureBundledVulkan(QCoreApplication::applicationDirPath());
   if(!configureBundledVapourSynth(QCoreApplication::applicationDirPath(),
-      ProfileManager::activeProfile().dataDir("rife-runtime"))) {
+      ProfileManager::activeProfile().dataDir("rife-runtime"),preferBundledRife)) {
 #if defined(Q_PROCESSOR_ARM_64)
   configureVapourSynth({QStringLiteral("/opt/homebrew/opt/vapoursynth")});
 #else
