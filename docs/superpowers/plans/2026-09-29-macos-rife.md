@@ -137,3 +137,11 @@
 ## Review of this plan
 
 The initial performance gate intentionally precedes playback/UI work. The spec's runtime limits, fractional timestamps, fallback behavior, configuration ownership, isolated tests and clean-package requirements each have an owning task above. Tests and thresholds are distinct from unmeasured claims; no RIFE performance result is assumed by this plan.
+
+## Verified baseline and pending execution review
+
+- The online `main` reference was checked again after the build and remains `7044cb47a1213c72ad2e8d9ca823700614d26edb`.
+- Release configuration and compilation succeeded in `/tmp/tigerest-rife-build-20260929` using the existing Qt 6.9.3 SDK.
+- CTest passed all 17 targets, including the updated native macOS keyboard tests. Two individual SVP socket cases were skipped because another running player owns `/tmp/mpvsocket`; that process was left untouched.
+- Full logs are retained under ignored `build/rife/baseline/` in this worktree. No product-code changes have been made here.
+- Plan review/execution-method confirmation is pending in the chat. Full Xcode also reports an unaccepted license; model preparation can proceed after plan review using the existing command-line tools, while later Instruments profiling may require the user to complete Xcode first launch.
