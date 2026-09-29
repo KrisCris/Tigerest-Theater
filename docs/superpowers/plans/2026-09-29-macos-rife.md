@@ -76,12 +76,12 @@
 
 **Interfaces:** `FrameView {const float* planes[3]; size_t strides[3]; int width,height;}`; `FrameBuffer` owns three float planes of matching dimensions. `EngineConfig {modelDirectory, computePolicy, width, height}`. `RifeEngine::create(const EngineConfig&) -> unique_ptr<RifeEngine>`, `interpolate(const FrameView&, const FrameView&, float timestep) -> FrameBuffer`; errors are reported as typed exceptions caught by the adapter. `timestep` is 0.5 in the first shipping path.
 
-- [ ] Add tests for wrong dimensions, reference agreement, repeated calls, release/reload on format change and full-precision output preservation.
-- [ ] Run them against the missing engine and confirm failure.
-- [ ] Extract only the validated inference path from Task 2. Keep preprocessing and optional Metal helpers separate from model/session ownership.
-- [ ] Reuse one model and buffers; release old format instances. Mark the interface non-concurrent and enforce single-call access in its owner.
-- [ ] Run engine tests and repeat the native timing check only after changes affecting timing.
-- [ ] Commit the independently tested engine.
+- [x] Add tests for wrong dimensions, reference agreement, repeated calls, release/reload on format change and full-precision output preservation.
+- [x] Run them against the missing engine and confirm failure.
+- [x] Extract only the validated inference path from Task 2. Keep preprocessing and optional Metal helpers separate from model/session ownership.
+- [x] Reuse one model and buffers; release old format instances. Mark the interface non-concurrent and enforce single-call access in its owner.
+- [x] Run engine tests and repeat the native timing check only after changes affecting timing.
+- [x] Commit the independently tested engine.
 
 ### Task 4: Streaming interpolation adapter
 
@@ -144,4 +144,4 @@ The initial performance gate intentionally precedes playback/UI work. The spec's
 - Release configuration and compilation succeeded in `/tmp/tigerest-rife-build-20260929` using the existing Qt 6.9.3 SDK.
 - CTest passed all 17 targets, including the updated native macOS keyboard tests. Two individual SVP socket cases were skipped because another running player owns `/tmp/mpvsocket`; that process was left untouched.
 - Full logs are retained under ignored `build/rife/baseline/` in this worktree. No product-code changes have been made here.
-- Execution approved in chat. Tasks 1–2 are complete: the fp32 half-grid candidate passed the 1080p inference gate (p95 21.12 ms on this M4 Pro); full playback remains unqualified. 4K quarter-grid p95 47.52 ms failed the 30→60 fps budget. Runtime ANE use remains unverified while Xcode license acceptance is pending. Device logs stay under ignored `build/rife/`.
+- Execution approved in chat. Tasks 1–2 are complete: the fp32 half-grid candidate passed the 1080p inference gate (p95 21.12 ms on this M4 Pro); full playback remains unqualified. 4K quarter-grid p95 47.52 ms failed the 30→60 fps budget. Xcode-beta 27.2 was found in Downloads with its license accepted; a Core AI trace verified 1,350 RIFE ANE prediction intervals for the slower hybrid candidate. The selected FP32 path uses GPU. Device logs stay under ignored `build/rife/`.
