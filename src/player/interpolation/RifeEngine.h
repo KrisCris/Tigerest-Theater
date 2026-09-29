@@ -12,6 +12,7 @@ public:
     RifeEngine(const RifeEngine&) = delete;
     RifeEngine& operator=(const RifeEngine&) = delete;
     FrameBuffer interpolate(const FrameView& a, const FrameView& b, float timestep);
+    void reset(); // Discard frame identities/features; serialized like interpolate.
 private:
     struct Impl;
     explicit RifeEngine(std::unique_ptr<Impl> impl);

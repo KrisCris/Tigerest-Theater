@@ -83,6 +83,18 @@
 - [x] Run engine tests and repeat the native timing check only after changes affecting timing.
 - [x] Commit the independently tested engine.
 
+### Task 8: NPU network regrouping (user-requested priority, before Task 4)
+
+**Files:** `dev/macos/rife/split_model.py`, split native benchmark, `tests/test_rife_split_conversion.py`; extend native engine only after qualification.
+
+**Interfaces:** Export a contiguous feature encoder for ANE and an FP32 GPU motion graph sharing the pinned weights. Low-grid RGB preprocessing must match the reference. Explicit frame identities allow feature reuse only across adjacent frames in the same generation; seeks invalidate cached features.
+
+- [x] Establish reference and cache correctness tests before implementation.
+- [x] Export and validate standalone encoder plus GPU motion graph against full PyTorch reference, retaining PSNR >=40 dB and MAE <=0.005.
+- [x] Measure native split execution, preparation, feature reuse and actual ANE traces. Evaluate final-refinement offload if results justify it.
+- [x] Compare original GPU and split paths with simultaneous GPU renderer/filter load; assess throughput, latency and GPU headroom.
+- [x] Integrate only a qualified split path, preserving the tested GPU fallback. Record the actual tradeoff without assuming energy savings.
+
 ### Task 4: Streaming interpolation adapter
 
 **Files:** Create `src/player/interpolation/RifeVsPlugin.cpp`, `FrameTiming.h/.cpp`, `resources/mpv/rife/interpolate.vpy`; test `tests/test_rife_timing.cpp`, `tests/test_rife_vapoursynth.py`.
