@@ -115,13 +115,13 @@
 
 **Interfaces:** `SourceInfo {width,height,fpsNum,fpsDen,progressive,cfr,hdr,colorKnown}`; `qualify(SourceInfo) -> Eligibility {enabled,reason}`. Controller states `Off`, `Preparing`, `Active`, `Bypassed`, `DisabledForCurrentItem`. Methods `beginItem`, `onSeek`, `onFormatChanged`, `stop`, `onMetrics`; each invalidating event advances a generation counter. Filter label is `tigerest-rife`.
 
-- [ ] Add policy/state tests covering every excluded input class, pending results after seek, filter ownership, two slow windows, and exclusion of pause/network buffering from the performance rule.
-- [ ] Run and confirm they fail before adding the controller.
-- [ ] Implement the states and generation checks; keep preparation/inference off the UI thread, limit queued pairs to two.
-- [ ] Add the default-off setting with exact spec help text and next-open semantics. Apply copy-back decoding only for the owned session, restoring only values still owned by this feature.
-- [ ] Avoid the default SVP discovery endpoint for built-in RIFE sessions, preserve explicit user configuration, and bypass when an external interpolation chain is detected.
-- [ ] Expose a short actual-status message and one notification on fallback. Keep model/backend metrics in diagnostics.
-- [ ] Run unit tests plus real load/seek/pause/EOF/filter-conflict playback tests and commit.
+- [x] Add policy/state tests covering every excluded input class, pending results after seek, filter ownership, two slow windows, and exclusion of pause/network buffering from the performance rule.
+- [x] Run and confirm they fail before adding the controller.
+- [x] Implement the states and generation checks; keep preparation/inference off the UI thread, limit queued pairs to two.
+- [x] Add the default-off setting with exact spec help text and next-open semantics. Apply copy-back decoding only for the owned session, restoring only values still owned by this feature.
+- [x] Avoid the default SVP discovery endpoint for built-in RIFE sessions, preserve explicit user configuration, and bypass when an external interpolation chain is detected.
+- [x] Expose a short actual-status message and one notification on fallback. Keep model/backend metrics in diagnostics.
+- [x] Run unit tests plus real load/seek/pause/EOF/filter-conflict playback tests and commit.
 
 ### Task 6: Self-contained macOS packaging
 

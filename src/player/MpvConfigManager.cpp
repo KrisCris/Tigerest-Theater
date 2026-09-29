@@ -16,12 +16,14 @@
 #include <QDebug>
 #include <QUrl>
 #include <QVersionNumber>
+#include <QRegularExpression>
 #include <algorithm>
 
 namespace
 {
 QString g_activeConfigDir;
 bool g_usingSystemConfig = false;
+bool g_ownsDefaultSvpIpc = false;
 
 bool copyResourceTree(const QString& sourceRoot, const QString& targetRoot)
 {
@@ -107,7 +109,15 @@ bool writeEmbeddedConfig(const QString& configDir)
   const bool ordinaryFile = QFileInfo(endpoint).isFile() || QFileInfo(endpoint).isDir();
   if (occupied || ordinaryFile)
     qWarning() << "SVP IPC endpoint already in use; leaving it untouched:" << endpoint;
-  config.replace("@TIGEREST_IPC_SERVER@", occupied || ordinaryFile
+  QFile overrides(QDir(configDir).filePath("user-overrides.conf"));
+  const QString explicitOptions=(overrides.open(QIODevice::ReadOnly)?QString::fromUtf8(overrides.readAll()):QString())+"\n"+
+      SettingsComponent::Get().value(SETTINGS_SECTION_OTHER,"other_conf").toString();
+  // An include may set the same endpoint indirectly. Conservatively leave
+  // ownership with the user in that case, too.
+  g_ownsDefaultSvpIpc=!explicitOptions.contains(QRegularExpression(
+      QStringLiteral("(^|\\n)\\s*(input-ipc-server|include)\\s*=")));
+  const bool rife=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool();
+  config.replace("@TIGEREST_IPC_SERVER@", occupied || ordinaryFile || rife
       ? QString() : QStringLiteral("input-ipc-server=/tmp/mpvsocket"));
 #else
   // "mpvpipe" is a Windows named-pipe convention. On Unix-like platforms the
@@ -238,6 +248,13 @@ bool writeSystemCompanionConfig(const QString& bundleDir, QString& companionPath
   }
   return true;
 }
+}
+
+bool MpvConfigManager::ownsDefaultSvpIpc()
+{
+  const QString options=SettingsComponent::Get().value(SETTINGS_SECTION_OTHER,"other_conf").toString();
+  return !g_usingSystemConfig&&g_ownsDefaultSvpIpc&&!options.contains(QRegularExpression(
+      QStringLiteral("(^|\\n)\\s*(input-ipc-server|include)\\s*=")));
 }
 
 QString MpvConfigManager::danmakuApiServer(const QString& serverUrl, const QString& connectionMode)

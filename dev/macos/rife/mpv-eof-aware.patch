@@ -16,13 +16,14 @@
      char *user_data;
  
      const struct script_driver *drv;
-@@ -183,6 +185,13 @@
+@@ -183,6 +185,14 @@
      // The docs explicitly say it uses libavcodec values.
      p->vsapi->mapSetInt(map, "_ColorSpace",
              pl_system_to_av(params->repr.sys), 0);
 +    if (p->opts->eof_aware) {
 +        // Standard VS color properties let the native RIFE bridge distinguish
 +        // tagged SDR from HDR/unknown input before any RGB conversion.
++        p->vsapi->mapSetInt(map, "_TigerestColorKnown", !params->tigerest_color_missing, 0);
 +        p->vsapi->mapSetInt(map, "_Matrix", pl_system_to_av(params->repr.sys), 0);
 +        p->vsapi->mapSetInt(map, "_Primaries", pl_primaries_to_av(params->color.primaries), 0);
 +        p->vsapi->mapSetInt(map, "_Transfer", pl_transfer_to_av(params->color.transfer), 0);
@@ -30,7 +31,7 @@
      if (params->chroma_location) {
          // 0=left, 1=center, 2=topleft, 3=top, 4=bottomleft, 5=bottom.
          p->vsapi->mapSetInt(map, "_ChromaLocation",
-@@ -487,7 +496,8 @@
+@@ -487,7 +497,8 @@
              p->vsapi->setFilterError(msg, frameCtx);
              break;
          }
@@ -40,7 +41,7 @@
              // Too far in the future. Remove frames, so that the main thread can
              // queue new frames.
              if (p->num_buffered) {
-@@ -497,7 +507,9 @@
+@@ -497,7 +508,9 @@
                  continue;
              }
          }
@@ -51,7 +52,7 @@
              // If there won't be any new frames, abort the request.
              if (p->eof) {
                  p->vsapi->setFilterError("EOF or filter EOF/reinit", frameCtx);
-@@ -511,6 +523,7 @@
+@@ -511,6 +524,7 @@
              }
          } else {
              struct mp_image *img = p->buffered[frameno - p->in_frameno];
@@ -59,7 +60,7 @@
              ret = alloc_vs_frame(p, &img->params);
              if (!ret) {
                  p->vsapi->setFilterError("Could not allocate VS frame", frameCtx);
-@@ -521,8 +534,19 @@
+@@ -521,8 +535,19 @@
              struct mp_image vsframe = map_vs_frame(p, ret, true, NULL);
              mp_image_copy(&vsframe, img);
              int res = 1e6;
@@ -80,7 +81,7 @@
              mp_mutex_lock(&p->lock);
              break;
          }
-@@ -769,6 +793,10 @@
+@@ -769,6 +794,10 @@
          p->max_requests = av_cpu_count();
      MP_VERBOSE(p, "using %d concurrent requests.\n", p->max_requests);
      int maxbuffer = p->opts->maxbuffer * p->max_requests;
@@ -91,7 +92,7 @@
      p->buffered = talloc_array(p, struct mp_image *, maxbuffer);
      p->requested = talloc_zero_array(p, struct mp_image *, p->max_requests);
  
-@@ -811,6 +839,7 @@
+@@ -811,6 +840,7 @@
      {"concurrent-frames", OPT_CHOICE(maxrequests, {"auto", -1}),
          M_RANGE(1, 99), OPTDEF_INT(-1)},
      {"user-data", OPT_STRING(user_data), OPTDEF_STR("")},
@@ -99,3 +100,34 @@
      {0}
  };
  
+--- a/video/mp_image.h
++++ b/video/mp_image.h
+@@ -55,6 +55,7 @@
+     enum pl_color_transfer transfer_orig;
+     enum pl_color_system sys_orig;
+ 
++    bool tigerest_color_missing; // preserve unknown source metadata before guessing
+     enum mp_csp_light light;
+     enum pl_chroma_location chroma_location;
+     // The image should be flipped vertically before rotating
+--- a/video/mp_image.c
++++ b/video/mp_image.c
+@@ -871,6 +871,7 @@
+            pl_color_space_equal(&p1->color, &p2->color) &&
+            pl_color_repr_equal(&p1->repr, &p2->repr) &&
+            p1->light == p2->light &&
++           p1->tigerest_color_missing == p2->tigerest_color_missing &&
+            p1->chroma_location == p2->chroma_location &&
+            p1->vflip == p2->vflip &&
+            p1->rotate == p2->rotate &&
+--- a/filters/f_decoder_wrapper.c
++++ b/filters/f_decoder_wrapper.c
+@@ -646,6 +646,8 @@
+     if (m.chroma_location == PL_CHROMA_UNKNOWN)
+         m.chroma_location = c->chroma_location;
+ 
++    m.tigerest_color_missing = !m.color.primaries || !m.color.transfer ||
++                               !m.repr.sys || !m.repr.levels;
+     // Guess missing colorspace fields from metadata. This guarantees all
+     // fields are at least set to legal values afterwards.
+     mp_image_params_guess_csp(&m);

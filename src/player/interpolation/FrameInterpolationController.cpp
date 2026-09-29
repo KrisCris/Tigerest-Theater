@@ -1,0 +1,154 @@
+#include "FrameInterpolationController.h"
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+namespace rife {
+namespace {
+QString optionText(const QVariant& value){
+    if(value.metaType().id()==QMetaType::QVariantList){QStringList values;for(const auto& v:value.toList())values<<v.toString();return values.join(',');}
+    if(value.metaType().id()==QMetaType::QStringList)return value.toStringList().join(',');
+    return value.toString();
+}
+QString quote(const QString& text){return "%"+QString::number(text.toUtf8().size())+"%"+text;}
+bool same(const SourceInfo&a,const SourceInfo&b){return a.width==b.width&&a.height==b.height&&a.fpsNum==b.fpsNum&&a.fpsDen==b.fpsDen&&a.progressive==b.progressive&&a.cfr==b.cfr&&a.hdr==b.hdr&&a.colorKnown==b.colorKnown;}
+QString message(const QString& reason){
+    if(reason=="hdr")return QStringLiteral("当前 HDR 视频保持原帧播放");
+    if(reason=="performance")return QStringLiteral("性能不足，已恢复原帧播放");
+    if(reason=="system-config")return QStringLiteral("AI 补帧需要使用内置播放配置");
+    if(reason=="external-filter")return QStringLiteral("已有外部补帧滤镜，保持当前播放配置");
+    if(reason=="unsupported-size")return QStringLiteral("当前分辨率保持原帧播放（最高 1080p）");
+    if(reason=="unsupported-fps")return QStringLiteral("当前帧率保持原帧播放（最高 30 fps）");
+    if(reason=="vfr")return QStringLiteral("变帧率视频保持原帧播放");
+    if(reason=="interlaced")return QStringLiteral("隔行视频保持原帧播放");
+    if(reason=="unknown-color")return QStringLiteral("色彩信息不完整，保持原帧播放");
+    if(reason=="runtime-missing")return QStringLiteral("补帧组件不可用，保持原帧播放");
+    return QStringLiteral("补帧已停止，已恢复原帧播放");
+}
+}
+FrameInterpolationController::FrameInterpolationController(MpvAccess a,RuntimePaths p):mpv(std::move(a)),paths(std::move(p)){}
+FrameInterpolationController::~FrameInterpolationController(){closeSession(session);} // mpv may already be destroyed
+bool FrameInterpolationController::hasFilter()const{
+    for(auto v:mpv.read("vf").toList())if(v.toMap().value("label")=="tigerest-rife")return true;
+    return false;
+}
+bool FrameInterpolationController::conflict()const{
+    for(auto v:mpv.read("vf").toList()){
+        const auto f=v.toMap();
+        if(f.value("label")=="tigerest-rife"&&filterOwned)continue;
+        const auto text=(f.value("name").toString()+" "+f.value("label").toString()+" "+QJsonDocument::fromVariant(f.value("params")).toJson()).toLower();
+        if(text.contains("vapoursynth")||text.contains("svp")||text.contains("rife")||text.contains("minterpolate"))return true;
+    }
+    return false;
+}
+void FrameInterpolationController::detach(){
+    closeSession(session);session=0;epoch=0;
+    if(filterOwned&&hasFilter())mpv.command({"vf","remove","@tigerest-rife"});
+    filterOwned=false;waitingEpoch=false;
+    if(hwdecOwned&&optionText(mpv.read("hwdec"))=="auto-copy")mpv.set("hwdec",oldHwdec);
+    hwdecOwned=false;guard.reset();preparingSince=-1;
+}
+void FrameInterpolationController::stop(){++serial;detach();current=State::Off;reason.clear();source={};latest={};}
+void FrameInterpolationController::beginItem(bool enabled,bool systemConfig){
+    stop();requested=enabled;notified=false;
+    if(!enabled)return;
+    if(systemConfig){disable("system-config",true);return;}
+    if(!paths.available){disable("runtime-missing",true);return;}
+    if(conflict()){disable("external-filter",true);return;}
+    current=State::Preparing;
+    oldHwdec=optionText(mpv.read("hwdec"));
+    // Respect deliberate software decoding; otherwise supply CPU-readable frames.
+    if(!oldHwdec.isEmpty()&&oldHwdec!="no"&&oldHwdec!="auto-copy"){
+        hwdecOwned=mpv.set("hwdec","auto-copy");
+        if(!hwdecOwned)disable("decode-error");
+    }
+}
+void FrameInterpolationController::disable(const QString& why,bool bypass){
+    ++serial;detach();reason=why;current=bypass?State::Bypassed:State::DisabledForCurrentItem;
+    if(!notified){mpv.command({"show-text",message(why),"4000"});notified=true;}
+}
+void FrameInterpolationController::onFormatChanged(const SourceInfo& info){
+    if(current==State::Off||current==State::DisabledForCurrentItem)return;
+    if(current==State::Bypassed)return; // re-evaluate only on the next item
+    if(filterOwned&&same(info,source))return;
+    source=info;
+    const auto eligibility=qualify(source);
+    if(!eligibility.enabled){disable(QString::fromStdString(eligibility.reason),true);return;}
+    if(filterOwned){
+        ++serial;closeSession(session);session=0;
+        mpv.command({"vf","remove","@tigerest-rife"});filterOwned=false;
+        guard.reset();epoch=0;latest={};preparingSince=-1;waitingEpoch=false;
+        current=State::Preparing;
+    }
+    if(conflict()){disable("external-filter",true);return;}
+    session=openSession();
+    QJsonObject options{{"model_path",paths.model},{"plugin_path",paths.plugin},
+        {"fps_num",double(source.fpsNum)},{"fps_den",double(source.fpsDen)},
+        {"pipeline",paths.pipeline},{"compute_policy",paths.compute},
+        {"generation",double(serial)},{"session",double(session)},{"streaming",true}};
+    const QString filter="@tigerest-rife:vapoursynth=file="+quote(paths.script)+
+        ":buffered-frames=4:concurrent-frames=1:eof-aware=yes:user-data="+
+        quote(QString::fromUtf8(QJsonDocument(options).toJson(QJsonDocument::Compact)));
+    filterOwned=mpv.command({"vf","add",filter});
+    if(!filterOwned)disable("filter-error");
+}
+void FrameInterpolationController::onSeek(){
+    ++serial;guard.reset();preparingSince=-1;latest={};
+    if(filterOwned){current=State::Preparing;waitingEpoch=true;}
+    // mpv rebuilds its VS graph on seek. A new monitor instance rotates the
+    // native epoch and rejects any callback belonging to the previous graph.
+}
+void FrameInterpolationController::poll(int64_t now,bool suspended){
+    if(!filterOwned)return;
+    if(conflict()){disable("external-filter",true);return;}
+    if(!hasFilter()){disable("filter-error");return;}
+    const auto drops=mpv.read("frame-drop-count").toULongLong()+mpv.read("decoder-frame-drop-count").toULongLong();
+    onMetrics(serial,readMetrics(session),now,suspended,drops);
+}
+void FrameInterpolationController::onMetrics(uint64_t generation,const Metrics&m,int64_t now,bool suspended,uint64_t drops){
+    if(generation!=serial||!filterOwned)return;
+    if(waitingEpoch&&(!m.epoch||m.epoch==epoch))return;
+    waitingEpoch=false;
+    if(m.epoch!=epoch){epoch=m.epoch;guard.reset();preparingSince=-1;}
+    latest=m;
+    if(!m.error.empty()){
+        const auto why=QString::fromStdString(m.error);
+        disable(why,QStringList{"hdr","unknown-color","interlaced","vfr","unsupported-size"}.contains(why));return;
+    }
+    if(m.predictions)current=State::Active;
+    if(suspended)preparingSince=-1;
+    else if(preparingSince<0)preparingSince=now;
+    else if(!m.epoch&&now-preparingSince>15000){disable("filter-error");return;}
+    if(guard.update(now,m.predictions,m.pairs,m.p95Ms,drops,double(source.fpsNum)/source.fpsDen,suspended))disable("performance");
+}
+QString FrameInterpolationController::status()const{
+    if(current==State::Off)return QStringLiteral("AI 补帧已关闭");
+    if(current==State::Preparing)return QStringLiteral("正在准备 AI 补帧");
+    if(current==State::Active){const double fps=double(source.fpsNum)/source.fpsDen;return QStringLiteral("补帧中：%1→%2 fps").arg(fps,0,'g',6).arg(fps*2,0,'g',6);}
+    return message(reason);
+}
+QVariantMap FrameInterpolationController::diagnostics()const{return {
+    {"requestedForItem",requested},{"state",int(current)},{"status",status()},{"reason",reason},
+    {"generation",qulonglong(serial)},{"epoch",qulonglong(latest.epoch)},
+    {"generatedFrames",qulonglong(latest.predictions)},{"cutBypasses",qulonglong(latest.cuts)},
+    {"p95Ms",latest.p95Ms},{"pipeline","Core ML + Metal (split)"}};}
+SourceInfo sourceInfo(const QVariantMap& p,const QVariantMap& frame,double fps){
+    const auto rate=rationalFrameRate(fps);
+    const QString transfer=p.value("gamma").toString(),primaries=p.value("primaries").toString(),matrix=p.value("colormatrix").toString(),range=p.value("colorlevels").toString();
+    const bool hdr=transfer=="pq"||transfer=="hlg"||p.value("dolby-vision").toBool();
+    const bool known=QStringList{"bt.1886","srgb","gamma2.2","gamma2.8"}.contains(transfer)&&
+        QStringList{"bt.709","bt.601-525","bt.601-625"}.contains(primaries)&&
+        QStringList{"bt.709","bt.601","rgb"}.contains(matrix)&&QStringList{"full","limited"}.contains(range);
+    return {p.value("w").toInt(),p.value("h").toInt(),rate.num,rate.den,
+        frame.contains("interlaced")&&!frame.value("interlaced").toBool(),rate.num>0,hdr,known};
+}
+RuntimePaths bundledRuntimePaths(){
+    const QDir contents(QCoreApplication::applicationDirPath()+"/..");
+    RuntimePaths paths{contents.filePath("Resources/rife/model"),contents.filePath("Frameworks/tigerest-rife-vs.dylib"),contents.filePath("Resources/rife/interpolate.vpy"),false};
+#if defined(__aarch64__)
+    paths.available=QFileInfo::exists(paths.model+"/manifest.json")&&QFileInfo::exists(paths.plugin)&&QFileInfo::exists(paths.script);
+#endif
+    return paths;
+}
+}

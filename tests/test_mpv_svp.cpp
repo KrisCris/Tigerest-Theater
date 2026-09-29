@@ -22,6 +22,7 @@ private slots:
   void discoversVapourSynth();
   void preservesExplicitVapourSynth();
   void worksWithoutVapourSynthInstalled();
+  void rifeSuppressesOnlyManagedDiscovery();
 private:
   QTemporaryDir m_root;
 };
@@ -92,6 +93,29 @@ void TestMpvSvp::discoversVapourSynth_data()
   QTest::addColumn<QString>("relativeLibrary");
   QTest::newRow("python-package") << QStringLiteral("libexec/lib/python3.14/site-packages/vapoursynth/libvsscript.dylib");
   QTest::newRow("legacy") << QStringLiteral("lib/libvapoursynth-script.dylib");
+}
+
+void TestMpvSvp::rifeSuppressesOnlyManagedDiscovery()
+{
+  auto& settings=SettingsComponent::Get();
+  settings.setValue(SETTINGS_SECTION_VIDEO,"aiRife",true);
+  QVERIFY(MpvConfigManager::prepare());
+  QFile config(QDir(MpvConfigManager::activeConfigDir()).filePath("mpv.conf"));
+  QVERIFY(config.open(QIODevice::ReadOnly));
+  QVERIFY(!config.readAll().contains("\ninput-ipc-server=/tmp/mpvsocket\n"));
+  QVERIFY(MpvConfigManager::ownsDefaultSvpIpc());
+  config.close();
+  QFile overrides(QDir(MpvConfigManager::activeConfigDir()).filePath("user-overrides.conf"));
+  QVERIFY(overrides.open(QIODevice::WriteOnly));
+  const QByteArray explicitEndpoint="input-ipc-server=/tmp/rife-user-explicit.sock\n";
+  QCOMPARE(overrides.write(explicitEndpoint),explicitEndpoint.size());overrides.close();
+  QVERIFY(MpvConfigManager::prepare());
+  QVERIFY(!MpvConfigManager::ownsDefaultSvpIpc());
+  QVERIFY(overrides.open(QIODevice::ReadOnly));QCOMPARE(overrides.readAll(),explicitEndpoint);overrides.close();
+  settings.setValue(SETTINGS_SECTION_VIDEO,"aiRife",false);
+  QVERIFY(overrides.open(QIODevice::WriteOnly));overrides.close();
+  QVERIFY(MpvConfigManager::prepare());
+  QVERIFY(MpvConfigManager::ownsDefaultSvpIpc());
 }
 
 void TestMpvSvp::discoversVapourSynth()

@@ -21,6 +21,9 @@
 #include "MpvVideoItem.h"
 #include "PlaybackIdentity.h"
 #include "MpvConfigManager.h"
+#ifdef Q_OS_MAC
+#include "interpolation/FrameInterpolationController.h"
+#endif
 #include "AlbumArtProvider.h"
 #include "input/InputComponent.h"
 #include <MpvController>
@@ -29,6 +32,8 @@
 #include <string.h>
 #include <shared/Paths.h>
 #include <QRegularExpression>
+#include <QLocalSocket>
+#include <QFileInfo>
 
 #if !defined(Q_OS_WIN)
 #include <unistd.h>
@@ -204,6 +209,21 @@ void PlayerComponent::initializeMpv()
   mpv_observe_property(m_mpv->mpv(), 0, "vo", MPV_FORMAT_STRING);
   mpv_observe_property(m_mpv->mpv(), 0, "gpu-api", MPV_FORMAT_STRING);
   mpv_observe_property(m_mpv->mpv(), 0, "gpu-context", MPV_FORMAT_STRING);
+#ifdef Q_OS_MAC
+  m_rife=std::make_unique<rife::FrameInterpolationController>(rife::MpvAccess{
+    [this](const QString& key){return m_mpv->getProperty(key);},
+    [this](const QString& key,const QVariant& value){return m_mpv->setProperty(key,value)>=0;},
+    [this](const QStringList& arguments){
+      QList<QByteArray> storage;QList<const char*> command;
+      for(const auto& argument:arguments)storage.append(argument.toUtf8());
+      for(const auto& argument:storage)command.append(argument.constData());
+      command.append(nullptr);return mpv_command(m_mpv->mpv(),command.data())>=0;
+    }},rife::bundledRuntimePaths());
+  m_rifeClock.start();m_rifeTimer.setInterval(250);
+  m_rifeSuppressedSvp=MpvConfigManager::ownsDefaultSvpIpc()&&SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool();
+  connect(&m_rifeTimer,&QTimer::timeout,this,&PlayerComponent::pollInterpolation);
+  m_rifeTimer.start();
+#endif
 
   // Setup a hook with the ID 1, which is run during the file is loaded.
   // Used to delay playback start for display framerate switching.
@@ -706,6 +726,9 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     }
     case MPV_EVENT_END_FILE:
     {
+#ifdef Q_OS_MAC
+      if(m_rife)m_rife->stop();
+#endif
       auto *endFile = static_cast<mpv_event_end_file*>(event->data);
 
       // loadfile=replace ends the old entry before START_FILE for the new one.
@@ -912,6 +935,9 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       // We use this to block loading until we explicitly tell it to continue.
       if (!strcmp(msg->args[1], "1"))
       {
+#ifdef Q_OS_MAC
+        beginInterpolationItem();
+#endif
         // Calling this lambda will instruct mpv to continue loading the file.
         auto resume = [=] {
           qInfo() << "resuming loading";
@@ -952,6 +978,9 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
 
       if (!strcmp(hook->name, "on_load"))
       {
+#ifdef Q_OS_MAC
+        beginInterpolationItem();
+#endif
         // Calling this lambda will instruct mpv to continue loading the file.
         auto resume = [=] {
           qInfo() << "resuming loading";
@@ -984,6 +1013,11 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     }
 #endif
 
+#ifdef Q_OS_MAC
+    case MPV_EVENT_SEEK:
+      if(m_rife)m_rife->onSeek();
+      break;
+#endif
     default:; /* ignore */
   }
 }
@@ -1002,6 +1036,38 @@ void PlayerComponent::handleMpvEvents()
   // Once we got all status updates, determine the new canonical state.
   updatePlaybackState();
 }
+
+#ifdef Q_OS_MAC
+void PlayerComponent::beginInterpolationItem()
+{
+  if(!m_rife)return;
+  const bool enabled=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool();
+  if(MpvConfigManager::ownsDefaultSvpIpc()) {
+    const auto endpoint=m_mpv->getProperty("input-ipc-server").toString();
+    if(enabled&&endpoint=="/tmp/mpvsocket") {
+      m_rifeSuppressedSvp=m_mpv->setProperty("input-ipc-server",QString())>=0;
+    } else if(!enabled&&m_rifeSuppressedSvp&&endpoint.isEmpty()) {
+      QLocalSocket existing;existing.connectToServer("/tmp/mpvsocket");
+      const QFileInfo file("/tmp/mpvsocket");
+      if(!existing.waitForConnected(100)&&!file.isFile()&&!file.isDir())
+        m_mpv->setProperty("input-ipc-server","/tmp/mpvsocket");
+      m_rifeSuppressedSvp=false;
+    }
+  }
+  m_rife->beginItem(enabled,MpvConfigManager::usingSystemConfig());
+}
+void PlayerComponent::pollInterpolation()
+{
+  if(!m_rife||!m_mpv||!m_inPlayback)return;
+  const auto params=m_mpv->getProperty("video-params").toMap();
+  const auto frame=m_mpv->getProperty("video-frame-info").toMap();
+  if(!params.isEmpty()&&frame.contains("interlaced"))
+    m_rife->onFormatChanged(rife::sourceInfo(params,frame,m_mpv->getProperty("container-fps").toDouble()));
+  const bool suspended=m_paused||!m_playbackActive||m_bufferingPercentage<100||
+      m_mpv->getProperty("seeking").toBool()||m_mpv->getProperty("paused-for-cache").toBool();
+  m_rife->poll(m_rifeClock.elapsed(),suspended);
+}
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setVideoOnlyMode(bool enable)
@@ -1518,6 +1584,10 @@ void PlayerComponent::checkAudioOutput()
 QVariantMap PlayerComponent::mpvDiagnostics()
 {
   QVariantMap result;
+#ifdef Q_OS_MAC
+  if(m_rife)result["rife"]=m_rife->diagnostics();
+  result["rifeSetting"]=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife");
+#endif
   const QString configDir = MpvConfigManager::activeConfigDir();
   result["configDir"] = configDir;
   result["configMode"] = MpvConfigManager::usingSystemConfig() ? "system" : "embedded";
@@ -1931,7 +2001,13 @@ void PlayerComponent::setVideoConfiguration()
     }
     else if (hardwareDecodingMode == "copy")
       hwdecMode = "auto-copy";
-    m_mpv->setProperty( "hwdec", hwdecMode);
+    if(
+#ifdef Q_OS_MAC
+       !m_rife || !m_rife->ownsDecoding()
+#else
+       true
+#endif
+      )m_mpv->setProperty( "hwdec", hwdecMode);
     m_mpv->setProperty( "hwdec-image-format", hwdecVTFormat);
 
     QVariant deinterlace = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "deinterlace");
@@ -2127,6 +2203,9 @@ QString PlayerComponent::videoInformation() const
                                  ? "yes" : "no") << "\n";
   info << "\n";
   info << "Video:\n";
+#ifdef Q_OS_MAC
+  if(m_rife)info << m_rife->status() << "\n";
+#endif
   info << "Codec: " << MPV_PROPERTY("video-codec") << "\n";
   info << "Size: " << MPV_PROPERTY("video-params/dw") << "x"
                    << MPV_PROPERTY("video-params/dh") << "\n";

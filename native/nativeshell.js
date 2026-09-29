@@ -935,6 +935,12 @@ async function showSettingsModal() {
         groupHead.append(groupTitle, reset);
         group.appendChild(groupHead);
 
+        if (section === 'video' && mpvDiagnostics.rife) {
+            const actualStatus = jmpInfo.mpvConfigMode === 'system'
+                ? 'AI 补帧需要使用内置播放配置。'
+                : mpvDiagnostics.rife.status;
+            group.appendChild(element('div', 'tgs-callout', actualStatus));
+        }
         if (section === 'mpv') {
             const activeMode = jmpInfo.mpvConfigMode === 'system' ? '系统用户配置' : '大河内置配置';
             const activeRoot = jmpInfo.mpvConfigDir || '尚未解析';

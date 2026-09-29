@@ -57,6 +57,10 @@ if(APPLE)
   set_source_files_properties(player/MpvVideoItemMac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 endif()
 add_library(jmp_core STATIC ${ALL_SRCS})
+if(APPLE)
+  target_link_libraries(jmp_core tigerest_rife_control)
+endif()
+
 
 file(GLOB_RECURSE RESOURCE_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/resources/*)
 file(GLOB_RECURSE NATIVE_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/native/*)

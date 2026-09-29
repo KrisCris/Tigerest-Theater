@@ -4,7 +4,7 @@ from pathlib import Path
 import vapoursynth as vs
 
 
-def build_rife_filter(source, options):
+def _build_rife_filter(source, options):
     core=vs.core
     core.num_threads=2
     core.max_cache_size=128
@@ -65,6 +65,7 @@ def build_rife_filter(source, options):
     def choose(n,f):
         if disabled_reason:return bypass(disabled_reason)
         props=f.props
+        if props.get('_TigerestColorKnown',1)==0:return disable('unknown-color')
         transfer=props.get('_Transfer',-1)
         if transfer in (16,18):return disable('hdr')
         matrix=props.get('_Matrix',-1)
@@ -94,6 +95,11 @@ def build_rife_filter(source, options):
         return conversions[key]
 
     return core.std.FrameEval(template,eval=choose,prop_src=original,clip_src=[original,native])
+
+
+def build_rife_filter(source, options):
+    output=_build_rife_filter(source,options)
+    return vs.core.tigerest.Monitor(output,session=int(options.get('session',0)))
 
 
 if 'video_in' in globals():

@@ -11,6 +11,7 @@ namespace MpvConfigManager
   void configureVapourSynth(const QStringList& installationRoots);
   QString activeConfigDir();
   bool usingSystemConfig();
+  bool ownsDefaultSvpIpc();
   QString detectSystemConfigDir(const QString& configuredPath = QString());
   QString profileName(const QString& preset);
   QString danmakuApiServer(const QString& serverUrl, const QString& connectionMode);

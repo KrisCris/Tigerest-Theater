@@ -10,6 +10,11 @@
 #include <QTextStream>
 
 #include <functional>
+#include <memory>
+#include <QElapsedTimer>
+#ifdef Q_OS_MAC
+namespace rife {class FrameInterpolationController;}
+#endif
 
 #include "ComponentManager.h"
 #include "QtHelper.h"
@@ -238,6 +243,14 @@ Q_SIGNALS:
   void fullscreenRequested(bool fullscreen);
 
 private:
+#ifdef Q_OS_MAC
+  std::unique_ptr<rife::FrameInterpolationController> m_rife;
+  QTimer m_rifeTimer;
+  QElapsedTimer m_rifeClock;
+  bool m_rifeSuppressedSvp=false;
+  void beginInterpolationItem();
+  void pollInterpolation();
+#endif
   // this is the function actually implemented in the backends. the variantmap contains
   // a few known keys:
   // * subtitleStreamIndex

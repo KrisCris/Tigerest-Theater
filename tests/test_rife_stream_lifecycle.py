@@ -24,7 +24,7 @@ class StreamLifecycleTests(unittest.TestCase):
                 subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',
                     f'nullsrc=size={width}x{height}:rate=24,geq=lum={base}+N:cb=128:cr=128',
                     '-frames:v','192' if name=='first' else '24','-c:v','ffv1','-pix_fmt','yuv420p',
-                    '-color_primaries','bt709','-color_trc','bt709','-colorspace','bt709',
+                    '-vf','setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709','-color_range','tv','-color_primaries','bt709','-color_trc','bt709','-colorspace','bt709',
                     str(root/(name+'.mkv'))],check=True,timeout=30)
             report,script=root/'frames.jsonl',root/'bridge.vpy'
             script.write_text('''import vapoursynth as vs

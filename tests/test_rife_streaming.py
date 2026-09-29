@@ -18,7 +18,7 @@ class RifeStreamingTests(unittest.TestCase):
             root=Path(tmp)
             video,script,report=root/'clip.mkv',root/'bridge.vpy',root/'frames.jsonl'
             subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'testsrc2=size=128x128:rate={fps_num}/{fps_den}',
-                '-frames:v',str(count),'-c:v','ffv1','-color_primaries','bt709','-color_trc','bt709','-colorspace','bt709',
+                '-frames:v',str(count),'-c:v','ffv1','-vf','setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709','-color_range','tv','-color_primaries','bt709','-color_trc','bt709','-colorspace','bt709',
                 str(video)],check=True,timeout=30)
             options={'plugin_path':str(Path(os.environ['RIFE_VS_PLUGIN']).resolve()),
                      'model_path':str(Path(os.environ['RIFE_SMALL_MODEL']).resolve()),
