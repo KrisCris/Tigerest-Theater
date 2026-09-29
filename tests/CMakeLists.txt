@@ -88,6 +88,16 @@ add_test(NAME test_mpv_console COMMAND test_mpv_console)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(APPLE)
+  add_executable(test_mpv_svp test_mpv_svp.cpp)
+  target_link_libraries(test_mpv_svp jmp_core Qt6::Test)
+  target_include_directories(test_mpv_svp PRIVATE ${TEST_INCLUDE_DIRS})
+  target_compile_definitions(test_mpv_svp PRIVATE ${TEST_COMPILE_DEFS})
+  qt_add_resources(test_mpv_svp "test_mpv_svp_resources"
+    PREFIX "/"
+    BASE "${CMAKE_SOURCE_DIR}/resources"
+    FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
+          "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
+  add_test(NAME test_mpv_svp COMMAND test_mpv_svp)
   add_executable(test_macos_pause test_macos_pause.mm)
   target_link_libraries(test_macos_pause jmp_core Qt6::Test "-framework AppKit")
   target_include_directories(test_macos_pause PRIVATE ${TEST_INCLUDE_DIRS})

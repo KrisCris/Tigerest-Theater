@@ -59,6 +59,8 @@ https://example.com/emby
 
 **在哪里调整播放与弹幕设置？** 使用主页面的「MPV 设置」及视频播放菜单。
 
+**如何使用 SVP 补帧？** 先启动 SVP，再打开客户端，将「硬件解码方式」设为「硬解后复制回显」。Mac 用户需先按 [SVP 官方指南](https://www.svp-team.com/docs/mac/)安装其 mpv 组件，并退出其他正在使用 SVP 的播放器。
+
 遇到其他问题，可提交 [GitHub Issue](https://github.com/Tigerest/Tigerest-Theater/issues)，附上系统、客户端版本、错误提示及复现步骤。截图和日志中请去掉账号、密码及访问令牌。
 
 ## 构建

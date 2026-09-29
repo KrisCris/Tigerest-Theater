@@ -2,11 +2,13 @@
 #define TIGEREST_MPVCONFIGMANAGER_H
 
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 
 namespace MpvConfigManager
 {
   bool prepare();
+  void configureVapourSynth(const QStringList& installationRoots);
   QString activeConfigDir();
   bool usingSystemConfig();
   QString detectSystemConfigDir(const QString& configuredPath = QString());

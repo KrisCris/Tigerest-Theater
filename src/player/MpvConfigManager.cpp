@@ -9,11 +9,14 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLocale>
+#include <QLocalSocket>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QDebug>
 #include <QUrl>
+#include <QVersionNumber>
+#include <algorithm>
 
 namespace
 {
@@ -94,6 +97,18 @@ bool writeEmbeddedConfig(const QString& configDir)
   // Emby progress reporting uses the libmpv client API and does not consume
   // the JSON IPC endpoint, so the two mechanisms can coexist.
   config.replace("@TIGEREST_IPC_SERVER@", QStringLiteral("input-ipc-server=mpvpipe"));
+#elif defined(Q_OS_MAC)
+  // SVP's standard macOS endpoint. Never unlink another running player's
+  // socket; a user-overrides.conf endpoint can still override this default.
+  const QString endpoint = QStringLiteral("/tmp/mpvsocket");
+  QLocalSocket existing;
+  existing.connectToServer(endpoint);
+  const bool occupied = existing.waitForConnected(100);
+  const bool ordinaryFile = QFileInfo(endpoint).isFile() || QFileInfo(endpoint).isDir();
+  if (occupied || ordinaryFile)
+    qWarning() << "SVP IPC endpoint already in use; leaving it untouched:" << endpoint;
+  config.replace("@TIGEREST_IPC_SERVER@", occupied || ordinaryFile
+      ? QString() : QStringLiteral("input-ipc-server=/tmp/mpvsocket"));
 #else
   // "mpvpipe" is a Windows named-pipe convention. On Unix-like platforms the
   // same value would become a relative filesystem socket, so leave it disabled.
@@ -322,8 +337,50 @@ QString MpvConfigManager::detectSystemConfigDir(const QString& configuredPath)
   return QString();
 }
 
+void MpvConfigManager::configureVapourSynth(const QStringList& installationRoots)
+{
+  // Finder launches do not inherit shell exports. SVP's Homebrew setup
+  // installs this optional runtime, but recent mpv loads it via dlopen.
+  // Respect explicit overrides and leave ordinary playback independent of it.
+  if (qEnvironmentVariableIsSet("VSSCRIPT_PATH"))
+    return;
+
+  for (const QString& root : installationRoots)
+  {
+    QStringList candidates;
+    const QDir pythonLib(QDir(root).filePath(QStringLiteral("libexec/lib")));
+    QStringList versions = pythonLib.entryList({QStringLiteral("python3.*")}, QDir::Dirs);
+    std::sort(versions.begin(), versions.end(), [](const QString& a, const QString& b) {
+      return QVersionNumber::fromString(a.mid(6)) > QVersionNumber::fromString(b.mid(6));
+    });
+    for (const QString& version : versions)
+      candidates << pythonLib.filePath(version + QStringLiteral("/site-packages/vapoursynth/libvsscript.dylib"));
+    candidates << QDir(root).filePath(QStringLiteral("lib/libvsscript.dylib"))
+               << QDir(root).filePath(QStringLiteral("lib/libvapoursynth-script.dylib"));
+
+    for (const QString& candidate : candidates)
+    {
+      const QFileInfo library(candidate);
+      if (!library.isFile())
+        continue;
+      // VSScript's Python configuration is keyed by the resolved library path.
+      const QString path = library.canonicalFilePath();
+      qputenv("VSSCRIPT_PATH", path.toUtf8());
+      qInfo() << "VapourSynth runtime:" << path;
+      return;
+    }
+  }
+}
+
 bool MpvConfigManager::prepare()
 {
+#if defined(Q_OS_MAC)
+#if defined(Q_PROCESSOR_ARM_64)
+  configureVapourSynth({QStringLiteral("/opt/homebrew/opt/vapoursynth")});
+#else
+  configureVapourSynth({QStringLiteral("/usr/local/opt/vapoursynth")});
+#endif
+#endif
   auto& settings = SettingsComponent::Get();
   // The controller applies this selection after parsing either config mode.
   qputenv("TIGEREST_MPV_CONSOLE",
