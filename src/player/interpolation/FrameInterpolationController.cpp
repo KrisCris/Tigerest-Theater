@@ -49,6 +49,16 @@ void FrameInterpolationController::detach(){
     if(hwdecOwned&&optionText(mpv.read("hwdec"))=="auto-copy")mpv.set("hwdec",oldHwdec);
     hwdecOwned=false;guard.reset();preparingSince=-1;
 }
+void FrameInterpolationController::configureHardwareDecoding(const QString& mode){
+    // Settings refreshes and new loads use the same entry point. Remember the
+    // latest preference while keeping active interpolation's frames readable.
+    const bool active=current==State::Preparing||current==State::Active;
+    const bool copy=active&&mode!="no"&&mode!="auto-copy"&&!mode.isEmpty();
+    oldHwdec=mode;
+    hwdecOwned=copy;
+    if(!mpv.set("hwdec",copy?QStringLiteral("auto-copy"):mode)&&active)
+        disable("decode-error");
+}
 void FrameInterpolationController::stop(){++serial;detach();current=State::Off;reason.clear();source={};latest={};}
 void FrameInterpolationController::beginItem(bool enabled,bool systemConfig){
     stop();requested=enabled;notified=false;
@@ -116,7 +126,7 @@ void FrameInterpolationController::onMetrics(uint64_t generation,const Metrics&m
         const auto why=QString::fromStdString(m.error);
         disable(why,QStringList{"hdr","unknown-color","interlaced","vfr","unsupported-size"}.contains(why));return;
     }
-    if(m.predictions)current=State::Active;
+    if(m.pairs)current=State::Active; // includes prepared cut/EOF duplicates
     if(suspended)preparingSince=-1;
     else if(preparingSince<0)preparingSince=now;
     else if(!m.epoch&&now-preparingSince>15000){disable("filter-error");return;}

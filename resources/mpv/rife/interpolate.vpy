@@ -43,7 +43,8 @@ def _build_rife_filter(source, options):
         rgb=core.std.AddBorders(rgb,right=width-source.width,bottom=height-source.height,color=[0.,0.,0.])
     native=core.tigerest.RIFE(rgb,model_path=str(model),fps_num=fps_num,fps_den=fps_den,
         compute_policy=options.get('compute_policy','cpu-gpu'),pipeline=options.get('pipeline','monolithic'),
-        generation=int(options.get('generation',0)),streaming=int(options.get('streaming',True)))
+        generation=int(options.get('generation',0)),streaming=int(options.get('streaming',True)),
+        content_width=source.width,content_height=source.height)
     if native.width!=source.width or native.height!=source.height:
         native=core.std.CropAbs(native,width=source.width,height=source.height)
     timing_keys=('_DurationNum','_DurationDen','_TigerestRifeSynthesized','_TigerestRifeTimeMs','_TigerestRifeReason')

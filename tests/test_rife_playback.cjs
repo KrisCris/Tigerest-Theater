@@ -70,6 +70,7 @@ async function devtools(url) {
     const baseline=process.argv[6]==='baseline';
     const pausedStart=process.argv[6]==='paused';
     const matrix=process.argv[6]==='matrix';
+    const review=process.argv[6]==='review';
     const root=fs.mkdtempSync(path.join(os.tmpdir(),'tigerest-rife-player-'));
     const installed=path.join(root,'Applications','Tigerest Theater.app');
     fs.mkdirSync(path.dirname(installed));
@@ -79,9 +80,16 @@ async function devtools(url) {
     fs.mkdirSync(profile,{recursive:true});
     fs.mkdirSync(path.dirname(output),{recursive:true});
     const ipcPath=path.join(root,'private.sock');
+    const hook=path.join(root,'startup-hook.lua');
+    fs.writeFileSync(hook,`mp.add_hook('on_load',100,function(h)
+        if not mp.get_property_native('user-data/test-hold-startup',false) then return end
+        h:defer();mp.set_property_native('user-data/test-startup-held',true)
+        mp.add_timeout(3,function()mp.set_property_native('user-data/test-startup-held',false);h:cont()end)
+    end)
+    mp.set_property_native('user-data/test-hook-ready',true)`);
     fs.writeFileSync(path.join(profile,'profile.json'),JSON.stringify({name:id}));
     fs.writeFileSync(path.join(profile,'Tigerest Theater.conf'),JSON.stringify({version:10,sections:{
-        video:{aiRife:!baseline},mpv:{configMode:'embedded',renderBackend:'gpu-next',shaderPreset:'default'},
+        video:{aiRife:!baseline,hardwareDecoding:'safe'},mpv:{configMode:'embedded',renderBackend:'gpu-next',shaderPreset:'default'},
         other:{other_conf:`input-ipc-server=${ipcPath}\ngeometry=2560x1440\nhidpi-window-scale=no\nfullscreen=no\nmute=yes`}
     }}));
     const reservation=net.createServer();const port=await listen(reservation);
@@ -123,6 +131,51 @@ async function devtools(url) {
             const value={clock:Date.now(),rife:d.rife,metrics};samples.push(value);return value;
         };
         const load=async(url,autoplay=true)=>cdp.evaluate(`window.api.player.setVideoOnlyMode(true); window.api.player.load(${JSON.stringify(url)},{autoplay:${autoplay},startMilliseconds:0},{type:'video',title:'RIFE isolated acceptance'},1,-1)`);
+        if(review){
+            const failures=[];result.cases=[];
+            const check=(name,ok,actual)=>{result.cases.push({name,passed:ok,actual});if(!ok)failures.push(name);};
+            const supported=pathToFileURL(path.join(clip,'supported.mp4')).href;
+            const ready=()=>until(async()=>{const s=await sample();return s.rife.state===2;},'active');
+            await cmd('load-script',hook);
+            await until(()=>cmd('get_property','user-data/test-hook-ready'),'test hook ready');
+            await cmd('set_property','user-data/test-hold-startup',true);
+            await load(supported);
+            await until(()=>cmd('get_property','user-data/test-startup-held'),'held startup');
+            await delay(100);
+            await cmd('keypress','SPACE');
+            await ready();await delay(500);
+            check('space cancels autoplay during preparation',await cmd('get_property','pause')===true);
+            await load(supported);
+            await until(()=>cmd('get_property','user-data/test-startup-held'),'second held startup');
+            await cmd('script-message','tigerest-rife-toggle-pause');
+            await until(async()=>await cmd('get_property','user-data/tigerest/rife-startup-pause')===true,'UOSC pause intent');
+            await cmd('keypress','SPACE');
+            await until(async()=>await cmd('get_property','user-data/tigerest/rife-startup-pause')===false,'native resume intent');
+            await cmd('script-message','tigerest-rife-toggle-pause');
+            await ready();await delay(300);
+            check('UOSC and repeated native toggles preserve final pause',await cmd('get_property','pause')===true);
+            await cmd('set_property','user-data/test-hold-startup',false);
+            const cutStart=Date.now();
+            await load(pathToFileURL(path.join(clip,'opening-cut.mkv')).href);
+            await until(async()=>{const s=await sample();return s.rife.state===2&&s.rife.cutBypasses>0;},'opening cut ready');
+            await until(async()=>!(await cmd('get_property','pause')),'opening cut autoplay');
+            check('opening cut avoids startup timeout',Date.now()-cutStart<10000,Date.now()-cutStart);
+            await load(supported);await ready();
+            await cdp.evaluate('window.api.player.play()');
+            await cdp.evaluate("window.api.settings.setValue('video','hardwareDecoding','disabled')");
+            await delay(350);
+            const option=()=>cmd('get_property','hwdec');
+            check('settings software decode takes effect',String(await option())==='no',await option());
+            await cdp.evaluate("window.api.settings.setValue('video','hardwareDecoding','enabled')");
+            await delay(350);
+            check('active interpolation retains readable decode',String(await option())==='auto-copy',await option());
+            await cdp.evaluate("window.api.settings.setValue('video','aiRife',false)");
+            await cmd('set_property','user-data/test-hold-startup',false);
+            await load(supported);
+            await until(async()=>{const d=await sample();return d.rife.state===0&&d.metrics['time-pos']!==null;},'disabled replacement');
+            check('replacement restores latest hardware preference',String(await option())==='auto',await option());
+            verifyLoaded();assert.deepEqual(failures,[]);result.passed=true;return;
+        }
         if(matrix){
             result.cases=[];
             const open=async(url,reason='',autoplay=true)=>{

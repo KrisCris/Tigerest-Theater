@@ -20,6 +20,7 @@ public:
     void onFormatChanged(const SourceInfo& source);
     void onSeek();
     void stop();
+    void configureHardwareDecoding(const QString& mode);
     void poll(int64_t nowMs,bool suspended);
     void onMetrics(uint64_t generation,const Metrics& metrics,int64_t nowMs,bool suspended,uint64_t drops);
     State state()const{return current;}

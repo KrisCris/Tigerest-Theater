@@ -114,7 +114,7 @@ if(APPLE)
       set_tests_properties(test_rife_controller_live PROPERTIES
         ENVIRONMENT "${RIFE_TEST_ENV};VSSCRIPT_PATH=${RIFE_TEST_VSSCRIPT_LIB}"
         TIMEOUT 60 RUN_SERIAL TRUE LABELS "rife-stream")
-      foreach(case mpv_eof streaming stream_lifecycle)
+      foreach(case mpv_eof streaming stream_lifecycle uosc)
         add_test(NAME test_rife_${case} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_rife_${case}.py")
         set_tests_properties(test_rife_${case} PROPERTIES
           ENVIRONMENT "${RIFE_TEST_ENV};RIFE_MPV_BINARY=${RIFE_TEST_MPV};VSSCRIPT_PATH=${RIFE_TEST_VSSCRIPT_LIB}"

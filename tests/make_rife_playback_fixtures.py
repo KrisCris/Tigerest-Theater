@@ -25,6 +25,9 @@ def generate(root):
             '-map','0:v','-map','1:a','-c:v','copy','-c:a','aac','-b:a','128k','-ac','2',
             '-t','612',root/'acceptance-1080p30.mp4')
         run('-i',root/'acceptance-1080p30.mp4','-t','12','-c','copy',root/'supported.mp4')
+    run('-f','lavfi','-i','color=white:size=640x480:rate=30:duration=4',
+        '-vf',"drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='eq(n,0)',"+color,
+        '-c:v','ffv1','-pix_fmt','yuv420p',root/'opening-cut.mkv')
     cases={
         'hdr':('640x360',24,'setparams=range=limited:color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc','yuv420p10le'),
         '4k':('3840x2160',24,color,'yuv420p'),

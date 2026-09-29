@@ -251,6 +251,7 @@ private:
   bool m_rifeSuppressedSvp=false;
   rife::StartupGate m_rifeStartup;
   void beginInterpolationItem();
+  void publishInterpolationPause();
   void pollInterpolation();
 #endif
   // this is the function actually implemented in the backends. the variantmap contains

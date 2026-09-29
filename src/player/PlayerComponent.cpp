@@ -736,6 +736,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
 #ifdef Q_OS_MAC
       if(m_rife)m_rife->stop();
       m_rifeStartup.cancel();
+      publishInterpolationPause();
 #endif
       auto *endFile = static_cast<mpv_event_end_file*>(event->data);
 
@@ -793,10 +794,16 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       auto *prop = static_cast<mpv_event_property*>(event->data);
       if (strcmp(prop->name, "pause") == 0 && prop->format == MPV_FORMAT_FLAG)
       {
+#ifdef Q_OS_MAC
+        const bool wasPaused=m_paused;
+#endif
         m_paused = !!*static_cast<int*>(prop->data);
 #ifdef Q_OS_MAC
         if(!m_paused&&m_rifeStartup.waiting()) {
-          m_rifeStartup.requestPause(false);
+          // Native keys/double-click use mpv's cycle pause. Its physical pause
+          // is held during preparation, so that edge represents toggle intent.
+          if(wasPaused)m_rifeStartup.togglePause();
+          publishInterpolationPause();
           m_mpv->setPropertyAsync("pause",true);
         }
 #endif
@@ -925,6 +932,14 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     case MPV_EVENT_CLIENT_MESSAGE:
     {
       auto *msg = static_cast<mpv_event_client_message*>(event->data);
+#ifdef Q_OS_MAC
+      if(msg->num_args>=1&&strcmp(msg->args[0],"tigerest-rife-toggle-pause")==0) {
+        if(m_rifeStartup.waiting()) {
+          m_rifeStartup.togglePause();publishInterpolationPause();
+        } else if(m_paused)play();else pause();
+        break;
+      }
+#endif
       if (msg->num_args >= 2 && strcmp(msg->args[0], "tigerest-stream-quality") == 0)
       {
         bool valid = false;
@@ -1058,6 +1073,11 @@ void PlayerComponent::handleMpvEvents()
 }
 
 #ifdef Q_OS_MAC
+void PlayerComponent::publishInterpolationPause()
+{
+  if(m_mpv)m_mpv->setPropertyAsync("user-data/tigerest/rife-startup-pause",
+      m_rifeStartup.waiting()?QVariant(!m_rifeStartup.waitingToPlay()):QVariant(QString()));
+}
 void PlayerComponent::beginInterpolationItem()
 {
   if(!m_rife)return;
@@ -1079,6 +1099,7 @@ void PlayerComponent::beginInterpolationItem()
       m_mpv->getProperty("vid").toString()!="no";
   m_rifeStartup.begin(prepare,m_mpv->getProperty("pause").toBool(),m_rifeClock.elapsed());
   if(prepare&&m_mpv->setProperty("pause",true)<0)m_rifeStartup.cancel();
+  publishInterpolationPause();
 }
 void PlayerComponent::pollInterpolation()
 {
@@ -1086,6 +1107,7 @@ void PlayerComponent::pollInterpolation()
   // audio-only/failed load must never be left paused waiting for video metrics.
   if(m_mpv&&m_rifeStartup.expired(m_rifeClock.elapsed())) {
     if(m_rifeStartup.finish())m_mpv->setPropertyAsync("pause",false);
+    publishInterpolationPause();
   }
   // macvk can synchronously dispatch window setup to the main thread while
   // mpv's core waits for its VO. Querying that core here would deadlock both.
@@ -1101,6 +1123,7 @@ void PlayerComponent::pollInterpolation()
   m_rife->poll(m_rifeClock.elapsed(),suspended);
   if(m_rifeStartup.waiting()&&m_rife->state()!=rife::State::Preparing) {
     if(m_rifeStartup.finish())m_mpv->setPropertyAsync("pause",false);
+    publishInterpolationPause();
   }
 }
 #endif
@@ -1124,7 +1147,7 @@ void PlayerComponent::play()
     return;
   }
 #ifdef Q_OS_MAC
-  if(m_rifeStartup.requestPause(false))return;
+  if(m_rifeStartup.requestPause(false)){publishInterpolationPause();return;}
 #endif
   QStringList args = (QStringList() << "set" << "pause" << "no");
   m_mpv->command( args);
@@ -1222,6 +1245,7 @@ void PlayerComponent::stop()
 {
 #ifdef Q_OS_MAC
   m_rifeStartup.cancel();
+  publishInterpolationPause();
 #endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::stop: mpv not initialized yet";
@@ -1259,6 +1283,7 @@ void PlayerComponent::pause()
 {
 #ifdef Q_OS_MAC
   m_rifeStartup.requestPause(true);
+  publishInterpolationPause();
   if(m_mpv&&m_rifeStartup.waiting()) {
     m_mpv->setPropertyAsync("pause",true);
     return;
@@ -1580,6 +1605,7 @@ void PlayerComponent::checkAudioOutput()
   m_audioOutputWarningShown = true;
 #ifdef Q_OS_MAC
   m_rifeStartup.requestPause(true);
+  publishInterpolationPause();
 #endif
   m_mpv->setProperty("pause", true);
   m_mpv->command(QStringList()
@@ -2054,13 +2080,11 @@ void PlayerComponent::setVideoConfiguration()
     }
     else if (hardwareDecodingMode == "copy")
       hwdecMode = "auto-copy";
-    if(
 #ifdef Q_OS_MAC
-       !m_rife || !m_rife->ownsDecoding()
-#else
-       true
+    if(m_rife)m_rife->configureHardwareDecoding(hwdecMode);
+    else
 #endif
-      )m_mpv->setProperty( "hwdec", hwdecMode);
+      m_mpv->setProperty("hwdec",hwdecMode);
     m_mpv->setProperty( "hwdec-image-format", hwdecVTFormat);
 
     QVariant deinterlace = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "deinterlace");

@@ -17,6 +17,7 @@ struct Data {
     rife::CfrTimingTracker timing{{0,1}};
     uint64_t generation = 0;
     bool streaming = false;
+    int contentWidth=0,contentHeight=0;
     std::string disabled;
     std::unique_ptr<rife::RifeEngine> engine;
 };
@@ -58,11 +59,11 @@ rife::FrameView view(const VSFrame* frame, const VSAPI* api) {
     return out;
 }
 
-bool sceneCut(const rife::FrameView& a, const rife::FrameView& b) {
+bool sceneCut(const rife::FrameView& a, const rife::FrameView& b, int width, int height) {
     double difference = 0;
     int count = 0;
-    for (int y=0;y<a.height;y+=std::max(1,a.height/32))
-        for (int x=0;x<a.width;x+=std::max(1,a.width/48)) {
+    for (int y=0;y<height;y+=std::max(1,height/32))
+        for (int x=0;x<width;x+=std::max(1,width/48)) {
             double delta = 0;
             for (int c=0;c<3;++c) {
                 const auto* ar=reinterpret_cast<const float*>(reinterpret_cast<const char*>(a.planes[c])+y*a.strides[c]);
@@ -128,7 +129,16 @@ const VSFrame* VS_CC getFrame(int n, int activation, void* instance, void** stat
         if (!d->disabled.empty()) return outputFrame(first.get(),nullptr,d->disabled,d,core,api);
         auto a=view(first.get(),api), b=view(second.get(),api);
         a.identity={d->generation,firstIndex};b.identity={d->generation,firstIndex+1};
-        if (sceneCut(a,b)) return outputFrame(first.get(),nullptr,"cut",d,core,api);
+        const bool cut=sceneCut(a,b,d->contentWidth,d->contentHeight);
+        // Warm once even when the opening pair is a cut. Paused prefetch must
+        // be able to finish preparation, but must never display the blend.
+        if (cut) {
+            if (!d->engine) {
+                d->engine=rife::RifeEngine::create(d->config);
+                d->engine->interpolate(a,b,.5f);
+            }
+            return outputFrame(first.get(),nullptr,"cut",d,core,api);
+        }
         if (!d->engine) d->engine=rife::RifeEngine::create(d->config);
         auto generated=d->engine->interpolate(a,b,.5f);
         return outputFrame(first.get(),&generated,{},d,core,api);
@@ -155,6 +165,11 @@ void VS_CC create(const VSMap* in, VSMap* out, void*, VSCore* core, const VSAPI*
             d->info.format.bitsPerSample!=32 || d->info.width<2 || d->info.height<2 ||
             d->info.numFrames<1 || d->info.numFrames>std::numeric_limits<int>::max()/2)
             throw std::runtime_error("RIFE requires constant-size planar RGB float32");
+        const auto width=integer(api,in,"content_width",d->info.width);
+        const auto height=integer(api,in,"content_height",d->info.height);
+        if(width<2||height<2||width>d->info.width||height>d->info.height)
+            throw std::runtime_error("Invalid RIFE content rectangle");
+        d->contentWidth=int(width);d->contentHeight=int(height);
         d->fps={integer(api,in,"fps_num"),integer(api,in,"fps_den")};
         if (d->fps.num<=0 || d->fps.den<=0 || d->fps.num>1000000 || d->fps.den>1000000 ||
             double(d->fps.num)/d->fps.den>30.001) throw std::runtime_error("Unsupported RIFE frame rate");
@@ -220,7 +235,7 @@ void VS_CC monitorCreate(const VSMap* in,VSMap* out,void*,VSCore* core,const VSA
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin* plugin,const VSPLUGINAPI* api) {
     api->configPlugin("io.github.tigerest.rife","tigerest","Tigerest RIFE",VS_MAKE_VERSION(1,0),VAPOURSYNTH_API_VERSION,0,plugin);
-    api->registerFunction("RIFE","clip:vnode;model_path:data;fps_num:int;fps_den:int;compute_policy:data:opt;pipeline:data:opt;generation:int:opt;streaming:int:opt;",
+    api->registerFunction("RIFE","clip:vnode;model_path:data;fps_num:int;fps_den:int;compute_policy:data:opt;pipeline:data:opt;generation:int:opt;streaming:int:opt;content_width:int:opt;content_height:int:opt;",
                           "clip:vnode;",create,nullptr,plugin);
     api->registerFunction("Monitor","clip:vnode;session:int;","clip:vnode;",monitorCreate,nullptr,plugin);
 }

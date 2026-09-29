@@ -18,6 +18,7 @@ public:
     bool waiting()const{return pending;}
     bool waitingToPlay()const{return pending&&resume;}
     bool expired(int64_t now)const{return pending&&now-since>=15000;}
+    void togglePause(){if(pending)resume=!resume;}
     bool requestPause(bool paused){resume=!paused;return pending||paused;}
     bool finish(){const bool play=pending&&resume;pending=false;return play;}
     void cancel(){pending=false;resume=false;}

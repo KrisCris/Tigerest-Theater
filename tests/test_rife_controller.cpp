@@ -53,6 +53,22 @@ int main(int argc,char**argv) {
     Fake fail;fail.failAdd=true;FrameInterpolationController bad(fail.access(),paths);
     bad.beginItem(true,false);bad.onFormatChanged(source);
     assert(bad.state()==State::DisabledForCurrentItem&&fail.props["hwdec"]=="auto-safe");
+    Fake settings;FrameInterpolationController configured(settings.access(),paths);
+    configured.beginItem(true,false);configured.onFormatChanged(source);
+    configured.configureHardwareDecoding("no");
+    assert(settings.props["hwdec"]=="no"&&!configured.ownsDecoding());
+    configured.configureHardwareDecoding("auto");
+    assert(settings.props["hwdec"]=="auto-copy"&&configured.ownsDecoding());
+    configured.configureHardwareDecoding("auto"); // routine settings refresh
+    configured.stop();assert(settings.props["hwdec"]=="auto");
+    configured.beginItem(true,false);configured.onFormatChanged(source);
+    configured.configureHardwareDecoding("auto-safe");
+    configured.beginItem(false,false); // next load applies settings before detach
+    assert(settings.props["hwdec"]=="auto-safe");
+    configured.beginItem(true,false);configured.onFormatChanged(source);
+    Metrics openingCut;openingCut.epoch=9;openingCut.pairs=1;openingCut.cuts=1;
+    configured.onMetrics(configured.generation(),openingCut,0,true,0);
+    assert(configured.state()==State::Active); // a cut must not stall paused prefetch
     // The shared native registry rejects results from old plugin instances.
     const auto session=openSession();const auto old=beginInstance(session);
     recordFrame(session,old,1,true,10,"");assert(readMetrics(session).predictions==1);
