@@ -14,6 +14,8 @@
 | Windows 10 1903+ / Windows 11，x64 | [便携版 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.18/TigerestTheater-2.0.18-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
 | macOS 26+，Apple Silicon（M 系列） | [DMG 安装包](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.18/TigerestTheater-2.0.18-arm64.dmg) | 打开 DMG，将应用拖入「应用程序」 |
 
+想试用 Mac 内置 AI 补帧，可下载 [v2.1.0 Mac 预览版](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.1.0)。
+
 安装包已包含所需组件，无需另装 MPV。Mac 版目前支持 M 系列芯片。需要核验下载文件时，可使用发布页中的 SHA-256 校验文件。
 
 ## 第一次使用
