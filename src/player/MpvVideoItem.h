@@ -2,6 +2,7 @@
 #define MPVVIDEOITEM_H
 
 #include <MpvAbstractItem>
+#include <QHash>
 #include <QPointF>
 #include <QPointer>
 #include <QString>
@@ -52,7 +53,10 @@ private:
 #if defined(Q_OS_MAC)
     void installMacInputMonitor();
     void removeMacInputMonitor();
+    void releaseMacKeys();
     void* m_macInputMonitor = nullptr;
+    void* m_macInputFocusObserver = nullptr;
+    QHash<unsigned short, QString> m_macPressedKeys;
 #endif
     void initializeController();
     QWindow* ensureNativeHostWindow();
