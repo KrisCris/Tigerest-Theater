@@ -88,10 +88,18 @@ async function devtools(url) {
     await new Promise(resolve=>reservation.close(resolve));
     const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!k.startsWith('PYTHON')&&!k.startsWith('DYLD_')&&!k.startsWith('VSSCRIPT')&&!k.startsWith('TIGEREST_')&&!k.startsWith('QT_')&&!k.startsWith('QML_')&&!k.startsWith('VK_')));
     env.PATH='/usr/bin:/bin:/usr/sbin:/sbin';
+    env.DYLD_PRINT_LIBRARIES='1';
     const log=fs.openSync(output+'.app.log','w');
     const child=spawn(executable,['--log-level','warn','--config-dir',root,'--profile',id,'--remote-debugging-port',`127.0.0.1:${port}`],{env,stdio:['ignore',log,log]});
     let cdp,ipc,httpServer;const samples=[];let result={seconds,baseline,matrix,clip,executable,samples};
     try {
+        const verifyLoaded=()=>{
+            const images=fs.readFileSync(output+'.app.log','utf8').split('\n').filter(line=>line.startsWith('dyld['));
+            assert.ok(images.length,'missing actual runtime dependency evidence');
+            const external=images.filter(line=>line.includes('/opt/homebrew/')||line.includes('/usr/local/')||line.includes(path.resolve(__dirname,'..')));
+            assert.deepEqual(external,[],'app borrowed development libraries');
+            result.loadedImageCount=images.length;
+        };
         const target=await until(async()=>{
             assert.equal(child.exitCode,null,'app exited');
             try {return (await(await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t=>t.type==='page');}catch{return null;}
@@ -167,7 +175,7 @@ async function devtools(url) {
             });
             const httpPort=await listen(httpServer);
             await open(`http://127.0.0.1:${httpPort}/supported.mp4`);
-            assert.ok(requests>0);result.httpRequests=requests;result.passed=true;
+            assert.ok(requests>0);result.httpRequests=requests;verifyLoaded();result.passed=true;
             console.log(JSON.stringify({...result,samples:undefined}));return;
         }
         await load(pathToFileURL(clip).href,!pausedStart);
@@ -211,7 +219,7 @@ async function devtools(url) {
         assert.ok(baseline||result.generatedFrames>=duration*29,'not enough synthesized frames');
         assert.ok(result.dropRatio<.001,`drop ratio ${result.dropRatio}`);
         assert.ok(result.maxAvsyncMs<=40,`A/V offset ${result.maxAvsyncMs} ms`);
-        result.passed=true;
+        verifyLoaded();result.passed=true;
         console.log(JSON.stringify({...result,samples:undefined,metadata:undefined,renderPasses:undefined}));
     } catch(error) {result.error=String(error);if(child.exitCode===null)spawnSync('sample',[String(child.pid),'1','1','-file',output+'.sample.txt']);throw error;}
     finally {
