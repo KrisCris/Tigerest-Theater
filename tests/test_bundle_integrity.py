@@ -504,7 +504,9 @@ def test_native_player_composition() -> None:
             "if (m_nativeVideoOutput)" in player_component and
             "m_mpv->commandAsync(args);" in player_component and
             "if (!m_inPlayback)" in player_component and
-            "m_nativeVideoOutput && !m_inPlayback" in player_component,
+            "m_nativeVoTeardownPending || m_shuttingDown" in player_component and
+            "prepareForShutdown()" in player_component and
+            "completeNativeVoTransition();" in player_component,
             "macOS native close/fullscreen lifecycle protection is missing")
     window_manager = read("src/ui/WindowManager.cpp")
     require("updateNativePlaybackWindow" in window_manager and

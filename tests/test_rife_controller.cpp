@@ -8,17 +8,20 @@
 using namespace rife;
 struct Fake {
     QVariantMap props{{"hwdec","auto-safe"},{"vf",QVariantList{QVariantMap{{"name","crop"},{"label","user"}}}}};
-    QStringList removed; int adds=0,notices=0; bool failAdd=false;
-    MpvAccess access() {return {
-      [this](const QString& key){return props.value(key);},
-      [this](const QString& key,const QVariant& value){props[key]=value;return true;},
-      [this](const QStringList& args){
+    QStringList removed; int adds=0,notices=0,forbiddenSyncCalls=0; bool failAdd=false,forbidSync=false;
+    bool execute(const QStringList& args) {
         if(args[0]=="show-text"){++notices;return true;}
         auto filters=props["vf"].toList();
         if(args[1]=="add") {if(failAdd)return false;++adds;filters.append(QVariantMap{{"name","vapoursynth"},{"label","tigerest-rife"}});}
-        if(args[1]=="remove") {removed<<args[2];for(int i=filters.size()-1;i>=0;--i)if(filters[i].toMap()["label"]=="tigerest-rife")filters.removeAt(i);}
+        if(args[1]=="remove") {removed<<args[2];for(qsizetype i=filters.size()-1;i>=0;--i)if(filters[i].toMap()["label"]=="tigerest-rife")filters.removeAt(i);}
         props["vf"]=filters;return true;
-      }};}
+    }
+    MpvAccess access() {return {
+      [this](const QString& key){if(forbidSync){++forbiddenSyncCalls;return QVariant();}return props.value(key);},
+      [this](const QString& key,const QVariant& value){if(forbidSync){++forbiddenSyncCalls;return false;}props[key]=value;return true;},
+      [this](const QStringList& args){if(forbidSync){++forbiddenSyncCalls;return false;}return execute(args);},
+      [this](const QString& key,const QVariant& value){props[key]=value;return true;},
+      [this](const QStringList& args){return execute(args);}};}
 };
 int main(int argc,char**argv) {
     QCoreApplication app(argc,argv);
@@ -90,6 +93,19 @@ int main(int argc,char**argv) {
     slowMetrics.predictions=slowMetrics.pairs=90;
     slowController.onMetrics(slowController.generation(),slowMetrics,6000,false,2);
     assert(slowController.state()==State::DisabledForCurrentItem&&slow.notices==1);
+    Fake ending;FrameInterpolationController endingController(ending.access(),paths);
+    endingController.beginItem(true,false);endingController.onFormatChanged(source);
+    assert(ending.props["hwdec"]=="auto-copy"&&ending.props["vf"].toList().size()==2);
+    ending.forbidSync=true; // Native macvk teardown may be waiting for this Qt thread.
+    endingController.stopOnEndFile();
+    assert(ending.forbiddenSyncCalls==0&&endingController.state()==State::Off);
+    assert(ending.props["hwdec"]=="auto-safe");
+    assert(ending.props["vf"].toList().size()==1&&ending.removed==QStringList{"@tigerest-rife"});
+    endingController.stopOnEndFile(); // Duplicate END_FILE must not touch mpv again.
+    assert(ending.forbiddenSyncCalls==0&&ending.removed.size()==1);
+    ending.forbidSync=false;
+    endingController.beginItem(true,false);endingController.onFormatChanged(source);
+    assert(endingController.state()==State::Preparing&&ending.adds==2);
     auto goodParams=QVariantMap{{"w",1920},{"h",1080},{"gamma","bt.1886"},{"primaries","bt.709"},{"colormatrix","bt.709"},{"colorlevels","limited"}};
     assert(qualify(sourceInfo(goodParams,{{"interlaced",false}},23.976023976)).enabled);
     assert(qualify(sourceInfo(goodParams,{{"interlaced",false}},60)).reason=="unsupported-fps");

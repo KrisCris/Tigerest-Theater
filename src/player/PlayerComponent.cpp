@@ -34,6 +34,9 @@
 #include <QRegularExpression>
 #include <QLocalSocket>
 #include <QFileInfo>
+#ifdef Q_OS_MAC
+#include <QThread>
+#endif
 
 #if !defined(Q_OS_WIN)
 #include <unistd.h>
@@ -218,7 +221,10 @@ void PlayerComponent::initializeMpv()
       for(const auto& argument:arguments)storage.append(argument.toUtf8());
       for(const auto& argument:storage)command.append(argument.constData());
       command.append(nullptr);return mpv_command(m_mpv->mpv(),command.data())>=0;
-    }},rife::bundledRuntimePaths());
+    },
+    [this](const QString& key,const QVariant& value){return m_mpv->setPropertyAsync(key,value)>=0;},
+    [this](const QStringList& arguments){return m_mpv->commandAsync(arguments)>=0;}
+  },rife::bundledRuntimePaths());
   m_rifeClock.start();m_rifeTimer.setInterval(250);
   m_rifeSuppressedSvp=MpvConfigManager::ownsDefaultSvpIpc()&&SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool();
   connect(&m_rifeTimer,&QTimer::timeout,this,&PlayerComponent::pollInterpolation);
@@ -379,6 +385,19 @@ bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
     qWarning() << "PlayerComponent::loadMedia: mpv not initialized yet";
     return false;
   }
+
+#ifdef Q_OS_MAC
+  if (m_shuttingDown)
+    return false;
+  if (m_nativeVideoOutput && m_nativeVoTeardownPending)
+  {
+    // mpv can report idle before macvk has finished closing its Cocoa window.
+    // A synchronous property write here would wait on the mpv core while its
+    // VO thread waits on this Qt main thread.
+    m_deferredMediaLoads.append({url, options, metadata, audioStream, subtitleStream, loadMode});
+    return true;
+  }
+#endif
 
   InputComponent::Get().cancelAutoRepeat();
 
@@ -615,7 +634,7 @@ void PlayerComponent::onRestoreDisplay()
 void PlayerComponent::onRefreshRateChange()
 {
 #if defined(Q_OS_MAC)
-  if (m_nativeVideoOutput && !m_inPlayback)
+  if (m_nativeVideoOutput && (!m_inPlayback || m_nativeVoTeardownPending || m_shuttingDown))
   {
     // Restoring the display after a native Cocoa close emits this signal from
     // the close button's nested run loop. Avoid synchronous mpv_set_property()
@@ -723,6 +742,11 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       m_replacementPending = false;
       m_inPlayback = true;
       m_nativeVideoReady = false;
+#ifdef Q_OS_MAC
+      // A queued playlist item can start without entering mpv's idle loop.
+      // The previous VO has been released or is being reused by this point.
+      completeNativeVoTransition();
+#endif
       m_playbackCanceled = false;
       m_playbackError.clear();
       m_lastPositionUpdate = 0.0;
@@ -734,9 +758,13 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     {
       m_nativeVideoReady = false;
 #ifdef Q_OS_MAC
-      if(m_rife)m_rife->stop();
+      if(m_rife)m_rife->stopOnEndFile();
       m_rifeStartup.cancel();
       publishInterpolationPause();
+      // mpv sends END_FILE before releasing the native VO. MPV_EVENT_IDLE is
+      // sent after handle_force_window() has destroyed it.
+      if(m_nativeVideoOutput && !m_replacementPending)
+        m_nativeVoTeardownPending=true;
 #endif
       auto *endFile = static_cast<mpv_event_end_file*>(event->data);
 
@@ -1045,9 +1073,16 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
 #endif
 
     case MPV_EVENT_PLAYBACK_RESTART:
-      m_nativeVideoReady = true;
+#ifdef Q_OS_MAC
+      m_nativeVideoReady = m_inPlayback && !m_nativeVoTeardownPending;
+#else
+      m_nativeVideoReady = m_inPlayback;
+#endif
       break;
 #ifdef Q_OS_MAC
+    case MPV_EVENT_IDLE:
+      completeNativeVoTransition();
+      break;
     case MPV_EVENT_SEEK:
       m_nativeVideoReady = false;
       if(m_rife)m_rife->onSeek();
@@ -1246,6 +1281,14 @@ void PlayerComponent::stop()
 #ifdef Q_OS_MAC
   m_rifeStartup.cancel();
   publishInterpolationPause();
+  if (m_nativeVideoOutput && m_inPlayback) {
+    // The stop command returns before END_FILE is delivered. Block main-thread
+    // mpv queries as soon as teardown is requested, not when its event arrives.
+    m_nativeVoTeardownPending = true;
+    m_nativeVideoReady = false;
+    m_audioOutputWarningTimer.stop();
+    m_reloadAudioTimer.stop();
+  }
 #endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::stop: mpv not initialized yet";
@@ -1266,6 +1309,49 @@ void PlayerComponent::stop()
     m_mpv->command(args);
   }
 }
+
+#ifdef Q_OS_MAC
+void PlayerComponent::completeNativeVoTransition()
+{
+  if (!m_nativeVideoOutput || !m_nativeVoTeardownPending)
+    return;
+  m_nativeVoTeardownPending = false;
+  QList<DeferredMediaLoad> pending;
+  pending.swap(m_deferredMediaLoads);
+  for (const auto& request : pending)
+    loadMedia(request.url, request.options, request.metadata,
+              request.audioStream, request.subtitleStream, request.mode);
+}
+
+bool PlayerComponent::prepareForShutdown()
+{
+  if (!m_mpv || !m_nativeVideoOutput)
+    return true;
+
+  m_shuttingDown = true;
+  m_deferredMediaLoads.clear();
+  m_rifeTimer.stop();
+  m_reloadAudioTimer.stop();
+  m_audioOutputWarningTimer.stop();
+  if (m_inPlayback)
+    stop();
+
+  // mpv's macvk destructor synchronously dispatches window removal to Cocoa.
+  // Keep the main queue running until MPV_EVENT_IDLE confirms that the native
+  // VO has been released; then QML can safely destroy MpvVideoItem.
+  QElapsedTimer elapsed;
+  elapsed.start();
+  while ((m_inPlayback || m_nativeVoTeardownPending) && elapsed.elapsed() < 10000) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    QThread::msleep(2);
+  }
+  if (m_inPlayback || m_nativeVoTeardownPending) {
+    qCritical() << "Timed out waiting for native video output before shutdown";
+    return false;
+  }
+  return true;
+}
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::clearQueue()
@@ -1570,6 +1656,10 @@ qint64 PlayerComponent::getPosition()
     qWarning() << "PlayerComponent::getPosition: mpv not initialized yet";
     return 0;
   }
+#ifdef Q_OS_MAC
+  if (m_nativeVideoOutput && m_nativeVoTeardownPending)
+    return 0;
+#endif
   QVariant time = m_mpv->getProperty( "playback-time");
   if (time.canConvert<double>())
     return static_cast<qint64>(qMax(time.toDouble() * 1000.0, 0.0));
@@ -1583,6 +1673,10 @@ qint64 PlayerComponent::getDuration()
     qWarning() << "PlayerComponent::getDuration: mpv not initialized yet";
     return 0;
   }
+#ifdef Q_OS_MAC
+  if (m_nativeVideoOutput && m_nativeVoTeardownPending)
+    return 0;
+#endif
   QVariant time = m_mpv->getProperty( "duration");
   if (time.canConvert<double>())
     return static_cast<qint64>(qMax(time.toDouble() * 1000.0, 0.0));
@@ -1594,6 +1688,10 @@ void PlayerComponent::checkAudioOutput()
 {
   if (!m_mpv || !m_inPlayback || m_audioOutputWarningShown)
     return;
+#ifdef Q_OS_MAC
+  if (m_nativeVideoOutput && m_nativeVoTeardownPending)
+    return;
+#endif
 
   const QString currentAo = m_mpv->getProperty("current-ao").toString();
   const QString selectedAudio = m_mpv->getProperty("aid").toString();
@@ -1696,7 +1794,8 @@ QVariantMap PlayerComponent::mpvDiagnostics()
   result["configuredProfile"] = configuredProfile;
 
   QStringList shaderFiles;
-  if (m_mpv && (!m_nativeVideoOutput || m_nativeVideoReady))
+  if (m_mpv && (!m_nativeVideoOutput ||
+                (m_inPlayback && m_nativeVideoReady && !m_nativeVoTeardownPending)))
   {
     const QVariant shaders = m_mpv->getProperty("glsl-shaders");
     for (const QVariant& shader : shaders.toList())

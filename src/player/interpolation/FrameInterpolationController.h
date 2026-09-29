@@ -11,6 +11,8 @@ struct MpvAccess {
     std::function<QVariant(const QString&)> read;
     std::function<bool(const QString&,const QVariant&)> set;
     std::function<bool(const QStringList&)> command;
+    std::function<bool(const QString&,const QVariant&)> setAsync;
+    std::function<bool(const QStringList&)> commandAsync;
 };
 class FrameInterpolationController {
 public:
@@ -20,6 +22,7 @@ public:
     void onFormatChanged(const SourceInfo& source);
     void onSeek();
     void stop();
+    void stopOnEndFile();
     void configureHardwareDecoding(const QString& mode);
     void poll(int64_t nowMs,bool suspended);
     void onMetrics(uint64_t generation,const Metrics& metrics,int64_t nowMs,bool suspended,uint64_t drops);

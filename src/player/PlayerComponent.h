@@ -5,6 +5,7 @@
 #include <QtCore/qglobal.h>
 #include <QVariant>
 #include <QSet>
+#include <QList>
 #include <QQuickWindow>
 #include <QTimer>
 #include <QTextStream>
@@ -61,6 +62,10 @@ public:
 
   // Stop playback and clear all queued items.
   Q_INVOKABLE virtual void stop();
+#ifdef Q_OS_MAC
+  // Drain native VO teardown on the Cocoa main thread before QML destroys mpv.
+  bool prepareForShutdown();
+#endif
 
   // A full reload of the stream is imminent (stop() + load())
   // Used for not resetting display mode with the next stop() call.
@@ -282,6 +287,18 @@ private:
 
   MpvController* m_mpv = nullptr;
   bool m_nativeVideoOutput = false;
+#ifdef Q_OS_MAC
+  struct DeferredMediaLoad {
+    QString url;
+    QVariantMap options, metadata;
+    QVariant audioStream, subtitleStream;
+    QString mode;
+  };
+  bool m_nativeVoTeardownPending = false;
+  bool m_shuttingDown = false;
+  QList<DeferredMediaLoad> m_deferredMediaLoads;
+  void completeNativeVoTransition();
+#endif
 
   State m_state;
   bool m_paused;

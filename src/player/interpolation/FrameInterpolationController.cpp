@@ -60,6 +60,18 @@ void FrameInterpolationController::configureHardwareDecoding(const QString& mode
         disable("decode-error");
 }
 void FrameInterpolationController::stop(){++serial;detach();current=State::Off;reason.clear();source={};latest={};}
+void FrameInterpolationController::stopOnEndFile(){
+    ++serial;
+    closeSession(session);session=0;epoch=0;
+    // END_FILE can arrive while macvk's VO thread is synchronously asking the
+    // Cocoa main thread to close its window. No mpv property read or blocking
+    // command is safe from this event handler until VO teardown finishes.
+    if(filterOwned)mpv.commandAsync({"vf","remove","@tigerest-rife"});
+    filterOwned=false;
+    if(hwdecOwned)mpv.setAsync("hwdec",oldHwdec);
+    hwdecOwned=false;guard.reset();preparingSince=-1;
+    current=State::Off;reason.clear();source={};latest={};
+}
 void FrameInterpolationController::beginItem(bool enabled,bool systemConfig){
     stop();requested=enabled;notified=false;
     if(!enabled)return;

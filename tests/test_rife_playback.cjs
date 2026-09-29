@@ -71,6 +71,7 @@ async function devtools(url) {
     const pausedStart=process.argv[6]==='paused';
     const matrix=process.argv[6]==='matrix';
     const review=process.argv[6]==='review';
+    const exitProbe=process.argv[6]==='exit-probe';
     const externalRuntime=process.argv[6]==='external-runtime';
     const root=fs.mkdtempSync(path.join(os.tmpdir(),'tigerest-rife-player-'));
     const installed=path.join(root,'Applications','Tigerest Theater.app');
@@ -141,6 +142,47 @@ async function devtools(url) {
             const value={clock:Date.now(),rife:d.rife,metrics};samples.push(value);return value;
         };
         const load=async(url,autoplay=true)=>cdp.evaluate(`window.api.player.setVideoOnlyMode(true); window.api.player.load(${JSON.stringify(url)},{autoplay:${autoplay},startMilliseconds:0},{type:'video',title:'RIFE isolated acceptance'},1,-1)`);
+        if(exitProbe){
+            result.cycles=[];
+            for(let i=0;i<2;i++){
+                await load(pathToFileURL(clip).href);
+                await until(async()=>{
+                    const d=await cdp.evaluate('window.api.player.mpvDiagnostics()');
+                    return d.rife.state===2&&d.rife.generatedFrames>5;
+                },'RIFE active before stop');
+                const started=Date.now();
+                await cdp.evaluate('window.api.player.stop()');
+                await until(async()=>await cmd('get_property','idle-active')===true,'idle after stop');
+                // This method crosses Qt's main thread but does not query mpv
+                // while macvk may still be destroying the previous window.
+                await cdp.evaluate('window.api.player.setVideoOnlyMode(true)');
+                await until(async()=>{
+                    const diagnostics=await cdp.evaluate('window.api.player.mpvDiagnostics()');
+                    return diagnostics.rife.state===0;
+                },'RIFE controller stopped');
+                result.cycles.push({stopMs:Date.now()-started,mainThreadResponsive:true});
+                fs.writeFileSync(output,JSON.stringify(result,null,2));
+            }
+            await load(pathToFileURL(clip).href);
+            await until(async()=>{
+                const d=await cdp.evaluate('window.api.player.mpvDiagnostics()');
+                return d.rife.state===2&&d.rife.generatedFrames>5;
+            },'RIFE active before application quit');
+            const priorGeneration=(await cdp.evaluate('window.api.player.mpvDiagnostics()')).rife.generation;
+            await cdp.evaluate(`window.api.player.queueMedia(${JSON.stringify(pathToFileURL(clip).href)},{autoplay:true,startMilliseconds:0},{type:'video',title:'Queued RIFE acceptance'},1,-1)`);
+            await cmd('playlist-next','force');
+            await until(async()=>{
+                const d=await cdp.evaluate('window.api.player.mpvDiagnostics()');
+                return d.rife.generation>priorGeneration&&d.rife.state===2&&d.rife.generatedFrames>5;
+            },'RIFE active after playlist advance');
+            result.queuedTransition=true;
+            result.quitRequestedWhileActive=true;
+            cdp.send('Runtime.evaluate',{expression:'window.api.system.exit()',awaitPromise:true}).catch(()=>{});
+            await until(()=>child.exitCode!==null||child.signalCode!==null,'application quit');
+            result.quitExitCode=child.exitCode;
+            assert.equal(child.exitCode,0,'application did not quit cleanly');
+            result.passed=true;return;
+        }
         if(review){
             const failures=[];result.cases=[];
             const check=(name,ok,actual)=>{result.cases.push({name,passed:ok,actual});if(!ok)failures.push(name);};
@@ -291,7 +333,7 @@ async function devtools(url) {
         assert.ok(result.maxAvsyncMs<=40,`A/V offset ${result.maxAvsyncMs} ms`);
         verifyLoaded();result.passed=true;
         console.log(JSON.stringify({...result,samples:undefined,metadata:undefined,renderPasses:undefined}));
-    } catch(error) {result.error=String(error);if(child.exitCode===null)spawnSync('sample',[String(child.pid),'1','1','-file',output+'.sample.txt']);throw error;}
+    } catch(error) {result.error=String(error);if(child.exitCode===null)spawnSync('sample',[String(child.pid),'5','-file',output+'.sample.txt']);throw error;}
     finally {
         fs.writeFileSync(output,JSON.stringify(result,null,2));
         if(cdp&&child.exitCode===null){
