@@ -1,16 +1,16 @@
-# 大河影院内置 RIFE 设计
+# 大河影院 RIFE 扩展包：Windows NVIDIA / TensorRT 设计
 
-日期：2026-09-29。状态：设计待审阅，尚未实现。
+日期：2026-09-29。状态：用户已收敛本机范围到 NVIDIA / TensorRT，并提出用扩展包控制体积；扩展包设计待审阅，尚未实现。
 
 ## 目标与首版范围
 
-用户已确认：RIFE 由播放器直接集成和控制，免去 SVP 及其环境配置。用户安装或解压播放器后即可使用，依赖、模型、状态及恢复流程均由大河影院管理。
+用户已确认：RIFE 由播放器直接集成和控制，免去 SVP 及其环境配置。根据用户对体积的最新反馈，采用轻量主程序加可选 RIFE 扩展包：基础播放不下载 AI 运行库；需要补帧时，由播放器安装扩展包，管理依赖、模型、状态及恢复流程。用户无需手动配置推理环境。
 
-用户进一步明确首版优先 NVIDIA 显卡和 Apple M 芯片。因此首版纳入 Windows x64/NVIDIA 和 macOS 26+/Apple Silicon arm64 两个平台，共享控制层，使用各自的推理后端。当前本机可测 RTX 4090；M 芯片的具体型号及性能须在 Mac 实机验收。AMD、Intel GPU 和 Intel Mac 保留正常播放能力，本轮不纳入 RIFE 支持。
+用户最新决定：本机只研究 Windows x64 / NVIDIA / TensorRT，M 芯片问题留到 Mac 单独解决。本轮不开发或验证 macOS、Core ML、ANE、NCNN/Vulkan、AMD 或 Intel GPU 后端。当前本机可测 RTX 4090，驱动 616.64，显存 24564 MiB，计算能力 8.9。支持范围以实际测试和运行库探测为准，不由一台 4090 推断为所有 N 卡均可实时补帧。
 
 首版提供关闭／2 倍两个选项，默认关闭。支持最高 1920×1080、逐行、SDR、已识别的恒定帧率且源帧率不超过 30 fps 的视频。23.976 fps 对应 47.952 fps，24 fps 对应 48 fps，30 fps 对应 60 fps；保持原始播放时长。HDR、Dolby Vision、隔行、动态分辨率、无法确定时序以及超出范围的素材自动旁路，显示具体原因。首版不自动降分辨率、不将 HDR 转为 SDR 以强行补帧。
 
-固定 60/120 fps、自动匹配刷新率、多模型商店、AMD/Intel 后端和 4K/HDR 补帧是后续扩展，不纳入本轮交付。两平台均以原分辨率 1080p SDR 2 倍补帧为首轮验证目标；不能将一台 M 芯片机器通过推断为所有 M 系列均达到实时性能。
+固定 60/120 fps、自动匹配刷新率、多模型商店和 4K/HDR 补帧是后续扩展，不纳入本轮交付。本轮以原分辨率 1080p SDR 2 倍补帧为首轮验证目标；先完成私有运行库与真实推理研究，再据结果接入播放器及打包。
 
 ## 项目依据和路线选择
 
@@ -20,23 +20,13 @@
 
 | 路线 | 取舍 |
 | --- | --- |
-| VapourSynth + 按平台选择后端（推荐） | Windows/NVIDIA 使用 vs-mlrt/TensorRT；Apple Silicon 使用原生 arm64 RIFE-NCNN 插件，通过 MoltenVK 在 Metal GPU 上计算。共享 UI、状态和播放控制，各自管理运行库及性能验证。 |
-| 两端统一 VapourSynth + NCNN/Vulkan | 减少推理适配差异、依赖相对紧凑；NVIDIA 也放弃 TensorRT 路线，性能收益需要实测比较。 |
+| VapourSynth + vs-mlrt / TensorRT（采用） | 复用 libmpv 现有滤镜入口，针对本机 NVIDIA 研究推理性能、依赖打包及缓存。 |
+| VapourSynth + NCNN/Vulkan | 可覆盖更多显卡，但用户已收敛本轮范围，不在本机并行研究。 |
 | 修改 libmpv，直接接入 C++ RIFE 推理 | 可更深入控制帧传递，但需要长期维护内核修改及跨版本适配，首版不采用。 |
 
 VapourSynth 官方提供 Windows 便携部署方式。Windows 路线是否适合发布，以当前 DLL 与私有运行库的兼容验证为第一个验收关口，不根据最新文档推定本地二进制已经兼容。[VapourSynth 安装文档](https://www.vapoursynth.com/doc/installation.html#windows-portable)、[vs-mlrt 后端说明](https://github.com/AmusementClub/vs-mlrt)
 
-Mac 使用 `styler00dollar/VapourSynth-RIFE-ncnn-Vulkan` 作为首选适配目标：核对时 `r9_mod_v33` release 已提供 `librife_macos_arm64.dylib`，仍须检查该二进制的最低系统版本和动态依赖。MoltenVK 将 Vulkan 映射到 Metal；这条路线不等于原生 CoreML 或使用 Neural Engine。Mac 当前由 Homebrew 提供构建期 libmpv，需单独验证其 VapourSynth 编译支持；若缺失，在项目构建阶段补齐并将依赖随应用发布。Windows 的 DLL 探测结果不适用于 Mac。[RIFE 插件发布页](https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/releases/tag/r9_mod_v33)、[MoltenVK](https://github.com/KhronosGroup/MoltenVK)
-
-## Apple Neural Engine 评估
-
-用户询问 M 芯片能否使用 NPU。Apple Neural Engine 可以通过 Core ML 参与模型推理；`all` 允许系统选择 CPU/GPU/ANE，`cpuAndNeuralEngine` 允许 CPU 与 ANE、排除 GPU，不能理解为保证模型全部在 ANE 上执行。[Apple MLComputeUnits](https://developer.apple.com/documentation/coreml/mlcomputeunits)、[Core ML 模型执行说明](https://apple.github.io/coremltools/docs-guides/source/model-prediction.html)
-
-Mac 第一阶段加入独立的 Core ML 可行性与性能实验：用同源 RIFE 权重及相同精度、分辨率，与 NCNN/MoltenVK GPU 基线比较。覆盖 `all`、`cpuAndNeuralEngine`、`cpuAndGPU`，记录模型转换是否成功、计算单元分配、实际推理轨迹、端到端速度、功耗、内存及画质偏差。使用 MLComputePlan 查看预计设备分配，并结合 Core ML 性能工具验证执行，不能把选择了 `all` 或模型转换成功当作 ANE 已工作。[Apple Core ML 性能工具](https://developer.apple.com/videos/play/wwdc2024/10161/)
-
-RIFE 涉及光流变形与采样，原始实现使用 `grid_sample`；具体选定版本的这些运算能否有效分配到 ANE，需要转换和性能分析确认，不能笼统断言支持或不支持。CPU/GPU 回退及设备间同步可能抵消收益；减少 GPU 占用和功耗是待测收益。[RIFE 采样实现](https://github.com/hzwer/ECCV2022-RIFE/blob/main/model/warplayer.py)
-
-Core ML 实验先测模型，不立即扩展正式播放链；现有 NCNN 插件不会因设置一个选项就改为 ANE。若实验显示足够收益，再为 Core ML 编写专用帧接口／VapourSynth 后端适配并验证播放时序，替换或补充 Mac 后端。若没有收益，保留 GPU 方案并记录结果。用户当前是在询问可行性，尚未要求首版必须通过 NPU 执行，因此 ANE 全模型覆盖不设为首版交付条件。
+当前研究候选为 VapourSynth R80、vs-mlrt v15.16 的标准 TensorRT 后端和 FP16 RIFE 模型；不同时引入 TensorRT-RTX。候选版本尚未实测，不直接视为发行版本。上游 Windows TensorRT 归档两个分卷共 2,676,014,172 字节；运行库体积须按实际依赖闭包实测，不能把归档体积当作最终安装增量。[vs-mlrt v15.16](https://github.com/AmusementClub/vs-mlrt/releases/tag/v15.16)
 
 ## 数据流与组件职责
 
@@ -47,30 +37,47 @@ Core ML 实验先测模型，不立即扩展正式播放链；现有 NCNN 插件
 新增职责独立的组件，避免继续向 `PlayerComponent.cpp` 堆积推理和部署逻辑：
 
 - **RifeRuntimeManager**：定位私有运行库、校验版本清单、检测 GPU 与依赖、运行后台模型准备、管理平台缓存。
-- **后端适配器**：分别实现 `windows-nvidia-trt` 和 `mac-arm64-ncnn` 的探测、准备、脚本参数及诊断，向控制层提供统一接口；首版不在运行时自动切换到其他后端。
+- **RifeExtensionManager**：下载或导入专用 RIFE 扩展包，校验、安装、选择版本及安排卸载；不扩展为通用插件市场。
+- **后端适配**：仅实现 `windows-nvidia-trt` 的探测、准备、脚本参数及诊断，不为尚未实现的平台增加插件框架。
 - **RifeController**：处理每次播放的适用性、滤镜挂载与移除、状态更新、设置覆盖与恢复，以及故障旁路。由 `PlayerComponent` 的现有生命周期调用。
 - **内置 `.vpy` 适配层**：完成格式转换、RIFE 调用、切镜处理、帧时长及色彩属性传递。显式加载本包插件，不扫描用户全局插件。
-- **后台准备工具**：在无可见窗口的独立进程中完成兼容探测、Windows TensorRT 引擎构建或 Mac 模型预热，可取消，输出结构化状态；只接收模型、GPU、分辨率和缓存路径，不接收媒体 URL 或凭据。
+- **后台准备工具**：在无可见窗口的独立进程中完成兼容探测和 TensorRT 引擎构建，可取消，输出结构化状态；只接收模型、GPU、分辨率和缓存路径，不接收媒体 URL 或凭据。
 
 运行库环境必须在 VapourSynth 首次加载前建立。实现阶段沿 `src/main.cpp`、`MpvConfigManager`、MpvQt 初始化顺序确定入口，不将环境准备放在已经初始化后的 `PlayerComponent::initializeMpv()` 中碰运气。
 
+## 扩展包获取、安装和更新
+
+主程序内置设置入口、适用性检查、扩展包管理和播放控制；体积较大的 Python、VapourSynth、TensorRT/CUDA 运行库与 RIFE 模型放入独立的 Windows x64 NVIDIA 扩展包。主程序发行包不包含这些大型组件，没有扩展包时保持普通播放，并将补帧状态显示为“未安装”。
+
+首次使用流程：用户打开 RIFE 设置 → 看到所需下载大小、安装占用和兼容性 → 点击“下载并安装”或“从本地导入扩展包” → 校验并安装 → 提示重启播放器 → 完成模型准备后启用。仅打开设置不触发大文件下载。主程序升级保留兼容扩展包，不重复下载。
+
+扩展包是同一套播放器私有运行环境的独立发行形式，不调用 SVP、不依赖外部 mpv。在线与离线使用完全相同的包。扩展安装时不执行用户级 pip、不注册全局组件，也不下载或变更显卡驱动。
+
+在线下载来自项目发布的固定版本包，由主程序的可信版本目录提供 URL、版本、大小和 SHA-256；不从用户输入的任意 URL 自动安装。使用独立下载请求，不携带 Emby 认证头。下载可取消和重试，支持以 ETag/Range 校验后的续传；服务端不支持时安全重下。离线导入同样要求与可信目录的包哈希匹配。后续独立扩展更新可扩充版本目录，但本轮不新建远程插件市场服务。
+
+安装先写入临时目录，验证包哈希、架构、播放器接口版本、文件清单和文件哈希；拒绝目录穿越、外链及缺失文件。成功后原子激活版本记录，失败不影响已安装版本。空间检查覆盖下载文件、解压临时区、保留旧版本及引擎缓存预算。重启后才加载新版本，避免替换本进程已加载的 DLL；旧版本在确认未被其他播放器进程使用后清理。
+
+扩展包存储在 `Paths::globalDataDir("extensions/rife/<version>")`，沿用应用的数据根目录语义，同一数据根下不同 profile 共用一份运行库；配置开关和引擎缓存按 profile 保存。卸载只处理所选 RIFE 扩展版本及其缓存，不触碰媒体和其他配置，已加载的包延迟到退出／下次启动时清理。
+
+扩展包与主程序分别编号，通过运行库接口版本和允许的主程序版本范围匹配；不兼容时显示原因并继续普通播放，不能勉强加载。研究阶段首先制作本地包并验证导入、移动目录和推理，再接在线下载；未发布有效附件前不提供无效下载按钮。
+
 ## 私有运行环境和发布
 
-Windows 将运行库、Python、VapourSynth、推理 DLL、固定脚本和模型放入安装目录下的独立 `rife/` 树，安装器与便携包使用同一份清单。Mac 将原生 arm64 Python、VapourSynth、NCNN 插件及其动态依赖、MoltenVK 和模型纳入 `.app` 的 Frameworks/Resources 目录。两个平台各固定一个经验证的模型配置，优先使用同源模型的适配格式，不强求二进制格式相同。
+运行库、Python、VapourSynth、推理 DLL、固定脚本和一个经验证的模型配置放入扩展包。主程序的 Windows 安装器和便携版均通过同一扩展管理接口加载它；研究工具从显式指定的私有运行库根目录加载，不能意外借用本机其他安装。
 
-无需用户运行 pip、配置系统 PATH、注册 VapourSynth、安装 CUDA Toolkit 或 Homebrew。显卡驱动／Metal 由系统提供。Mac 上依赖全部使用包内可重定位的 install name/rpath；如插件依赖 Vulkan loader，则连同 loader 与 ICD 配置一起打包，明确定位包内 MoltenVK。所有 Mach-O 与 Python 扩展纳入依赖闭包检查及签名，迁移应用位置后仍能从 Finder 启动；不依赖开发机 `/opt/homebrew` 路径或终端环境。
+无需用户运行 pip、配置系统 PATH、注册 VapourSynth 或安装 CUDA Toolkit。显卡驱动由系统提供。运行库按实际加载清单纳入包内；将包迁移到另一个中文／空格路径后仍能启动，不依赖开发机安装的 Python、CUDA 或 SVP。
 
-使用进程内的明确路径加载所需库；如采用 `VSSCRIPT_PATH`，须分别验证所打包的 libmpv 确实支持并使用了该路径。Python 使用对应平台的隔离路径配置，不读取用户 site-packages，不修改系统或用户级环境变量，不借用本机 SVP 安装。
+使用进程内的明确路径加载所需库；如采用 `VSSCRIPT_PATH`，须验证所打包的 libmpv 确实支持并使用了该路径。Python 使用隔离路径配置，不读取用户 site-packages，不修改系统或用户级环境变量，不借用本机 SVP 安装。
 
-首次使用无需联网下载依赖。模型引擎、GPU 缓存和临时文件写入当前 profile 的可写缓存目录，不写 Program Files 或已签名的 `.app`。打包清单记录来源、版本、SHA-256、模型标识及配套许可文件；在兼容实验中选定版本组合后固定，不在运行时追随 latest。正式包只包含允许再分发的组件，分别报告实际体积。
+扩展包完整安装后，模型准备和本地播放补帧无需联网；网络媒体仍需要其原有连接。模型引擎、GPU 缓存和临时文件写入当前 profile 的可写缓存目录，不写 Program Files。打包清单记录来源、版本、SHA-256、模型标识及配套许可文件；在兼容实验中选定版本组合后固定，不在运行时追随 latest。正式包只包含允许再分发的组件，分别报告主程序、扩展包下载、展开后运行库和典型引擎缓存的体积。
 
-TensorRT 引擎按 GPU 标识、驱动版本、TensorRT/插件版本、模型哈希、精度及输入形状区分。使用文件锁和原子完成标记，取消或失败的半成品不能作为成功缓存。迁移便携包或更新驱动后，播放器自行判断是否重建；不分发 4090 本机生成的引擎给其他 GPU 直接复用。Mac 不走 TensorRT 引擎编译流程；NCNN/MoltenVK 的预热状态及可持久化缓存按模型、插件、GPU 和系统版本区分，并单独验证 seek 重载成本。
+TensorRT 引擎按 GPU 标识、驱动版本、TensorRT/插件版本、模型哈希、精度及输入形状区分。使用文件锁和原子完成标记，取消或失败的半成品不能作为成功缓存。迁移便携包或更新驱动后，播放器自行判断是否重建；不分发 4090 本机生成的引擎给其他 GPU 直接复用。
 
 ## 播放控制与用户体验
 
-设置中增加“RIFE AI 补帧”，与现有 mpv `interpolation` 明确区分。首版显示关闭／2 倍、实际状态、源／目标帧率和旁路原因。诊断中可查看后端、模型版本、GPU、缓存命中与错误；普通设置不暴露 Python 路径和 TensorRT 参数。
+设置中增加“RIFE AI 补帧”，与现有 mpv `interpolation` 明确区分。首版显示扩展安装状态、下载／导入入口、关闭／2 倍、实际运行状态、源／目标帧率和旁路原因。诊断中可查看扩展版本、后端、模型版本、GPU、缓存命中与错误；普通设置不暴露 Python 路径和 TensorRT 参数。
 
-首次开关或遇到需要准备的新输入形状时，后台进行相应平台的引擎准备／模型预热，界面显示“正在准备补帧”；当前视频先正常播放。准备完成后显示“已准备，下次播放生效”，用户可选择从当前位置重新加载并启用。不在长时间编译期间阻塞 mpv 加载 hook 或 UI，也不突然自动重启正在看的视频。
+首次开关或遇到需要准备的新输入形状时，后台进行引擎准备，界面显示“正在准备补帧”；当前视频先正常播放。准备完成后显示“已准备，下次播放生效”，用户可选择从当前位置重新加载并启用。不在长时间编译期间阻塞 mpv 加载 hook 或 UI，也不突然自动重启正在看的视频。
 
 缓存就绪后的新播放可自动启用。播放中修改设置默认下次加载生效；“立即应用”保存当前位置、暂停状态及轨道选择后受控重载。关闭时仅移除大河影院自己的滤镜，并恢复由本功能覆盖的设置。切换影片、停止、取消和迟到的后台结果以播放会话 ID 隔离，不允许旧任务影响新影片。
 
@@ -80,11 +87,11 @@ RIFE 生效时关闭 mpv 原有时间轴 interpolation，硬解按经实测的 c
 
 ## 帧处理、错误与性能边界
 
-mpv 的 VapourSynth 脚本会在 seek 时重新加载，Windows 脚本必须复用已有引擎而非重新编译；Mac 须验证重复创建滤镜的模型加载与 GPU pipeline 建立成本，若超过可接受的 seek 延迟，需在插件层优化复用后再验收。正确维护 `_DurationNum` / `_DurationDen`，验证非整数源帧率、尾帧、短视频与重复帧，不能仅靠修改 FPS 标记声称完成补帧。[mpv VapourSynth 文档](https://mpv.io/manual/master/#video-filters-vapoursynth)
+mpv 的 VapourSynth 脚本会在 seek 时重新加载，脚本必须复用已有引擎而非重新编译。正确维护 `_DurationNum` / `_DurationDen`，验证非整数源帧率、尾帧、短视频与重复帧，不能仅靠修改 FPS 标记声称完成补帧。[mpv VapourSynth 文档](https://mpv.io/manual/master/#video-filters-vapoursynth)
 
 YUV 与浮点 RGB 转换须采用输入的矩阵、范围和色彩属性，并正确还原。模型尺寸对齐采用边缘填充后裁切，不能改变画幅。切镜检测命中时使用原帧，避免将两个镜头合成过渡帧；检测规则和阈值与模型一起固定，并用实际切镜样本验证。
 
-状态区分关闭、准备中、已准备、正在补帧、已旁路及失败；“正在补帧”需要滤镜存在且已确认产出符合目标时序的帧，不能由配置开关直接推断。
+扩展安装状态区分未安装、下载中、校验／安装中、等待重启、已安装及安装失败；运行状态另分关闭、准备中、已准备、正在补帧、已旁路及失败。“正在补帧”需要滤镜存在且已确认产出符合目标时序的帧，不能由配置开关或扩展已安装直接推断。
 
 依赖缺失、驱动不兼容、缓存不可写、准备超时、模型错误或可捕获的滤镜失败，均显示可理解的原因并保持或恢复原帧播放。需要重载才能恢复时，限本次播放一次，并保存进度和轨道，避免重试循环。网络缓冲、暂停和 seek 后的过渡期不得误判为算力不足。
 
@@ -96,13 +103,14 @@ YUV 与浮点 RGB 转换须采用输入的矩阵、范围和色彩属性，并�
 
 先验证私有运行环境，再接控制层和 UI，最后打包验收。兼容实验失败时报告实际失败层，不能把只有设置开关的版本当作内置 RIFE 完成。
 
-1. 在未安装 SVP、Python、VapourSynth、CUDA Toolkit 的干净 Windows 环境中，只安装播放器与适配驱动，验证依赖解析、引擎准备及实际推理。另在未安装 Homebrew/Python/VapourSynth/Vulkan SDK 的 Apple Silicon Mac 上验证完整 `.app`；开发机上成功不替代两端独立安装验证。
-2. 使用本地和 Emby 直连的 1080p SDR 样本，在 RTX 4090 和实际可用的 M 芯片 Mac 上分别验证 23.976/24/30 fps 的 2 倍输出、实际新增帧、时长、音画同步及切镜画面。每个代表性样本连续播放 10 分钟，预热后的丢帧比例低于 1%、音画偏差绝对值不持续超过 80 ms。记录完整芯片型号、系统和内存；达不到时记录结果并调整模型／范围，不提前承诺性能。
+1. 在未安装 SVP、Python、VapourSynth、CUDA Toolkit 的干净 Windows 环境中，只安装播放器、RIFE 扩展包与适配驱动，验证依赖解析、引擎准备及实际推理。开发机上清理子进程环境不能替代真正的干净机器验证；没有该环境时报告未测，不能宣称完成发行验收。
+2. 使用本地和 Emby 直连的 1080p SDR 样本，在 RTX 4090 上验证 23.976/24/30 fps 的 2 倍输出、实际新增帧、时长、音画同步及切镜画面。每个代表性样本连续播放 10 分钟，预热后的丢帧比例低于 1%、音画偏差绝对值不持续超过 80 ms。达不到时记录结果并调整模型／范围，不提前承诺性能。
 3. 覆盖首次编译、缓存命中、取消、磁盘不可写、损坏／过期缓存、驱动或 GPU 变化，验证界面可操作和缓存不误用。
-4. 覆盖快速 seek、暂停／恢复、停止、下一集、重新打开、字幕切换、弹幕、全屏和三套画质档。Windows 原生 GPU-Next 和 Render API 各自验证；Mac 按实际提供的默认后端与兼容后端验证，尤其检查 VideoToolbox 帧回读。不通过的组合明确旁路。
+4. 覆盖快速 seek、暂停／恢复、停止、下一集、重新打开、字幕切换、弹幕、全屏和三套画质档。Windows 原生 GPU-Next 和 Render API 各自验证；不通过的组合明确旁路。
 5. HDR、4K、未知帧率、隔行、冲突滤镜、系统配置模式、不支持的 GPU、无 RIFE 运行库均保持正常原帧播放，状态理由准确。非默认倍速播放首版旁路。
-6. 控制层自动化测试覆盖时序状态、会话取消、滤镜所有权和选项恢复；适配层用短片验证时长与新增帧；最终 Windows 安装器／便携包及 Mac DMG／应用均验证中文路径、空格路径及普通用户权限。Mac 检查原生 arm64 依赖、无 Rosetta 前提、签名和从 Finder 启动。包中逐一校验运行库清单，不将本机开发环境带入验收。
+6. 控制层自动化测试覆盖时序状态、会话取消、滤镜所有权和选项恢复；适配层用短片验证时长与新增帧；最终 Windows 安装器／便携包均验证中文路径、空格路径及普通用户权限。扩展包逐一校验运行库清单，不将本机开发环境带入验收。
+7. 验证扩展未安装、在线下载中断／续传、离线导入、哈希不符、错误架构、目录穿越、空间不足、安装失败、版本不匹配、多进程使用旧包及升级后复用；这些情况均不能破坏基础播放或现有有效扩展。安装、升级、卸载之后验证应用数据根下共享副本数量，避免每个 profile 重复保存大型运行库。
 
-实现主要接入 `src/player/`、`resources/settings/settings_description.json`、`native/nativeshell.js`、运行库准备入口，以及 `CMakeModules/CompleteBundleWin.cmake.in`、`CMakeModules/PreparePortableZip.cmake.in`、`CMakeModules/CompleteBundleMac.cmake.in` 和两端构建脚本。新组件与测试独立成文件，现有 PlayerComponent 仅接生命周期和状态桥接。当前 Windows 环境无法完成 Mac 实机验收；Mac 构建通过也不代表 M 芯片实时补帧性能通过，交付报告必须分开陈述。
+实现主要接入 `src/player/`、`resources/settings/settings_description.json`、`native/nativeshell.js`、运行库准备入口与 Windows 扩展包构建脚本。`CMakeModules/CompleteBundleWin.cmake.in` 和 `CMakeModules/PreparePortableZip.cmake.in` 只部署轻量控制与安装支持，不将 AI 运行库混入基础包。新组件与测试独立成文件，现有 PlayerComponent 仅接生命周期和状态桥接。Mac 相关运行库、构建脚本及测试由用户在 Mac 上另行推进。
 
-本文为设计结果。完整 RIFE 环境、具体模型组合、端到端效果和性能尚未验证；通过设计审阅后再形成逐项实施计划。
+本文为本机研究与接入的设计结果。完整 RIFE 环境、具体模型组合、端到端效果和性能尚未验证；实施计划须先交付可复现的私有运行库与补帧研究结果，再继续产品接入。
