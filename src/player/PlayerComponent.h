@@ -13,6 +13,7 @@
 #include <memory>
 #include <QElapsedTimer>
 #ifdef Q_OS_MAC
+#include "interpolation/InterpolationPolicy.h"
 namespace rife {class FrameInterpolationController;}
 #endif
 
@@ -248,6 +249,7 @@ private:
   QTimer m_rifeTimer;
   QElapsedTimer m_rifeClock;
   bool m_rifeSuppressedSvp=false;
+  rife::StartupGate m_rifeStartup;
   void beginInterpolationItem();
   void pollInterpolation();
 #endif

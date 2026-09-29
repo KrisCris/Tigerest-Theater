@@ -14,7 +14,8 @@ Eligibility qualify(const SourceInfo& s) {
     return {true,{}};
 }
 Rational rationalFrameRate(double fps) {
-    if(!std::isfinite(fps)||fps<=0||fps>30.001)return {0,1};
+    // Preserve valid high rates so qualification can report its actual limit.
+    if(!std::isfinite(fps)||fps<=0||fps>1000)return {0,1};
     for(int64_t num:{24000,30000})if(std::abs(fps-double(num)/1001)<.0001)return {num,1001};
     const auto n=int64_t(std::llround(fps*10000)),d=int64_t(10000),g=std::gcd(n,d);
     return {n/g,d/g};

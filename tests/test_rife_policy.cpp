@@ -5,6 +5,16 @@
 #include <cassert>
 #include <cmath>
 int main() {
+    rife::StartupGate startup;
+    startup.begin(true,false,100); // autoplay waits for the first generated frame
+    assert(startup.waiting()&&startup.waitingToPlay()&&!startup.expired(15099));
+    assert(startup.expired(15100));
+    assert(startup.finish());assert(!startup.finish()); // resume only once
+    startup.begin(true,true,200);assert(!startup.waitingToPlay()&&!startup.finish()); // explicit paused load
+    startup.begin(true,false,300);startup.requestPause(true);assert(!startup.finish());
+    startup.begin(true,true,400);assert(startup.requestPause(false));assert(startup.finish());
+    startup.begin(true,false,500);startup.cancel();assert(!startup.finish()); // stop/replace
+    startup.begin(false,false,600);assert(!startup.waiting()&&!startup.requestPause(false));
     rife::SourceInfo s{1920,1080,30000,1001,true,true,false,true};
     assert(rife::qualify(s).enabled);
     for (int kind=0;kind<7;++kind) {

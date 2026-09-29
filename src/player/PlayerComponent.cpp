@@ -635,6 +635,11 @@ void PlayerComponent::updatePlaybackState()
   State newState = m_state;
 
   if (m_inPlayback) {
+#ifdef Q_OS_MAC
+    if(m_rifeStartup.waitingToPlay())
+      newState=State::buffering;
+    else
+#endif
     if (m_paused)
     {
       newState = State::paused;
@@ -730,6 +735,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       m_nativeVideoReady = false;
 #ifdef Q_OS_MAC
       if(m_rife)m_rife->stop();
+      m_rifeStartup.cancel();
 #endif
       auto *endFile = static_cast<mpv_event_end_file*>(event->data);
 
@@ -788,6 +794,12 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       if (strcmp(prop->name, "pause") == 0 && prop->format == MPV_FORMAT_FLAG)
       {
         m_paused = !!*static_cast<int*>(prop->data);
+#ifdef Q_OS_MAC
+        if(!m_paused&&m_rifeStartup.waiting()) {
+          m_rifeStartup.requestPause(false);
+          m_mpv->setPropertyAsync("pause",true);
+        }
+#endif
       }
       else if (strcmp(prop->name, "core-idle") == 0 && prop->format == MPV_FORMAT_FLAG)
       {
@@ -1063,9 +1075,18 @@ void PlayerComponent::beginInterpolationItem()
     }
   }
   m_rife->beginItem(enabled,MpvConfigManager::usingSystemConfig());
+  const bool prepare=m_rife->state()==rife::State::Preparing&&
+      m_mpv->getProperty("vid").toString()!="no";
+  m_rifeStartup.begin(prepare,m_mpv->getProperty("pause").toBool(),m_rifeClock.elapsed());
+  if(prepare&&m_mpv->setProperty("pause",true)<0)m_rifeStartup.cancel();
 }
 void PlayerComponent::pollInterpolation()
 {
+  // This path must stay asynchronous even while Cocoa creates the VO. An
+  // audio-only/failed load must never be left paused waiting for video metrics.
+  if(m_mpv&&m_rifeStartup.expired(m_rifeClock.elapsed())) {
+    if(m_rifeStartup.finish())m_mpv->setPropertyAsync("pause",false);
+  }
   // macvk can synchronously dispatch window setup to the main thread while
   // mpv's core waits for its VO. Querying that core here would deadlock both.
   if(!m_rife||!m_mpv||!m_inPlayback||(m_nativeVideoOutput&&!m_nativeVideoReady))return;
@@ -1078,6 +1099,9 @@ void PlayerComponent::pollInterpolation()
   const bool suspended=m_paused||m_bufferingPercentage<100||
       m_mpv->getProperty("seeking").toBool()||m_mpv->getProperty("paused-for-cache").toBool();
   m_rife->poll(m_rifeClock.elapsed(),suspended);
+  if(m_rifeStartup.waiting()&&m_rife->state()!=rife::State::Preparing) {
+    if(m_rifeStartup.finish())m_mpv->setPropertyAsync("pause",false);
+  }
 }
 #endif
 
@@ -1099,6 +1123,9 @@ void PlayerComponent::play()
     qWarning() << "PlayerComponent::play: mpv not initialized yet";
     return;
   }
+#ifdef Q_OS_MAC
+  if(m_rifeStartup.requestPause(false))return;
+#endif
   QStringList args = (QStringList() << "set" << "pause" << "no");
   m_mpv->command( args);
 }
@@ -1193,6 +1220,9 @@ void PlayerComponent::notifyStreamingBitrateResult(qint64 bitrate, bool success,
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::stop()
 {
+#ifdef Q_OS_MAC
+  m_rifeStartup.cancel();
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::stop: mpv not initialized yet";
     return;
@@ -1227,6 +1257,13 @@ void PlayerComponent::clearQueue()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::pause()
 {
+#ifdef Q_OS_MAC
+  m_rifeStartup.requestPause(true);
+  if(m_mpv&&m_rifeStartup.waiting()) {
+    m_mpv->setPropertyAsync("pause",true);
+    return;
+  }
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::pause: mpv not initialized yet";
     return;
@@ -1541,6 +1578,9 @@ void PlayerComponent::checkAudioOutput()
     return;
 
   m_audioOutputWarningShown = true;
+#ifdef Q_OS_MAC
+  m_rifeStartup.requestPause(true);
+#endif
   m_mpv->setProperty("pause", true);
   m_mpv->command(QStringList()
                  << "show-text"

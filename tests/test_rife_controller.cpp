@@ -76,5 +76,6 @@ int main(int argc,char**argv) {
     assert(slowController.state()==State::DisabledForCurrentItem&&slow.notices==1);
     auto goodParams=QVariantMap{{"w",1920},{"h",1080},{"gamma","bt.1886"},{"primaries","bt.709"},{"colormatrix","bt.709"},{"colorlevels","limited"}};
     assert(qualify(sourceInfo(goodParams,{{"interlaced",false}},23.976023976)).enabled);
+    assert(qualify(sourceInfo(goodParams,{{"interlaced",false}},60)).reason=="unsupported-fps");
     goodParams["gamma"]="pq";assert(sourceInfo(goodParams,{{"interlaced",false}},24).hdr);
 }

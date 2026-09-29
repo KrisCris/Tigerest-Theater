@@ -1,7 +1,7 @@
 'use strict';
 
-// The real Qt WebChannel, networking stack and Chromium page are exercised
-// against a loopback fixture. No user's profile or Emby account is touched.
+// Full native playback through Qt WebChannel, with private profiles and IPC.
+// Matrix mode also exercises a local HTTP source; no Emby account is touched.
 const assert = require('node:assert/strict');
 const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -69,6 +69,7 @@ async function devtools(url) {
     const seconds=Number(process.argv[5]||600);
     const baseline=process.argv[6]==='baseline';
     const pausedStart=process.argv[6]==='paused';
+    const matrix=process.argv[6]==='matrix';
     const root=fs.mkdtempSync(path.join(os.tmpdir(),'tigerest-rife-player-'));
     const installed=path.join(root,'Applications','Tigerest Theater.app');
     fs.mkdirSync(path.dirname(installed));
@@ -89,7 +90,7 @@ async function devtools(url) {
     env.PATH='/usr/bin:/bin:/usr/sbin:/sbin';
     const log=fs.openSync(output+'.app.log','w');
     const child=spawn(executable,['--log-level','warn','--config-dir',root,'--profile',id,'--remote-debugging-port',`127.0.0.1:${port}`],{env,stdio:['ignore',log,log]});
-    let cdp,ipc;const samples=[];let result={seconds,baseline,clip,executable,samples};
+    let cdp,ipc,httpServer;const samples=[];let result={seconds,baseline,matrix,clip,executable,samples};
     try {
         const target=await until(async()=>{
             assert.equal(child.exitCode,null,'app exited');
@@ -107,14 +108,70 @@ async function devtools(url) {
         const cmd=(...command)=>new Promise((resolve,reject)=>{const request_id=++sequence;
             const timer=setTimeout(()=>{pending.delete(request_id);reject(new Error(`IPC timeout ${command}`));},10000);
             pending.set(request_id,{resolve,timer});ipc.write(JSON.stringify({command,request_id})+'\n');});
-        await cdp.evaluate(`window.api.player.setVideoOnlyMode(true); window.api.player.load(${JSON.stringify(pathToFileURL(clip).href)},{autoplay:${!pausedStart},startMilliseconds:0},{type:'video',title:'RIFE isolated acceptance'},1,-1)`);
-        await until(async()=>(await cmd('get_property','time-pos'))!==null,'first rendered frame');
         const properties=['seeking','cache-buffering-state','paused-for-cache','speed','video-speed-correction','audio-speed-correction','display-fps','time-pos','avsync','frame-drop-count','decoder-frame-drop-count','estimated-vf-fps','estimated-display-fps','vo-delayed-frame-count','osd-dimensions','video-out-params','current-vo','current-gpu-context','hwdec-current','current-ao','pause','core-idle'];
         const sample=async()=>{
             const d=await cdp.evaluate('window.api.player.mpvDiagnostics()');
             const metrics=Object.fromEntries(await Promise.all(properties.map(async key=>[key,await cmd('get_property',key)])));
             const value={clock:Date.now(),rife:d.rife,metrics};samples.push(value);return value;
         };
+        const load=async(url,autoplay=true)=>cdp.evaluate(`window.api.player.setVideoOnlyMode(true); window.api.player.load(${JSON.stringify(url)},{autoplay:${autoplay},startMilliseconds:0},{type:'video',title:'RIFE isolated acceptance'},1,-1)`);
+        if(matrix){
+            result.cases=[];
+            const open=async(url,reason='',autoplay=true)=>{
+                const old=(await sample()).rife.generation;
+                await load(url,autoplay);
+                let last;
+                await until(async()=>{last=await sample();return last.rife.generation>old&&[2,3,4].includes(last.rife.state);},'new source qualification');
+                assert.equal(last.rife.state,reason?3:2,JSON.stringify(last.rife));
+                assert.equal(last.rife.reason,reason);
+                result.cases.push({url,reason,diagnostics:last.rife});
+                return last;
+            };
+            const url=name=>pathToFileURL(path.join(clip,name)).href;
+            await open(url('supported.mp4'),'',false);
+            assert.equal(await cmd('get_property','pause'),true,'paused load was auto-resumed');
+            await cdp.evaluate('window.api.player.play()');
+            await until(async()=>!(await cmd('get_property','pause')),'resume');
+            await delay(300);
+            await cdp.evaluate('window.api.player.pause()');
+            await until(async()=>await cmd('get_property','pause'),'pause');
+            const pos=await cmd('get_property','time-pos');await delay(300);
+            assert.ok(Math.abs((await cmd('get_property','time-pos'))-pos)<.04,'pause clock advanced');
+            const generation=(await sample()).rife.generation;
+            await cdp.evaluate('window.api.player.seekTo(2000)');
+            await until(async()=>{const s=await sample();return s.rife.generation>generation&&s.rife.state===2;},'seek rebuild');
+            assert.equal(await cmd('get_property','pause'),true,'seek changed pause intent');
+            await cdp.evaluate('window.api.player.play()');
+            await cmd('set_property','fullscreen',true);await delay(700);
+            assert.equal(await cmd('get_property','fullscreen'),true);
+            assert.equal((await sample()).rife.state,2);
+            await cmd('set_property','fullscreen',false);await delay(300);
+            result.cases.push({action:'pause-resume-seek-fullscreen',passed:true});
+            for(const [name,reason] of [['hdr','hdr'],['4k','unsupported-size'],['high-fps','unsupported-fps'],['unknown','unknown-color'],['vfr','vfr']]){
+                if(name==='vfr'){
+                    const old=(await sample()).rife.generation;await load(url(name+'.mkv'));
+                    await until(async()=>{const s=await sample();return s.rife.generation>old&&s.rife.state===3&&s.rife.reason===reason;},'detected variable frame rate');
+                    result.cases.push({url:url(name+'.mkv'),reason});
+                } else await open(url(name+'.mkv'),reason);
+                await until(async()=>!(await cmd('get_property','pause')),'bypass preserves autoplay');
+            }
+            let requests=0;
+            const file=path.join(clip,'supported.mp4'),size=fs.statSync(file).size;
+            httpServer=http.createServer((req,res)=>{
+                if(req.url!=='/supported.mp4'){res.writeHead(404).end();return;}
+                ++requests;const range=/^bytes=(\d+)-(\d*)$/.exec(req.headers.range||'');
+                const start=range?Number(range[1]):0,end=range&&range[2]?Math.min(size-1,Number(range[2])):size-1;
+                if(start>end||start>=size){res.writeHead(416,{'Content-Range':`bytes */${size}`}).end();return;}
+                res.writeHead(range?206:200,{'Content-Type':'video/mp4','Accept-Ranges':'bytes','Content-Length':end-start+1,...(range?{'Content-Range':`bytes ${start}-${end}/${size}`}:{})});
+                const stream=fs.createReadStream(file,{start,end});res.on('close',()=>stream.destroy());stream.pipe(res);
+            });
+            const httpPort=await listen(httpServer);
+            await open(`http://127.0.0.1:${httpPort}/supported.mp4`);
+            assert.ok(requests>0);result.httpRequests=requests;result.passed=true;
+            console.log(JSON.stringify({...result,samples:undefined}));return;
+        }
+        await load(pathToFileURL(clip).href,!pausedStart);
+        await until(async()=>(await cmd('get_property','time-pos'))!==null,'first rendered frame');
         if(pausedStart){
             await until(async()=>{const s=await sample();return s.rife.generatedFrames>0;},'paused model preparation');
             await cdp.evaluate('window.api.player.play()');
@@ -126,6 +183,8 @@ async function devtools(url) {
         },'active interpolation after warmup');
         await delay(3000);
         const start=await sample();
+        result.startupDrops=start.metrics['frame-drop-count'];
+        assert.ok(result.startupDrops<=2,`startup dropped ${result.startupDrops} frames`);
         result.metadata=await cdp.evaluate('window.api.player.mpvDiagnostics()');
         result.renderPasses=await cmd('get_property','vo-passes');
         assert.equal(start.metrics['current-vo'],'gpu-next');
@@ -161,6 +220,7 @@ async function devtools(url) {
             try {await cdp.evaluate('window.api.player.stop()'); await delay(1500);}catch{}
         }
         ipc?.destroy();cdp?.close();
+        httpServer?.closeAllConnections();httpServer?.close();
         if(child.exitCode===null){const exited=new Promise(resolve=>child.once('exit',resolve));child.kill();const killer=setTimeout(()=>child.kill('SIGKILL'),5000);await exited;clearTimeout(killer);}
         fs.closeSync(log);
         fs.rmSync(path.join(os.homedir(),'Library/Logs/Tigerest Theater/profiles',id),{recursive:true,force:true});
