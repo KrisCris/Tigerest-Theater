@@ -23,6 +23,7 @@ private slots:
   void preservesExplicitVapourSynth();
   void worksWithoutVapourSynthInstalled();
   void rifeSuppressesOnlyManagedDiscovery();
+  void bundledRuntimeUsesPrivatePaths();
 private:
   QTemporaryDir m_root;
 };
@@ -116,6 +117,40 @@ void TestMpvSvp::rifeSuppressesOnlyManagedDiscovery()
   QVERIFY(overrides.open(QIODevice::WriteOnly));overrides.close();
   QVERIFY(MpvConfigManager::prepare());
   QVERIFY(MpvConfigManager::ownsDefaultSvpIpc());
+}
+
+void TestMpvSvp::bundledRuntimeUsesPrivatePaths()
+{
+  const QList<QByteArray> keys{"VSSCRIPT_PATH","PYTHONHOME","PYTHONPATH","PYTHONNOUSERSITE","PYTHONDONTWRITEBYTECODE","XDG_CONFIG_HOME","PATH"};
+  QMap<QByteArray,QByteArray> before;
+  for(const auto& key:keys)before[key]=qgetenv(key.constData());
+  const auto restore=qScopeGuard([&]{for(const auto& key:keys){if(before[key].isNull())qunsetenv(key.constData());else qputenv(key.constData(),before[key]);}});
+  QTemporaryDir root;QVERIFY(root.isValid());
+  const QString contents=root.filePath("测试 App.app/Contents");
+  const QString bin=contents+"/MacOS",python=contents+"/Resources/python";
+  QVERIFY(QDir().mkpath(bin));QVERIFY(QDir().mkpath(python+"/site-packages"));
+  for(const auto& path:QStringList{bin+"/vapoursynth",bin+"/tigerest-python",python+"/libvsscript.dylib"}){
+    QFile f(path);QVERIFY(f.open(QIODevice::WriteOnly));f.close();
+    QVERIFY(f.setPermissions(QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner));
+  }
+  QFile manifest(contents+"/Resources/vapoursynth-runtime.json");
+  QVERIFY(manifest.open(QIODevice::WriteOnly));
+  manifest.write("{\"library\":\"../Resources/python/libvsscript.dylib\",\"pythonHome\":\"../Resources/python\",\"pythonPath\":\"../Resources/python/site-packages\"}");manifest.close();
+  qunsetenv("VSSCRIPT_PATH");
+  const QString registration=root.filePath("private-config");
+  QVERIFY(MpvConfigManager::configureBundledVapourSynth(bin,registration));
+  QCOMPARE(qEnvironmentVariable("PYTHONHOME"),QFileInfo(python).canonicalFilePath());
+  QCOMPARE(qEnvironmentVariable("XDG_CONFIG_HOME"),registration);
+  QCOMPARE(qEnvironmentVariable("VSSCRIPT_PATH"),QFileInfo(python+"/libvsscript.dylib").canonicalFilePath());
+  qputenv("VSSCRIPT_PATH","/explicit/user/libvsscript.dylib");
+  QVERIFY(!MpvConfigManager::configureBundledVapourSynth(bin,registration));
+  QCOMPARE(qgetenv("VSSCRIPT_PATH"),QByteArray("/explicit/user/libvsscript.dylib"));
+  qunsetenv("VSSCRIPT_PATH");
+  QFile outside(root.filePath("outside.dylib"));QVERIFY(outside.open(QIODevice::WriteOnly));outside.close();
+  QVERIFY(manifest.open(QIODevice::WriteOnly|QIODevice::Truncate));
+  manifest.write("{\"library\":\"../../../outside.dylib\",\"pythonHome\":\"../Resources/python\",\"pythonPath\":\"../Resources/python/site-packages\"}");manifest.close();
+  QVERIFY(!MpvConfigManager::configureBundledVapourSynth(bin,registration));
+  QVERIFY(!qEnvironmentVariableIsSet("VSSCRIPT_PATH"));
 }
 
 void TestMpvSvp::discoversVapourSynth()

@@ -40,4 +40,9 @@ int main() {
     assert(!guard.update(0,30,30,50,0,30,false));
     assert(!guard.update(3000,120,120,50,0,30,false));
     assert(!guard.update(6000,210,210,50,0,30,false)); // maintained throughput, no fallback
+    guard.reset();
+    assert(!guard.update(0,30,30,10,0,30,false));
+    assert(!guard.update(3000,120,120,10,30,30,false));
+    assert(guard.update(6000,210,210,10,60,30,false)); // renderer loses output despite fast model
+
 }

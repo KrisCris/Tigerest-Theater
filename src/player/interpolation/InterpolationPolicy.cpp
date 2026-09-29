@@ -25,7 +25,10 @@ bool PerformanceGuard::update(int64_t now,uint64_t predictions,uint64_t pairs,do
     if(suspended||predictions<30||fps<=0){reset();return false;}
     if(start<0||now<start||pairs<firstPairs||drops<firstDrops){start=now;firstPairs=pairs;firstDrops=drops;return false;}
     if(now-start<3000)return false;
-    const double throughput=double(pairs-firstPairs)*1000/(now-start);
+    // Count delivered output as well as model production: GPU renderer load
+    // can drop frames even while inference itself sustains the source rate.
+    const double deliveredPairs=double(pairs-firstPairs)-double(drops-firstDrops)/2;
+    const double throughput=deliveredPairs*1000/(now-start);
     const bool slow=throughput<fps*.9 && (p95>1000/fps || drops>firstDrops);
     slowWindows=slow?slowWindows+1:0;
     start=now;firstPairs=pairs;firstDrops=drops;

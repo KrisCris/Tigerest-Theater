@@ -21,7 +21,7 @@ if ! command -v brew > /dev/null; then
 fi
 
 echo "[3/5] Installing build and test tools..."
-brew install aqtinstall mpv molten-vk ninja cmake create-dmg node pkgconf
+brew install aqtinstall mpv molten-vk vapoursynth python@3.13 ninja cmake create-dmg node pkgconf
 
 echo "[4/5] Installing Qt ${QT_VERSION}..."
 if [ ! -d "${DEPS_DIR}/qt/${QT_VERSION}/macos" ]; then

@@ -17,6 +17,9 @@
 #include <QUrl>
 #include <QVersionNumber>
 #include <QRegularExpression>
+#include <QCoreApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <algorithm>
 
 namespace
@@ -389,14 +392,52 @@ void MpvConfigManager::configureVapourSynth(const QStringList& installationRoots
   }
 }
 
+bool MpvConfigManager::configureBundledVapourSynth(const QString& executableDirectory,
+                                                  const QString& registrationDirectory)
+{
+  const QDir binaryDir(executableDirectory);
+  QFile manifest(binaryDir.filePath("../Resources/vapoursynth-runtime.json"));
+  if(!manifest.open(QIODevice::ReadOnly))return false;
+  const auto values=QJsonDocument::fromJson(manifest.readAll()).object();
+  const QString contents=QFileInfo(binaryDir.filePath("..")).canonicalFilePath()+"/";
+  const auto resolve=[&](const QString& key){
+    const QString relative=values.value(key).toString();
+    if(relative.isEmpty()||QDir::isAbsolutePath(relative))return QString();
+    const QString path=QFileInfo(binaryDir.filePath(relative)).canonicalFilePath();
+    return path.startsWith(contents)?path:QString();
+  };
+  const auto library=resolve("library"),home=resolve("pythonHome"),packages=resolve("pythonPath");
+  if(!QFileInfo(library).isFile()||!QDir(home).exists()||!QDir(packages).exists()||
+     !QFileInfo(binaryDir.filePath("vapoursynth")).isExecutable()||
+     !QFileInfo(binaryDir.filePath("tigerest-python")).isExecutable())return false;
+  // Preserve an explicit external runtime. Built-in RIFE then reports its
+  // runtime unavailable instead of feeding it an incompatible native plugin.
+  if(qEnvironmentVariableIsSet("VSSCRIPT_PATH")&&
+      QFileInfo(qEnvironmentVariable("VSSCRIPT_PATH")).canonicalFilePath()!=library)return false;
+  if(!QDir().mkpath(registrationDirectory))return false;
+  qputenv("VSSCRIPT_PATH",library.toUtf8());
+  qputenv("PYTHONHOME",home.toUtf8());qputenv("PYTHONPATH",packages.toUtf8());
+  qputenv("PYTHONNOUSERSITE","1");qputenv("PYTHONDONTWRITEBYTECODE","1");
+  // VSScript 79 keys registration by the resolved library path and can rebuild
+  // it after relocation. Keep its writes outside both the app and user config.
+  qputenv("XDG_CONFIG_HOME",QFileInfo(registrationDirectory).absoluteFilePath().toUtf8());
+  auto search=qEnvironmentVariable("PATH").split(QDir::listSeparator(),Qt::SkipEmptyParts);
+  search.removeAll(binaryDir.absolutePath());search.prepend(binaryDir.absolutePath());
+  qputenv("PATH",search.join(QDir::listSeparator()).toUtf8());
+  return true;
+}
+
 bool MpvConfigManager::prepare()
 {
 #if defined(Q_OS_MAC)
+  if(!configureBundledVapourSynth(QCoreApplication::applicationDirPath(),
+      ProfileManager::activeProfile().dataDir("rife-runtime"))) {
 #if defined(Q_PROCESSOR_ARM_64)
   configureVapourSynth({QStringLiteral("/opt/homebrew/opt/vapoursynth")});
 #else
   configureVapourSynth({QStringLiteral("/usr/local/opt/vapoursynth")});
 #endif
+  }
 #endif
   auto& settings = SettingsComponent::Get();
   // The controller applies this selection after parsing either config mode.

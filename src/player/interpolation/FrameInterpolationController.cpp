@@ -148,6 +148,9 @@ RuntimePaths bundledRuntimePaths(){
     RuntimePaths paths{contents.filePath("Resources/rife/model"),contents.filePath("Frameworks/tigerest-rife-vs.dylib"),contents.filePath("Resources/rife/interpolate.vpy"),false};
 #if defined(__aarch64__)
     paths.available=QFileInfo::exists(paths.model+"/manifest.json")&&QFileInfo::exists(paths.plugin)&&QFileInfo::exists(paths.script);
+    const QString runtime=qEnvironmentVariable("VSSCRIPT_PATH");
+    paths.available=paths.available&&!runtime.isEmpty()&&
+        QFileInfo(runtime).canonicalFilePath().startsWith(contents.canonicalPath()+"/Resources/python/");
 #endif
     return paths;
 }

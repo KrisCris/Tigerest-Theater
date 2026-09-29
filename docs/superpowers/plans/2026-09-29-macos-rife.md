@@ -129,11 +129,11 @@
 
 **Interfaces:** Package manifest resolves the VS runtime, native plugin and compiled RIFE model relative to the bundle; writable registration/cache paths resolve under application data. Bundle paths never embed the build machine's Homebrew prefix.
 
-- [ ] Add a package test that fails on a missing model/plugin, escaping path, external dylib or use of preexisting Python/VS registration.
-- [ ] Preserve useful earlier runtime packaging work by applying only selected files from the original checkout. Fix the Python launcher indirection exposed by the existing incomplete packaging test.
-- [ ] Bundle validated model artifacts, plugin, minimum Python/VS runtime and dependency licenses. Sign nested Mach-O files after dependency rewriting, then sign the app.
-- [ ] Test a relocated app with spaces/Chinese in its path and a clean environment/config directory. Verify that actual playback uses the bundled runtime and produces interpolated frames.
-- [ ] Commit packaging and its test coverage.
+- [x] Add a package test that fails on a missing model/plugin, escaping path, external dylib or use of preexisting Python/VS registration.
+- [x] Preserve useful earlier runtime packaging work by applying only selected files from the original checkout. Fix the Python launcher indirection exposed by the existing incomplete packaging test.
+- [x] Bundle validated model artifacts, plugin, minimum Python/VS runtime and dependency licenses. Sign nested Mach-O files after dependency rewriting, then sign the app.
+- [x] Test a relocated app with spaces/Chinese in its path and a clean environment/config directory. Verify that actual playback uses the bundled runtime and produces interpolated frames.
+- [x] Commit packaging and its test coverage.
 
 ### Task 7: End-to-end qualification and delivery
 

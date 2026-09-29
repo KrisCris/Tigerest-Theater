@@ -10,7 +10,7 @@
 #include <cassert>
 using namespace rife;
 int main(int argc,char** argv){
-    QCoreApplication app(argc,argv);assert(argc==5);
+    QCoreApplication app(argc,argv);assert(argc==5||argc==6);
     auto* mpv=mpv_create();assert(mpv);
     mpv_set_option_string(mpv,"config","no");mpv_set_option_string(mpv,"vo","null");
     mpv_set_option_string(mpv,"ao","null");mpv_set_option_string(mpv,"idle","yes");
@@ -25,7 +25,7 @@ int main(int argc,char** argv){
         for(const auto& a:storage)args<<a.constData();args<<nullptr;
         return mpv_command(mpv,args.data())>=0;
     };
-    RuntimePaths paths{argv[1],argv[2],argv[3],true,"monolithic","cpu-gpu"};
+    RuntimePaths paths{argv[1],argv[2],argv[3],true,argc==6?argv[5]:"monolithic",argc==6?"cpu-ane":"cpu-gpu"};
     FrameInterpolationController c({read,set,command},paths);
     QElapsedTimer timer;timer.start();bool ended=false;
     State previous=State::Off;

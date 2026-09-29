@@ -22,3 +22,11 @@ Configure these CMake cache variables to run the actual-model streaming tests:
 Build `tigerest_rife_vs` and the native `test_rife_*` targets, then run `ctest -R '^test_rife_' --output-on-failure` in the build directory. The tests use temporary clips and private IPC sockets; they must not connect to an installed player’s SVP endpoint.
 
 The model inference code runs natively. The embedded Python bridge only coordinates VapourSynth nodes and metadata. Full installation closure, application control and performance qualification are separate from plugin correctness.
+
+## Portable macOS package
+
+Use Xcode's toolchain (set `DEVELOPER_DIR` to Xcode-beta on the beta host). `build_mpv.py` downloads and verifies mpv 0.41.0, applies the included API/EOF patches and sets both C/Objective-C and Swift deployment targets to macOS 26.0. It refuses to reuse a source tree with different patch provenance. The Homebrew libraries are build inputs only.
+
+`dev/macos/build.sh` prepares the pinned model and playback runtime. CMake accepts `TIGEREST_RIFE_MODEL_DIR` pointing to the verified split packages and `MPV_LIBRARY_mpv` pointing to the resulting library. Installation compiles Encoder/Coarse/Refine into `Contents/Resources/rife/model`; development fixtures, PyTorch and conversion tools are excluded. The runtime recipe is verified against VapourSynth R79 and records Python/VS versions in its manifest.
+
+`dev/macos/sign_bundle.py` removes development rpaths, signs leaf code and then containers. `tests/test_macos_bundle.py` checks the model manifest, dependency closure, signatures' prerequisites and isolated Python/VS registration. For actual relocated playback, run `tests/test_rife_portable.py APP TEST_RIFE_CONTROLLER_LIVE`: it makes a disposable copy with Chinese/spaces in the path, adds a temporary native test probe, runs the bundled split pipeline with a clean environment, verifies loaded-library paths, and checks that playback has not changed the signed bundle. The probe is never included in the delivered app.

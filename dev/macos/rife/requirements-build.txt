@@ -3,3 +3,4 @@ coremltools==9.0
 numpy==2.3.5
 gdown==6.4.0
 pillow==12.3.0
+meson==1.9.2

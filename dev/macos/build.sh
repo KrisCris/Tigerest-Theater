@@ -22,6 +22,27 @@ fi
 
 echo "Using Qt: ${QTROOT}"
 
+# Build the same pinned streaming runtime as release CI.
+RIFE_BUILD="${PROJECT_ROOT}/build/rife"
+RIFE_PYTHON="${RIFE_BUILD}/venv/bin/python"
+if [ ! -x "${RIFE_PYTHON}" ]; then
+    "$(brew --prefix python@3.13)/bin/python3.13" -m venv "${RIFE_BUILD}/venv"
+fi
+"${RIFE_BUILD}/venv/bin/pip" install meson==1.9.2
+RIFE_MODEL=""
+if [ "$(uname -m)" = arm64 ]; then
+    "${RIFE_BUILD}/venv/bin/pip" install -r "${SCRIPT_DIR}/rife/requirements-build.txt"
+    "${RIFE_PYTHON}" "${SCRIPT_DIR}/rife/prepare_model.py" "${RIFE_BUILD}/source"
+    RIFE_MODEL="${RIFE_BUILD}/models/1080-split-refine"
+    if [ ! -f "${RIFE_MODEL}/manifest.json" ]; then
+        "${RIFE_PYTHON}" "${SCRIPT_DIR}/rife/split_model.py" \
+            --source "${RIFE_BUILD}/source" --output "${RIFE_MODEL}" \
+            --width 1920 --height 1080 --grid-scale 0.5 --offload-refine
+    fi
+fi
+"${RIFE_PYTHON}" "${SCRIPT_DIR}/rife/build_mpv.py" --output "${RIFE_BUILD}/playback" \
+    --meson "${RIFE_BUILD}/venv/bin/meson"
+
 # Configure
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
@@ -35,6 +56,8 @@ cmake -G Ninja \
     -DCMAKE_PREFIX_PATH="${QTROOT}" \
     -DCHECK_FOR_UPDATES=OFF \
     -DUSE_STATIC_MPVQT=ON \
+    -DMPV_LIBRARY_mpv="${RIFE_BUILD}/playback/mpv-build/libmpv.dylib" \
+    -DTIGEREST_RIFE_MODEL_DIR="${RIFE_MODEL}" \
     "${PROJECT_ROOT}"
 
 # Build
