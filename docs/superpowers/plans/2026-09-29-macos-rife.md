@@ -101,13 +101,13 @@
 
 **Interfaces:** VS entry `VapourSynthPluginInit2`; filter `tigerest.RIFE(clip, model_path, compute_policy)` accepts validated SDR frames. `splitDuration(num, den)` returns two normalized equal rational durations; `sourceFramesForOutput(n)` returns the adjacent input indices needed for output frame `n`. Diagnostics count actual synthesized frames, cut bypasses and prediction errors.
 
-- [ ] Write timing tests for 24000/1001 and 30000/1001 input, last-frame handling and unchanged aggregate duration. Add plugin tests for reference output, cut boundaries and HDR/unknown-metadata bypass.
-- [ ] Establish failures with the adapter absent.
-- [ ] Implement adjacent-frame-only requests within mpv's bounded input window; never reopen the media URL or seek from inside the filter.
-- [ ] Preserve frame metadata and original-frame order, split durations for inserted frames, and handle the last frame without requesting beyond EOF.
-- [ ] Add scene-cut detection with deterministic fixtures; preserve the boundary frame instead of mixing shots. Validate matrix/range conversions against known SDR fixtures.
-- [ ] Run real plugin tests with the Task 3 model and mpv filter integration; verify inserted-frame content, not only reported fps.
-- [ ] Commit plugin, script and tests.
+- [x] Write timing tests for 24000/1001 and 30000/1001 input, last-frame handling and unchanged aggregate duration. Add plugin tests for reference output, cut boundaries and HDR/unknown-metadata bypass.
+- [x] Establish failures with the adapter absent.
+- [x] Implement adjacent-frame-only requests within mpv's bounded input window; never reopen the media URL or seek from inside the filter.
+- [x] Preserve frame metadata and original-frame order, split durations for inserted frames, and handle the last frame without requesting beyond EOF.
+- [x] Add scene-cut detection with deterministic fixtures; preserve the boundary frame instead of mixing shots. Validate matrix/range conversions against known SDR fixtures.
+- [x] Run real plugin tests with the Task 3 model and mpv filter integration; verify inserted-frame content, not only reported fps.
+- [x] Commit plugin, script and tests.
 
 ### Task 5: Playback control and user setting
 
