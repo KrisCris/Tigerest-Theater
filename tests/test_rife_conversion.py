@@ -37,6 +37,11 @@ class ArchiveTests(unittest.TestCase):
 
 
 class MetricsTests(unittest.TestCase):
+    def test_rejects_unknown_precision_before_loading_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "precision"):
+                convert_model(Path(tmp), Path(tmp) / "out", 128, 128, 1, precision="typo")
+
     def test_rejects_nonfinite_and_inaccurate_frames(self):
         import numpy as np
         a = np.zeros((1, 3, 8, 8), np.float32)
@@ -47,6 +52,28 @@ class MetricsTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("RIFE_TEST_MODEL"), "set RIFE_TEST_MODEL for actual Core ML parity")
 class ConversionTests(unittest.TestCase):
+    def test_reduced_grid_keeps_full_output_and_matches_coreml(self):
+        import coremltools as ct
+        import numpy as np
+        import torch
+        source = Path(os.environ["RIFE_TEST_MODEL"])
+        network = load_reference_model(source, grid_scale=0.5)
+        rng = np.random.default_rng(2026)
+        first = rng.random((1, 3, 112, 192), dtype=np.float32)
+        second = np.roll(first, 4, axis=3)
+        with tempfile.TemporaryDirectory(prefix="rife-grid-") as tmp:
+            path = convert_model(source, Path(tmp), 192, 112, 1.0, grid_scale=0.5)
+            model = ct.models.MLModel(str(path), compute_units=ct.ComputeUnit.CPU_AND_GPU)
+            result = model.predict({"frame0": first, "frame1": second})["interpolated"]
+            with torch.inference_mode():
+                expected = network(torch.from_numpy(first), torch.from_numpy(second)).numpy()
+            self.assertEqual(result.shape, first.shape)
+            metrics = compare_frames(expected, result)
+            print("Reduced-grid parity:", metrics, flush=True)
+            self.assertTrue(metrics["passed"], metrics)
+            manifest = json.loads((Path(tmp) / "manifest.json").read_text())
+            self.assertEqual(manifest["grid_scale"], 0.5)
+
     def test_identical_and_translated_frames_match_reference(self):
         import coremltools as ct
         import numpy as np
@@ -54,7 +81,8 @@ class ConversionTests(unittest.TestCase):
         source = Path(os.environ["RIFE_TEST_MODEL"])
         network = load_reference_model(source)
         with tempfile.TemporaryDirectory(prefix="rife-conversion-") as tmp:
-            model_path = convert_model(source, Path(tmp), width=128, height=128, scale=1.0)
+            model_path = convert_model(source, Path(tmp), width=128, height=128, scale=1.0,
+                                       precision=os.environ.get("RIFE_TEST_PRECISION", "fp32"))
             model = ct.models.MLModel(str(model_path), compute_units=ct.ComputeUnit.CPU_AND_GPU)
             rng = np.random.default_rng(712)
             first = rng.random((1, 3, 128, 128), dtype=np.float32)

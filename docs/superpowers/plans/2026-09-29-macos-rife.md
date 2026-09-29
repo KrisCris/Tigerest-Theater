@@ -49,12 +49,12 @@
 
 **Interfaces:** `prepare_model(destination: Path) -> Path` returns a verified model directory. `convert_model(source: Path, output: Path, width: int, height: int, scale: float) -> Path` returns a saved Core ML package plus a JSON manifest. Manifest contains model identifier, upstream revision, original weight SHA-256, tool versions, tensor names/layout/dtypes and padded dimensions. No auto-download at application runtime.
 
-- [ ] Write a conversion test with identical frames and translated synthetic content; assert exact output dimensions, finite values, PSNR ≥40 dB and MAE ≤0.005 versus the same PyTorch weights.
-- [ ] Run the test to establish a missing-model/converter failure before implementation.
-- [ ] Fetch official 4.25 lite weights and associated source; record and verify hashes, pin tested conversion dependencies in an isolated environment.
-- [ ] Implement conversion for fixed dimensions using public Core ML operations. Preserve reference warp coordinates/padding; use CPU PyTorch for the reference to avoid backend-dependent baselines.
-- [ ] Run a small-size correctness check before larger conversions. Emit diagnostic images and metrics when parity fails; fix conversion rather than relax the gate silently.
-- [ ] Commit source, tests and provenance metadata; exclude environments and generated weights.
+- [x] Write a conversion test with identical frames and translated synthetic content; assert exact output dimensions, finite values, PSNR ≥40 dB and MAE ≤0.005 versus the same PyTorch weights.
+- [x] Run the test to establish a missing-model/converter failure before implementation.
+- [x] Fetch official 4.25 lite weights and associated source; record and verify hashes, pin tested conversion dependencies in an isolated environment.
+- [x] Implement conversion for fixed dimensions using public Core ML operations. Preserve reference warp coordinates/padding; use CPU PyTorch for the reference to avoid backend-dependent baselines.
+- [x] Run a small-size correctness check before larger conversions. Emit diagnostic images and metrics when parity fails; fix conversion rather than relax the gate silently.
+- [x] Commit source, tests and provenance metadata; exclude environments and generated weights.
 
 ### Task 2: Native performance and execution-device gate
 
@@ -62,13 +62,13 @@
 
 **Interfaces:** Native CLI accepts `--model PATH --input-a PATH --input-b PATH --compute all|cpu-ane|cpu-gpu --warmup 30 --iterations N --output PATH`; consumes planar float tensor fixtures and manifest from Task 1. Emits JSON with load time, p50/p95 pair time, generated frames, peak memory, model/config identity and device-plan metadata; writes a numerical output for parity. `evaluate_gate(report: dict) -> dict` returns pass/fail and explicit reasons, never infers ANE execution from a configuration name.
 
-- [ ] Add tests rejecting missing samples, p95 >26.7 ms, NaN output and a fabricated ANE claim based only on compute units.
-- [ ] Run those tests and record expected failure before adding the benchmark/gate implementation.
-- [ ] Compile the Objective-C++ harness with the installed command-line SDK; load the model once, reuse inputs and benchmark each public compute configuration independently.
-- [ ] Test 1080p and 4K, starting from small shapes to bound memory. Compare reduced flow-grid candidates without reducing output dimensions; recheck numerical parity against the corresponding reference mode.
-- [ ] Collect ANE runtime evidence using available Core ML/Neural Engine profiling tools. If Xcode first-launch is incomplete, continue numerical/timing work and clearly mark device execution unverified.
-- [ ] Save measured results and gate decision. If none of the routes meet the initial gate, finish the reproducible investigation and report the blocker; do not implement or publish a misleading live-playback toggle.
-- [ ] Commit the harness and tests, keeping device-specific logs under `build/rife/`.
+- [x] Add tests rejecting missing samples, p95 >26.7 ms, NaN output and a fabricated ANE claim based only on compute units.
+- [x] Run those tests and record expected failure before adding the benchmark/gate implementation.
+- [x] Compile the Objective-C++ harness with the installed command-line SDK; load the model once, reuse inputs and benchmark each public compute configuration independently.
+- [x] Test 1080p and 4K, starting from small shapes to bound memory. Compare reduced flow-grid candidates without reducing output dimensions; recheck numerical parity against the corresponding reference mode.
+- [x] Collect ANE runtime evidence using available Core ML/Neural Engine profiling tools. If Xcode first-launch is incomplete, continue numerical/timing work and clearly mark device execution unverified.
+- [x] Save measured results and gate decision. If none of the routes meet the initial gate, finish the reproducible investigation and report the blocker; do not implement or publish a misleading live-playback toggle.
+- [x] Commit the harness and tests, keeping device-specific logs under `build/rife/`.
 
 ### Task 3: Reusable native inference engine
 
@@ -138,10 +138,10 @@
 
 The initial performance gate intentionally precedes playback/UI work. The spec's runtime limits, fractional timestamps, fallback behavior, configuration ownership, isolated tests and clean-package requirements each have an owning task above. Tests and thresholds are distinct from unmeasured claims; no RIFE performance result is assumed by this plan.
 
-## Verified baseline and pending execution review
+## Verified baseline and execution status
 
 - The online `main` reference was checked again after the build and remains `7044cb47a1213c72ad2e8d9ca823700614d26edb`.
 - Release configuration and compilation succeeded in `/tmp/tigerest-rife-build-20260929` using the existing Qt 6.9.3 SDK.
 - CTest passed all 17 targets, including the updated native macOS keyboard tests. Two individual SVP socket cases were skipped because another running player owns `/tmp/mpvsocket`; that process was left untouched.
 - Full logs are retained under ignored `build/rife/baseline/` in this worktree. No product-code changes have been made here.
-- Plan review/execution-method confirmation is pending in the chat. Full Xcode also reports an unaccepted license; model preparation can proceed after plan review using the existing command-line tools, while later Instruments profiling may require the user to complete Xcode first launch.
+- Execution approved in chat. Tasks 1–2 are complete: the fp32 half-grid candidate passed the 1080p inference gate (p95 21.12 ms on this M4 Pro); full playback remains unqualified. 4K quarter-grid p95 47.52 ms failed the 30→60 fps budget. Runtime ANE use remains unverified while Xcode license acceptance is pending. Device logs stay under ignored `build/rife/`.
