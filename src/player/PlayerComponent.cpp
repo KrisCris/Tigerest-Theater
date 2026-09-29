@@ -1838,7 +1838,9 @@ void PlayerComponent::updateAudioDevice()
     device = "auto";
   }
 
-  m_mpv->setProperty( "audio-device", device);
+  // Device-list notifications can fire while macvk waits for the Cocoa main
+  // thread. Queue this timer update so it cannot wait on mpv's busy core.
+  m_mpv->setPropertyAsync("audio-device",device);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

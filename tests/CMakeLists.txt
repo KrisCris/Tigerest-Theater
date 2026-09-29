@@ -80,6 +80,13 @@ target_include_directories(test_danmaku_style_config PRIVATE ${TEST_INCLUDE_DIRS
 target_compile_definitions(test_danmaku_style_config PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_danmaku_style_config COMMAND test_danmaku_style_config)
 
+add_executable(test_audio_device_dispatch test_audio_device_dispatch.cpp)
+target_link_libraries(test_audio_device_dispatch jmp_core Qt6::Test)
+target_include_directories(test_audio_device_dispatch PRIVATE ${TEST_INCLUDE_DIRS})
+target_compile_definitions(test_audio_device_dispatch PRIVATE ${TEST_COMPILE_DEFS})
+add_test(NAME test_audio_device_dispatch COMMAND test_audio_device_dispatch)
+set_tests_properties(test_audio_device_dispatch PROPERTIES TIMEOUT 15)
+
 add_executable(test_mpv_console test_mpv_console.cpp)
 target_link_libraries(test_mpv_console jmp_core Qt6::Test)
 target_include_directories(test_mpv_console PRIVATE ${TEST_INCLUDE_DIRS})
