@@ -45,7 +45,7 @@ bool FrameInterpolationController::conflict()const{
 void FrameInterpolationController::detach(){
     closeSession(session);session=0;epoch=0;
     if(filterOwned&&hasFilter())mpv.command({"vf","remove","@tigerest-rife"});
-    filterOwned=false;waitingEpoch=false;
+    filterOwned=false;
     if(hwdecOwned&&optionText(mpv.read("hwdec"))=="auto-copy")mpv.set("hwdec",oldHwdec);
     hwdecOwned=false;guard.reset();preparingSince=-1;
 }
@@ -78,7 +78,7 @@ void FrameInterpolationController::onFormatChanged(const SourceInfo& info){
     if(filterOwned){
         ++serial;closeSession(session);session=0;
         mpv.command({"vf","remove","@tigerest-rife"});filterOwned=false;
-        guard.reset();epoch=0;latest={};preparingSince=-1;waitingEpoch=false;
+        guard.reset();epoch=0;latest={};preparingSince=-1;
         current=State::Preparing;
     }
     if(conflict()){disable("external-filter",true);return;}
@@ -95,9 +95,11 @@ void FrameInterpolationController::onFormatChanged(const SourceInfo& info){
 }
 void FrameInterpolationController::onSeek(){
     ++serial;guard.reset();preparingSince=-1;latest={};
-    if(filterOwned){current=State::Preparing;waitingEpoch=true;}
+    if(filterOwned){current=State::Preparing;}
     // mpv rebuilds its VS graph on seek. A new monitor instance rotates the
     // native epoch and rejects any callback belonging to the previous graph.
+    // The graph may already have rebuilt before the client receives SEEK, so
+    // do not wait for another epoch relative to this event.
 }
 void FrameInterpolationController::poll(int64_t now,bool suspended){
     if(!filterOwned)return;
@@ -108,8 +110,6 @@ void FrameInterpolationController::poll(int64_t now,bool suspended){
 }
 void FrameInterpolationController::onMetrics(uint64_t generation,const Metrics&m,int64_t now,bool suspended,uint64_t drops){
     if(generation!=serial||!filterOwned)return;
-    if(waitingEpoch&&(!m.epoch||m.epoch==epoch))return;
-    waitingEpoch=false;
     if(m.epoch!=epoch){epoch=m.epoch;guard.reset();preparingSince=-1;}
     latest=m;
     if(!m.error.empty()){

@@ -28,6 +28,7 @@ int main(int argc,char** argv){
     RuntimePaths paths{argv[1],argv[2],argv[3],true,"monolithic","cpu-gpu"};
     FrameInterpolationController c({read,set,command},paths);
     QElapsedTimer timer;timer.start();bool ended=false;
+    State previous=State::Off;
     auto pump=[&]{
         for(;;){auto* event=mpv_wait_event(mpv,0);if(event->event_id==MPV_EVENT_NONE)break;
             if(event->event_id==MPV_EVENT_SEEK)c.onSeek();
@@ -37,6 +38,7 @@ int main(int argc,char** argv){
         auto frame=read("video-frame-info").toMap(),params=read("video-params").toMap();
         if(!params.isEmpty()&&frame.contains("interlaced"))c.onFormatChanged(sourceInfo(params,frame,read("container-fps").toDouble()));
         c.poll(timer.elapsed(),read("pause").toBool()||read("seeking").toBool());
+        if(previous!=c.state()){previous=c.state();qInfo()<<c.diagnostics()<<params<<frame;}
         QThread::msleep(10);
     };
     auto wait=[&](auto condition){const auto end=timer.elapsed()+12000;while(!condition()&&timer.elapsed()<end)pump();

@@ -32,11 +32,12 @@ int main(int argc,char**argv) {
     const auto first=c.generation();
     Metrics m;m.epoch=1;m.predictions=40;m.pairs=40;m.p95Ms=10;
     c.onMetrics(first,m,0,false,0);assert(c.state()==State::Active);
+    m.epoch=2;c.onMetrics(first,m,50,false,0); // graph can rebuild before the SEEK event arrives
     c.onSeek();assert(c.generation()>first);
     m.error="inference-error";c.onMetrics(first,m,100,false,0);
     assert(c.state()!=State::DisabledForCurrentItem); // reject stale results
-    c.onMetrics(c.generation(),m,200,false,0);assert(c.state()==State::Preparing);
-    m.epoch=2;c.onMetrics(c.generation(),m,300,false,0);
+    m.error.clear();c.onMetrics(c.generation(),m,200,false,0);assert(c.state()==State::Active);
+    m.error="inference-error";c.onMetrics(c.generation(),m,300,false,0);
     assert(c.state()==State::DisabledForCurrentItem&&f.notices==2); // one per item
     assert(f.removed==QStringList{"@tigerest-rife"});
     assert(f.props["vf"].toList().size()==1&&f.props["hwdec"]=="auto-safe");

@@ -37,7 +37,7 @@ private:
     State current=State::Off;
     SourceInfo source;
     uint64_t serial=0,session=0,epoch=0;
-    bool requested=false,filterOwned=false,hwdecOwned=false,notified=false,waitingEpoch=false;
+    bool requested=false,filterOwned=false,hwdecOwned=false,notified=false;
     QString oldHwdec,reason;
     Metrics latest;
     PerformanceGuard guard;
