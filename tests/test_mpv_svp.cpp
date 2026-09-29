@@ -24,9 +24,36 @@ private slots:
   void worksWithoutVapourSynthInstalled();
   void rifeSuppressesOnlyManagedDiscovery();
   void bundledRuntimeUsesPrivatePaths();
+  void bundledVulkanOverridesDiscoveryOnly();
 private:
   QTemporaryDir m_root;
 };
+
+void TestMpvSvp::bundledVulkanOverridesDiscoveryOnly()
+{
+  QTemporaryDir root;
+  const auto oldDrivers=qgetenv("VK_DRIVER_FILES"),oldIcd=qgetenv("VK_ICD_FILENAMES");
+  const auto restore=qScopeGuard([&]{
+    oldDrivers.isNull()?qunsetenv("VK_DRIVER_FILES"):qputenv("VK_DRIVER_FILES",oldDrivers);
+    oldIcd.isNull()?qunsetenv("VK_ICD_FILENAMES"):qputenv("VK_ICD_FILENAMES",oldIcd);
+  });
+  qunsetenv("VK_DRIVER_FILES");qunsetenv("VK_ICD_FILENAMES");
+  const QString bin=root.filePath("Contents/MacOS");
+  QVERIFY(QDir().mkpath(bin));
+  MpvConfigManager::configureBundledVulkan(bin);
+  QVERIFY(qEnvironmentVariableIsEmpty("VK_DRIVER_FILES"));
+  const QString icd=root.filePath("Contents/Resources/vulkan/icd.d/MoltenVK_icd.json");
+  QVERIFY(QDir().mkpath(QFileInfo(icd).absolutePath()));
+  QFile file(icd);QVERIFY(file.open(QIODevice::WriteOnly));file.write("{}");file.close();
+  MpvConfigManager::configureBundledVulkan(bin);
+  QCOMPARE(QString::fromUtf8(qgetenv("VK_DRIVER_FILES")),QFileInfo(icd).canonicalFilePath());
+  qputenv("VK_DRIVER_FILES","/custom/driver.json");
+  MpvConfigManager::configureBundledVulkan(bin);
+  QCOMPARE(qgetenv("VK_DRIVER_FILES"),QByteArray("/custom/driver.json"));
+  qunsetenv("VK_DRIVER_FILES");qputenv("VK_ICD_FILENAMES","/custom/old-driver.json");
+  MpvConfigManager::configureBundledVulkan(bin);
+  QVERIFY(qEnvironmentVariableIsEmpty("VK_DRIVER_FILES"));
+}
 
 void TestMpvSvp::initTestCase()
 {
@@ -65,8 +92,15 @@ void TestMpvSvp::embeddedConfigExposesSvpIpc()
   QVERIFY2(socket.waitForConnected(3000), qPrintable(socket.errorString()));
   socket.write("{\"command\":[\"get_property\",\"mpv-version\"],\"request_id\":42}\n");
   socket.flush();
-  QVERIFY(socket.waitForReadyRead(3000));
-  const auto response = QJsonDocument::fromJson(socket.readLine()).object();
+  QJsonObject response;
+  QTRY_VERIFY_WITH_TIMEOUT(([&] {
+    if (response.value("request_id").toInt() == 42) return true;
+    while (socket.canReadLine()) {
+      const auto message = QJsonDocument::fromJson(socket.readLine()).object();
+      if (message.value("request_id").toInt() == 42) { response=message;return true; }
+    }
+    return false; // Unsolicited mpv events may precede the command response.
+  })(), 3000);
   QCOMPARE(response.value("request_id").toInt(), 42);
   QCOMPARE(response.value("error").toString(), QStringLiteral("success"));
   QVERIFY(response.value("data").toString().startsWith("mpv "));

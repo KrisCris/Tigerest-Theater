@@ -10,7 +10,7 @@ The selected experimental pipeline is `split-metal` with `cpu-ane`: Encoder and 
 
 The native plugin requires VapourSynth 79 headers. The included script preserves original YUV samples, validates SDR metadata before conversion, and performs only 2× interpolation at up to 30 input fps. Unknown color, HDR, interlacing and detected VFR bypass inference.
 
-mpv must include the VapourSynth 74+ API compatibility change and `mpv-eof-aware.patch`. The new `vapoursynth:eof-aware=yes` option gives the adapter one-frame lookahead, a reliable last-frame marker, standard color properties, a pre-guess source-color completeness marker, and a nominal final-frame duration when the decoder omits it. Existing VapourSynth filters keep their default behavior. The RIFE controller must use a bounded buffer and concurrent-frames=1.
+mpv must include the VapourSynth 74+ API compatibility change and `mpv-eof-aware.patch`. The new `vapoursynth:eof-aware=yes` option gives the adapter one-frame lookahead, a reliable last-frame marker, standard color properties, a pre-guess source-color completeness marker, and a nominal final-frame duration when the decoder omits it. Existing VapourSynth filters keep their default behavior. The RIFE controller must use a bounded buffer and concurrent-frames=2.
 
 Configure these CMake cache variables to run the actual-model streaming tests:
 

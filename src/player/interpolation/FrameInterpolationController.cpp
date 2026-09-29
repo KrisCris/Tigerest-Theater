@@ -88,7 +88,7 @@ void FrameInterpolationController::onFormatChanged(const SourceInfo& info){
         {"pipeline",paths.pipeline},{"compute_policy",paths.compute},
         {"generation",double(serial)},{"session",double(session)},{"streaming",true}};
     const QString filter="@tigerest-rife:vapoursynth=file="+quote(paths.script)+
-        ":buffered-frames=4:concurrent-frames=1:eof-aware=yes:user-data="+
+        ":buffered-frames=4:concurrent-frames=2:eof-aware=yes:user-data="+
         quote(QString::fromUtf8(QJsonDocument(options).toJson(QJsonDocument::Compact)));
     filterOwned=mpv.command({"vf","add",filter});
     if(!filterOwned)disable("filter-error");

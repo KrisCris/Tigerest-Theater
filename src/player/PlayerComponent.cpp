@@ -717,6 +717,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     {
       m_replacementPending = false;
       m_inPlayback = true;
+      m_nativeVideoReady = false;
       m_playbackCanceled = false;
       m_playbackError.clear();
       m_lastPositionUpdate = 0.0;
@@ -726,6 +727,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     }
     case MPV_EVENT_END_FILE:
     {
+      m_nativeVideoReady = false;
 #ifdef Q_OS_MAC
       if(m_rife)m_rife->stop();
 #endif
@@ -851,6 +853,8 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       }
       else if (strcmp(prop->name, "video-dec-params") == 0)
       {
+        m_decodedVideoParams = prop->format == MPV_FORMAT_NODE
+          ? mpv::qt::node_to_variant(static_cast<mpv_node*>(prop->data)).toMap() : QVariantMap();
         // Aspect might be known now (or it changed during playback), so update settings
         // dependent on the aspect ratio.
         updateVideoAspectSettings();
@@ -1013,8 +1017,12 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     }
 #endif
 
+    case MPV_EVENT_PLAYBACK_RESTART:
+      m_nativeVideoReady = true;
+      break;
 #ifdef Q_OS_MAC
     case MPV_EVENT_SEEK:
+      m_nativeVideoReady = false;
       if(m_rife)m_rife->onSeek();
       break;
 #endif
@@ -1058,12 +1066,16 @@ void PlayerComponent::beginInterpolationItem()
 }
 void PlayerComponent::pollInterpolation()
 {
-  if(!m_rife||!m_mpv||!m_inPlayback)return;
+  // macvk can synchronously dispatch window setup to the main thread while
+  // mpv's core waits for its VO. Querying that core here would deadlock both.
+  if(!m_rife||!m_mpv||!m_inPlayback||(m_nativeVideoOutput&&!m_nativeVideoReady))return;
   const auto params=m_mpv->getProperty("video-params").toMap();
   const auto frame=m_mpv->getProperty("video-frame-info").toMap();
   if(!params.isEmpty()&&frame.contains("interlaced"))
     m_rife->onFormatChanged(rife::sourceInfo(params,frame,m_mpv->getProperty("container-fps").toDouble()));
-  const bool suspended=m_paused||!m_playbackActive||m_bufferingPercentage<100||
+  // A busy video filter can make the core idle between frames. That is part
+  // of the work being measured, not evidence of a user/network suspension.
+  const bool suspended=m_paused||m_bufferingPercentage<100||
       m_mpv->getProperty("seeking").toBool()||m_mpv->getProperty("paused-for-cache").toBool();
   m_rife->poll(m_rifeClock.elapsed(),suspended);
 }
@@ -1618,7 +1630,7 @@ QVariantMap PlayerComponent::mpvDiagnostics()
   result["configuredProfile"] = configuredProfile;
 
   QStringList shaderFiles;
-  if (m_mpv)
+  if (m_mpv && (!m_nativeVideoOutput || m_nativeVideoReady))
   {
     const QVariant shaders = m_mpv->getProperty("glsl-shaders");
     for (const QVariant& shader : shaders.toList())
@@ -1947,8 +1959,7 @@ void PlayerComponent::updateVideoAspectSettings()
   }
   else if (mode == "force_16_9_if_4_3")
   {
-    auto params = m_mpv->getProperty( "video-dec-params").toMap();
-    auto aspect = params["aspect"].toFloat();
+    auto aspect = m_decodedVideoParams.value("aspect").toFloat();
     if (fabs(aspect - 4.0/3.0) < 0.1)
       forceAspect = "16:9";
   }
@@ -1961,10 +1972,12 @@ void PlayerComponent::updateVideoAspectSettings()
     disableScaling = true;
   }
 
-  m_mpv->setProperty( "video-unscaled", disableScaling);
-  m_mpv->setProperty( "video-aspect-override", forceAspect);
-  m_mpv->setProperty( "keepaspect", keepAspect);
-  m_mpv->setProperty( "panscan", panScan);
+  // Decoder notification precedes macvk's window configuration. Keep Cocoa's
+  // main thread available while mpv finishes that work.
+  m_mpv->setPropertyAsync( "video-unscaled", disableScaling);
+  m_mpv->setPropertyAsync( "video-aspect-override", forceAspect);
+  m_mpv->setPropertyAsync( "keepaspect", keepAspect);
+  m_mpv->setPropertyAsync( "panscan", panScan);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

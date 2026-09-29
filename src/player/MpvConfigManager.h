@@ -8,6 +8,7 @@
 namespace MpvConfigManager
 {
   bool prepare();
+  void configureBundledVulkan(const QString& executableDirectory);
   void configureVapourSynth(const QStringList& installationRoots);
   bool configureBundledVapourSynth(const QString& executableDirectory,const QString& registrationDirectory);
   QString activeConfigDir();

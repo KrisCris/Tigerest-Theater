@@ -40,7 +40,7 @@ output=build(source,settings['options'])
 vs.core.std.ModifyFrame(output,clips=output,selector=record('output')).set_output()
 ''')
             data=json.dumps({'options':options,'script':str(repository/'resources/mpv/rife/interpolate.vpy'),'report':str(report)})
-            vf='vapoursynth=file='+quote_option(str(script))+':user-data='+quote_option(data)+':eof-aware=yes:buffered-frames=4:concurrent-frames=1'
+            vf='vapoursynth=file='+quote_option(str(script))+':user-data='+quote_option(data)+':eof-aware=yes:buffered-frames=4:concurrent-frames=2'
             run=subprocess.run([os.environ['RIFE_MPV_BINARY'],'--no-config','--vo=null','--ao=null','--untimed',
                                 '--vf='+vf,str(video)],capture_output=True,text=True,timeout=60)
             self.assertEqual(run.returncode,0,run.stdout+run.stderr)

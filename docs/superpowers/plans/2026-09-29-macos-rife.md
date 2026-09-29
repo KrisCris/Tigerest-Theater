@@ -135,6 +135,18 @@
 - [x] Test a relocated app with spaces/Chinese in its path and a clean environment/config directory. Verify that actual playback uses the bundled runtime and produces interpolated frames.
 - [x] Commit packaging and its test coverage.
 
+### Task 9: Fused coarse motion operations (full-player performance follow-up)
+
+**Files:** Export fixed-shape coarse convolution stages in `dev/macos/rife/`; add a native Metal coarse-motion helper and correctness tests; integrate only after numerical and timing qualification.
+
+**Reason:** Full playback with default shaders and real audio misses the gate despite standalone inference qualification. The existing Coarse graph costs about 11.4 ms, with repeated full-grid warps, resizing and concatenation. Lowering all coarse convolutions to fp16 failed the unchanged 40 dB reference gate (37.77 dB), so preserve their fp32 arithmetic.
+
+- [ ] Establish FP32 convolution-stage export parity against the current full Coarse graph.
+- [ ] Fuse warp, resize and packing into Metal kernels, preserving the reference order of interpolation, normalized coordinates and flow accumulation.
+- [ ] Validate actual native outputs, adjacent-frame reuse, seek invalidation and numerical finiteness; keep the existing pipeline available as a comparison.
+- [ ] Measure complete-call inference and then integrated renderer/audio performance. Adopt only a faster, numerically qualified candidate; retain ANE encoder/refinement and verify device behavior in the final engine.
+- [ ] Update portable model staging and CI only for the qualified graph. Re-run relocated playback and resume Task 7's delivery gates.
+
 ### Task 7: End-to-end qualification and delivery
 
 **Files:** Add `tests/test_rife_playback.cjs`; update the user-facing README after capabilities are measured; keep full reports in ignored build output.

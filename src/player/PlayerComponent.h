@@ -286,6 +286,8 @@ private:
   bool m_windowVisible;
   bool m_videoPlaybackActive;
   bool m_inPlayback;
+  bool m_nativeVideoReady = false;
+  QVariantMap m_decodedVideoParams;
   bool m_playbackCanceled;
   bool m_replacementPending = false;
   QString m_playbackError;

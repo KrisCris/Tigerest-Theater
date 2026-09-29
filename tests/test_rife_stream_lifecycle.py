@@ -45,7 +45,7 @@ vs.core.std.ModifyFrame(output,clips=output,selector=inspect).set_output()
                      'model_path':str(Path(os.environ['RIFE_SMALL_MODEL']).resolve()),
                      'fps_num':24,'fps_den':1,'streaming':True}
             data=json.dumps({'options':options,'script':str(repository/'resources/mpv/rife/interpolate.vpy'),'report':str(report)})
-            vf='vapoursynth=file='+quote_option(str(script))+':user-data='+quote_option(data)+':eof-aware=yes:buffered-frames=4:concurrent-frames=1'
+            vf='vapoursynth=file='+quote_option(str(script))+':user-data='+quote_option(data)+':eof-aware=yes:buffered-frames=4:concurrent-frames=2'
             socket=root/'ipc.sock'
             def rows():
                 return [json.loads(line) for line in report.read_text().splitlines()] if report.exists() else []

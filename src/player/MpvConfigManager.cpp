@@ -427,9 +427,23 @@ bool MpvConfigManager::configureBundledVapourSynth(const QString& executableDire
   return true;
 }
 
+void MpvConfigManager::configureBundledVulkan(const QString& executableDirectory)
+{
+  // Vulkan otherwise enumerates both the bundled ICD and Homebrew's copy.
+  // Honor a deliberate override, but keep ordinary installations self-contained.
+  if (!qEnvironmentVariableIsEmpty("VK_DRIVER_FILES") ||
+      !qEnvironmentVariableIsEmpty("VK_ICD_FILENAMES"))
+    return;
+  const QFileInfo manifest(QDir(executableDirectory).filePath(
+      "../Resources/vulkan/icd.d/MoltenVK_icd.json"));
+  if (manifest.isFile())
+    qputenv("VK_DRIVER_FILES", manifest.canonicalFilePath().toUtf8());
+}
+
 bool MpvConfigManager::prepare()
 {
 #if defined(Q_OS_MAC)
+  configureBundledVulkan(QCoreApplication::applicationDirPath());
   if(!configureBundledVapourSynth(QCoreApplication::applicationDirPath(),
       ProfileManager::activeProfile().dataDir("rife-runtime"))) {
 #if defined(Q_PROCESSOR_ARM_64)
