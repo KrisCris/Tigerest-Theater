@@ -120,18 +120,48 @@ def loaded_libraries():
     return sorted(set(paths))
 
 
-def gpu_info():
+def library_version(path):
+    version = ctypes.WinDLL('version.dll', winmode=0x800)
+    version.GetFileVersionInfoSizeW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(wintypes.DWORD)]
+    version.GetFileVersionInfoSizeW.restype = wintypes.DWORD
+    version.GetFileVersionInfoW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p]
+    version.VerQueryValueW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p),
+                                     ctypes.POINTER(wintypes.UINT)]
+    size = version.GetFileVersionInfoSizeW(str(path), None)
+    data = ctypes.create_string_buffer(size)
+    value, length = ctypes.c_void_p(), wintypes.UINT()
+    if (not size or not version.GetFileVersionInfoW(str(path), 0, size, data)
+            or not version.VerQueryValueW(data, '\\', ctypes.byref(value), ctypes.byref(length))
+            or length.value < 52):
+        raise RuntimeError('Could not identify NVIDIA driver version')
+    fixed = ctypes.cast(value, ctypes.POINTER(wintypes.DWORD * 13)).contents
+    return '.'.join(str(n) for n in (fixed[2] >> 16, fixed[2] & 65535, fixed[3] >> 16, fixed[3] & 65535))
+
+
+def gpu_info(device_id=0):
     cuda = ctypes.WinDLL("nvcuda.dll", winmode=0x800)
     if cuda.cuInit(0):
         raise RuntimeError("NVIDIA driver could not initialize CUDA")
     device = ctypes.c_int()
-    if cuda.cuDeviceGet(ctypes.byref(device), 0):
+    if cuda.cuDeviceGet(ctypes.byref(device), device_id):
         raise RuntimeError("No NVIDIA CUDA device")
     name = ctypes.create_string_buffer(256)
-    cuda.cuDeviceGetName(name, len(name), device)
+    if cuda.cuDeviceGetName(name, len(name), device):
+        raise RuntimeError('Could not identify NVIDIA device')
     major, minor = ctypes.c_int(), ctypes.c_int()
-    cuda.cuDeviceComputeCapability(ctypes.byref(major), ctypes.byref(minor), device)
-    return {"name": name.value.decode("utf-8"), "computeCapability": f"{major.value}.{minor.value}"}
+    identifier, driver = (ctypes.c_ubyte * 16)(), ctypes.c_int()
+    if (cuda.cuDeviceComputeCapability(ctypes.byref(major), ctypes.byref(minor), device)
+            or cuda.cuDeviceGetUuid(ctypes.byref(identifier), device)
+            or cuda.cuDriverGetVersion(ctypes.byref(driver))):
+        raise RuntimeError('Could not identify GPU and CUDA driver')
+    kernel = ctypes.WinDLL('kernel32.dll', winmode=0x800)
+    kernel.GetModuleFileNameW.argtypes = [wintypes.HMODULE, wintypes.LPWSTR, wintypes.DWORD]
+    path = ctypes.create_unicode_buffer(32768)
+    if not kernel.GetModuleFileNameW(cuda._handle, path, len(path)):
+        raise RuntimeError('Could not identify NVIDIA driver library')
+    return {"name": name.value.decode("utf-8"), "computeCapability": f"{major.value}.{minor.value}",
+            'uuid': bytes(identifier).hex(), 'driverVersion': library_version(path.value),
+            'cudaDriverVersion': driver.value, 'deviceId': device_id}
 
 
 def mpv_info(path):

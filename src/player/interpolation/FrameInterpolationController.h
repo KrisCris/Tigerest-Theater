@@ -6,7 +6,13 @@
 #include <functional>
 namespace rife {
 enum class State {Off,Preparing,Active,Bypassed,DisabledForCurrentItem};
-struct RuntimePaths {QString model,plugin,script;bool available=false;QString pipeline="split-coarse-metal",compute="cpu-ane";};
+enum class Backend {CoreMLMetal,TensorRT};
+struct RuntimePaths {
+    QString model,plugin,script;bool available=false;QString pipeline="split-coarse-metal",compute="cpu-ane";
+    Backend backend=Backend::CoreMLMetal;
+    QString engine,runtime,trtPlugin;
+    int factor=2,alignment=128,implementation=1,numStreams=1,deviceId=0;
+};
 struct MpvAccess {
     std::function<QVariant(const QString&)> read;
     std::function<bool(const QString&,const QVariant&)> set;
@@ -18,6 +24,7 @@ class FrameInterpolationController {
 public:
     FrameInterpolationController(MpvAccess access,RuntimePaths paths);
     ~FrameInterpolationController();
+    bool setRuntimePaths(RuntimePaths paths);
     void beginItem(bool enabled,bool systemConfig);
     void onFormatChanged(const SourceInfo& source);
     void onSeek();
@@ -25,7 +32,8 @@ public:
     void stopOnEndFile();
     void configureHardwareDecoding(const QString& mode);
     void poll(int64_t nowMs,bool suspended);
-    void onMetrics(uint64_t generation,const Metrics& metrics,int64_t nowMs,bool suspended,uint64_t drops);
+    void onMetrics(uint64_t generation,const Metrics& metrics,int64_t nowMs,bool suspended,uint64_t drops,
+                   double avsync=std::numeric_limits<double>::quiet_NaN(),uint64_t decoderDrops=0);
     State state()const{return current;}
     uint64_t generation()const{return serial;}
     QString status()const;

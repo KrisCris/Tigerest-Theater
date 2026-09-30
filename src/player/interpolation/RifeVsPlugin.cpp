@@ -1,7 +1,7 @@
 #include <VapourSynth4.h>
 #include "RifeEngine.h"
 #include "FrameTiming.h"
-#include "RifeSessionMetrics.h"
+#include "RifeVsMonitor.h"
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -207,35 +207,11 @@ void VS_CC create(const VSMap* in, VSMap* out, void*, VSCore* core, const VSAPI*
     }
 }
 
-struct Monitor {VSNode* input;uint64_t session,epoch;};
-const VSFrame* VS_CC monitorFrame(int n,int activation,void* instance,void**,VSFrameContext* context,VSCore*,const VSAPI* api){
-    auto* m=static_cast<Monitor*>(instance);
-    if(activation==arInitial)api->requestFrameFilter(n,m->input,context);
-    if(activation!=arAllFramesReady)return nullptr;
-    const VSFrame* frame=api->getFrameFilter(n,m->input,context);
-    if(!frame)return nullptr;
-    const auto* props=api->getFramePropertiesRO(frame);
-    int error=0;const double ms=api->mapGetFloat(props,"_TigerestRifeTimeMs",0,&error);
-    const char* reason=api->mapGetData(props,"_TigerestRifeReason",0,&error);
-    rife::recordFrame(m->session,m->epoch,n,integer(api,props,"_TigerestRifeSynthesized",0)!=0,
-                      ms,reason?reason:"");
-    return frame;
-}
-void VS_CC monitorFree(void* instance,VSCore*,const VSAPI* api){auto* m=static_cast<Monitor*>(instance);api->freeNode(m->input);delete m;}
-void VS_CC monitorCreate(const VSMap* in,VSMap* out,void*,VSCore* core,const VSAPI* api){
-    auto* node=api->mapGetNode(in,"clip",0,nullptr);
-    if(!node){api->mapSetError(out,"Monitor requires a clip");return;}
-    const auto session=uint64_t(integer(api,in,"session",0));
-    auto* monitor=new Monitor{node,session,rife::beginInstance(session)};
-    VSFilterDependency dependency{node,rpGeneral};
-    api->createVideoFilter(out,"TigerestRIFEMonitor",api->getVideoInfo(node),monitorFrame,monitorFree,
-        fmFrameState,&dependency,1,monitor,core);
-}
 } // namespace
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin* plugin,const VSPLUGINAPI* api) {
     api->configPlugin("io.github.tigerest.rife","tigerest","Tigerest RIFE",VS_MAKE_VERSION(1,0),VAPOURSYNTH_API_VERSION,0,plugin);
     api->registerFunction("RIFE","clip:vnode;model_path:data;fps_num:int;fps_den:int;compute_policy:data:opt;pipeline:data:opt;generation:int:opt;streaming:int:opt;content_width:int:opt;content_height:int:opt;",
                           "clip:vnode;",create,nullptr,plugin);
-    api->registerFunction("Monitor","clip:vnode;session:int;","clip:vnode;",monitorCreate,nullptr,plugin);
+    rife::registerMonitor(plugin,api);
 }

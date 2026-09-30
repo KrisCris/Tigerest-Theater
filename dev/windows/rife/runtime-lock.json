@@ -1,20 +1,28 @@
 {
   "schemaVersion": 1,
-  "runtimeId": "rife-trt-r79-15.16-py3.13.15-1",
-  "versions": {"python": "3.13.15", "vapoursynth": "R79", "vsmlrt": "v15.16", "tensorrt": "10.16.0", "cuda": "13.2.0", "model": "rife-4.25-lite"},
+  "runtimeId": "rife-trt-r79-15.16-py3.13.15-2-v2",
+  "versions": {"python": "3.13.15", "vapoursynth": "R79", "vsmlrt": "v15.16", "tensorrt": "10.16.0", "cuda": "13.2.0", "models": "rife-4.25-lite,4.25,4.25-heavy"},
   "sources": {
     "vsmlrt": "https://github.com/AmusementClub/vs-mlrt/tree/885e8bb827fc431fce8e3109e7d60b0c38aa2035",
     "model": "https://github.com/AmusementClub/vs-mlrt/releases/tag/external-models",
     "modelArchiveAssetId": 202993250,
+    "modelArchiveAssetIds": [202993250, 193525109, 202995045],
     "modelHashOrigin": "computed from upstream TLS download; asset has no published digest",
     "macWeightsEquivalent": false
   },
+  "models": [
+    {"id": "rife-4.25-lite", "archive": "model", "member": "rife_v2/rife_v4.25_lite.onnx", "path": "plugins/models/rife_v2/rife_v4.25_lite.onnx", "alignment": 1, "implementation": 2, "sha256": "610b5de57cdcfbcce9914c23e60a1cd357779a6f9582a1bcfcb035f8eb38509b"},
+    {"id": "rife-4.25", "archive": "model-standard", "member": "rife_v2/rife_v4.25.onnx", "path": "plugins/models/rife_v2/rife_v4.25.onnx", "alignment": 1, "implementation": 2, "sha256": "65c57a5e4abb17ad67faf35054291ac53affab0506d509d2e66698f6ecd75584"},
+    {"id": "rife-4.25-heavy", "archive": "model-heavy", "member": "rife_v2/rife_v4.25_heavy.onnx", "path": "plugins/models/rife_v2/rife_v4.25_heavy.onnx", "alignment": 1, "implementation": 2, "sha256": "8c2643c13a9ddca1e6b475322cbaafd0e6903e054e000c9193c18bccddce6626"}
+  ],
   "archives": [
     {"id": "python", "file": "python-3.13.15-embed-amd64.zip", "size": 11009825, "sha256": "d1f04d990aee1253d8569e8e5104e30fa9f5fa830899f14843448872d936a2cf", "url": "https://www.python.org/ftp/python/3.13.15/python-3.13.15-embed-amd64.zip"},
     {"id": "vapoursynth", "file": "VapourSynth64-Portable-R79.zip", "size": 23160674, "sha256": "625b3410d903943107291592e90d6f521f829ebb8291d952ee91b8d674bbb153", "url": "https://github.com/vapoursynth/vapoursynth/releases/download/R79/VapourSynth64-Portable-R79.zip"},
     {"id": "trt-1", "file": "vsmlrt-windows-x64-tensorrt.v15.16.7z.001", "size": 2147483647, "sha256": "9fe674f62b9d33a369e7bd6584052986af4c81b12a82b75e5d82aad7c06733cb", "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/v15.16/vsmlrt-windows-x64-tensorrt.v15.16.7z.001"},
     {"id": "trt-2", "file": "vsmlrt-windows-x64-tensorrt.v15.16.7z.002", "size": 528530525, "sha256": "387b295726bd159f5b4965d0ee8d55bb377f1d8a2add7f623324c60cece44a16", "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/v15.16/vsmlrt-windows-x64-tensorrt.v15.16.7z.002"},
     {"id": "model", "file": "rife_v4.25_lite.7z", "size": 20936472, "sha256": "7d53e29fff5e67345b19f4ce97dfd1e34b490eedc752df2236904fda1a13842c", "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/external-models/rife_v4.25_lite.7z"},
+    {"id": "model-standard", "file": "rife_v4.25.7z", "size": 21026388, "sha256": "172fe975c1775134bb87108e4ec6d1a89e861cc5d3be2ac23bf08afe5ed626b8", "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/external-models/rife_v4.25.7z"},
+    {"id": "model-heavy", "file": "rife_v4.25_heavy.7z", "size": 80440268, "sha256": "d51b92bf4f1408d1e2e243c44cb8ca1fc885fdff42a4a01f03b23b5f54917592", "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/external-models/rife_v4.25_heavy.7z"},
     {"id": "extractor", "file": "7zr.exe", "sha256": "ad4c82fadcbdf93c03b4fc440f300509c7d60c5c2f4d183e35d9d70d6957037d", "url": "https://www.7-zip.org/a/7zr.exe", "developmentOnly": true}
   ]
 }

@@ -6,7 +6,8 @@
 ## 固定依赖
 
 `runtime-lock.json` 固定 Python 3.13.15 embeddable、VapourSynth R79、vs-mlrt v15.16
-标准 TensorRT 10.16.0 / CUDA 13.2，以及外部模型包的 RIFE 4.25 lite ONNX。
+标准 TensorRT 10.16.0 / CUDA 13.2，以及外部模型包的 RIFE 4.25 lite、4.25、4.25 heavy。
+Windows 默认选用 v2 导出、7 通道 FP16 输入输出和内部填充；坐标/除法层遵循上游 FP32 保护。
 R80 能导入，但移除了 vstrt 所用的 API 3，实际加载失败，因此采用已验证的 R79。
 没有使用 TensorRT-RTX 或其他推理后端。
 
@@ -38,7 +39,21 @@ MpOAV.dll 注入另行记录，要求路径属于注册的 WinDefend 服务并�
 真实推理测试以 256×128 的移动矩形和纹理验证中间帧与前后帧的差异。`frameRequestMs`
 是整次请求耗时，包含转换、调度和拷贝，**不代表精确 GPU 推理时间**。
 首次编译允许 15 分钟。上游 trtexec 在含中文的 timing-cache 路径上出现锁文件告警；
-引擎仍成功生成并执行，但正式缓存管理尚需解决此问题。
+正式缓存由 `prepare_engine.py` 管理，直接构建静态引擎并避开上游 timing-cache 锁。
+缓存只有在完整推理验证、大小/SHA256 和原子完成标记均通过后才可用于播放。
+取消、15 分钟超时和 Windows Job 子进程树清理已经覆盖自动回归。
+
+准备和滤镜阶段的可复现实测（路径由本机选择）：
+
+```powershell
+# request.json 只包含 runtime、cache、model、width、height，可选 deviceId/cancelFile/generation。
+python dev/windows/rife/prepare_engine.py --request request.json --result ready.json
+python dev/windows/rife/benchmark_filter.py --runtime RUNTIME --prepared ready.json --width 1920 --height 1080 --fps 24 --factor 10 --streams 2 --duration 15 --output filter.json
+```
+
+该工具明确排除解码、Shader 和渲染。`consumerFrameWaitP95Ms` 是消费者等待，
+不作为 GPU 推理耗时；播放诊断中无精确 GPU 计时时返回 null。
+三个目标及三模型的实测、测试范围和未通过项见 `docs/reports/2026-09-30-windows-rife.md`。
 
 ## mpv 内核
 

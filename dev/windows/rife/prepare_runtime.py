@@ -83,7 +83,10 @@ def extract_7z(extractor, archive, root, selected, workspace):
 def build_runtime(lock, archives, output):
     if output.exists():
         raise ValueError('Output already exists; choose a new version directory: ' + str(output))
-    required = {'python', 'vapoursynth', 'trt-1', 'trt-2', 'model', 'extractor'}
+    models = lock.get('models', [])
+    if not models or len({m['id'] for m in models}) != len(models):
+        raise ValueError('Runtime lock must define distinct pinned models')
+    required = {'python', 'vapoursynth', 'trt-1', 'extractor'} | {m['archive'] for m in models}
     if not required.issubset(archives):
         raise ValueError('Runtime lock is missing required dependencies')
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -105,17 +108,25 @@ def build_runtime(lock, archives, output):
         joined = workspace / 'tensorrt.7z'
         with joined.open('wb') as target:
             for identifier in ('trt-1', 'trt-2'):
+                if identifier not in archives:
+                    continue
                 with archives[identifier].open('rb') as source:
                     shutil.copyfileobj(source, target, 1024 * 1024)
         plugins = root / 'plugins'
         extract_7z(archives['extractor'], joined, plugins,
                    lambda n: n in ('vstrt.dll', 'vsmlrt.py') or
                    (n.startswith('vsmlrt-cuda/') and 'rtx' not in n.casefold()), workspace)
-        extract_7z(archives['extractor'], archives['model'], plugins / 'models',
-                   lambda n: n == 'rife/rife_v4.25_lite.onnx', workspace)
+        for model in models:
+            extract_7z(archives['extractor'], archives[model['archive']], plugins / 'models',
+                       lambda n: n == model['member'], workspace)
+            path = private_path(root, model['path'])
+            if file_hash(path) != model['sha256']:
+                raise ValueError('Model SHA256 mismatch: ' + model['id'])
         scripts = root / 'scripts'
         scripts.mkdir()
-        shutil.copyfile(HERE / 'native_probe.py', scripts / 'native_probe.py')
+        for name in ('native_probe.py', 'probe_runtime.py', 'prepare_engine.py', 'native_prepare_engine.py',
+                     'engine_cache.py', 'windows_job.py'):
+            shutil.copyfile(HERE / name, scripts / name)
         notices = root / 'licenses'
         shutil.copytree(HERE / 'licenses', notices)
         shutil.copyfile(HERE.parents[1] / 'macos/rife/LICENSE.Practical-RIFE', notices / 'LICENSE.Practical-RIFE')
@@ -124,14 +135,16 @@ def build_runtime(lock, archives, output):
             if path.is_file():
                 files.append({'path': path.relative_to(root).as_posix(), 'size': path.stat().st_size,
                               'sha256': file_hash(path)})
-        model = 'plugins/models/rife/rife_v4.25_lite.onnx'
+        model_entries = [{key: model[key] for key in ('id', 'path', 'sha256', 'alignment', 'implementation')}
+                         for model in models]
         manifest = {'schemaVersion': 1, 'backend': 'windows-nvidia-trt', 'runtimeId': lock['runtimeId'],
                     'versions': lock['versions'], 'sources': lock['sources'],
                     'entrypoints': {'python': 'python/python.exe',
                                    'vsscript': 'python/Lib/site-packages/vapoursynth/vsscript.dll',
-                                   'plugin': 'plugins/vstrt.dll', 'worker': 'scripts/native_probe.py'},
-                    'files': files, 'model': {'id': 'rife-4.25-lite', 'path': model,
-                                             'sha256': file_hash(root / model)},
+                                   'plugin': 'plugins/vstrt.dll', 'worker': 'scripts/native_probe.py',
+                                   'engineWorker': 'scripts/native_prepare_engine.py',
+                                   'trtexec': 'plugins/vsmlrt-cuda/trtexec.exe'},
+                    'files': files, 'models': model_entries, 'model': model_entries[0],
                     'unpackedBytes': sum(entry['size'] for entry in files)}
         (root / 'runtime.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
         verify_manifest(root)

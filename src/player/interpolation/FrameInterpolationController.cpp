@@ -13,13 +13,15 @@ QString optionText(const QVariant& value){
 }
 QString quote(const QString& text){return "%"+QString::number(text.toUtf8().size())+"%"+text;}
 bool same(const SourceInfo&a,const SourceInfo&b){return a.width==b.width&&a.height==b.height&&a.fpsNum==b.fpsNum&&a.fpsDen==b.fpsDen&&a.progressive==b.progressive&&a.cfr==b.cfr&&a.hdr==b.hdr&&a.colorKnown==b.colorKnown;}
-QString message(const QString& reason){
+QString message(const QString& reason,Backend backend=Backend::CoreMLMetal){
     if(reason=="hdr")return QStringLiteral("当前 HDR 视频保持原帧播放");
     if(reason=="performance")return QStringLiteral("性能不足，已恢复原帧播放");
     if(reason=="system-config")return QStringLiteral("AI 补帧需要使用内置播放配置");
     if(reason=="external-filter")return QStringLiteral("已有外部补帧滤镜，保持当前播放配置");
-    if(reason=="unsupported-size")return QStringLiteral("当前分辨率保持原帧播放（最高 1080p）");
-    if(reason=="unsupported-fps")return QStringLiteral("当前帧率保持原帧播放（最高 30 fps）");
+    if(reason=="unsupported-size")return backend==Backend::TensorRT?QStringLiteral("当前分辨率保持原帧播放（最高 4K）"):QStringLiteral("当前分辨率保持原帧播放（最高 1080p）");
+    if(reason=="unsupported-fps")return backend==Backend::TensorRT?QStringLiteral("当前帧率保持原帧播放（最高 60 fps）"):QStringLiteral("当前帧率保持原帧播放（最高 30 fps）");
+    if(reason=="engine-preparing")return QStringLiteral("正在准备补帧引擎，本次保持原帧播放");
+    if(reason=="dynamic-format")return QStringLiteral("视频格式发生变化，本次保持原帧播放");
     if(reason=="vfr")return QStringLiteral("变帧率视频保持原帧播放");
     if(reason=="interlaced")return QStringLiteral("隔行视频保持原帧播放");
     if(reason=="unknown-color")return QStringLiteral("色彩信息不完整，保持原帧播放");
@@ -27,8 +29,19 @@ QString message(const QString& reason){
     return QStringLiteral("补帧已停止，已恢复原帧播放");
 }
 }
-FrameInterpolationController::FrameInterpolationController(MpvAccess a,RuntimePaths p):mpv(std::move(a)),paths(std::move(p)){}
+FrameInterpolationController::FrameInterpolationController(MpvAccess a,RuntimePaths p):mpv(std::move(a)),paths(std::move(p)),
+    guard(paths.backend==Backend::TensorRT?GuardParameters::windows():GuardParameters{}){}
 FrameInterpolationController::~FrameInterpolationController(){closeSession(session);} // mpv may already be destroyed
+bool FrameInterpolationController::setRuntimePaths(RuntimePaths replacement){
+    if(filterOwned)return false;
+    if(replacement.backend==Backend::TensorRT&&
+       (replacement.factor<2||replacement.factor>15||replacement.numStreams<1||replacement.numStreams>4||
+        !((replacement.implementation==1&&(replacement.alignment==32||replacement.alignment==64||replacement.alignment==128))||
+          (replacement.implementation==2&&replacement.alignment==1))))return false;
+    paths=std::move(replacement);
+    guard=PerformanceGuard(paths.backend==Backend::TensorRT?GuardParameters::windows():GuardParameters{});
+    return true;
+}
 bool FrameInterpolationController::hasFilter()const{
     for(auto v:mpv.read("vf").toList())if(v.toMap().value("label")=="tigerest-rife")return true;
     return false;
@@ -88,14 +101,15 @@ void FrameInterpolationController::beginItem(bool enabled,bool systemConfig){
 }
 void FrameInterpolationController::disable(const QString& why,bool bypass){
     ++serial;detach();reason=why;current=bypass?State::Bypassed:State::DisabledForCurrentItem;
-    if(!notified){mpv.command({"show-text",message(why),"4000"});notified=true;}
+    if(!notified){mpv.command({"show-text",message(why,paths.backend),"4000"});notified=true;}
 }
 void FrameInterpolationController::onFormatChanged(const SourceInfo& info){
     if(current==State::Off||current==State::DisabledForCurrentItem)return;
     if(current==State::Bypassed)return; // re-evaluate only on the next item
     if(filterOwned&&same(info,source))return;
+    if(filterOwned&&paths.backend==Backend::TensorRT){disable("dynamic-format",true);return;}
     source=info;
-    const auto eligibility=qualify(source);
+    const auto eligibility=qualify(source,paths.backend==Backend::TensorRT?SourceLimits{3840,2160,60.001}:SourceLimits{});
     if(!eligibility.enabled){disable(QString::fromStdString(eligibility.reason),true);return;}
     if(filterOwned){
         ++serial;closeSession(session);session=0;
@@ -104,11 +118,18 @@ void FrameInterpolationController::onFormatChanged(const SourceInfo& info){
         current=State::Preparing;
     }
     if(conflict()){disable("external-filter",true);return;}
+    if(paths.backend==Backend::TensorRT&&paths.engine.isEmpty()){disable("engine-preparing",true);return;}
     session=openSession();
     QJsonObject options{{"model_path",paths.model},{"plugin_path",paths.plugin},
         {"fps_num",double(source.fpsNum)},{"fps_den",double(source.fpsDen)},
         {"pipeline",paths.pipeline},{"compute_policy",paths.compute},
         {"generation",double(serial)},{"session",double(session)},{"streaming",true}};
+    if(paths.backend==Backend::TensorRT){
+        options.insert("engine_path",paths.engine);options.insert("runtime_path",paths.runtime);
+        options.insert("trt_plugin_path",paths.trtPlugin);options.insert("factor",paths.factor);
+        options.insert("alignment",paths.alignment);options.insert("implementation",paths.implementation);
+        options.insert("num_streams",paths.numStreams);options.insert("device_id",paths.deviceId);
+    }
     const QString filter="@tigerest-rife:vapoursynth=file="+quote(paths.script)+
         ":buffered-frames=4:concurrent-frames=2:eof-aware=yes:user-data="+
         quote(QString::fromUtf8(QJsonDocument(options).toJson(QJsonDocument::Compact)));
@@ -127,10 +148,13 @@ void FrameInterpolationController::poll(int64_t now,bool suspended){
     if(!filterOwned)return;
     if(conflict()){disable("external-filter",true);return;}
     if(!hasFilter()){disable("filter-error");return;}
-    const auto drops=mpv.read("frame-drop-count").toULongLong()+mpv.read("decoder-frame-drop-count").toULongLong();
-    onMetrics(serial,readMetrics(session),now,suspended,drops);
+    const auto voDrops=mpv.read("frame-drop-count").toULongLong(),decoderDrops=mpv.read("decoder-frame-drop-count").toULongLong();
+    const auto av=mpv.read("avsync");
+    onMetrics(serial,readMetrics(session),now,suspended,paths.backend==Backend::TensorRT?voDrops:voDrops+decoderDrops,
+              av.isValid()?av.toDouble():std::numeric_limits<double>::quiet_NaN(),decoderDrops);
 }
-void FrameInterpolationController::onMetrics(uint64_t generation,const Metrics&m,int64_t now,bool suspended,uint64_t drops){
+void FrameInterpolationController::onMetrics(uint64_t generation,const Metrics&m,int64_t now,bool suspended,uint64_t drops,
+                                             double avsync,uint64_t decoderDrops){
     if(generation!=serial||!filterOwned)return;
     if(m.epoch!=epoch){epoch=m.epoch;guard.reset();preparingSince=-1;}
     latest=m;
@@ -142,19 +166,28 @@ void FrameInterpolationController::onMetrics(uint64_t generation,const Metrics&m
     if(suspended)preparingSince=-1;
     else if(preparingSince<0)preparingSince=now;
     else if(!m.epoch&&now-preparingSince>15000){disable("filter-error");return;}
-    if(guard.update(now,m.predictions,m.pairs,m.p95Ms,drops,double(source.fpsNum)/source.fpsDen,suspended))disable("performance");
+    if(guard.update(now,m.predictions,m.pairs,m.p95Ms,drops,double(source.fpsNum)/source.fpsDen,suspended,
+                    paths.factor,m.timingAvailable,avsync,decoderDrops))disable("performance");
 }
 QString FrameInterpolationController::status()const{
     if(current==State::Off)return QStringLiteral("AI 补帧已关闭");
     if(current==State::Preparing)return QStringLiteral("正在准备 AI 补帧");
-    if(current==State::Active){const double fps=double(source.fpsNum)/source.fpsDen;return QStringLiteral("补帧中：%1→%2 fps").arg(fps,0,'g',6).arg(fps*2,0,'g',6);}
-    return message(reason);
+    if(current==State::Active){const double fps=double(source.fpsNum)/source.fpsDen;return QStringLiteral("补帧中：%1→%2 fps").arg(fps,0,'g',6).arg(fps*paths.factor,0,'g',6);}
+    return message(reason,paths.backend);
 }
-QVariantMap FrameInterpolationController::diagnostics()const{return {
+QVariantMap FrameInterpolationController::diagnostics()const{
+    // The TRT plugin does not expose GPU inference timing. Core ML samples
+    // become available only after the monitor's 30-prediction warmup.
+    const bool timingAvailable=paths.backend==Backend::CoreMLMetal&&latest.epoch!=0&&
+                               latest.predictions>30&&latest.timingAvailable;
+    return {
     {"requestedForItem",requested},{"runtimeAvailable",paths.available},{"state",int(current)},{"status",status()},{"reason",reason},
     {"generation",qulonglong(serial)},{"epoch",qulonglong(latest.epoch)},
     {"generatedFrames",qulonglong(latest.predictions)},{"cutBypasses",qulonglong(latest.cuts)},
-    {"p95Ms",latest.p95Ms},{"pipeline","Core ML + Metal (split)"}};}
+    {"timingAvailable",timingAvailable},
+    {"p95Ms",timingAvailable?QVariant(latest.p95Ms):QVariant()},
+    {"factor",paths.factor},{"model",paths.model},
+    {"pipeline",paths.backend==Backend::TensorRT?QStringLiteral("TensorRT"):QStringLiteral("Core ML + Metal (split)")}};}
 SourceInfo sourceInfo(const QVariantMap& p,const QVariantMap& frame,double fps){
     const auto rate=rationalFrameRate(fps);
     const QString transfer=p.value("gamma").toString(),primaries=p.value("primaries").toString(),matrix=p.value("colormatrix").toString(),range=p.value("colorlevels").toString();

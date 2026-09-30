@@ -128,6 +128,8 @@ class PrivateRuntimeTests(unittest.TestCase):
         self.assertIn("79", report["vsVersion"])
         self.assertIn("10.16", report["trtVersion"])
         self.assertIn("NVIDIA", report["gpu"]["name"])
+        self.assertEqual(len(report['gpu']['uuid']), 32)
+        self.assertTrue(report['gpu']['driverVersion'])
         self.assertTrue(report["loadedLibraries"])
         self.assertTrue(report["privateLibrariesOnly"])
         self.assertTrue(report['autoloadDisabled'])

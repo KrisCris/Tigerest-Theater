@@ -19,17 +19,20 @@ uint64_t beginInstance(uint64_t session){
     if(!session||session!=active)return 0;
     metrics={};metrics.epoch=++serial;timings.clear();lastFrame=-1;return metrics.epoch;
 }
-void recordFrame(uint64_t session,uint64_t epoch,int index,bool synthesized,double ms,const std::string& reason){
+void recordFrame(uint64_t session,uint64_t epoch,int index,bool synthesized,double ms,
+                 const std::string& reason,int factor,bool timingAvailable){
     std::lock_guard<std::mutex> g(lock);
-    if(!session||session!=active||!epoch||epoch!=metrics.epoch||index<=lastFrame)return;
+    if(!session||session!=active||!epoch||epoch!=metrics.epoch||index<=lastFrame||factor<2||factor>15)return;
     lastFrame=index;
     if(!reason.empty()&&reason!="cut"&&reason!="eof")metrics.error=reason;
-    if(index%2)++metrics.pairs;
-    if(reason=="cut")++metrics.cuts;
+    if(index%factor==factor-1){++metrics.pairs;if(reason=="cut")++metrics.cuts;}
+    if(!timingAvailable){metrics.timingAvailable=false;timings.clear();}
     if(synthesized){
         ++metrics.predictions;
-        if(!std::isfinite(ms)||ms<0){metrics.error="inference-error";return;}
-        if(metrics.predictions>30){timings.push_back(ms);if(timings.size()>180)timings.pop_front();}
+        if(timingAvailable){
+            if(!std::isfinite(ms)||ms<0){metrics.error="inference-error";return;}
+            if(metrics.predictions>30){timings.push_back(ms);if(timings.size()>180)timings.pop_front();}
+        }
     }
 }
 Metrics readMetrics(uint64_t session){

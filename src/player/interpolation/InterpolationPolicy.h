@@ -1,6 +1,7 @@
 #pragma once
 #include "FrameTiming.h"
 #include <string>
+#include <limits>
 namespace rife {
 struct SourceInfo {
     int width=0,height=0;
@@ -8,8 +9,10 @@ struct SourceInfo {
     bool progressive=false,cfr=false,hdr=false,colorKnown=false;
 };
 struct Eligibility {bool enabled;std::string reason;};
-Eligibility qualify(const SourceInfo& source);
+struct SourceLimits {int width=1920,height=1080;double fps=30.001;};
+Eligibility qualify(const SourceInfo& source,SourceLimits limits={});
 Rational rationalFrameRate(double fps);
+int integerMultiplier(Rational source,int targetFps);
 // Holds the initial audio/video clock while models load. User pause intent is
 // independent of the temporary pause used for preparation.
 class StartupGate {
@@ -26,14 +29,25 @@ private:
     bool pending=false,resume=false;
     int64_t since=0;
 };
+struct GuardParameters {
+    bool windowsBackend=false;
+    int64_t warmupMs=5000,windowMs=10000;
+    double maxDropRatio=.05,maxAvSyncMs=100.;
+    static GuardParameters windows(){GuardParameters p;p.windowsBackend=true;return p;}
+};
 class PerformanceGuard {
 public:
+    explicit PerformanceGuard(GuardParameters parameters={}):parameters(parameters){}
     void reset();
     bool update(int64_t nowMs,uint64_t predictions,uint64_t pairs,double p95Ms,
-                uint64_t drops,double fps,bool suspended);
+                uint64_t drops,double fps,bool suspended,int factor=2,bool timingAvailable=true,
+                double avsync=std::numeric_limits<double>::quiet_NaN(),uint64_t decoderDrops=0);
 private:
+    GuardParameters parameters;
     int64_t start=-1;
-    uint64_t firstPairs=0,firstDrops=0;
+    int64_t avSince=-1,previousPoll=-1;
+    uint64_t firstPairs=0,firstDrops=0,firstDecoderDrops=0;
+    bool warming=true;
     unsigned slowWindows=0;
 };
 }

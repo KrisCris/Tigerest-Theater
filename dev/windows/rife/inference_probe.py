@@ -15,6 +15,8 @@ def main():
     parser.add_argument('--report', required=True, type=Path)
     args = parser.parse_args()
     root = args.runtime.resolve()
+    manifest = json.loads((root / 'runtime.json').read_text(encoding='utf-8'))
+    implementation = manifest['model']['implementation']
     result = {'ok': False, 'model': 'rife-4.25-lite', 'errors': []}
     dll_dirs = []
     try:
@@ -51,8 +53,10 @@ def main():
                                         key: os.environ[key] for key in ('SystemRoot', 'WINDIR', 'TEMP', 'TMP')
                                         if key in os.environ})
         started = time.monotonic()
-        output = vsmlrt.RIFE(source, multi=2, model=vsmlrt.RIFEModel.v4_25_lite,
-                             backend=backend, _implementation=1)
+        inference_source = core.resize.Point(source, format=vs.RGBH) if implementation == 2 else source
+        output = vsmlrt.RIFE(inference_source, multi=2, model=vsmlrt.RIFEModel.v4_25_lite,
+                             backend=backend, _implementation=implementation)
+        output = core.resize.Point(output, format=vs.RGBS)
         result['enginePreparationSeconds'] = time.monotonic() - started
         left, right = source.get_frame(0), source.get_frame(1)
         started = time.monotonic()
@@ -66,7 +70,9 @@ def main():
                     total += sum(abs(middle[plane][y, x] - other[plane][y, x]) for x in range(256))
             return total / (256 * 128 * 3)
 
-        result.update(differenceFromLeft=difference(left), differenceFromRight=difference(right),
+        result.update(implementation=implementation,
+                      precision='fp16-fp16-io' if implementation == 2 else 'fp16-fp32-io',
+                      differenceFromLeft=difference(left), differenceFromRight=difference(right),
                       outputDimensions=[middle.width, middle.height],
                       engineBytes=sum(p.stat().st_size for p in cache.glob('*.engine')),
                       loadedLibraries=loaded_libraries())

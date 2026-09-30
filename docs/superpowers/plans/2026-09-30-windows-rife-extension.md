@@ -13,7 +13,8 @@
 ## Global Constraints
 
 - 本机只研究 Windows x64 / NVIDIA / TensorRT；M 芯片问题由用户在 Mac 单独解决，不引入 Windows 的 NCNN、Core ML 或 TensorRT-RTX 后端。
-- 默认关闭；最高 1920×1080、30 fps、逐行 SDR 恒定帧率，2 倍输出；23.976 → 47.952，24 → 48，30 → 60，保持时长。
+- Windows 默认关闭，最高 3840×2160、60 fps、逐行 SDR 恒定帧率；提供 2 倍与接近 60／120／240 fps 的整数倍输出，保持时长。Mac 保持原有范围。
+- 扩展提供 4.25 lite／4.25／4.25 heavy 和画质优先／均衡／高帧率／4K 流畅预设。实际性能目标为 1080p→约 60 fps→默认 mpv 4K 输出、1080p→约 240 fps→4K 输出、原生 4K 60→120 fps；逐模型记录完整播放结果。
 - HDR/Dolby Vision、隔行、未知时序或颜色、动态分辨率、非默认倍速、系统 MPV 配置和冲突滤镜均旁路；不自动缩小画幅或转 SDR。
 - 扩展包独立发行，安装器和便携版不含大型 AI 运行库。用户无需配置 Python、VapourSynth、CUDA Toolkit、系统 PATH 或 SVP。
 - 运行库保存在 `Paths::globalDataDir("extensions/rife/<version>")`，profile 间共享；引擎缓存与开关按 profile 保存。
@@ -38,7 +39,7 @@
 - `codex/macos-rife`：`55dd5cf52ae1fcb337945a9e0a740755b0af9d69`，比该 main 超前 22 个提交。
 - v2.1.2 tag 指向 `3cd0b0d6625a58f7f1331ba28a6e3290a96b7c78`；最新发布说明明确 DMG 使用 `55dd5cf` 的修复。不能只检出 tag 作为最新 Mac 实现。
 - `build/output/libmpv-2.dll` 为 `mpv v0.41.0-920-gdd5d17d32`，构建启用了 VapourSynth；无媒体参数解析成功。它没有 `eof-aware` 选项字符串，不能直接套用 Mac 的滤镜命令。
-- 依赖研究候选：VapourSynth R80、vs-mlrt v15.16 标准 TensorRT。上游 Windows TensorRT 分卷合计 2,676,014,172 字节，尚未下载或测量裁剪体积。
+- 实验选定 Python 3.13.15／VapourSynth R79／vs-mlrt v15.16 标准 TensorRT 10.16。R80 因移除 API 3 无法加载此插件；R79 私有加载与 tiny lite 实际推理已通过。上游 TensorRT 分卷合计 2,676,014,172 字节；端到端性能及发行验收仍未完成。
 - 当前 GitHub API 能读取源码；普通 Git HTTPS fetch 两次连接失败。执行时先恢复正常 Git 获取，不用源码 ZIP 冒充保留了原始提交历史。
 
 ## 文件职责
@@ -64,10 +65,10 @@
 
 **Interfaces:** 消费远端 SHA；产出包含 `55dd5cf` 修复和本任务文档的集成分支，继续使用 `rife::FrameInterpolationController(MpvAccess, RuntimePaths)`、`video.aiRife` 和滤镜标签 `@tigerest-rife`。
 
-- [ ] 获取 `main`、`codex/macos-rife` 与标签，核对实际 SHA。按用户选择的执行方式使用隔离工作区／分支；原目录里的两份 2026-08-30 未跟踪文档保持原样。
-- [ ] 将 Mac 分支合入集成分支，保留原始历史及本地 spec/plan。核对 `stopOnEndFile()` 只使用异步 mpv 调用、CoreAudio 补丁仍在 Mac 构建链、版本未提前标记正式发布。
-- [ ] 复用已有外部 Qt/MSVC/WebEngine 依赖路径，运行 `dev\windows\build.bat` 和 `dev\windows\test.bat`，记录集成前 Windows 基线。失败先定位，不把原有失败归为 TensorRT 变化。
-- [ ] 保存基线结果到 `docs/reports/2026-09-30-windows-rife.md`，记录实际源码 SHA、工具链路径变量名和测试结果；只提交本次合并／文档。
+- [x] 获取 `main`、`codex/macos-rife` 与标签，核对实际 SHA。按用户选择的执行方式使用隔离工作区／分支；原目录里的两份 2026-08-30 未跟踪文档保持原样。
+- [x] 将 Mac 分支合入集成分支，保留原始历史及本地 spec/plan。核对 `stopOnEndFile()` 只使用异步 mpv 调用、CoreAudio 补丁仍在 Mac 构建链、版本未提前标记正式发布。
+- [x] 复用已有外部 Qt/MSVC/WebEngine 依赖路径，运行 `dev\windows\build.bat` 和 `dev\windows\test.bat`，记录集成前 Windows 基线。失败先定位，不把原有失败归为 TensorRT 变化。
+- [x] 保存基线结果到 `docs/reports/2026-09-30-windows-rife.md`，记录实际源码 SHA、工具链路径变量名和测试结果；只提交本次合并／文档。
 
 ### Task 2: 私有运行库与带尾帧支持的 Windows libmpv
 
@@ -75,11 +76,11 @@
 
 **Interfaces:** `prepare_runtime.py --output DIR` 产出 `runtime.json` 与私有库树；`probe_runtime.py --runtime DIR --mpv DLL --report JSON` 产出 `ok,mpvVersion,vsVersion,trtVersion,gpu,loadedLibraries,errors`。运行库清单含 `schemaVersion=1,backend="windows-nvidia-trt",runtimeId,files[{path,sha256,size}],model`。
 
-- [ ] 编写运行库探测测试：缺少 DLL 返回明确失败；显式指定的坏私有根即使系统有 Python 也不能成功；从两个含中文和空格的路径运行，所加载的非系统依赖都属于选定私有根或播放器的轻量统计 DLL。
-- [ ] 运行 `python -m unittest discover -s tests -p test_rife_runtime.py -v`，确认缺少待实现工具／能力导致失败。
-- [ ] 以 R80 与 vs-mlrt v15.16 为候选建立独立运行库，Python 版本按 R80 官方便携配方匹配并锁定具体版本。仅开发准备过程联网；保存下载源、版本、SHA-256 和许可证，不执行全局安装。RIFE 首选与 Mac 同代的 4.25 lite，核对实际权重来源，不能把同版本号当作相同权重。
+- [x] 编写运行库探测测试：缺少 DLL 返回明确失败；显式指定的坏私有根即使系统有 Python 也不能成功；从两个含中文和空格的路径运行，所加载的非系统依赖都属于选定私有根或播放器的轻量统计 DLL。
+- [x] 运行 `python -m unittest discover -s tests -p test_rife_runtime.py -v`，确认缺少待实现工具／能力导致失败。
+- [x] 固定已验证兼容的 R79、Python 3.13.15 与 vs-mlrt v15.16 私有运行库。仅开发准备过程联网；保存下载源、版本、SHA-256 和许可证，不执行全局安装。纳入 4.25 lite／4.25／4.25 heavy，逐一记录实际权重来源，不把 Mac 同版本号当作相同权重。
 - [ ] 构建 Windows libmpv：保留当前 dd5d17d328 内核和既有依赖版本作为首个移植基线，只移植 EOF／颜色元数据必要修改；已存在的 VSScript 动态加载修改不重复打补丁。保存全部补丁与构建来源，不移植 CoreAudio。本地工具链不足时使用可复现 CI 构建并下载其已校验产物。AVX2 与兼容 DLL 都要有一致的滤镜能力。
-- [ ] 用实际视频通过两份 DLL 验证 `eof-aware=yes`、R80 加载和颜色属性，覆盖一帧／两帧自然结束。静态字符串或选项解析成功不能替代媒体测试。运行上述 unittest 并执行 `probe_runtime.py`，报告必须 `ok=true` 且加载路径符合私有根。
+- [ ] 用实际视频通过两份 DLL 验证 `eof-aware=yes`、R79 加载和颜色属性，覆盖一帧／两帧自然结束。静态字符串或选项解析成功不能替代媒体测试。运行上述 unittest 并执行 `probe_runtime.py`，报告必须 `ok=true` 且加载路径符合私有根。
 - [ ] 统计压缩下载、展开运行库、模型和临时缓存体积；依赖裁剪每次均重跑加载与推理测试。提交脚本、锁文件和报告，不提交大型二进制或生成引擎。
 
 ### Task 3: 真实 TensorRT 补帧、缓存与共享播放控制
@@ -92,11 +93,11 @@
 - `build_rife_filter(source, options)` 返回 VS clip；沿用 `_TigerestRifeSynthesized/_TigerestRifeReason/_DurationNum/_DurationDen` 和 `session`。
 - 为控制器增加 `setRuntimePaths(RuntimePaths)`，仅在未挂载滤镜时接受；现有会话接口和 Mac 默认路径保持兼容。
 
-- [ ] 先写测试：23.976/24/30 fps 倍增而时长不变；运动样本的新增帧不同于相邻原帧；奇数帧、切镜和 EOF 不虚报推理；缓存未完成不可用；取消旧 generation 后的结果不改变新影片。
-- [ ] 运行 `python -m unittest discover -s tests -p test_rife_trt_pipeline.py -v` 和新增 QtTest 用例，记录真实失败。
-- [ ] 将现有 Monitor 从 Mac 推理代码中拆出。Windows 构建轻量共享统计 DLL，主程序与 Monitor 必须连接同一份注册表；Mac 保留其引擎和 Monitor 行为。为 Windows DLL 正确导出统计接口，不能各自静态链接形成两份会话表。
-- [ ] 构建 TRT 图：显式加载私有插件，FP16 推理，使用输入颜色矩阵和范围，尺寸按模型需要填充后裁切；先检测切镜与无效帧再请求生成图。原帧保真、尾帧时长和切镜旁路沿用现有测试语义。只有实际取到生成分支的帧才计数。
-- [ ] 建立按 GPU／驱动／运行库／权重／精度／形状区分的引擎缓存，锁文件和原子完成标记防止半成品复用。首次编译允许最长 15 分钟并支持取消，超时报告准备失败且原帧播放；现有 15 秒播放启动门限只用于已准备好的滤镜，不包住首次编译。
+- [ ] 先写测试：23.976/24/30/60 fps 的 2／4／5／8／10 倍输出时长不变；运动样本的各新增帧不同于相邻原帧且不同时间点有区别；奇数帧、切镜和 EOF 不虚报推理，多倍尾帧不取不存在的邻帧；4K 不在推理前缩小；缓存未完成不可用；取消旧 generation 后的结果不改变新影片。
+- [x] 运行 `python -m unittest discover -s tests -p test_rife_trt_pipeline.py -v` 和新增 QtTest 用例，记录真实失败。
+- [x] 将现有 Monitor 从 Mac 推理代码中拆出。Windows 构建轻量共享统计 DLL，主程序与 Monitor 必须连接同一份注册表；Mac 保留其引擎和 Monitor 行为。为 Windows DLL 正确导出统计接口，不能各自静态链接形成两份会话表。
+- [x] 构建 TRT 图：显式加载私有插件，FP16 推理，使用输入颜色矩阵和范围，尺寸按模型需要填充后裁切；先检测切镜与无效帧再请求生成图。原帧保真、尾帧时长和切镜旁路沿用现有测试语义。只有实际取到生成分支的帧才计数。
+- [x] 建立按 GPU／驱动／运行库／权重／精度／形状区分的引擎缓存，锁文件和原子完成标记防止半成品复用。首次编译允许最长 15 分钟并支持取消；Player 中原帧播放及启动门限连接仍由下一项完成，工具层不把 15 秒套用到首次编译。
 - [ ] 在格式获知后调度引擎准备，未就绪时旁路本片；缓存命中才挂载滤镜。保留 `stopOnEndFile()` 异步清理和旧结果隔离，暂停／seek／缓冲不触发性能误判。Windows 的性能回退以 spec 的 5 秒排除期、10 秒窗口、5% 丢帧／100 ms 持续音画偏差为初始参数；通过按后端的参数传入共享 guard，Mac 保留其既有参数。Windows 没有精确 GPU 推理耗时时明确标记不可用，不能把 0 ms 或队列等待时间包装成推理性能。
 - [ ] 用 `dev\windows\build.bat`、`dev\windows\test.bat -R rife` 及实际媒体验证；每个源帧率记录 10 分钟稳态结果、掉帧与音画偏差。报告合成帧计数、模型／后端和引擎缓存命中。达到 spec 标准后再继续扩展安装层。
 - [ ] 提交此任务的源码、回归测试及可复现实测报告。
@@ -134,7 +135,7 @@
 **Interfaces:** 报告逐项标记通过／失败／未测；发行清单记录 `sourceSha,platform,version,assetName,sha256,runtimeId,tests`，不根据文件名推定同一源码。
 
 - [ ] 自动回归：短片/尾帧、20 次 seek、停止重开、播放列表切集、补帧中退出、暂停及倍速旁路；模拟缺失／损坏扩展、缓存不可写和准备取消，确认原帧恢复且无退出死锁。
-- [ ] 实机回归：1080p SDR 的 23.976/24/30 fps 各 10 分钟、原生 GPU-Next 与 Render API、字幕和弹幕、三套 Shader；记录丢帧比例和音画偏差。稳态目标低于 1% 丢帧且音画偏差不持续超过 80 ms；若失败，修复或明确缩小经测试的组合，不伪报通过。
+- [ ] 实机回归：逐模型测试 1080p SDR 23.976/24/30→约 60 fps→默认 mpv 4K 输出、1080p→约 240 fps→4K 输出、原生 4K 60→120 fps，各代表性组合 10 分钟。覆盖原生 GPU-Next 与 Render API、字幕和弹幕、三套 Shader；记录配置、实际帧率、显存、丢帧比例和音画偏差。稳态目标低于 1% 丢帧且音画偏差不持续超过 80 ms；极限目标未通过明确报告，不伪报通过。
 - [ ] 在无 Python/VS/CUDA/SVP 的干净 Windows 上验证安装与离线导入。若仅完成本机隔离测试，报告仍为未完成干净系统验收；不能将该项勾为通过。
 - [ ] 对共享控制／Monitor 变化进行 Mac 编译和现有回归测试，保留 `55dd5cf` 修复。通过现有 Mac CI 或用户的 Mac 构建环境取得同一集成 SHA 的 DMG 和测试记录；不重命名旧 v2.1.2 DMG 充作新版本。
 - [ ] 检查远端最新版本后分配未占用版本号；从最终集成 SHA 生成 Windows 安装器、便携 ZIP 和 Mac DMG。RIFE 扩展独立编号，先固定其运行库源码／锁文件 SHA 并生成包，再将包哈希纳入主程序目录，避免哈希清单的自引用；发行清单分别记录主程序 SHA 和扩展构建 SHA。先建立发布草稿并验证所有附件／下载链接／扩展目录哈希及测试边界。
@@ -144,4 +145,4 @@
 
 推荐在本任务顺序实施，使用隔离工作区；运行库兼容、原生统计和扩展安装有较强依赖，先得到可信的真实推理结果更有价值。也可选择子代理逐项实施与复核，但不会在用户选择前派出子代理。
 
-本计划已经按 spec 自审：覆盖依赖隔离、真实生成帧、EOF/时长、缓存取消、下载／导入、升级卸载、Windows 回归及 Mac 整合。当前仅完成设计、源码和发布信息核对，未下载大型运行库、未修改产品代码、未证明 TensorRT 补帧可用。需用户审阅计划并选择执行方式后开始任务 1。
+本计划已获用户批准并顺序执行。任务 1 已完成；任务 2 等待两份 mpv 的真实 EOF 验证；任务 3 的三模型 v2 帧图/缓存/共享控制原型已通过完整 36 项 CTest，9 项滤镜基准明确记录了两个极限目标未达到。RuntimeManager/Player、完整默认 4K 渲染、扩展管理与发行验收尚未完成。执行记录见 `.superpowers/sdd/2026-09-30-windows-rife-extension/progress.md` 和 `docs/reports/2026-09-30-windows-rife.md`。
