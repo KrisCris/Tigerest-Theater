@@ -606,6 +606,11 @@ int main(int argc, char *argv[])
     // run our application
     int ret = app.exec();
 
+#ifdef Q_OS_MAC
+    if (!PlayerComponent::Get().prepareForShutdown())
+      return ret;
+#endif
+
     delete uniqueApp;
     Globals::EngineDestroy();
 

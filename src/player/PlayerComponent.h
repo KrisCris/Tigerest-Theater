@@ -5,11 +5,18 @@
 #include <QtCore/qglobal.h>
 #include <QVariant>
 #include <QSet>
+#include <QList>
 #include <QQuickWindow>
 #include <QTimer>
 #include <QTextStream>
 
 #include <functional>
+#include <memory>
+#include <QElapsedTimer>
+#ifdef Q_OS_MAC
+#include "interpolation/InterpolationPolicy.h"
+namespace rife {class FrameInterpolationController;class MpvPollAccess;}
+#endif
 
 #include "ComponentManager.h"
 #include "QtHelper.h"
@@ -55,6 +62,10 @@ public:
 
   // Stop playback and clear all queued items.
   Q_INVOKABLE virtual void stop();
+#ifdef Q_OS_MAC
+  // Drain native VO teardown on the Cocoa main thread before QML destroys mpv.
+  bool prepareForShutdown();
+#endif
 
   // A full reload of the stream is imminent (stop() + load())
   // Used for not resetting display mode with the next stop() call.
@@ -238,6 +249,17 @@ Q_SIGNALS:
   void fullscreenRequested(bool fullscreen);
 
 private:
+#ifdef Q_OS_MAC
+  std::unique_ptr<rife::MpvPollAccess> m_rifeAccess;
+  std::unique_ptr<rife::FrameInterpolationController> m_rife;
+  QTimer m_rifeTimer;
+  QElapsedTimer m_rifeClock;
+  bool m_rifeSuppressedSvp=false;
+  rife::StartupGate m_rifeStartup;
+  void beginInterpolationItem();
+  void publishInterpolationPause();
+  void pollInterpolation();
+#endif
   // this is the function actually implemented in the backends. the variantmap contains
   // a few known keys:
   // * subtitleStreamIndex
@@ -266,6 +288,18 @@ private:
 
   MpvController* m_mpv = nullptr;
   bool m_nativeVideoOutput = false;
+#ifdef Q_OS_MAC
+  struct DeferredMediaLoad {
+    QString url;
+    QVariantMap options, metadata;
+    QVariant audioStream, subtitleStream;
+    QString mode;
+  };
+  bool m_nativeVoTeardownPending = false;
+  bool m_shuttingDown = false;
+  QList<DeferredMediaLoad> m_deferredMediaLoads;
+  void completeNativeVoTransition();
+#endif
 
   State m_state;
   bool m_paused;
@@ -273,6 +307,8 @@ private:
   bool m_windowVisible;
   bool m_videoPlaybackActive;
   bool m_inPlayback;
+  bool m_nativeVideoReady = false;
+  QVariantMap m_decodedVideoParams;
   bool m_playbackCanceled;
   bool m_replacementPending = false;
   QString m_playbackError;

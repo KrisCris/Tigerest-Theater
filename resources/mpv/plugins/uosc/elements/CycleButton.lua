@@ -34,7 +34,10 @@ function CycleButton:init(id, props)
 	self.on_click = function()
 		local new_state = self.states[self.current_state_index + 1] or self.states[1]
 		local new_value = new_state.value
-		if self.owner == 'uosc' then
+		if self.prop == 'pause' and not self.owner and
+			type(mp.get_property_native('user-data/tigerest/rife-startup-pause')) == 'boolean' then
+			mp.commandv('script-message', 'tigerest-rife-toggle-pause')
+		elseif self.owner == 'uosc' then
 			if type(options[self.prop]) == 'number' then
 				options[self.prop] = tonumber(new_value) or 0
 			else
@@ -51,6 +54,10 @@ function CycleButton:init(id, props)
 	end
 
 	local function handle_change(name, value)
+		if self.prop == 'pause' and not self.owner then
+			local intended = mp.get_property_native('user-data/tigerest/rife-startup-pause')
+			if type(intended) == 'boolean' then value = intended end
+		end
 		-- Removes unnecessary floating point digits from values like `2.00000`.
 		-- This happens when observing properties like `speed`.
 		if type(value) == 'string' and string.match(value, '^[%+%-]?%d+%.%d+$') then
@@ -80,6 +87,11 @@ function CycleButton:init(id, props)
 		handle_change(self.prop, state[self.prop])
 	else
 		self:observe_mp_property(self.prop, 'string', handle_change)
+		if self.prop == 'pause' then
+			self:observe_mp_property('user-data/tigerest/rife-startup-pause', 'native', function()
+				handle_change(self.prop, mp.get_property(self.prop))
+			end)
+		end
 	end
 end
 

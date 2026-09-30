@@ -26,7 +26,10 @@ dev/macos/bundle.sh
 sh -n dev/macos/*.sh
 ctest --test-dir build --output-on-failure
 codesign --verify --deep --strict "build/output/Tigerest Theater.app"
+python3 tests/test_macos_bundle.py "build/output/Tigerest Theater.app"
 ```
+
+打包时会包含原生 GPU-Next 播放所需的 MoltenVK 驱动和相对路径 ICD 发现文件。缺少 Homebrew `molten-vk` 依赖时会停止打包，避免生成只能在构建机播放的安装包。
 
 日志位于 `~/Library/Logs/Tigerest Theater/profiles/<profile-id>/`。开发构建若遇到图形兼容问题，可运行 `dev/macos/run.sh --software-rendering`。
 

@@ -28,8 +28,10 @@ save-position-on-quit=no
 # 换集时恢复暂停、倍速、平移和缩放，避免上一集的临时操作污染下一集。
 reset-on-next-file=pause,speed,video-pan-x,video-pan-y,video-zoom
 
-# Windows 内置模式会在这里生成 input-ipc-server=mpvpipe，供 SVP 通过命名管道连接；macOS 不创建该 Windows 专用管道。
+# 为 SVP 打开本机连接接口：Windows 使用 mpvpipe，macOS 使用 /tmp/mpvsocket。
 @TIGEREST_IPC_SERVER@
+# 精确定位时保留送入补帧滤镜的帧，避免 SVP 音画不同步。
+hr-seek-framedrop=no
 
 # 默认字幕字体使用用户提供配置中的 Segoe UI；系统缺少该字体时由字体回退机制选择可用字体。
 sub-font=Segoe UI

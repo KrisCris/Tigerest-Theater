@@ -21,7 +21,8 @@ ninja install
 APP_BUNDLE="${BUILD_DIR}/output/${APP_NAME}"
 
 echo "Signing app bundle..."
-codesign --force --deep -s - "${APP_BUNDLE}"
+python3 "${PROJECT_ROOT}/dev/macos/sign_bundle.py" "${APP_BUNDLE}"
+python3 "${PROJECT_ROOT}/tests/test_macos_bundle.py" "${APP_BUNDLE}"
 
 echo "Creating DMG..."
 VERSION="$(cat "${PROJECT_ROOT}/VERSION")"

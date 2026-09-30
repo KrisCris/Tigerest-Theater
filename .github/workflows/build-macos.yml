@@ -34,7 +34,24 @@ jobs:
     - name: Install dependencies
       run: |
         brew update
-        brew install mpv
+        brew install mpv molten-vk vapoursynth python@3.13 ninja
+    - name: Build pinned playback runtime and RIFE model
+      run: |
+        "$(brew --prefix python@3.13)/bin/python3.13" -m venv build/rife/venv
+        build/rife/venv/bin/pip install meson==1.9.2
+        if [ "$(uname -m)" = arm64 ]; then
+          build/rife/venv/bin/pip install -r dev/macos/rife/requirements-build.txt
+          build/rife/venv/bin/python dev/macos/rife/prepare_model.py build/rife/source
+          build/rife/venv/bin/python dev/macos/rife/split_model.py \
+            --source build/rife/source --output build/rife/models/1080-split-refine \
+            --width 1920 --height 1080 --grid-scale 0.5 --offload-refine
+          build/rife/venv/bin/python dev/macos/rife/coarse_model.py \
+            --source build/rife/source --output build/rife/models/1080-split-refine \
+            --width 1920 --height 1080
+          echo "TIGEREST_RIFE_MODEL_DIR=$PWD/build/rife/models/1080-split-refine" >> "$GITHUB_ENV"
+        fi
+        build/rife/venv/bin/python dev/macos/rife/build_mpv.py \
+          --output build/rife/playback --meson "$PWD/build/rife/venv/bin/meson"
     - name: Release build
       run: |
         cmake -B build -G Ninja \
@@ -44,13 +61,18 @@ jobs:
           -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0 \
           -DCMAKE_INSTALL_PREFIX=build/output \
           -DCHECK_FOR_UPDATES=OFF \
-          -DUSE_STATIC_MPVQT=ON
+          -DUSE_STATIC_MPVQT=ON \
+          -DMPV_LIBRARY_mpv="$PWD/build/rife/playback/mpv-build/libmpv.dylib" \
+          -DTIGEREST_RIFE_MODEL_DIR="${TIGEREST_RIFE_MODEL_DIR:-}"
         cmake --build build --target install
     - name: Run unit tests
-      run: ctest --test-dir build --output-on-failure
+      run: |
+        ctest --test-dir build --output-on-failure
+
     - name: Sign and create dmg
       run: |
-        codesign --force --deep -s - "./build/output/Tigerest Theater.app/"
+        python3 dev/macos/sign_bundle.py "./build/output/Tigerest Theater.app"
+        python3 tests/test_macos_bundle.py "build/output/Tigerest Theater.app"
         brew install create-dmg
         VERSION=$(cat VERSION)
         ARCH=$(uname -m)

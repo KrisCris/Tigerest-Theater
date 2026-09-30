@@ -1,6 +1,22 @@
 set(app "${CMAKE_INSTALL_PREFIX}/@EXE@")
 set(framework_path "${app}/Contents/Frameworks")
 set(weprocess "${framework_path}/QtWebEngineCore.framework/Versions/Current/Helpers/QtWebEngineProcess.app")
+file(MAKE_DIRECTORY "${framework_path}")
+# The custom libmpv has an @rpath install name; after installation the build
+# rpath is gone, so macdeployqt cannot discover its source automatically.
+get_filename_component(mpv_binary "@MPV_LIBRARY_mpv@" REALPATH)
+if(NOT EXISTS "${mpv_binary}")
+  message(FATAL_ERROR "Missing selected libmpv: @MPV_LIBRARY_mpv@")
+endif()
+file(COPY "${mpv_binary}" DESTINATION "${framework_path}")
+get_filename_component(mpv_build_dir "${mpv_binary}" DIRECTORY)
+get_filename_component(mpv_root "${mpv_build_dir}" DIRECTORY)
+if(EXISTS "${mpv_root}/mpv-provenance.json")
+  file(MAKE_DIRECTORY "${app}/Contents/Resources/licenses/mpv")
+  file(COPY "${mpv_root}/mpv-provenance.json" DESTINATION "${app}/Contents/Resources/licenses/mpv")
+  file(GLOB mpv_licenses "${mpv_root}/mpv-*/Copyright" "${mpv_root}/mpv-*/LICENSE.*")
+  file(COPY ${mpv_licenses} DESTINATION "${app}/Contents/Resources/licenses/mpv")
+endif()
 
 # Detect homebrew prefix
 execute_process(
@@ -13,6 +29,7 @@ set(brew_qt_lib "${brew_prefix}/opt/qt/lib")
 
 set(args ${app})
 list(APPEND args "-verbose=2")
+list(APPEND args "-no-strip")
 list(APPEND args "-qmldir=@SOURCE_ROOT@/src/ui")
 list(APPEND args "-libpath=@QTROOT@/lib")
 list(APPEND args "-libpath=${brew_qt_lib}")
@@ -23,12 +40,17 @@ endforeach(BIN ${BINS})
 
 set(ENV{DYLD_LIBRARY_PATH} @QTROOT@/lib:${brew_qt_lib}:${brew_lib}:@DEPENDENCY_ROOT@/lib)
 set(ENV{DYLD_FRAMEWORK_PATH} @QTROOT@/lib:${brew_qt_lib}:${brew_lib}:@DEPENDENCY_ROOT@/lib)
+execute_process(COMMAND chmod -R u+w "${app}" COMMAND_ERROR_IS_FATAL ANY)
 
 execute_process(
   COMMAND ${CMAKE_COMMAND} -E remove "${app}/Contents/Resources/qt.conf"
   COMMAND "@QTROOT@/bin/macdeployqt" ${args}
   WORKING_DIRECTORY "@QTROOT@/bin"
+  RESULT_VARIABLE macdeployqt_result
 )
+if(NOT macdeployqt_result EQUAL 0)
+  message(FATAL_ERROR "macdeployqt failed: ${macdeployqt_result}")
+endif()
 
 # macdeployqt deploys every SQL and positioning plugin it finds, including
 # optional drivers whose third-party libraries are not part of this client.
@@ -48,11 +70,28 @@ foreach(plugin ${unsupported_plugins})
   endif()
 endforeach()
 
+# VSScript and the native plugin are loaded dynamically, so dependency discovery
+# cannot infer their runtime Python package or model files.
+execute_process(COMMAND python3 "@SOURCE_ROOT@/dev/macos/bundle_vapoursynth.py" "${app}" "${brew_prefix}"
+  RESULT_VARIABLE vapoursynth_result)
+if(NOT vapoursynth_result EQUAL 0)
+  message(FATAL_ERROR "Unable to stage bundled VapourSynth")
+endif()
+if(NOT "@TIGEREST_RIFE_MODEL_DIR@" STREQUAL "")
+  execute_process(COMMAND python3 "@SOURCE_ROOT@/dev/macos/rife/bundle_model.py"
+    "@TIGEREST_RIFE_MODEL_DIR@" "${app}" RESULT_VARIABLE rife_model_result)
+  if(NOT rife_model_result EQUAL 0)
+    message(FATAL_ERROR "Unable to compile bundled RIFE models")
+  endif()
+endif()
+
 #
 # fix_install_names: Fix library paths for bundled dylibs/sos
 #
 function(fix_lib_dependencies lib framework_libs_var)
   set(framework_libs ${${framework_libs_var}})
+  # Homebrew bottles can mark library files read-only. This is our staged copy.
+  execute_process(COMMAND chmod u+w "${lib}" COMMAND_ERROR_IS_FATAL ANY)
 
   execute_process(
     COMMAND otool -L "${lib}"
@@ -98,11 +137,20 @@ function(fix_lib_dependencies lib framework_libs_var)
       string(REGEX REPLACE " \\(compatibility.*$" "" dependency_str "${line}")
       string(STRIP "${dependency_str}" dependency_str)
 
+      # Keep libraries next to their matching Python extension. A different
+      # Homebrew version must not replace the one staged above.
+      if(dependency_str MATCHES "^@loader_path/(.+)")
+        get_filename_component(loader_dir "${lib}" DIRECTORY)
+        if(EXISTS "${loader_dir}/${CMAKE_MATCH_1}")
+          continue()
+        endif()
+      endif()
+
       # Resolve the actual path
       if(dependency_str MATCHES "^@rpath/(.+)")
         set(dep_name "${CMAKE_MATCH_1}")
         # Search multiple potential locations for @rpath dependencies
-        set(search_paths "${brew_lib}/${dep_name}")
+        set(search_paths "${framework_path}/${dep_name}" "${brew_lib}/${dep_name}")
         # Add Cellar paths - some libs (like libjxl_cms) aren't symlinked to main lib dir
         file(GLOB cellar_candidates "${brew_prefix}/Cellar/*/*/lib/${dep_name}")
         list(APPEND search_paths ${cellar_candidates})
@@ -217,6 +265,34 @@ function(fix_lib_dependencies lib framework_libs_var)
   endforeach()
 endfunction()
 
+# Vulkan discovers MoltenVK with dlopen through its ICD manifest, so neither
+# macdeployqt nor otool's dependency walk can discover this required driver.
+# Keep its manifest relative to the bundle so native macvk playback also works
+# on Macs without Homebrew. Preserve the installed driver's API version.
+set(moltenvk_root "${brew_prefix}/opt/molten-vk")
+set(moltenvk_source "${moltenvk_root}/lib/libMoltenVK.dylib")
+set(moltenvk_manifest "${moltenvk_root}/etc/vulkan/icd.d/MoltenVK_icd.json")
+if(NOT EXISTS "${moltenvk_source}" OR NOT EXISTS "${moltenvk_manifest}")
+  message(FATAL_ERROR "MoltenVK is required for native macOS playback; install it with brew install molten-vk")
+endif()
+get_filename_component(moltenvk_real "${moltenvk_source}" REALPATH)
+file(COPY "${moltenvk_real}" DESTINATION "${framework_path}")
+execute_process(
+  COMMAND install_name_tool -id "@rpath/libMoltenVK.dylib" "${framework_path}/libMoltenVK.dylib"
+  RESULT_VARIABLE moltenvk_id_result
+)
+if(NOT moltenvk_id_result EQUAL 0)
+  message(FATAL_ERROR "Failed to set the bundled MoltenVK install name")
+endif()
+file(READ "${moltenvk_manifest}" moltenvk_json)
+string(REGEX REPLACE "\"library_path\"[ \t\r\n]*:[ \t\r\n]*\"[^\"]+\""
+  "\"library_path\": \"../../../Frameworks/libMoltenVK.dylib\""
+  moltenvk_json "${moltenvk_json}")
+file(MAKE_DIRECTORY "${app}/Contents/Resources/vulkan/icd.d")
+file(WRITE "${app}/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json" "${moltenvk_json}")
+file(MAKE_DIRECTORY "${app}/Contents/Resources/licenses/MoltenVK")
+file(COPY "${moltenvk_root}/LICENSE" DESTINATION "${app}/Contents/Resources/licenses/MoltenVK")
+
 # Build initial list of framework libs
 file(GLOB existing_dylibs "${framework_path}/*.dylib")
 file(GLOB existing_sos "${framework_path}/*.so")
@@ -233,7 +309,8 @@ file(GLOB_RECURSE all_sos "${app}/*.so")
 file(GLOB framework_bins "${framework_path}/*.framework/Versions/*/[A-Z]*")
 list(FILTER framework_bins EXCLUDE REGEX "\\.(plist|h|json|tbd)$")
 list(FILTER framework_bins EXCLUDE REGEX "/(Headers|Resources)/")
-set_property(GLOBAL PROPERTY LIBS_TO_FIX ${all_dylibs} ${all_sos} ${framework_bins})
+set_property(GLOBAL PROPERTY LIBS_TO_FIX ${all_dylibs} ${all_sos} ${framework_bins}
+  "${app}/Contents/MacOS/tigerest-python" "${framework_path}/Python")
 
 # Process libs iteratively (handles newly discovered deps)
 set(max_iterations 100)

@@ -1,0 +1,133 @@
+--- a/video/filter/vf_vapoursynth.c
++++ b/video/filter/vf_vapoursynth.c
+@@ -20,6 +20,7 @@
+ #include <string.h>
+ #include <inttypes.h>
+ #include <limits.h>
++#include <math.h>
+ #include <assert.h>
+ 
+ #include <VSScript4.h>
+@@ -58,6 +59,7 @@
+     char *file;
+     int maxbuffer;
+     int maxrequests;
++    bool eof_aware;
+     char *user_data;
+ 
+     const struct script_driver *drv;
+@@ -183,6 +185,14 @@
+     // The docs explicitly say it uses libavcodec values.
+     p->vsapi->mapSetInt(map, "_ColorSpace",
+             pl_system_to_av(params->repr.sys), 0);
++    if (p->opts->eof_aware) {
++        // Standard VS color properties let the native RIFE bridge distinguish
++        // tagged SDR from HDR/unknown input before any RGB conversion.
++        p->vsapi->mapSetInt(map, "_TigerestColorKnown", !params->tigerest_color_missing, 0);
++        p->vsapi->mapSetInt(map, "_Matrix", pl_system_to_av(params->repr.sys), 0);
++        p->vsapi->mapSetInt(map, "_Primaries", pl_primaries_to_av(params->color.primaries), 0);
++        p->vsapi->mapSetInt(map, "_Transfer", pl_transfer_to_av(params->color.transfer), 0);
++    }
+     if (params->chroma_location) {
+         // 0=left, 1=center, 2=topleft, 3=top, 4=bottomleft, 5=bottom.
+         p->vsapi->mapSetInt(map, "_ChromaLocation",
+@@ -487,7 +497,8 @@
+             p->vsapi->setFilterError(msg, frameCtx);
+             break;
+         }
+-        if (frameno >= p->in_frameno + MP_TALLOC_AVAIL(p->buffered)) {
++        int lookahead = p->opts->eof_aware ? 1 : 0;
++        if (frameno + lookahead >= p->in_frameno + MP_TALLOC_AVAIL(p->buffered)) {
+             // Too far in the future. Remove frames, so that the main thread can
+             // queue new frames.
+             if (p->num_buffered) {
+@@ -497,7 +508,9 @@
+                 continue;
+             }
+         }
+-        if (frameno >= p->in_frameno + p->num_buffered) {
++        if (frameno >= p->in_frameno + p->num_buffered ||
++            (p->opts->eof_aware && !p->eof &&
++             frameno + 1 >= p->in_frameno + p->num_buffered)) {
+             // If there won't be any new frames, abort the request.
+             if (p->eof) {
+                 p->vsapi->setFilterError("EOF or filter EOF/reinit", frameCtx);
+@@ -511,6 +524,7 @@
+             }
+         } else {
+             struct mp_image *img = p->buffered[frameno - p->in_frameno];
++            bool last = p->eof && frameno == p->in_frameno + p->num_buffered - 1;
+             ret = alloc_vs_frame(p, &img->params);
+             if (!ret) {
+                 p->vsapi->setFilterError("Could not allocate VS frame", frameCtx);
+@@ -521,8 +535,19 @@
+             struct mp_image vsframe = map_vs_frame(p, ret, true, NULL);
+             mp_image_copy(&vsframe, img);
+             int res = 1e6;
+-            int dur = img->pkt_duration * res + 0.5;
++            double duration = img->pkt_duration;
++            // The duration filter has no following PTS for the last image and
++            // may leave pkt_duration=-1. RIFE needs its final display interval
++            // before asking for a neighbour, including one-frame clips.
++            if (p->opts->eof_aware && last && !(duration > 0) &&
++                isfinite(img->nominal_fps) && img->nominal_fps > 0)
++                duration = 1.0 / img->nominal_fps;
++            int dur = duration * res + 0.5;
+             set_vs_frame_props(p, ret, img, dur, res);
++            if (p->opts->eof_aware) {
++                VSMap *props = p->vsapi->getFramePropertiesRW(ret);
++                p->vsapi->mapSetInt(props, "_TigerestLastFrame", last, 0);
++            }
+             mp_mutex_lock(&p->lock);
+             break;
+         }
+@@ -769,6 +794,10 @@
+         p->max_requests = av_cpu_count();
+     MP_VERBOSE(p, "using %d concurrent requests.\n", p->max_requests);
+     int maxbuffer = p->opts->maxbuffer * p->max_requests;
++    if (p->opts->eof_aware && maxbuffer < 2) {
++        MP_ERR(p, "EOF-aware streaming needs at least two buffered frames.\n");
++        goto error;
++    }
+     p->buffered = talloc_array(p, struct mp_image *, maxbuffer);
+     p->requested = talloc_zero_array(p, struct mp_image *, p->max_requests);
+ 
+@@ -811,6 +840,7 @@
+     {"concurrent-frames", OPT_CHOICE(maxrequests, {"auto", -1}),
+         M_RANGE(1, 99), OPTDEF_INT(-1)},
+     {"user-data", OPT_STRING(user_data), OPTDEF_STR("")},
++    {"eof-aware", OPT_BOOL(eof_aware)},
+     {0}
+ };
+ 
+--- a/video/mp_image.h
++++ b/video/mp_image.h
+@@ -55,6 +55,7 @@
+     enum pl_color_transfer transfer_orig;
+     enum pl_color_system sys_orig;
+ 
++    bool tigerest_color_missing; // preserve unknown source metadata before guessing
+     enum mp_csp_light light;
+     enum pl_chroma_location chroma_location;
+     // The image should be flipped vertically before rotating
+--- a/video/mp_image.c
++++ b/video/mp_image.c
+@@ -871,6 +871,7 @@
+            pl_color_space_equal(&p1->color, &p2->color) &&
+            pl_color_repr_equal(&p1->repr, &p2->repr) &&
+            p1->light == p2->light &&
++           p1->tigerest_color_missing == p2->tigerest_color_missing &&
+            p1->chroma_location == p2->chroma_location &&
+            p1->vflip == p2->vflip &&
+            p1->rotate == p2->rotate &&
+--- a/filters/f_decoder_wrapper.c
++++ b/filters/f_decoder_wrapper.c
+@@ -646,6 +646,8 @@
+     if (m.chroma_location == PL_CHROMA_UNKNOWN)
+         m.chroma_location = c->chroma_location;
+ 
++    m.tigerest_color_missing = !m.color.primaries || !m.color.transfer ||
++                               !m.repr.sys || !m.repr.levels;
+     // Guess missing colorspace fields from metadata. This guarantees all
+     // fields are at least set to legal values afterwards.
+     mp_image_params_guess_csp(&m);

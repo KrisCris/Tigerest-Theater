@@ -9,16 +9,24 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLocale>
+#include <QLocalSocket>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QDebug>
 #include <QUrl>
+#include <QVersionNumber>
+#include <QRegularExpression>
+#include <QCoreApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <algorithm>
 
 namespace
 {
 QString g_activeConfigDir;
 bool g_usingSystemConfig = false;
+bool g_ownsDefaultSvpIpc = false;
 
 bool copyResourceTree(const QString& sourceRoot, const QString& targetRoot)
 {
@@ -94,6 +102,26 @@ bool writeEmbeddedConfig(const QString& configDir)
   // Emby progress reporting uses the libmpv client API and does not consume
   // the JSON IPC endpoint, so the two mechanisms can coexist.
   config.replace("@TIGEREST_IPC_SERVER@", QStringLiteral("input-ipc-server=mpvpipe"));
+#elif defined(Q_OS_MAC)
+  // SVP's standard macOS endpoint. Never unlink another running player's
+  // socket; a user-overrides.conf endpoint can still override this default.
+  const QString endpoint = QStringLiteral("/tmp/mpvsocket");
+  QLocalSocket existing;
+  existing.connectToServer(endpoint);
+  const bool occupied = existing.waitForConnected(100);
+  const bool ordinaryFile = QFileInfo(endpoint).isFile() || QFileInfo(endpoint).isDir();
+  if (occupied || ordinaryFile)
+    qWarning() << "SVP IPC endpoint already in use; leaving it untouched:" << endpoint;
+  QFile overrides(QDir(configDir).filePath("user-overrides.conf"));
+  const QString explicitOptions=(overrides.open(QIODevice::ReadOnly)?QString::fromUtf8(overrides.readAll()):QString())+"\n"+
+      SettingsComponent::Get().value(SETTINGS_SECTION_OTHER,"other_conf").toString();
+  // An include may set the same endpoint indirectly. Conservatively leave
+  // ownership with the user in that case, too.
+  g_ownsDefaultSvpIpc=!explicitOptions.contains(QRegularExpression(
+      QStringLiteral("(^|\\n)\\s*(input-ipc-server|include)\\s*=")));
+  const bool rife=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool();
+  config.replace("@TIGEREST_IPC_SERVER@", occupied || ordinaryFile || rife
+      ? QString() : QStringLiteral("input-ipc-server=/tmp/mpvsocket"));
 #else
   // "mpvpipe" is a Windows named-pipe convention. On Unix-like platforms the
   // same value would become a relative filesystem socket, so leave it disabled.
@@ -225,6 +253,13 @@ bool writeSystemCompanionConfig(const QString& bundleDir, QString& companionPath
 }
 }
 
+bool MpvConfigManager::ownsDefaultSvpIpc()
+{
+  const QString options=SettingsComponent::Get().value(SETTINGS_SECTION_OTHER,"other_conf").toString();
+  return !g_usingSystemConfig&&g_ownsDefaultSvpIpc&&!options.contains(QRegularExpression(
+      QStringLiteral("(^|\\n)\\s*(input-ipc-server|include)\\s*=")));
+}
+
 QString MpvConfigManager::danmakuApiServer(const QString& serverUrl, const QString& connectionMode)
 {
   const QUrl server(serverUrl);
@@ -322,8 +357,104 @@ QString MpvConfigManager::detectSystemConfigDir(const QString& configuredPath)
   return QString();
 }
 
+void MpvConfigManager::configureVapourSynth(const QStringList& installationRoots)
+{
+  // Finder launches do not inherit shell exports. SVP's Homebrew setup
+  // installs this optional runtime, but recent mpv loads it via dlopen.
+  // Respect explicit overrides and leave ordinary playback independent of it.
+  if (qEnvironmentVariableIsSet("VSSCRIPT_PATH"))
+    return;
+
+  for (const QString& root : installationRoots)
+  {
+    QStringList candidates;
+    const QDir pythonLib(QDir(root).filePath(QStringLiteral("libexec/lib")));
+    QStringList versions = pythonLib.entryList({QStringLiteral("python3.*")}, QDir::Dirs);
+    std::sort(versions.begin(), versions.end(), [](const QString& a, const QString& b) {
+      return QVersionNumber::fromString(a.mid(6)) > QVersionNumber::fromString(b.mid(6));
+    });
+    for (const QString& version : versions)
+      candidates << pythonLib.filePath(version + QStringLiteral("/site-packages/vapoursynth/libvsscript.dylib"));
+    candidates << QDir(root).filePath(QStringLiteral("lib/libvsscript.dylib"))
+               << QDir(root).filePath(QStringLiteral("lib/libvapoursynth-script.dylib"));
+
+    for (const QString& candidate : candidates)
+    {
+      const QFileInfo library(candidate);
+      if (!library.isFile())
+        continue;
+      // VSScript's Python configuration is keyed by the resolved library path.
+      const QString path = library.canonicalFilePath();
+      qputenv("VSSCRIPT_PATH", path.toUtf8());
+      qInfo() << "VapourSynth runtime:" << path;
+      return;
+    }
+  }
+}
+
+bool MpvConfigManager::configureBundledVapourSynth(const QString& executableDirectory,
+                                                  const QString& registrationDirectory,bool preferBundled)
+{
+  const QDir binaryDir(executableDirectory);
+  QFile manifest(binaryDir.filePath("../Resources/vapoursynth-runtime.json"));
+  if(!manifest.open(QIODevice::ReadOnly))return false;
+  const auto values=QJsonDocument::fromJson(manifest.readAll()).object();
+  const QString contents=QFileInfo(binaryDir.filePath("..")).canonicalFilePath()+"/";
+  const auto resolve=[&](const QString& key){
+    const QString relative=values.value(key).toString();
+    if(relative.isEmpty()||QDir::isAbsolutePath(relative))return QString();
+    const QString path=QFileInfo(binaryDir.filePath(relative)).canonicalFilePath();
+    return path.startsWith(contents)?path:QString();
+  };
+  const auto library=resolve("library"),home=resolve("pythonHome"),packages=resolve("pythonPath");
+  if(!QFileInfo(library).isFile()||!QDir(home).exists()||!QDir(packages).exists()||
+     !QFileInfo(binaryDir.filePath("vapoursynth")).isExecutable()||
+     !QFileInfo(binaryDir.filePath("tigerest-python")).isExecutable())return false;
+  // Preserve an explicit external runtime for SVP. When built-in RIFE is
+  // selected, its native plugin needs the matching runtime shipped in this app.
+  if(!preferBundled&&qEnvironmentVariableIsSet("VSSCRIPT_PATH")&&
+      QFileInfo(qEnvironmentVariable("VSSCRIPT_PATH")).canonicalFilePath()!=library)return false;
+  if(!QDir().mkpath(registrationDirectory))return false;
+  qputenv("VSSCRIPT_PATH",library.toUtf8());
+  qputenv("PYTHONHOME",home.toUtf8());qputenv("PYTHONPATH",packages.toUtf8());
+  qputenv("PYTHONNOUSERSITE","1");qputenv("PYTHONDONTWRITEBYTECODE","1");
+  // VSScript 79 keys registration by the resolved library path and can rebuild
+  // it after relocation. Keep its writes outside both the app and user config.
+  qputenv("XDG_CONFIG_HOME",QFileInfo(registrationDirectory).absoluteFilePath().toUtf8());
+  auto search=qEnvironmentVariable("PATH").split(QDir::listSeparator(),Qt::SkipEmptyParts);
+  search.removeAll(binaryDir.absolutePath());search.prepend(binaryDir.absolutePath());
+  qputenv("PATH",search.join(QDir::listSeparator()).toUtf8());
+  return true;
+}
+
+void MpvConfigManager::configureBundledVulkan(const QString& executableDirectory)
+{
+  // Vulkan otherwise enumerates both the bundled ICD and Homebrew's copy.
+  // Honor a deliberate override, but keep ordinary installations self-contained.
+  if (!qEnvironmentVariableIsEmpty("VK_DRIVER_FILES") ||
+      !qEnvironmentVariableIsEmpty("VK_ICD_FILENAMES"))
+    return;
+  const QFileInfo manifest(QDir(executableDirectory).filePath(
+      "../Resources/vulkan/icd.d/MoltenVK_icd.json"));
+  if (manifest.isFile())
+    qputenv("VK_DRIVER_FILES", manifest.canonicalFilePath().toUtf8());
+}
+
 bool MpvConfigManager::prepare()
 {
+#if defined(Q_OS_MAC)
+  const bool preferBundledRife=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool()&&
+      SettingsComponent::Get().value(SETTINGS_SECTION_MPV,"configMode").toString()!="system";
+  configureBundledVulkan(QCoreApplication::applicationDirPath());
+  if(!configureBundledVapourSynth(QCoreApplication::applicationDirPath(),
+      ProfileManager::activeProfile().dataDir("rife-runtime"),preferBundledRife)) {
+#if defined(Q_PROCESSOR_ARM_64)
+  configureVapourSynth({QStringLiteral("/opt/homebrew/opt/vapoursynth")});
+#else
+  configureVapourSynth({QStringLiteral("/usr/local/opt/vapoursynth")});
+#endif
+  }
+#endif
   auto& settings = SettingsComponent::Get();
   // The controller applies this selection after parsing either config mode.
   qputenv("TIGEREST_MPV_CONSOLE",

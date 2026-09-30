@@ -303,9 +303,16 @@
         "hidden": true
       },
       {
+        "value": "aiRife",
+        "display_name": "AI 补帧（RIFE）",
+        "help": "将支持的视频补至两倍帧率，性能不足时恢复原帧播放。重新打开视频后生效。",
+        "default": false,
+        "platforms": "osx"
+      },
+      {
         "value": "hardwareDecoding",
         "display_name": "硬件解码方式",
-        "help": "选择视频硬件解码策略。复制回显模式默认兼容 MPV 着色器链；安全自动模式优先降低复制开销；完全硬解负载最低但可能绕过部分着色器；遇到花屏时可关闭硬解。系统配置模式下以用户 mpv.conf 为准。",
+        "help": "选择视频硬件解码策略。使用 SVP 补帧请选择复制回显模式，或关闭硬件解码；安全自动模式优先降低复制开销；遇到花屏时可关闭硬解。系统配置模式下以用户 mpv.conf 为准。",
         "default": "copy",
         "possible_values": [
           [ "safe", "安全自动（auto-safe）" ],
