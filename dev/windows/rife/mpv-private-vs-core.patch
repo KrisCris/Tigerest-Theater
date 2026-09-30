@@ -13,7 +13,7 @@
 +    // The managed RIFE extension loads its own plugins explicitly. Do not
 +    // discover user/system plugins in an EOF-aware Windows RIFE session.
 +    if (p->opts->eof_aware) {
-+        core = p->vsapi->createCore(vsccfDisableAutoLoading);
++        core = p->vsapi->createCore(ccfDisableAutoLoading);
 +        if (!core)
 +            return -1;
 +    }

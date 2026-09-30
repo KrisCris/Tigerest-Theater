@@ -11,3 +11,11 @@ the frozen mpv build source lock.
 
 Windows builds only a lightweight Monitor plugin against this header.
 VapourSynth, Python and TensorRT binaries remain in the optional extension.
+
+`VSScript4.h` is unmodified from VapourSynth R79 commit
+`acabf605b2205b32d65859bb2736405719d2fafd` and is used by the fresh native-host
+embedding regression test.
+
+- Source: https://github.com/vapoursynth/vapoursynth/blob/acabf605b2205b32d65859bb2736405719d2fafd/include/VSScript4.h
+- SHA-256: `357b4aca7003d71d3ec381c44424c8b649bcd116ea7880c4afb0c872cd569942`
+- License: LGPL 2.1 or later, retained verbatim in the header.
