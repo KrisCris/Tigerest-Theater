@@ -25,9 +25,18 @@ def prepare(recipe, lock):
             text = text.replace('    UPDATE_COMMAND ""',
                                 '    PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-mpv-eof-aware.patch '
                                 '${CMAKE_SOURCE_DIR}/tigerest-mpv-private-vs-core.patch\n    UPDATE_COMMAND ""', 1)
+        if relative == 'packages/ngtcp2.cmake':
+            text = text.replace('    UPDATE_COMMAND ""',
+                                '    PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-ngtcp2-static-openssl.patch\n'
+                                '    UPDATE_COMMAND ""', 1)
+            # Libraries in CFLAGS precede objects and cannot satisfy static
+            # libcrypto's dependencies. The source patch attaches them to
+            # OPENSSL_LIBRARIES, including CMake's QUIC capability probes.
+            text = text.replace('        "-DCMAKE_C_FLAGS=\'-lz -lbrotlienc -lbrotlidec -lbrotlicommon -lzstd -lcrypt32\'"\n', '')
         path.write_text(text, encoding='utf-8')
     shutil.copyfile(HERE.parents[1] / 'macos/rife/mpv-eof-aware.patch', recipe / 'tigerest-mpv-eof-aware.patch')
     shutil.copyfile(HERE / 'mpv-private-vs-core.patch', recipe / 'tigerest-mpv-private-vs-core.patch')
+    shutil.copyfile(HERE / 'ngtcp2-static-openssl.patch', recipe / 'tigerest-ngtcp2-static-openssl.patch')
     path = recipe / 'toolchain/rustup.cmake'
     text = path.read_text(encoding='utf-8')
     text = text.replace('--default-toolchain nightly', '--default-toolchain ' + lock['rustToolchain'])

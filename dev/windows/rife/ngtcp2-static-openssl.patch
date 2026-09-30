@@ -1,0 +1,15 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -143,6 +143,11 @@ if(ENABLE_GNUTLS)
+ endif()
+ if(ENABLE_OPENSSL OR ENABLE_PICOTLS)
+   find_package(OpenSSL 1.1.1 REQUIRED)
++  if(WIN32)
++    # The pinned OpenSSL enables compression in static libcrypto. These
++    # dependencies must follow libcrypto in both QUIC probes and final links.
++    list(APPEND OPENSSL_LIBRARIES brotlienc brotlidec brotlicommon zstd z crypt32)
++  endif()
+ endif()
+ if(ENABLE_WOLFSSL)
+   find_package(wolfssl 5.5.0 REQUIRED)
