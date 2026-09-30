@@ -177,6 +177,17 @@ force_rebuild_git(locked)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn('HEAD does not point to a branch', result.stderr)
             self.assertEqual(subprocess.check_output(['git', '-C', str(locked), 'rev-parse', 'HEAD'], text=True).strip(), sha)
+            # git-am creates a commit. Cleaning a completed patched package
+            # must restore the locked source, so a subsequent build can apply
+            # its patch again rather than treating the patch commit as source.
+            (locked / 'fixture').write_text('build patch')
+            subprocess.run(['git', '-C', str(locked), 'add', 'fixture'], check=True)
+            subprocess.run(['git', '-C', str(locked), '-c', 'user.name=Test', '-c',
+                            'user.email=test@example.invalid', 'commit', '-qm', 'build patch'], check=True)
+            cleaned = subprocess.run([str(bash), str(stamp / 'reset_head.sh')], capture_output=True, text=True)
+            self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
+            self.assertEqual(subprocess.check_output(['git', '-C', str(locked), 'rev-parse', 'HEAD'], text=True).strip(), sha)
+            self.assertEqual((locked / 'fixture').read_text(), 'pinned source')
 
 
 if __name__ == '__main__':

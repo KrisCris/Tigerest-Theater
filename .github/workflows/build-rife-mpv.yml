@@ -110,6 +110,20 @@ jobs:
         run: |
           ninja -C build-mpv mpv-removebuild
           find build-mpv -maxdepth 1 -type d -name 'mpv-dev-*' -exec rm -r -- {} +
+      - name: Restore cached git-am dependencies to their pinned sources
+        if: steps.media_cache.outputs.cache-matched-key != ''
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import subprocess
+          for relative in json.loads(Path('source-lock.json').read_text())['sources']:
+              recipe = Path('recipe') / relative
+              name = recipe.stem
+              source = Path('build-mpv/packages') / (name+'-prefix/src/'+name)
+              if 'git am' in recipe.read_text() and (source/'.git').is_dir():
+                  subprocess.run(['ninja','-C','build-mpv',name+'-fullclean'],check=True)
+          PY
       - name: Build mpv and media dependencies
         id: media
         run: |

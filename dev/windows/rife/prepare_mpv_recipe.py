@@ -81,6 +81,10 @@ def prepare(recipe, lock):
     text = path.read_text(encoding='utf-8')
     text = text.replace('rev-parse @{u}', 'rev-parse HEAD')
     text = text.replace('set(reset "@{u}")', 'set(reset "${git_tag}")')
+    # With a commit GIT_TAG, CMake may omit GIT_REMOTE_NAME. The recipe then
+    # resets to the patched HEAD, making git-am fail on the next build.
+    # Restore the actual locked source even when no remote name is recorded.
+    text = text.replace('        set(reset "")', '        set(reset "${git_tag}")', 1)
     path.write_text(text, encoding='utf-8')
 
 
@@ -97,6 +101,13 @@ def verify_media_baseline(recipe, lock, baseline):
             shutil.copytree(recipe, destination, ignore=shutil.ignore_patterns('.git'))
         namespace['prepare'](previous, lock)
         prepare(current, lock)
+        # This cleanup-only migration changes no dependency source or build
+        # flags. Normalize the pinned legacy helper identically, then compare
+        # every byte; arbitrary dependency changes still invalidate reuse.
+        cleanup = previous / 'cmake/custom_steps.cmake'
+        text = cleanup.read_text(encoding='utf-8')
+        text = text.replace('        set(reset "")', '        set(reset "${git_tag}")', 1)
+        cleanup.write_text(text, encoding='utf-8')
         allowed = {'packages/mpv.cmake', 'tigerest-mpv-win64-hwdec-pointer.patch'}
         names = {path.relative_to(tree) for tree in (previous, current) for path in tree.rglob('*') if path.is_file()}
         for name in names:
