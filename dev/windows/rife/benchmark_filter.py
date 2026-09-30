@@ -35,7 +35,7 @@ def benchmark(args, manifest):
         raise ValueError('Prepared engine cache is incomplete or corrupt')
     vs = private_vapoursynth()
     core = vs.core
-    core.num_threads = 4
+    core.num_threads = args.threads
     core.max_cache_size = 1024
     core.std.LoadPlugin(path=str(root / manifest['entrypoints']['plugin']))
     build = runpy.run_path(str(Path(__file__).resolve().parents[3] / 'resources/mpv/rife/trt_pipeline.py'))['build_rife_filter']
@@ -53,7 +53,7 @@ def benchmark(args, manifest):
     warmed = None
     count = synthesized = 0
     waits = []
-    frames = output.frames(prefetch=4)
+    frames = output.frames(prefetch=args.prefetch)
     try:
         while True:
             before = time.perf_counter()
@@ -76,6 +76,7 @@ def benchmark(args, manifest):
         'runtimeId': manifest['runtimeId'], 'runtimeFingerprint': identity['runtimeFingerprint'],
         'versions': manifest['versions'], 'gpu': gpu, 'model': model['id'], 'modelSha256': model['sha256'],
         'implementation': model['implementation'], 'precision': identity['precision'], 'streams': args.streams,
+        'threads': args.threads, 'prefetch': args.prefetch,
         'inputDimensions': [args.width,args.height], 'sourceFps': float(args.fps), 'factor': args.factor,
         'targetFps': float(args.fps*args.factor), 'warmupSeconds': args.warmup, 'seconds': now-warmed,
         'outputFrames': count, 'synthesizedFrames': synthesized, 'filterOutputFps': count/(now-warmed),
@@ -94,13 +95,16 @@ def main():
     parser.add_argument('--fps', type=Fraction, required=True)
     parser.add_argument('--factor', type=int, required=True)
     parser.add_argument('--streams', type=int, default=2)
+    parser.add_argument('--threads', type=int, default=4)
+    parser.add_argument('--prefetch', type=int, default=4)
     parser.add_argument('--duration', type=float, default=15)
     parser.add_argument('--warmup', type=float, default=3)
     parser.add_argument('--native', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if not (5 <= args.duration <= 600 and 1 <= args.warmup <= 60 and
-            0 < args.fps <= Fraction(60001,1000) and 2 <= args.factor <= 15 and 1 <= args.streams <= 4):
-        parser.error('Invalid benchmark duration, rate, multiplier or stream count')
+            0 < args.fps <= Fraction(60001,1000) and 2 <= args.factor <= 15 and 1 <= args.streams <= 4 and
+            1 <= args.threads <= 32 and 1 <= args.prefetch <= 32):
+        parser.error('Invalid benchmark duration, rate, multiplier, stream, thread or prefetch count')
     try:
         root = args.runtime.resolve()
         manifest = verify_manifest(root)

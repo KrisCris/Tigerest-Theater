@@ -143,6 +143,16 @@ if(WIN32 AND Python3_Interpreter_FOUND)
       set_tests_properties(test_rife_mpv_early_activation test_rife_mpv_late_activation PROPERTIES TIMEOUT 30
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
     endif()
+    add_executable(test_rife_windows_stream test_rife_windows_stream.cpp)
+    target_include_directories(test_rife_windows_stream PRIVATE ${MPV_INCLUDE_DIR} ../src/player)
+    target_link_libraries(test_rife_windows_stream PRIVATE tigerest_rife_control)
+    if(DEFINED ENV{RIFE_TEST_EOF_MPV_DLL})
+      add_test(NAME test_rife_windows_stream COMMAND "${Python3_EXECUTABLE}" -B -X utf8 -m unittest discover
+        -s "${CMAKE_CURRENT_SOURCE_DIR}" -p "test_rife_windows_stream.py" -v)
+      set_tests_properties(test_rife_windows_stream PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE
+        ENVIRONMENT "RIFE_TEST_STREAM_HOST=$<TARGET_FILE:test_rife_windows_stream>;RIFE_TEST_MONITOR_PLUGIN=$<TARGET_FILE:tigerest_rife_vs>"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
+    endif()
     add_executable(test_rife_monitor_registry test_rife_monitor_registry.cpp)
     target_include_directories(test_rife_monitor_registry PRIVATE ../dev/windows/rife/include)
     target_link_libraries(test_rife_monitor_registry PRIVATE tigerest_rife Qt6::Core)

@@ -97,3 +97,11 @@ CI 36752790588 已通过 ngtcp2，在 LuaJIT 补丁阶段失败。原配方的 U
 - CI 36761087304 的兼容架构已经通过 LuaJIT，随后 curl 的 ECH 检查因 static libcrypto 的压缩依赖放在 CFLAGS 中而产生链接失败。新补丁把依赖附到 `OpenSSL::Crypto` 的传递链接列表，同时作用于检测及最终链接；实际冻结 curl 源码的补丁/CMake 目标回归通过。剩余停滞的旧 v3 工具准备任务已取消。
 - CI 36768668690 在重新解析依赖时遇到临时裸 Git 目录清理失败，尚未进入媒体构建。源码锁现保存先前成功冻结的全部提交，由 CI 对原配方逐条核对仓库、原 ref、显式 GIT_RESET 与固定 SHA；每次构建不再重新解析移动分支。缺项/错仓库/ref/SHA 拒绝的测试通过。最终两份 libmpv 仍未成功构建，不能计作 EOF 或整机性能通过。
 - 新增真实 mpv 启动回归，以现有官方 dd5d17d DLL 在两个全新原生进程中对比早/晚激活：早激活通过 mpv 加载测试视频和 VS 脚本，执行全部私有 Python 隔离断言；晚激活必须无成功标记且收到精确的 VSScript 加载失败日志。两项通过（0.18/0.09 秒），启动次序问题已在实际 mpv 环境读取路径上得到验证。此用例只证明解释器执行，未检查图出帧，仍不能替代补丁 DLL 的 EOF/RIFE 验收。加上补丁和配方测试，四项 targeted CTest 全通过（3.37 秒）。
+
+## 2026-10-01：当前验证与性能参数对比
+
+- 新运行库 3-v2 的八个缓存全部重新验证，三模型的 1080p/4K 首次准备约 53–110 秒；小尺寸原生帧图 18 项通过。完整构建和 CTest **42/42 通过（46.86 秒）**，包括实际 mpv 早/晚启动回归。新的 EOF-aware stream 测试未包含在这 42 项中。
+- 新建 fresh native stream host 和真实媒体用例，准备逐一检查一/二/三帧自然结束、显式/未知颜色，以及真实 TRT 2/5/10 倍的逐索引合成标记、每帧与总时长、尾帧和同一共享 Monitor 注册表。以 stock DLL 运行时明确失败于不支持 `eof-aware`（vf add -12）；尚无 patched DLL 的绿色结果。CMake 只给显式 `RIFE_TEST_EOF_MPV_DLL` 注册该项，不依赖旧启动测试的 DLL 环境变量；TRT 子项另需明确 `RIFE_TEST_STREAM_PREPARED`。host 编译和独立 gate 注册检查通过。
+- lite 的 builderOptimizationLevel 5 对比已完成。1080p/4K 编译约 245/441 秒，常量像素实推理和私有 DLL 审计均通过。纯 GPU 吞吐 199.60/48.27 次每秒、平均时间 5.009/20.716 ms，与此前默认 level 3 的 202.62/47.80 接近；保留 level 3，不让用户承担额外编译成本。实验引擎不进入正式缓存。数据见 `data/2026-10-01-windows-rife-opt5.json`；测量使用 FP16 I/O、上游 FP32 层保护、noTF32、maxAuxStreams=0、noDataTransfers、CUDA graph、1 秒预热及 5 秒样本。
+- 3-v2 的 4K lite 滤镜以 4线程/4预取、8/4、8/8、16/16 顺序测得 26.09、26.06、25.68、23.91 输出 fps，各排除 3 秒、采样 15 秒。没有线程增加带来的收益，保留 4/4。工具增加显式 `--threads/--prefetch`，默认值保持原值；正式工具 8/8 再次验证通过。数据见 `data/2026-10-01-windows-rife-threads.json`。加载时 PCIe Gen4×16、GPU 2715 MHz；单次观察 GPU 利用率 28%，不足以据此定位全部开销。该测量仍不包含解码、Shader、渲染或音频。
+- CI v3 媒体编译仍在运行。兼容架构的工具准备曾因拉取非必要的 TeX/MuPDF 文档依赖超时；改用 asciidoc-base 和 no-install-recommends 后，单架构重新构建的工具准备通过，媒体构建仍待结束。锁定的全部媒体依赖、mpv 和补丁来源保持不变。

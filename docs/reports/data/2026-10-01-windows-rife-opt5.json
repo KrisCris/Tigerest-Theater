@@ -1,0 +1,24 @@
+[
+  {
+    "model": "rife-4.25-lite",
+    "width": 1920,
+    "height": 1080,
+    "builderOptimizationLevel": 5,
+    "maxAuxStreams": 0,
+    "constantInferenceValidated": true,
+    "throughputQps": 199.598,
+    "gpuMeanMs": 5.00867,
+    "phase": "pure GPU; excludes transfers, color conversion, decoding and rendering"
+  },
+  {
+    "model": "rife-4.25-lite",
+    "width": 3840,
+    "height": 2160,
+    "builderOptimizationLevel": 5,
+    "maxAuxStreams": 0,
+    "constantInferenceValidated": true,
+    "throughputQps": 48.2683,
+    "gpuMeanMs": 20.7161,
+    "phase": "pure GPU; excludes transfers, color conversion, decoding and rendering"
+  }
+]

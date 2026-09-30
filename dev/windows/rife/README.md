@@ -73,6 +73,14 @@ mpv 启动/EOF 集成验收。
 
 ## 发布前仍需完成
 
+真实 Windows 媒体/EOF 测试需设置 `RIFE_TEST_RUNTIME` 和
+`RIFE_TEST_EOF_MPV_DLL` 后重新配置 CMake；它调用独立 native host。
+小尺寸 TRT 子项另需 `RIFE_TEST_STREAM_PREPARED` 指向完整的 256×128
+prepare_engine 成功报告，CTest 自动提供 Monitor DLL 路径。现有 stock
+DLL 不支持 eof-aware，明确失败属于尚未交付补丁内核的验收缺项。
+滤镜吞吐工具支持 `--threads`、`--prefetch`，两项默认均为 4；它仍不测
+解码、Shader、4K 渲染、音频和显示性能。
+
 播放器生命周期与真实 EOF、完整缓存、扩展安装/下载、10 分钟播放和干净系统测试仍未完成。
 许可证文本已开始收集（Python/VS 在各自包中；vs-mlrt GPLv3、Practical-RIFE MIT、
 TensorRT SLA 在 licenses 中）。公开分发前还需补齐 CUDA/VC 运行库通知与准确的对应源代码，
