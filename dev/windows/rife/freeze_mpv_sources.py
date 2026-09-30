@@ -52,8 +52,9 @@ def main():
         repository = re.search(r'GIT_REPOSITORY\s+("[^"\n]+"|\S+)', text)
         if repository:
             tag = re.search(r'GIT_TAG\s+("[^"\n]+"|\S+)', text)
+            reset = re.search(r'GIT_RESET\s+("[^"\n]+"|\S+)', text)
             entries.append((file.relative_to(args.recipe).as_posix(), repository[1].strip('"'),
-                            tag[1].strip('"') if tag else ""))
+                            reset[1].strip('"') if reset else tag[1].strip('"') if tag else ""))
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
         sources = dict(pool.map(resolve, entries))
     result = {"schemaVersion": 1, "snapshot": SNAPSHOT, "mpvSourceSha": MPV_SHA,

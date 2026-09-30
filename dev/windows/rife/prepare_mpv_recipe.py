@@ -34,6 +34,14 @@ def prepare(recipe, lock):
     text = text.replace('BUILD_COMMAND ${EXEC} rustup update',
                         'BUILD_COMMAND ${EXEC} rustup default ' + lock['rustToolchain'])
     path.write_text(text, encoding='utf-8')
+    # GNU's primary server has timed out repeatedly on CI. Both mirrors use
+    # the recipe's original SHA512; no compiler source version is changed.
+    for relative in ('toolchain/gcc/gcc.cmake', 'toolchain/gcc/gcc-binutils.cmake'):
+        path = recipe / relative
+        text = path.read_text(encoding='utf-8')
+        text = re.sub(r'URL (https://ftp\.gnu\.org/gnu/\S+)',
+                      lambda m: 'URL ' + m[1].replace('https://ftp.gnu.org/gnu/', 'https://mirrors.kernel.org/gnu/') + ' ' + m[1], text)
+        path.write_text(text, encoding='utf-8')
     # Moving-branch recipes compare HEAD against @{u} after each install.
     # Immutable checkouts have no upstream: use HEAD and the pinned GIT_TAG.
     path = recipe / 'cmake/custom_steps.cmake'

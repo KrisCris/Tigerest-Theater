@@ -68,6 +68,7 @@ jobs:
           key: rife-mpv-aug2026-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch', 'dev/windows/rife/mpv-private-vs-core.patch', 'dev/windows/rife/prepare_mpv_recipe.py') }}
           restore-keys: |
             rife-toolchain-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/windows/rife/prepare_mpv_recipe.py') }}
+            rife-toolchain-${{ matrix.arch }}-
       - name: Build cross compiler
         run: |
           cmake -G Ninja -S recipe -B build-mpv -DTARGET_ARCH=x86_64-w64-mingw32 -DGCC_ARCH=${{ matrix.arch }} -DCOMPILER_TOOLCHAIN=gcc -DMAKEJOBS=4
@@ -101,4 +102,5 @@ jobs:
           path: |
             build-mpv/**/src/*-stamp/*.log
             build-mpv/CMakeFiles/CMakeConfigureLog.yaml
+            build-mpv/**/CMakeFiles/CMakeConfigureLog.yaml
             source-lock.json
