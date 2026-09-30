@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import tempfile
 import unittest
@@ -40,14 +41,25 @@ class WindowsStreamTests(unittest.TestCase):
         cls.dll = Path(os.environ['RIFE_TEST_EOF_MPV_DLL']).resolve()
         cls.host = Path(os.environ['RIFE_TEST_STREAM_HOST']).resolve()
         cls.ffmpeg = os.environ.get('RIFE_TEST_FFMPEG', 'ffmpeg')
+        cls.ffprobe = os.environ.get('RIFE_TEST_FFPROBE', str(Path(cls.ffmpeg).with_name('ffprobe'+Path(cls.ffmpeg).suffix)))
 
     def video(self, root, count, fps, known=True):
         path = root / '颜色 样本.mkv'
         command = [self.ffmpeg, '-v', 'error', '-f', 'lavfi', '-i', f'testsrc2=size=256x128:rate={fps}',
             '-frames:v', str(count), '-c:v', 'ffv1']
         if known:
-            command += ['-color_range', 'tv', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
+            command += ['-vf','setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709',
+                '-color_range', 'tv', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
         subprocess.run(command + [str(path)], check=True, timeout=30, capture_output=True)
+        probe = subprocess.run([self.ffprobe,'-v','error','-show_entries',
+            'stream=color_range,color_space,color_transfer,color_primaries','-of','json',str(path)],
+            check=True, timeout=30, capture_output=True)
+        tags = json.loads(probe.stdout)['streams'][0]
+        if known:
+            self.assertEqual([tags.get(key) for key in ('color_range','color_space','color_transfer','color_primaries')],
+                             ['tv','bt709','bt709','bt709'])
+        else:
+            self.assertTrue(any(key not in tags for key in ('color_space','color_transfer','color_primaries')))
         return path
 
     def run_clip(self, root, video, code, data, monitor=False):
@@ -57,6 +69,11 @@ class WindowsStreamTests(unittest.TestCase):
             'script': str(script), 'userData': data, 'monitor': monitor, 'result': str(result)}), encoding='utf-8')
         run = subprocess.run([str(self.host), str(request)], capture_output=True, timeout=30)
         report = json.loads(result.read_text(encoding='utf-8')) if result.exists() else {}
+        if run.returncode:
+            failure = ROOT / 'build/rife/stream-failures' / root.name
+            failure.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copytree(root,failure)
+            (failure/'stderr.txt').write_bytes(run.stderr)
         self.assertEqual(run.returncode, 0, {'report': report, 'stderr': run.stderr.decode('utf-8', errors='replace')})
         self.assertTrue(report['loaded'] and report['ended'], report)
         self.assertEqual((report['endReason'], report['endError']), (0, 0), report)

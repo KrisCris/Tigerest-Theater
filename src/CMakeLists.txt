@@ -57,7 +57,7 @@ if(APPLE)
   set_source_files_properties(player/MpvVideoItemMac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 endif()
 add_library(jmp_core STATIC ${ALL_SRCS})
-if(APPLE)
+if(APPLE OR WIN32)
   target_link_libraries(jmp_core tigerest_rife_control)
 endif()
 
@@ -146,6 +146,10 @@ set_target_properties(${MAIN_TARGET} PROPERTIES
   OUTPUT_NAME ${MAIN_NAME}
 )
 copy_resources(${MAIN_TARGET})
+if(WIN32)
+  add_custom_command(TARGET ${MAIN_TARGET} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:tigerest_rife>" "$<TARGET_FILE_DIR:${MAIN_TARGET}>")
+endif()
 clang_tidy(${MAIN_TARGET})
 
 # Workaround for Qt Creator locating incorrect Qt version via DYLD_FRAMEWORK_PATH.

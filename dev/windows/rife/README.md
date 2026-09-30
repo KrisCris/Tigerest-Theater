@@ -66,6 +66,14 @@ cd1edc11dc6887a50f705717619d879f5a93a488。冻结的 FFmpeg、libplacebo 提交�
 验证该锁，不在每次构建重新解析移动分支。ngtcp2/curl 的 static OpenSSL
 补丁保留原版本与功能，并修正压缩库的传递链接顺序。
 
+普通 x64 的真实 EOF/色彩及 tiny TRT 流式测试已连续 10 轮通过。首次 v3
+产物在解码器列表登记的结构体传值中触发 GCC 14.4 Win64 AVX 栈对齐错误，
+不作为可用内核。`mpv-win64-hwdec-pointer.patch` 通过指针参数及局部副本
+保持原语义，Windows GCC-only `noipa` 阻止 IPA 重建该传值 ABI；新产物仍需
+实际流式测试和反汇编验收。不得仅因编译成功或补丁适用就接受 v3 DLL。
+CI 复用旧媒体缓存前核对固定旧提交和所有依赖配方字节，命中后必须重建
+mpv 并移除本次构建目录内旧 DLL 输出。不能用旧 DLL 填写新源码来源。
+
 主程序的私有加载必须在 `mpv_create()` 前完成完整探测和激活，Windows mpv
 会缓存环境变量。播放 Coordinator 只验证既有激活；新 native 加载测试验证
 隔离 Python、中文路径、外部同名 DLL 拒绝及不写入 bytecode，不能替代真实
@@ -77,7 +85,8 @@ mpv 启动/EOF 集成验收。
 `RIFE_TEST_EOF_MPV_DLL` 后重新配置 CMake；它调用独立 native host。
 小尺寸 TRT 子项另需 `RIFE_TEST_STREAM_PREPARED` 指向完整的 256×128
 prepare_engine 成功报告，CTest 自动提供 Monitor DLL 路径。现有 stock
-DLL 不支持 eof-aware，明确失败属于尚未交付补丁内核的验收缺项。
+DLL 不支持 eof-aware，会明确失败。显式 EOF gate 的上述 fixture 环境在
+CMake 配置时保存，避免重新运行 CTest 时静默跳过已配置的真实用例。
 滤镜吞吐工具支持 `--threads`、`--prefetch`，两项默认均为 4；它仍不测
 解码、Shader、4K 渲染、音频和显示性能。
 

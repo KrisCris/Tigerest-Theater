@@ -25,7 +25,7 @@
 
 ## 尚未验收
 
-带 EOF 补丁的两份 Windows libmpv、播放器内真实补帧、10 分钟性能、扩展安装/下载/导入、无开发依赖的干净 Windows、共享代码修改后的 Mac 回归、统一版本产物均未验收。
+带 EOF 补丁的 v3 Windows libmpv、主播放器内真实补帧、10 分钟性能、扩展安装/下载/导入、无开发依赖的干净 Windows、共享代码修改后的 Mac 回归、统一版本产物均未验收；普通 x64 的实际媒体结果见文末。
 
 完整重跑：18/18 通过（16.93 秒，未修改原测试或产品代码）。此前 CDP 超时仍记录为间歇性风险，后续回归保留该用例。
 
@@ -107,3 +107,17 @@ CI 36752790588 已通过 ngtcp2，在 LuaJIT 补丁阶段失败。原配方的 U
 - CI v3 媒体编译仍在运行。兼容架构的工具准备曾因拉取非必要的 TeX/MuPDF 文档依赖超时；改用 asciidoc-base 和 no-install-recommends 后，单架构重新构建的工具准备通过，媒体构建仍待结束。锁定的全部媒体依赖、mpv 和补丁来源保持不变。
 - 完整私有运行库作 ZIP64-capable / DEFLATE level 6 容量测量，压缩为 **2,106,064,893 字节**，ZIP CRC 和 SHA256 已实跑验证（约 62 秒）。其中展开 TensorRT/CUDA 目录 2,466,821,216 字节，三个模型合计 131,972,493 字节，Python/VS 32,311,798 字节。数据见 `data/2026-10-01-windows-rife-volume.json`。该归档只测运行库容量，缺 host 图/Monitor 和完整发行材料，不能作为安装或发布扩展。
 - Windows `MpvConfigManager` 的 managed SVP pipe 现随 aiRife 开关控制；显式 user-overrides/other_conf/include 均保留用户所有权，system 配置不改写。实际 red 复现默认管道未抑制和 ownership 未标记；修复后测试通过。另以真实 stock libmpv 解析两层 include，RIFE on/off 都保留唯一测试端点。共享 Mac 占用判断未改变，但仍需 Mac 构建验证。完整构建/CTest **43/43 通过（47.40 秒）**；新增真实 include 子项的 targeted 复测通过（0.64 秒）。Player 的逐片开关/生命周期尚未接入。
+
+
+## 2026-10-01：实际内核媒体与 Player 启动边界
+
+- 两份 CI 产物已下载，并逐项核对 DLL/补丁 SHA256、完整 source-lock 和构建源码 SHA。普通 x64 来自成功的 CI 36772303744 / 7a2b62d61676c4ee49ab162c3ae6ce3a761c8d4e，DLL 136,954,894 字节，SHA256 d5d65b0c7527837e291eb5050da351edf2178d99244956d5b914be6ff2fbf4c3。v3 来自 CI 36769908692 的成功 v3 job / 0c307be（该 run 的另一架构工具准备失败），DLL 138,100,238 字节，SHA256 8adb045ccaa214db50dbdcc77c4f593b360e6bd384ae35d3f4e5fa20f9eb5799。未替换原工作区/开发依赖中的 stock DLL。
+- 首次颜色断言失败源于 FFV1 测试片没有实际写入 primaries/transfer；不能因此放松生产颜色策略。fixture 改用 setparams，生成后以 ffprobe 校验范围/矩阵/primaries/transfer 均为已知 BT.709。无标签片仍独立断言颜色未知。
+- 普通 x64 七个 fresh native host 用例通过：一/二/三帧自然 EOF 与末帧标记、未知色彩，以及实际私有 TRT 2/5/10 倍流式输出。逐索引核对原帧/合成帧、每帧与总有理数时长、尾帧不预测、共享 Monitor 的 pairs/predictions/epoch；并连续十轮实际执行、无 skip，共 70 个进程通过（96.61 秒）。早先缺失执行环境的重复轮次全部 skip，不计入结果。该测试使用 tiny 256×128、NULL VO，不证明主播放器或完整 4K 渲染性能。
+- 普通 x64 的 probe_runtime.py --mpv 实跑 ok=true，R79 / TensorRT 10.16 / RTX 4090；私有 DLL 加载路径与运行库清单合规。实际媒体执行后完整清单也仍通过验证。
+- v3 媒体测试未通过。异常 0xc0000005 发生于打开解码器、RIFE 开始前；反汇编 RVA 1b851c 为写入 rsp+0x30 的 aligned YMM store，而寄存器表明目的地址仅 16 字节对齐。对应 add_all_hwdec_methods 调用 add_hwdec_item 的 128 字节结构体传值临时副本。冻结的原版 GCC 14.4 未包含 MSYS2 Win64 AVX 对齐 workaround（PR54412），不能把该错误归为 TensorRT 压力。
+- 新 Windows 专用局部补丁将登记参数改为 const pointer、函数内复制，保持调用方隔离和原有 direct/copy 语义；Windows GCC-only noipa 防止 LTO/IPA 重建不安全的传值调用。实际冻结源码提取、编译、运行的测试由缺补丁失败到通过，验证 caller 未修改、名称/rank/flags/自动选择顺序及硬解元数据。补丁加入来源校验及配方；最终新 DLL 的反汇编和 v3 实际媒体绿色结果仍待取得。
+- 重建只允许复用已核实相同的媒体依赖：固定旧提交、核对 lock/原补丁字节，并对旧/新准备工具生成的完整配方树逐文件比较。仅 mpv 配方及新局部补丁允许不同；命中旧成功缓存时明确清理/重建 mpv，并移除本次 CI 工作目录内旧 mpv-dev 输出，避免把旧 DLL 当成新产物。改变 FFmpeg 配方的负向测试拒绝缓存复用。
+- Player 增加 native-only 启动接口：可信运行库探测完成后、创建任何 mpv 句柄之前激活私有 VSScript。缺根不改变环境，已绑定 mpv 后拒绝切换并要求重启；实际私有探测与 stock mpv 句柄边界测试通过。轻量统计 DLL 已加入 Windows 主程序链接/拷贝/安装，测试 PATH 包含它；独立 startup test 显式依赖 Monitor 构建。主程序安装入口与 Windows 每片播放钩子仍未连接，设置仍默认关闭。
+
+本次完整 Windows 构建和 CTest **45/45 通过（63.05 秒）**，已启用普通 x64 EOF DLL、真实 TRT/私有 probe、冻结配方、Player 启动边界和媒体缓存正负向测试。v3 新产物及完整默认 4K 播放不包含在此通过范围。

@@ -1,0 +1,62 @@
+--- a/video/decode/vd_lavc.c
++++ b/video/decode/vd_lavc.c
+@@ -315,9 +315,15 @@
+ }
+ 
+ // (This takes care of some bookkeeping too, like setting info.name)
++// GCC 14 Win64 can misalign AVX copies of by-value struct arguments (PR54412).
++// Preserve the caller's value semantics with a local copy behind a pointer ABI.
++#if defined(_WIN32) && defined(__GNUC__) && !defined(__clang__)
++__attribute__((noipa)) // keep LTO/IPA from rebuilding the unsafe by-value call
++#endif
+ static void add_hwdec_item(struct hwdec_info **infos, int *num_infos,
+-                           struct hwdec_info info)
+-{
++                           const struct hwdec_info *input)
++{
++    struct hwdec_info info = *input;
+     if (info.copying)
+         mp_snprintf_cat(info.method_name, sizeof(info.method_name), "-copy");
+ 
+@@ -397,7 +403,7 @@
+                 }
+ 
+                 // Direct variant.
+-                add_hwdec_item(infos, num_infos, info);
++                add_hwdec_item(infos, num_infos, &info);
+ 
+                 // Copy variant.
+                 info.copying = true;
+@@ -405,7 +411,7 @@
+                     info.use_hw_frames = false;
+                     info.use_hw_device = true;
+                 }
+-                add_hwdec_item(infos, num_infos, info);
++                add_hwdec_item(infos, num_infos, &info);
+ 
+                 found_any = true;
+             } else if (cfg->methods & AV_CODEC_HW_CONFIG_METHOD_INTERNAL) {
+@@ -420,12 +426,12 @@
+                 snprintf(info.method_name, sizeof(info.method_name), "%s", name);
+ 
+                 // Direct variant.
+-                add_hwdec_item(infos, num_infos, info);
++                add_hwdec_item(infos, num_infos, &info);
+ 
+                 // Copy variant.
+                 info.copying = true;
+                 info.pix_fmt = AV_PIX_FMT_NONE; // trust it can do sw output
+-                add_hwdec_item(infos, num_infos, info);
++                add_hwdec_item(infos, num_infos, &info);
+ 
+                 found_any = true;
+             }
+@@ -439,7 +445,7 @@
+             info.copying = true; // probably
+ 
+             snprintf(info.method_name, sizeof(info.method_name), "%s", wrapper);
+-            add_hwdec_item(infos, num_infos, info);
++            add_hwdec_item(infos, num_infos, &info);
+         }
+     }
+ 

@@ -15,6 +15,7 @@ on:
       - dev/windows/rife/build_mpv.py
       - dev/windows/rife/freeze_mpv_sources.py
       - dev/windows/rife/mpv-private-vs-core.patch
+      - dev/windows/rife/mpv-win64-hwdec-pointer.patch
       - dev/windows/rife/ngtcp2-static-openssl.patch
       - dev/windows/rife/curl-static-openssl.patch
       - dev/windows/rife/mpv-source-lock.json
@@ -74,27 +75,41 @@ jobs:
           python3 -m venv tools
           tools/bin/pip install --timeout 30 --retries 3 meson==1.11.2 mako==1.3.10 jsonschema==4.23.0 rst2pdf==0.103.1
           echo "$PWD/tools/bin" >> "$GITHUB_PATH"
-      - name: Prepare pinned recipe and EOF patch
+      - name: Fetch pinned recipe
         run: |
           git clone https://github.com/shinchiro/mpv-winbuild-cmake.git recipe
           git -C recipe checkout cd1edc11dc6887a50f705717619d879f5a93a488
+      - name: Verify completed media cache compatibility
+        id: baseline
+        run: |
+          baseline=7a2b62d61676c4ee49ab162c3ae6ce3a761c8d4e
+          git fetch --depth=1 origin "$baseline"
+          git show "$baseline:dev/windows/rife/prepare_mpv_recipe.py" > baseline-prepare.py
+          if git diff --quiet "$baseline" -- dev/windows/rife/mpv-source-lock.json dev/macos/rife/mpv-eof-aware.patch dev/windows/rife/mpv-private-vs-core.patch dev/windows/rife/ngtcp2-static-openssl.patch dev/windows/rife/curl-static-openssl.patch && python3 dev/windows/rife/prepare_mpv_recipe.py --recipe recipe --lock source-lock.json --verify-media-baseline baseline-prepare.py; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Prepare pinned recipe and EOF patch
+        run: |
           python3 dev/windows/rife/prepare_mpv_recipe.py --recipe recipe --lock source-lock.json
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: media_cache
         with:
           path: build-mpv
-          key: rife-mpv-aug2026-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch', 'dev/windows/rife/mpv-private-vs-core.patch', 'dev/windows/rife/ngtcp2-static-openssl.patch', 'dev/windows/rife/curl-static-openssl.patch', 'dev/windows/rife/prepare_mpv_recipe.py') }}
+          key: rife-mpv-aug2026-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch', 'dev/windows/rife/mpv-private-vs-core.patch', 'dev/windows/rife/mpv-win64-hwdec-pointer.patch', 'dev/windows/rife/ngtcp2-static-openssl.patch', 'dev/windows/rife/curl-static-openssl.patch', 'dev/windows/rife/prepare_mpv_recipe.py') }}
           restore-keys: |
-            rife-media-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch', 'dev/windows/rife/mpv-private-vs-core.patch', 'dev/windows/rife/ngtcp2-static-openssl.patch', 'dev/windows/rife/curl-static-openssl.patch', 'dev/windows/rife/prepare_mpv_recipe.py') }}-
-            rife-toolchain-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/windows/rife/prepare_mpv_recipe.py') }}
-            rife-toolchain-${{ matrix.arch }}-
+            rife-media-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch', 'dev/windows/rife/mpv-private-vs-core.patch', 'dev/windows/rife/mpv-win64-hwdec-pointer.patch', 'dev/windows/rife/ngtcp2-static-openssl.patch', 'dev/windows/rife/curl-static-openssl.patch', 'dev/windows/rife/prepare_mpv_recipe.py') }}-
+            ${{ steps.baseline.outputs.allowed == 'true' && format('rife-mpv-aug2026-{0}-b9e3f0f4395326409d45f220d6c76da6693912d1c7a27b5703ff464c28a1b640', matrix.arch) || 'rife-no-legacy-media-cache' }}
       - name: Build cross compiler
         run: |
           cmake -G Ninja -S recipe -B build-mpv -DTARGET_ARCH=x86_64-w64-mingw32 -DGCC_ARCH=${{ matrix.arch }} -DCOMPILER_TOOLCHAIN=gcc -DMAKEJOBS=4
           ninja -C build-mpv gcc
-      - uses: actions/cache/save@v4
-        with:
-          path: build-mpv
-          key: rife-toolchain-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/windows/rife/prepare_mpv_recipe.py') }}
+      - name: Rebuild mpv after reusing compatible media dependencies
+        if: steps.media_cache.outputs.cache-matched-key == format('rife-mpv-aug2026-{0}-b9e3f0f4395326409d45f220d6c76da6693912d1c7a27b5703ff464c28a1b640', matrix.arch)
+        run: |
+          ninja -C build-mpv mpv-removebuild
+          find build-mpv -maxdepth 1 -type d -name 'mpv-dev-*' -exec rm -r -- {} +
       - name: Build mpv and media dependencies
         id: media
         run: |
@@ -103,7 +118,7 @@ jobs:
         if: failure() && steps.media.outcome == 'failure'
         with:
           path: build-mpv
-          key: rife-media-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch', 'dev/windows/rife/mpv-private-vs-core.patch', 'dev/windows/rife/ngtcp2-static-openssl.patch', 'dev/windows/rife/curl-static-openssl.patch', 'dev/windows/rife/prepare_mpv_recipe.py') }}-${{ github.run_id }}
+          key: rife-media-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch', 'dev/windows/rife/mpv-private-vs-core.patch', 'dev/windows/rife/mpv-win64-hwdec-pointer.patch', 'dev/windows/rife/ngtcp2-static-openssl.patch', 'dev/windows/rife/curl-static-openssl.patch', 'dev/windows/rife/prepare_mpv_recipe.py') }}-${{ github.run_id }}
       - name: Record build provenance
         if: success()
         run: |
@@ -115,6 +130,7 @@ jobs:
           sha256sum artifacts/libmpv-2.dll dev/macos/rife/mpv-eof-aware.patch dev/windows/rife/mpv-private-vs-core.patch dev/windows/rife/ngtcp2-static-openssl.patch > artifacts/SHA256SUMS.txt
           sha256sum recipe/tigerest-luajit-utf8.patch >> artifacts/SHA256SUMS.txt
           sha256sum dev/windows/rife/curl-static-openssl.patch >> artifacts/SHA256SUMS.txt
+          sha256sum dev/windows/rife/mpv-win64-hwdec-pointer.patch >> artifacts/SHA256SUMS.txt
           cp recipe/tigerest-luajit-utf8.patch artifacts/
           printf '%s\n' '${{ github.sha }}' > artifacts/host-source-sha.txt
       - uses: actions/upload-artifact@v4
@@ -122,6 +138,11 @@ jobs:
         with:
           name: rife-libmpv-${{ matrix.arch }}
           path: artifacts
+      - uses: actions/cache/save@v4
+        if: success() && steps.media_cache.outputs.cache-hit != 'true'
+        with:
+          path: build-mpv
+          key: ${{ steps.media_cache.outputs.cache-primary-key }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

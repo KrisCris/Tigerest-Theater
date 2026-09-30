@@ -17,6 +17,9 @@
 #include "interpolation/InterpolationPolicy.h"
 namespace rife {class FrameInterpolationController;class MpvPollAccess;}
 #endif
+#ifdef Q_OS_WIN
+namespace rife {class RifeRuntimeManager;}
+#endif
 
 #include "ComponentManager.h"
 #include "QtHelper.h"
@@ -40,6 +43,12 @@ public:
   
   explicit PlayerComponent(QObject* parent = nullptr);
   ~PlayerComponent() override;
+#ifdef Q_OS_WIN
+  // Native-only: caller supplies a catalog-approved root and must wait for
+  // windowsRifeReady before constructing any QML MpvVideoItem/mpv handle.
+  bool prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script);
+  QVariantMap windowsRifeStatus() const;
+#endif
 
   // Replace an active item atomically, or append-and-play when mpv is idle.
   // Returns false if mpv rejects the selected load command synchronously.
@@ -225,6 +234,9 @@ Q_SIGNALS:
   void onVideoRecangleChanged();
 
   void onMpvEvents();
+#ifdef Q_OS_WIN
+  void windowsRifeReady(bool ready,const QString& error);
+#endif
 
   void onMetaData(const QVariantMap &meta, QUrl baseUrl);
 
@@ -249,6 +261,11 @@ Q_SIGNALS:
   void fullscreenRequested(bool fullscreen);
 
 private:
+#ifdef Q_OS_WIN
+  std::unique_ptr<rife::RifeRuntimeManager> m_windowsRifeRuntime;
+  QString m_windowsRifeRoot,m_windowsRifeError;
+  bool m_windowsRifeActivated=false;
+#endif
 #ifdef Q_OS_MAC
   std::unique_ptr<rife::MpvPollAccess> m_rifeAccess;
   std::unique_ptr<rife::FrameInterpolationController> m_rife;

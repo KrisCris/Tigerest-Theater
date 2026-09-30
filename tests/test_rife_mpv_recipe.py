@@ -12,6 +12,30 @@ PREPARE = ROOT / 'dev/windows/rife/prepare_mpv_recipe.py'
 
 
 class PinnedRecipeTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('RIFE_TEST_MPV_RECIPE'), 'requires original pinned recipe')
+    def test_completed_media_cache_requires_identical_prepared_dependencies(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            baseline = base / 'baseline.py'
+            program = subprocess.check_output(['git', '-C', str(ROOT), 'show',
+                '7a2b62d61676c4ee49ab162c3ae6ce3a761c8d4e:dev/windows/rife/prepare_mpv_recipe.py'], text=True)
+            baseline.write_text(program, encoding='utf-8')
+            command = [sys.executable, '-B', '-X', 'utf8', str(PREPARE), '--recipe', os.environ['RIFE_TEST_MPV_RECIPE'],
+                '--lock', str(ROOT / 'dev/windows/rife/mpv-source-lock.json'), '--verify-media-baseline', str(baseline)]
+            accepted = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
+            # A dependency recipe change must invalidate reuse even though mpv
+            # itself is rebuilt and its patch is allowed to differ.
+            point = "    path = recipe / 'toolchain/rustup.cmake'"
+            self.assertEqual(program.count(point), 1)
+            program = program.replace(point,
+                "    dependency = recipe / 'packages/ffmpeg.cmake'\n"
+                "    dependency.write_text(dependency.read_text() + '\\nset(FFMPEG_EXTRA_CFLAGS unsafe-cache-fixture)\\n')\n" + point)
+            baseline.write_text(program, encoding='utf-8')
+            refused = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn('Media dependency differs from cache baseline: packages', refused.stderr)
+
     @unittest.skipUnless(os.environ.get('RIFE_TEST_MPV_RECIPE') and os.environ.get('RIFE_TEST_CURL_SOURCE_FILE'),
                          'requires pinned recipe and frozen curl source')
     def test_curl_openssl_target_keeps_transitive_static_compression_dependencies(self):

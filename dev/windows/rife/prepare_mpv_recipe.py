@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import tempfile
 
 from probe_runtime import private_path
 
@@ -25,6 +26,9 @@ def prepare(recipe, lock):
             text = text.replace('    UPDATE_COMMAND ""',
                                 '    PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-mpv-eof-aware.patch '
                                 '${CMAKE_SOURCE_DIR}/tigerest-mpv-private-vs-core.patch\n    UPDATE_COMMAND ""', 1)
+            text = text.replace('${CMAKE_SOURCE_DIR}/tigerest-mpv-private-vs-core.patch',
+                                '${CMAKE_SOURCE_DIR}/tigerest-mpv-private-vs-core.patch '
+                                '${CMAKE_SOURCE_DIR}/tigerest-mpv-win64-hwdec-pointer.patch', 1)
         if relative == 'packages/ngtcp2.cmake':
             text = text.replace('    UPDATE_COMMAND ""',
                                 '    PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-ngtcp2-static-openssl.patch\n'
@@ -43,6 +47,7 @@ def prepare(recipe, lock):
         path.write_text(text, encoding='utf-8')
     shutil.copyfile(HERE.parents[1] / 'macos/rife/mpv-eof-aware.patch', recipe / 'tigerest-mpv-eof-aware.patch')
     shutil.copyfile(HERE / 'mpv-private-vs-core.patch', recipe / 'tigerest-mpv-private-vs-core.patch')
+    shutil.copyfile(HERE / 'mpv-win64-hwdec-pointer.patch', recipe / 'tigerest-mpv-win64-hwdec-pointer.patch')
     shutil.copyfile(HERE / 'ngtcp2-static-openssl.patch', recipe / 'tigerest-ngtcp2-static-openssl.patch')
     shutil.copyfile(HERE / 'curl-static-openssl.patch', recipe / 'tigerest-curl-static-openssl.patch')
     # The recipe's UTF-8 patch uses a context line from a newer LuaJIT tree.
@@ -79,12 +84,40 @@ def prepare(recipe, lock):
     path.write_text(text, encoding='utf-8')
 
 
+def verify_media_baseline(recipe, lock, baseline):
+    # baseline is the developer tool from an explicitly pinned Git commit,
+    # never an extension input. Compare the complete prepared dependency tree
+    # before reusing a completed build; only mpv may differ and is rebuilt.
+    namespace = {'__file__': str(Path(__file__).resolve()), '__name__': 'rife_media_baseline'}
+    exec(compile(baseline.read_text(encoding='utf-8'), str(baseline), 'exec'), namespace)
+    with tempfile.TemporaryDirectory(prefix='rife-media-compare-') as temp:
+        root = Path(temp)
+        previous, current = root / 'previous', root / 'current'
+        for destination in (previous, current):
+            shutil.copytree(recipe, destination, ignore=shutil.ignore_patterns('.git'))
+        namespace['prepare'](previous, lock)
+        prepare(current, lock)
+        allowed = {'packages/mpv.cmake', 'tigerest-mpv-win64-hwdec-pointer.patch'}
+        names = {path.relative_to(tree) for tree in (previous, current) for path in tree.rglob('*') if path.is_file()}
+        for name in names:
+            if name.as_posix() in allowed:
+                continue
+            if not (previous / name).is_file() or not (current / name).is_file() or (previous / name).read_bytes() != (current / name).read_bytes():
+                raise ValueError('Media dependency differs from cache baseline: ' + str(name))
+    print('Prepared media dependencies exactly match the pinned cache baseline; rebuild mpv only')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--recipe', required=True, type=Path)
     parser.add_argument('--lock', required=True, type=Path)
+    parser.add_argument('--verify-media-baseline', type=Path)
     args = parser.parse_args()
-    prepare(args.recipe.resolve(), json.loads(args.lock.read_text(encoding='utf-8')))
+    lock = json.loads(args.lock.read_text(encoding='utf-8'))
+    if args.verify_media_baseline:
+        verify_media_baseline(args.recipe.resolve(), lock, args.verify_media_baseline.resolve())
+    else:
+        prepare(args.recipe.resolve(), lock)
 
 
 if __name__ == '__main__':

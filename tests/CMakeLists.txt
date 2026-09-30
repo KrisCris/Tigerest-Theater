@@ -105,6 +105,18 @@ if(WIN32)
   add_test(NAME test_rife_windows_ipc COMMAND test_rife_windows_ipc)
 endif()
 if(WIN32 AND Python3_Interpreter_FOUND)
+  add_executable(test_rife_player_startup test_rife_player_startup.cpp)
+  target_link_libraries(test_rife_player_startup jmp_core Qt6::Test)
+  add_dependencies(test_rife_player_startup tigerest_rife_vs)
+  target_include_directories(test_rife_player_startup PRIVATE ${TEST_INCLUDE_DIRS})
+  target_compile_definitions(test_rife_player_startup PRIVATE ${TEST_COMPILE_DEFS})
+  qt_add_resources(test_rife_player_startup "test_rife_player_startup_resources"
+    PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
+    FILES "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
+  add_test(NAME test_rife_player_startup COMMAND test_rife_player_startup)
+  set_tests_properties(test_rife_player_startup PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
+    ENVIRONMENT "RIFE_TEST_PLAYER_MONITOR=$<TARGET_FILE:tigerest_rife_vs>"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
   add_executable(test_rife_runtime_manager test_rife_runtime_manager.cpp)
   target_link_libraries(test_rife_runtime_manager PRIVATE tigerest_rife_control)
   target_compile_definitions(test_rife_runtime_manager PRIVATE
@@ -155,13 +167,18 @@ if(WIN32 AND Python3_Interpreter_FOUND)
     endif()
     add_executable(test_rife_windows_stream test_rife_windows_stream.cpp)
     target_include_directories(test_rife_windows_stream PRIVATE ${MPV_INCLUDE_DIR} ../src/player)
-    target_link_libraries(test_rife_windows_stream PRIVATE tigerest_rife_control)
+    target_link_libraries(test_rife_windows_stream PRIVATE tigerest_rife_control dbghelp)
     if(DEFINED ENV{RIFE_TEST_EOF_MPV_DLL})
       add_test(NAME test_rife_windows_stream COMMAND "${Python3_EXECUTABLE}" -B -X utf8 -m unittest discover
         -s "${CMAKE_CURRENT_SOURCE_DIR}" -p "test_rife_windows_stream.py" -v)
       set_tests_properties(test_rife_windows_stream PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE
         ENVIRONMENT "RIFE_TEST_STREAM_HOST=$<TARGET_FILE:test_rife_windows_stream>;RIFE_TEST_MONITOR_PLUGIN=$<TARGET_FILE:tigerest_rife_vs>"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
+      foreach(fixture RIFE_TEST_EOF_MPV_DLL RIFE_TEST_RUNTIME RIFE_TEST_STREAM_PREPARED RIFE_TEST_FFMPEG RIFE_TEST_FFPROBE)
+        if(DEFINED ENV{${fixture}})
+          set_property(TEST test_rife_windows_stream APPEND PROPERTY ENVIRONMENT "${fixture}=$ENV{${fixture}}")
+        endif()
+      endforeach()
     endif()
     add_executable(test_rife_monitor_registry test_rife_monitor_registry.cpp)
     target_include_directories(test_rife_monitor_registry PRIVATE ../dev/windows/rife/include)
@@ -315,4 +332,11 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_session_navigation.js)
   add_test(NAME test_web_appearance
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_web_appearance.js)
+endif()
+if(WIN32)
+  get_property(_rife_host_tests DIRECTORY PROPERTY TESTS)
+  foreach(_test IN LISTS _rife_host_tests)
+    set_property(TEST ${_test} APPEND PROPERTY ENVIRONMENT_MODIFICATION
+      "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
+  endforeach()
 endif()

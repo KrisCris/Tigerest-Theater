@@ -21,6 +21,10 @@
 #include "MpvVideoItem.h"
 #include "PlaybackIdentity.h"
 #include "MpvConfigManager.h"
+#ifdef Q_OS_WIN
+#include "interpolation/windows/RifeRuntimeManager.h"
+#include "interpolation/windows/RifeVSScriptRuntime.h"
+#endif
 #ifdef Q_OS_MAC
 #include "interpolation/FrameInterpolationController.h"
 #include "interpolation/MpvPollAccess.h"
@@ -83,7 +87,35 @@ PlayerComponent::PlayerComponent(QObject* parent)
   m_audioOutputWarningTimer.setSingleShot(true);
   m_audioOutputWarningTimer.setInterval(1800);
   connect(&m_audioOutputWarningTimer, &QTimer::timeout, this, &PlayerComponent::checkAudioOutput);
+#ifdef Q_OS_WIN
+  m_windowsRifeRuntime=std::make_unique<rife::RifeRuntimeManager>();
+  connect(m_windowsRifeRuntime.get(),&rife::RifeRuntimeManager::runtimeReady,this,[this](bool ready,const QString& error){
+    m_windowsRifeError=error;
+    if(ready&&m_mpv){ready=false;m_windowsRifeError=QStringLiteral("RIFE runtime requires restart before mpv creation");}
+    if(ready)ready=rife::activateVSScriptRuntime(m_windowsRifeRoot,&m_windowsRifeError);
+    m_windowsRifeActivated=ready;
+    emit windowsRifeReady(ready,m_windowsRifeError);
+  });
+#endif
 }
+
+#ifdef Q_OS_WIN
+bool PlayerComponent::prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script)
+{
+  if(m_mpv){m_windowsRifeError=QStringLiteral("RIFE runtime requires restart before mpv creation");return false;}
+  m_windowsRifeActivated=false;m_windowsRifeError.clear();
+  m_windowsRifeRoot=QFileInfo(runtime).canonicalFilePath();
+  if(m_windowsRifeRuntime->configure(runtime,cache,monitor,script))return true;
+  m_windowsRifeError=QStringLiteral("Invalid or missing verified RIFE extension");
+  return false;
+}
+QVariantMap PlayerComponent::windowsRifeStatus() const
+{
+  auto status=m_windowsRifeRuntime->diagnostics();
+  status["activated"]=m_windowsRifeActivated;status["error"]=m_windowsRifeError;
+  return status;
+}
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::componentPostInitialize()
