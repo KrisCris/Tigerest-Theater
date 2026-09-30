@@ -1,6 +1,6 @@
 # 大河影院 RIFE 扩展包：Windows NVIDIA / TensorRT 设计
 
-日期：2026-09-29。状态：用户已收敛本机范围到 NVIDIA / TensorRT，并提出用扩展包控制体积；扩展包设计待审阅，尚未实现。
+日期：2026-09-29；2026-09-30 更新。状态：用户已批准 Windows NVIDIA / TensorRT 可选扩展包设计，并希望完成后与已发布的 Mac RIFE 版本统一发布；Windows 尚未实现。
 
 ## 目标与首版范围
 
@@ -13,6 +13,16 @@
 固定 60/120 fps、自动匹配刷新率、多模型商店和 4K/HDR 补帧是后续扩展，不纳入本轮交付。本轮以原分辨率 1080p SDR 2 倍补帧为首轮验证目标；先完成私有运行库与真实推理研究，再据结果接入播放器及打包。
 
 ## 项目依据和路线选择
+
+### 2026-09-30：与已发布 Mac 版衔接
+
+已通过 GitHub API 核对：Mac RIFE 代码在 `codex/macos-rife`，当前头为 `55dd5cf52ae1fcb337945a9e0a740755b0af9d69`，包含停止／退出和 CoreAudio 热插拔修复。它比远端 main `7044cb47a1213c72ad2e8d9ca823700614d26edb` 超前 22 个提交。v2.1.2 发布说明标明最新 DMG 使用该修复，但 v2.1.2 标签仍指向前一提交 `3cd0b0d6625a58f7f1331ba28a6e3290a96b7c78`；统一发布必须记录实际源码 SHA，不能只按旧标签选源码或改名复用旧 DMG。
+
+Windows 应复用该分支已有的 `FrameInterpolationController`、`InterpolationPolicy`、`FrameTiming`、`RifeSessionMetrics`、`video.aiRife` 设置及 UOSC/诊断入口。Mac 继续保持现有 Core ML + Metal 实现和内置模型方式；Windows 增加私有 TensorRT 运行库和可选扩展管理。本次只对共享代码进行必要适配，不重新研究 Mac 推理。
+
+Mac 的补帧链依赖 libmpv 的 `eof-aware` 与颜色元数据补丁。现有 Windows DLL 含 `VSSCRIPT_PATH` 字符串但没有 `eof-aware` 字符串，此检查仅为定位线索，实际媒体回归仍必需。Windows 接入需要移植并验证相关补丁，不能删除选项后假设尾帧和短片能正常工作。Mac 的 CoreAudio 补丁保留在其既有构建链，不应用到 Windows。
+
+统一版本使用新的未占用版本号和明确的集成提交；Windows 安装器、便携包、RIFE 扩展包及 Mac DMG 均记录来源。可先形成草稿附件和校验清单；发布前必须区分 Windows 实机结果、Mac 已有结果与集成后 Mac 回归结果。当前 Mac 发布是预览版，不能仅因 Windows 完成就自动宣称两端都达到正式版质量。
 
 本仓库使用 Qt + 内嵌 libmpv；Windows 默认以原生 GPU-Next 子窗口呈现视频，另有 Render API 兼容模式。`PlayerComponent` 已集中处理媒体生命周期、设置更新、mpv 事件和诊断；`MpvConfigManager` 管理内置与系统配置；设置定义在 `resources/settings/settings_description.json`，设置界面在 `native/nativeshell.js`。
 
@@ -39,7 +49,7 @@ VapourSynth 官方提供 Windows 便携部署方式。Windows 路线是否适合
 - **RifeRuntimeManager**：定位私有运行库、校验版本清单、检测 GPU 与依赖、运行后台模型准备、管理平台缓存。
 - **RifeExtensionManager**：下载或导入专用 RIFE 扩展包，校验、安装、选择版本及安排卸载；不扩展为通用插件市场。
 - **后端适配**：仅实现 `windows-nvidia-trt` 的探测、准备、脚本参数及诊断，不为尚未实现的平台增加插件框架。
-- **RifeController**：处理每次播放的适用性、滤镜挂载与移除、状态更新、设置覆盖与恢复，以及故障旁路。由 `PlayerComponent` 的现有生命周期调用。
+- **FrameInterpolationController（复用 Mac 分支）**：处理每次播放的适用性、滤镜挂载与移除、状态更新、设置覆盖与恢复，以及故障旁路。保留其 END_FILE 异步清理和会话代次隔离，由 `PlayerComponent` 的现有生命周期调用。
 - **内置 `.vpy` 适配层**：完成格式转换、RIFE 调用、切镜处理、帧时长及色彩属性传递。显式加载本包插件，不扫描用户全局插件。
 - **后台准备工具**：在无可见窗口的独立进程中完成兼容探测和 TensorRT 引擎构建，可取消，输出结构化状态；只接收模型、GPU、分辨率和缓存路径，不接收媒体 URL 或凭据。
 
