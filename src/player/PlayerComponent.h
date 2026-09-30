@@ -15,7 +15,7 @@
 #include <QElapsedTimer>
 #ifdef Q_OS_MAC
 #include "interpolation/InterpolationPolicy.h"
-namespace rife {class FrameInterpolationController;}
+namespace rife {class FrameInterpolationController;class MpvPollAccess;}
 #endif
 
 #include "ComponentManager.h"
@@ -250,6 +250,7 @@ Q_SIGNALS:
 
 private:
 #ifdef Q_OS_MAC
+  std::unique_ptr<rife::MpvPollAccess> m_rifeAccess;
   std::unique_ptr<rife::FrameInterpolationController> m_rife;
   QTimer m_rifeTimer;
   QElapsedTimer m_rifeClock;

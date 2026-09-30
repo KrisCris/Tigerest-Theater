@@ -2,6 +2,7 @@
 #undef NDEBUG
 #endif
 #include "FrameInterpolationController.h"
+#include "MpvPollAccess.h"
 #include "RifeSessionMetrics.h"
 #include <QCoreApplication>
 #include <cassert>
@@ -106,6 +107,19 @@ int main(int argc,char**argv) {
     ending.forbidSync=false;
     endingController.beginItem(true,false);endingController.onFormatChanged(source);
     assert(endingController.state()==State::Preparing&&ending.adds==2);
+    Fake timed;
+    MpvPollAccess timedAccess(timed.access());
+    FrameInterpolationController timedController(timedAccess.interface(),paths);
+    timedController.beginItem(true,false);
+    timedAccess.observe("vf",timed.props["vf"]);
+    timedAccess.observe("hwdec",timed.props["hwdec"]);
+    timed.forbidSync=true; // macvk may already be waiting for Cocoa during STOP.
+    {
+        auto poll=timedAccess.enterPolling();
+        timedController.onFormatChanged(source);
+        timedController.poll(0,false);
+    }
+    assert(timed.forbiddenSyncCalls==0&&timed.adds==1);
     auto goodParams=QVariantMap{{"w",1920},{"h",1080},{"gamma","bt.1886"},{"primaries","bt.709"},{"colormatrix","bt.709"},{"colorlevels","limited"}};
     assert(qualify(sourceInfo(goodParams,{{"interlaced",false}},23.976023976)).enabled);
     assert(qualify(sourceInfo(goodParams,{{"interlaced",false}},60)).reason=="unsupported-fps");

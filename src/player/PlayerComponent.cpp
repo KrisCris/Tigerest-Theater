@@ -23,6 +23,7 @@
 #include "MpvConfigManager.h"
 #ifdef Q_OS_MAC
 #include "interpolation/FrameInterpolationController.h"
+#include "interpolation/MpvPollAccess.h"
 #endif
 #include "AlbumArtProvider.h"
 #include "input/InputComponent.h"
@@ -213,7 +214,32 @@ void PlayerComponent::initializeMpv()
   mpv_observe_property(m_mpv->mpv(), 0, "gpu-api", MPV_FORMAT_STRING);
   mpv_observe_property(m_mpv->mpv(), 0, "gpu-context", MPV_FORMAT_STRING);
 #ifdef Q_OS_MAC
-  m_rife=std::make_unique<rife::FrameInterpolationController>(rife::MpvAccess{
+  mpv_observe_property(m_mpv->mpv(), 0, "vf", MPV_FORMAT_NODE);
+  mpv_observe_property(m_mpv->mpv(), 0, "hwdec", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "video-params", MPV_FORMAT_NODE);
+  mpv_observe_property(m_mpv->mpv(), 0, "video-frame-info", MPV_FORMAT_NODE);
+  mpv_observe_property(m_mpv->mpv(), 0, "container-fps", MPV_FORMAT_DOUBLE);
+  mpv_observe_property(m_mpv->mpv(), 0, "seeking", MPV_FORMAT_FLAG);
+  mpv_observe_property(m_mpv->mpv(), 0, "paused-for-cache", MPV_FORMAT_FLAG);
+  mpv_observe_property(m_mpv->mpv(), 0, "frame-drop-count", MPV_FORMAT_INT64);
+  mpv_observe_property(m_mpv->mpv(), 0, "decoder-frame-drop-count", MPV_FORMAT_INT64);
+  mpv_observe_property(m_mpv->mpv(), 0, "glsl-shaders", MPV_FORMAT_NODE);
+  mpv_observe_property(m_mpv->mpv(), 0, "current-gpu-context", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "current-vo", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "hwdec-current", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "scale", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "cscale", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "dscale", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "tscale", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "interpolation", MPV_FORMAT_FLAG);
+  mpv_observe_property(m_mpv->mpv(), 0, "deband", MPV_FORMAT_FLAG);
+  mpv_observe_property(m_mpv->mpv(), 0, "scripts", MPV_FORMAT_NODE);
+  mpv_observe_property(m_mpv->mpv(), 0, "load-scripts", MPV_FORMAT_FLAG);
+  mpv_observe_property(m_mpv->mpv(), 0, "video-out-params", MPV_FORMAT_NODE);
+  mpv_observe_property(m_mpv->mpv(), 0, "aid", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "audio-params", MPV_FORMAT_NODE);
+  mpv_observe_property(m_mpv->mpv(), 0, "audio-device", MPV_FORMAT_STRING);
+  m_rifeAccess=std::make_unique<rife::MpvPollAccess>(rife::MpvAccess{
     [this](const QString& key){return m_mpv->getProperty(key);},
     [this](const QString& key,const QVariant& value){return m_mpv->setProperty(key,value)>=0;},
     [this](const QStringList& arguments){
@@ -224,7 +250,9 @@ void PlayerComponent::initializeMpv()
     },
     [this](const QString& key,const QVariant& value){return m_mpv->setPropertyAsync(key,value)>=0;},
     [this](const QStringList& arguments){return m_mpv->commandAsync(arguments)>=0;}
-  },rife::bundledRuntimePaths());
+  });
+  m_rife=std::make_unique<rife::FrameInterpolationController>(
+      m_rifeAccess->interface(),rife::bundledRuntimePaths());
   m_rifeClock.start();m_rifeTimer.setInterval(250);
   m_rifeSuppressedSvp=MpvConfigManager::ownsDefaultSvpIpc()&&SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool();
   connect(&m_rifeTimer,&QTimer::timeout,this,&PlayerComponent::pollInterpolation);
@@ -739,6 +767,9 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
   {
     case MPV_EVENT_START_FILE:
     {
+#ifdef Q_OS_MAC
+      if(m_rifeAccess)m_rifeAccess->clearMedia();
+#endif
       m_replacementPending = false;
       m_inPlayback = true;
       m_nativeVideoReady = false;
@@ -820,6 +851,37 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     case MPV_EVENT_PROPERTY_CHANGE:
     {
       auto *prop = static_cast<mpv_event_property*>(event->data);
+#ifdef Q_OS_MAC
+      if(m_rifeAccess) {
+        static const QSet<QByteArray> watched={"vf","hwdec","video-params",
+            "video-frame-info","container-fps","seeking","paused-for-cache",
+            "frame-drop-count","decoder-frame-drop-count","glsl-shaders",
+            "current-gpu-context","current-vo","hwdec-current","scale",
+            "cscale","dscale","tscale","interpolation","deband",
+            "scripts","load-scripts","video-out-params","aid",
+            "audio-params","audio-device","audio-device-list","current-ao","gpu-api",
+            "vo","fullscreen","playback-time","duration"};
+        if(watched.contains(prop->name)) {
+          QVariant value;
+          switch(prop->format) {
+          case MPV_FORMAT_NODE:
+            value=mpv::qt::node_to_variant(static_cast<mpv_node*>(prop->data));break;
+          case MPV_FORMAT_FLAG:
+            value=!!*static_cast<int*>(prop->data);break;
+          case MPV_FORMAT_INT64:
+            value=qlonglong(*static_cast<int64_t*>(prop->data));break;
+          case MPV_FORMAT_DOUBLE:
+            value=*static_cast<double*>(prop->data);break;
+          case MPV_FORMAT_STRING: {
+            auto **raw=static_cast<char**>(prop->data);
+            value=raw&&*raw?QString::fromUtf8(*raw):QString();break;
+          }
+          default:break;
+          }
+          m_rifeAccess->observe(QString::fromUtf8(prop->name),value);
+        }
+      }
+#endif
       if (strcmp(prop->name, "pause") == 0 && prop->format == MPV_FORMAT_FLAG)
       {
 #ifdef Q_OS_MAC
@@ -1146,15 +1208,25 @@ void PlayerComponent::pollInterpolation()
   }
   // macvk can synchronously dispatch window setup to the main thread while
   // mpv's core waits for its VO. Querying that core here would deadlock both.
-  if(!m_rife||!m_mpv||!m_inPlayback||(m_nativeVideoOutput&&!m_nativeVideoReady))return;
-  const auto params=m_mpv->getProperty("video-params").toMap();
-  const auto frame=m_mpv->getProperty("video-frame-info").toMap();
-  if(!params.isEmpty()&&frame.contains("interlaced"))
-    m_rife->onFormatChanged(rife::sourceInfo(params,frame,m_mpv->getProperty("container-fps").toDouble()));
+  if(!m_rife||!m_mpv||!m_rifeAccess||!m_inPlayback||
+      (m_nativeVideoOutput&&!m_nativeVideoReady))return;
+  // Property-change events are delivered by libmpv without waiting for its
+  // core. The timer must never use mpv_get_property or mpv_command while
+  // macvk can be waiting for this same Cocoa main thread to remove its VO.
+  if(!m_rifeAccess->value("vf").isValid()||
+      !m_rifeAccess->value("video-params").isValid()||
+      !m_rifeAccess->value("video-frame-info").isValid()||
+      !m_rifeAccess->value("container-fps").isValid())return;
+  auto polling=m_rifeAccess->enterPolling();
+  const auto params=m_rifeAccess->value("video-params").toMap();
+  const auto frame=m_rifeAccess->value("video-frame-info").toMap();
+  const double fps=m_rifeAccess->value("container-fps").toDouble();
+  if(!params.isEmpty()&&frame.contains("interlaced")&&fps>0)
+    m_rife->onFormatChanged(rife::sourceInfo(params,frame,fps));
   // A busy video filter can make the core idle between frames. That is part
   // of the work being measured, not evidence of a user/network suspension.
   const bool suspended=m_paused||m_bufferingPercentage<100||
-      m_mpv->getProperty("seeking").toBool()||m_mpv->getProperty("paused-for-cache").toBool();
+      m_rifeAccess->value("seeking").toBool()||m_rifeAccess->value("paused-for-cache").toBool();
   m_rife->poll(m_rifeClock.elapsed(),suspended);
   if(m_rifeStartup.waiting()&&m_rife->state()!=rife::State::Preparing) {
     if(m_rifeStartup.finish())m_mpv->setPropertyAsync("pause",false);
@@ -1402,6 +1474,10 @@ QVariant PlayerComponent::getAudioDeviceList()
     qWarning() << "PlayerComponent::getAudioDeviceList: mpv not initialized yet";
     return QVariant();
   }
+#ifdef Q_OS_MAC
+  if(m_nativeVideoOutput)
+    return m_rifeAccess?m_rifeAccess->value("audio-device-list"):QVariant();
+#endif
   return m_mpv->getProperty( "audio-device-list");
 }
 
@@ -1657,8 +1733,12 @@ qint64 PlayerComponent::getPosition()
     return 0;
   }
 #ifdef Q_OS_MAC
-  if (m_nativeVideoOutput && m_nativeVoTeardownPending)
-    return 0;
+  if (m_nativeVideoOutput)
+  {
+    const QVariant time=m_rifeAccess?m_rifeAccess->value("playback-time"):QVariant();
+    return time.canConvert<double>()
+      ? static_cast<qint64>(qMax(time.toDouble()*1000.0,0.0)) : 0;
+  }
 #endif
   QVariant time = m_mpv->getProperty( "playback-time");
   if (time.canConvert<double>())
@@ -1674,8 +1754,12 @@ qint64 PlayerComponent::getDuration()
     return 0;
   }
 #ifdef Q_OS_MAC
-  if (m_nativeVideoOutput && m_nativeVoTeardownPending)
-    return 0;
+  if (m_nativeVideoOutput)
+  {
+    const QVariant time=m_rifeAccess?m_rifeAccess->value("duration"):QVariant();
+    return time.canConvert<double>()
+      ? static_cast<qint64>(qMax(time.toDouble()*1000.0,0.0)) : 0;
+  }
 #endif
   QVariant time = m_mpv->getProperty( "duration");
   if (time.canConvert<double>())
@@ -1693,9 +1777,15 @@ void PlayerComponent::checkAudioOutput()
     return;
 #endif
 
-  const QString currentAo = m_mpv->getProperty("current-ao").toString();
-  const QString selectedAudio = m_mpv->getProperty("aid").toString();
-  const QVariantMap audioParameters = m_mpv->getProperty("audio-params").toMap();
+  const auto read=[this](const QString& key){
+#ifdef Q_OS_MAC
+    if(m_nativeVideoOutput)return m_rifeAccess?m_rifeAccess->value(key):QVariant();
+#endif
+    return m_mpv->getProperty(key);
+  };
+  const QString currentAo = read("current-ao").toString();
+  const QString selectedAudio = read("aid").toString();
+  const QVariantMap audioParameters = read("audio-params").toMap();
   if (currentAo != QStringLiteral("null") || selectedAudio == QStringLiteral("no") ||
       selectedAudio.isEmpty() || audioParameters.isEmpty())
     return;
@@ -1705,19 +1795,22 @@ void PlayerComponent::checkAudioOutput()
   m_rifeStartup.requestPause(true);
   publishInterpolationPause();
 #endif
-  m_mpv->setProperty("pause", true);
-  m_mpv->command(QStringList()
+  if(m_nativeVideoOutput)m_mpv->setPropertyAsync("pause",true);
+  else m_mpv->setProperty("pause",true);
+  const QStringList warningCommand=QStringList()
                  << "show-text"
                  << QStringLiteral("音频设备不可用或正被独占，已暂停播放。请在 UOSC 菜单或 MPV 设置中选择可用的音频设备。")
-                 << "8000");
+                 << "8000";
+  if(m_nativeVideoOutput)m_mpv->commandAsync(warningCommand);
+  else m_mpv->command(warningCommand);
   // UOSC normally filters its device menu by current-ao. When initialization
   // failed current-ao is literally "null", which incorrectly hides every
   // WASAPI/OpenAL device. Build the menu from mpv's unfiltered property so the
   // user can recover without leaving playback. The show-text above remains the
   // fallback for configurations that do not load UOSC's open-menu handler.
   QJsonArray deviceItems;
-  const QString configuredDevice = m_mpv->getProperty("audio-device").toString();
-  const QVariantList availableDevices = m_mpv->getProperty("audio-device-list").toList();
+  const QString configuredDevice = read("audio-device").toString();
+  const QVariantList availableDevices = read("audio-device-list").toList();
   for (const QVariant& deviceValue : availableDevices)
   {
     const QVariantMap device = deviceValue.toMap();
@@ -1747,11 +1840,13 @@ void PlayerComponent::checkAudioOutput()
     menu.insert(QStringLiteral("hint"), QStringLiteral("默认设备不可用，选择后会立即重试输出"));
     menu.insert(QStringLiteral("items"), deviceItems);
     const QString menuJson = QString::fromUtf8(QJsonDocument(menu).toJson(QJsonDocument::Compact));
-    m_mpv->command(QStringList()
+    const QStringList menuCommand=QStringList()
                    << "script-message-to"
                    << "uosc"
                    << "open-menu"
-                   << menuJson);
+                   << menuJson;
+    if(m_nativeVideoOutput)m_mpv->commandAsync(menuCommand);
+    else m_mpv->command(menuCommand);
   }
   qWarning() << "Audio output fell back to null; paused playback so the failure is not silent";
 }
@@ -1760,6 +1855,12 @@ void PlayerComponent::checkAudioOutput()
 QVariantMap PlayerComponent::mpvDiagnostics()
 {
   QVariantMap result;
+  const auto read=[this](const QString& key){
+#ifdef Q_OS_MAC
+    if(m_nativeVideoOutput)return m_rifeAccess?m_rifeAccess->value(key):QVariant();
+#endif
+    return m_mpv->getProperty(key);
+  };
 #ifdef Q_OS_MAC
   if(m_rife)result["rife"]=m_rife->diagnostics();
   result["rifeSetting"]=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife");
@@ -1794,10 +1895,9 @@ QVariantMap PlayerComponent::mpvDiagnostics()
   result["configuredProfile"] = configuredProfile;
 
   QStringList shaderFiles;
-  if (m_mpv && (!m_nativeVideoOutput ||
-                (m_inPlayback && m_nativeVideoReady && !m_nativeVoTeardownPending)))
+  if (m_mpv)
   {
-    const QVariant shaders = m_mpv->getProperty("glsl-shaders");
+    const QVariant shaders = read("glsl-shaders");
     for (const QVariant& shader : shaders.toList())
     {
       const QString shaderPath = shader.toString().trimmed();
@@ -1807,21 +1907,21 @@ QVariantMap PlayerComponent::mpvDiagnostics()
     if (shaderFiles.isEmpty() && !shaders.toString().trimmed().isEmpty())
       shaderFiles << shaders.toString();
 
-    result["gpuApi"] = m_mpv->getProperty("gpu-api");
-    result["gpuContext"] = m_mpv->getProperty("current-gpu-context").toString();
-    result["currentVo"] = m_mpv->getProperty("current-vo");
-    result["configuredVo"] = m_mpv->getProperty("vo").toString();
-    result["hwdecCurrent"] = m_mpv->getProperty("hwdec-current");
-    result["scale"] = m_mpv->getProperty("scale").toString();
-    result["cscale"] = m_mpv->getProperty("cscale").toString();
-    result["dscale"] = m_mpv->getProperty("dscale").toString();
-    result["tscale"] = m_mpv->getProperty("tscale").toString();
-    result["interpolation"] = m_mpv->getProperty("interpolation").toBool();
-    result["deband"] = m_mpv->getProperty("deband").toBool();
-    result["fullscreen"] = m_mpv->getProperty("fullscreen").toBool();
+    result["gpuApi"] = read("gpu-api");
+    result["gpuContext"] = read("current-gpu-context").toString();
+    result["currentVo"] = read("current-vo");
+    result["configuredVo"] = read("vo").toString();
+    result["hwdecCurrent"] = read("hwdec-current");
+    result["scale"] = read("scale").toString();
+    result["cscale"] = read("cscale").toString();
+    result["dscale"] = read("dscale").toString();
+    result["tscale"] = read("tscale").toString();
+    result["interpolation"] = read("interpolation").toBool();
+    result["deband"] = read("deband").toBool();
+    result["fullscreen"] = read("fullscreen").toBool();
 
     QStringList scriptFiles;
-    const QVariant configuredScripts = m_mpv->getProperty("scripts");
+    const QVariant configuredScripts = read("scripts");
     for (const QVariant& entry : configuredScripts.toList())
     {
       const QString file = entry.toString();
@@ -1830,10 +1930,10 @@ QVariantMap PlayerComponent::mpvDiagnostics()
     if (scriptFiles.isEmpty() && !configuredScripts.toString().isEmpty())
       scriptFiles << configuredScripts.toString();
     result["scriptFiles"] = scriptFiles;
-    result["autoScripts"] = m_mpv->getProperty("load-scripts").toBool();
+    result["autoScripts"] = read("load-scripts").toBool();
 
-    const QVariantMap videoParams = m_mpv->getProperty("video-params").toMap();
-    const QVariantMap outputParams = m_mpv->getProperty("video-out-params").toMap();
+    const QVariantMap videoParams = read("video-params").toMap();
+    const QVariantMap outputParams = read("video-out-params").toMap();
     result["sourceWidth"] = videoParams.value("w").toInt();
     result["sourceHeight"] = videoParams.value("h").toInt();
     result["outputWidth"] = outputParams.value("dw").toInt();
@@ -1842,7 +1942,7 @@ QVariantMap PlayerComponent::mpvDiagnostics()
     // vo-passes contains the exact Fresh/Redraw render pass list consumed by
     // stats.lua page 2. It is populated while video is rendering when the
     // libmpv render context uses advanced control.
-    const QVariantMap passes = m_mpv->getProperty("vo-passes").toMap();
+    const QVariantMap passes = read("vo-passes").toMap();
     const qsizetype freshPassCount = passes.value("fresh").toList().size();
     const qsizetype redrawPassCount = passes.value("redraw").toList().size();
     result["voPassesAvailable"] = freshPassCount > 0 || redrawPassCount > 0;

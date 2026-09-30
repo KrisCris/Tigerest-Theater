@@ -370,11 +370,12 @@ def test_mpv_bundle() -> None:
     require("MpvConfigManager::usingSystemConfig()" in player and
             "Preserving user MPV profile and shaders" in player,
             "user MPV profiles and shaders are still overwritten")
-    require("mpvDiagnostics" in player and 'getProperty("glsl-shaders")' in player,
+    require("mpvDiagnostics" in player and 'read("glsl-shaders")' in player and
+            'mpv_observe_property(m_mpv->mpv(), 0, "glsl-shaders"' in player,
             "runtime shader diagnostics are missing")
-    require('getProperty("scale")' in player and 'getProperty("vo-passes")' in player,
-            "runtime scaling or full frame-pipeline diagnostics are missing")
-    require('getProperty("scripts")' in player and 'result["scriptFiles"]' in player and
+    require('read("scale")' in player and 'read("vo-passes")' in player,
+            "runtime scaling or frame-pipeline diagnostics are missing")
+    require('read("scripts")' in player and 'result["scriptFiles"]' in player and
             'result["autoScripts"]' in player,
             "runtime script-isolation diagnostics are missing")
 
@@ -670,8 +671,9 @@ def test_settings_ui() -> None:
     require('mpv_observe_property(m_mpv->mpv(), 0, "current-ao"' in player and
             "Audio output fell back to null" in player and
             "tigerest-audio-recovery" in player and
-            'getProperty("audio-device-list")' in player and
-            'm_mpv->setProperty("pause", true)' in player,
+            'read("audio-device-list")' in player and
+            'm_mpv->setPropertyAsync("pause",true)' in player and
+            'm_mpv->setProperty("pause",true)' in player,
             "silent null-audio fallback is not surfaced and paused")
 
 

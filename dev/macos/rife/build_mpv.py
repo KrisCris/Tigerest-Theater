@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the pinned, EOF-aware libmpv used by the macOS RIFE package."""
+"""Build the pinned libmpv with EOF-aware VS and safe CoreAudio hotplug."""
 import argparse
 import hashlib
 import json
@@ -23,7 +23,8 @@ def build(destination,meson):
     if hashlib.sha256(archive.read_bytes()).hexdigest()!=SHA256:raise RuntimeError('mpv source hash mismatch')
     source=destination/f'mpv-{VERSION}'
     marker=source/'.tigerest-patches.json'
-    patches=[HERE/'mpv-vapoursynth79.patch',HERE/'mpv-eof-aware.patch']
+    patches=[HERE/'mpv-vapoursynth79.patch',HERE/'mpv-eof-aware.patch',
+             HERE/'mpv-coreaudio-hotplug.patch']
     hashes={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in patches}
     if not source.exists():
         with tarfile.open(archive) as tar:tar.extractall(destination,filter='data')

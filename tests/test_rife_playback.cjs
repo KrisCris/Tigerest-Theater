@@ -73,6 +73,7 @@ async function devtools(url) {
     const review=process.argv[6]==='review';
     const exitProbe=process.argv[6]==='exit-probe';
     const externalRuntime=process.argv[6]==='external-runtime';
+    const loadProbe=process.argv[6]==='load-probe';
     const root=fs.mkdtempSync(path.join(os.tmpdir(),'tigerest-rife-player-'));
     const installed=path.join(root,'Applications','Tigerest Theater.app');
     fs.mkdirSync(path.dirname(installed));
@@ -144,14 +145,16 @@ async function devtools(url) {
         const load=async(url,autoplay=true)=>cdp.evaluate(`window.api.player.setVideoOnlyMode(true); window.api.player.load(${JSON.stringify(url)},{autoplay:${autoplay},startMilliseconds:0},{type:'video',title:'RIFE isolated acceptance'},1,-1)`);
         if(exitProbe){
             result.cycles=[];
-            for(let i=0;i<2;i++){
+            for(let i=0;i<4;i++){
                 await load(pathToFileURL(clip).href);
                 await until(async()=>{
                     const d=await cdp.evaluate('window.api.player.mpvDiagnostics()');
                     return d.rife.state===2&&d.rife.generatedFrames>5;
                 },'RIFE active before stop');
                 const started=Date.now();
-                await cdp.evaluate('window.api.player.stop()');
+                const origin=i%2===0?'client':'mpv';
+                if(origin==='client')await cdp.evaluate('window.api.player.stop()');
+                else await cmd('stop'); // UOSC/native-key stops bypass PlayerComponent::stop().
                 await until(async()=>await cmd('get_property','idle-active')===true,'idle after stop');
                 // This method crosses Qt's main thread but does not query mpv
                 // while macvk may still be destroying the previous window.
@@ -160,7 +163,7 @@ async function devtools(url) {
                     const diagnostics=await cdp.evaluate('window.api.player.mpvDiagnostics()');
                     return diagnostics.rife.state===0;
                 },'RIFE controller stopped');
-                result.cycles.push({stopMs:Date.now()-started,mainThreadResponsive:true});
+                result.cycles.push({origin,stopMs:Date.now()-started,mainThreadResponsive:true});
                 fs.writeFileSync(output,JSON.stringify(result,null,2));
             }
             await load(pathToFileURL(clip).href);
@@ -297,7 +300,7 @@ async function devtools(url) {
         await delay(3000);
         const start=await sample();
         result.startupDrops=start.metrics['frame-drop-count'];
-        assert.ok(result.startupDrops<=2,`startup dropped ${result.startupDrops} frames`);
+        if(!loadProbe)assert.ok(result.startupDrops<=2,`startup dropped ${result.startupDrops} frames`);
         result.metadata=await cdp.evaluate('window.api.player.mpvDiagnostics()');
         if(externalRuntime){
             assert.equal(result.metadata.rife.runtimeAvailable,true,'external environment blocked bundled runtime');
@@ -329,9 +332,9 @@ async function devtools(url) {
         // This mode verifies runtime selection under the user's environment;
         // the normal acceptance mode retains the strict renderer budget.
         result.performanceQualified=result.dropRatio<.001;
-        if(!externalRuntime)assert.ok(result.performanceQualified,`drop ratio ${result.dropRatio}`);
-        assert.ok(result.maxAvsyncMs<=40,`A/V offset ${result.maxAvsyncMs} ms`);
-        verifyLoaded();result.passed=true;
+        if(!externalRuntime&&!loadProbe)assert.ok(result.performanceQualified,`drop ratio ${result.dropRatio}`);
+        if(!loadProbe)assert.ok(result.maxAvsyncMs<=40,`A/V offset ${result.maxAvsyncMs} ms`);
+        verifyLoaded();result.functionalPassed=true;result.passed=loadProbe?result.performanceQualified:true;
         console.log(JSON.stringify({...result,samples:undefined,metadata:undefined,renderPasses:undefined}));
     } catch(error) {result.error=String(error);if(child.exitCode===null)spawnSync('sample',[String(child.pid),'5','-file',output+'.sample.txt']);throw error;}
     finally {
