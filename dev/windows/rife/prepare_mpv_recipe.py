@@ -33,10 +33,24 @@ def prepare(recipe, lock):
             # libcrypto's dependencies. The source patch attaches them to
             # OPENSSL_LIBRARIES, including CMake's QUIC capability probes.
             text = text.replace('        "-DCMAKE_C_FLAGS=\'-lz -lbrotlienc -lbrotlidec -lbrotlicommon -lzstd -lcrypt32\'"\n', '')
+        if relative == 'packages/luajit.cmake':
+            text = text.replace('PATCH_COMMAND ${EXEC} git am --3way ${CMAKE_CURRENT_SOURCE_DIR}/luajit-*.patch',
+                                'PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-luajit-utf8.patch', 1)
         path.write_text(text, encoding='utf-8')
     shutil.copyfile(HERE.parents[1] / 'macos/rife/mpv-eof-aware.patch', recipe / 'tigerest-mpv-eof-aware.patch')
     shutil.copyfile(HERE / 'mpv-private-vs-core.patch', recipe / 'tigerest-mpv-private-vs-core.patch')
     shutil.copyfile(HERE / 'ngtcp2-static-openssl.patch', recipe / 'tigerest-ngtcp2-static-openssl.patch')
+    # The recipe's UTF-8 patch uses a context line from a newer LuaJIT tree.
+    # Frozen OpenResty 1edc3e5 has no lj_str_hash.o on that unchanged line,
+    # and the next block starts with LJVMCORE_O. Adapt only those two context
+    # lines; keep every UTF-8 implementation hunk intact.
+    upstream_patch = recipe / 'packages/luajit-0001-add-win32-utf-8-filesystem-functions.patch'
+    utf8_patch = upstream_patch.read_text(encoding='utf-8')
+    old_context = ' \t  $(LJLIB_O) lib_init.o lj_str_hash.o\n \n ifeq (x64,$(TARGET_LJARCH))\n'
+    if utf8_patch.count(old_context) != 1:
+        raise ValueError('Unexpected upstream LuaJIT UTF-8 patch context')
+    (recipe / 'tigerest-luajit-utf8.patch').write_text(
+        utf8_patch.replace(old_context, ' \t  $(LJLIB_O) lib_init.o\n \n LJVMCORE_O= $(LJVM_O) $(LJCORE_O)\n', 1), encoding='utf-8', newline='\n')
     path = recipe / 'toolchain/rustup.cmake'
     text = path.read_text(encoding='utf-8')
     text = text.replace('--default-toolchain nightly', '--default-toolchain ' + lock['rustToolchain'])

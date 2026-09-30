@@ -12,6 +12,29 @@ PREPARE = ROOT / 'dev/windows/rife/prepare_mpv_recipe.py'
 
 
 class PinnedRecipeTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('RIFE_TEST_MPV_RECIPE') and os.environ.get('RIFE_TEST_LUAJIT_SOURCE'),
+                         'requires pinned recipe and frozen OpenResty LuaJIT source')
+    def test_luajit_utf8_patch_applies_to_frozen_openresty_source(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            recipe = base / 'recipe'
+            shutil.copytree(os.environ['RIFE_TEST_MPV_RECIPE'], recipe, ignore=shutil.ignore_patterns('.git'))
+            source = base / 'source'
+            shutil.copytree(os.environ['RIFE_TEST_LUAJIT_SOURCE'], source, ignore=shutil.ignore_patterns('.git'))
+            lock = base / 'lock.json'
+            lock.write_text(json.dumps({'sources': {'packages/luajit.cmake': {'sourceSha':
+                '1edc3e52b67eaf6ce5f809be8e17d6862594b8bc'}}, 'rustToolchain': 'nightly-2026-08-08'}))
+            run = subprocess.run([sys.executable, '-B', '-X', 'utf8', str(PREPARE), '--recipe', str(recipe), '--lock', str(lock)],
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            patch = recipe / 'tigerest-luajit-utf8.patch'
+            applied = subprocess.run(['git', '-C', str(source), 'apply', str(patch)], capture_output=True, text=True)
+            self.assertEqual(applied.returncode, 0, applied.stderr)
+            self.assertIn('lj_fs_io.o', (source / 'src/Makefile').read_text())
+            self.assertTrue((source / 'src/lj_fs_io.c').is_file())
+            self.assertIn('git apply ${CMAKE_SOURCE_DIR}/tigerest-luajit-utf8.patch',
+                          (recipe / 'packages/luajit.cmake').read_text())
+
     @unittest.skipUnless(os.environ.get('RIFE_TEST_MPV_RECIPE') and os.environ.get('RIFE_TEST_NGTCP2_SOURCE_FILE'),
                          'requires pinned recipe and frozen ngtcp2 source')
     def test_static_openssl_compression_libraries_follow_crypto_in_quic_probe(self):

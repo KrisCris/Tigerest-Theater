@@ -90,6 +90,8 @@ jobs:
           test -s artifacts/libmpv-2.dll
           cp source-lock.json artifacts/
           sha256sum artifacts/libmpv-2.dll dev/macos/rife/mpv-eof-aware.patch dev/windows/rife/mpv-private-vs-core.patch dev/windows/rife/ngtcp2-static-openssl.patch > artifacts/SHA256SUMS.txt
+          sha256sum recipe/tigerest-luajit-utf8.patch >> artifacts/SHA256SUMS.txt
+          cp recipe/tigerest-luajit-utf8.patch artifacts/
           printf '%s\n' '${{ github.sha }}' > artifacts/host-source-sha.txt
       - uses: actions/upload-artifact@v4
         if: success()
