@@ -97,11 +97,20 @@ bool writeEmbeddedConfig(const QString& configDir)
   QString config = QString::fromUtf8(input.readAll());
   const QString preset = SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "shaderPreset").toString();
   config.replace("@TIGEREST_PROFILE@", MpvConfigManager::profileName(preset));
+#if defined(Q_OS_WIN) || defined(Q_OS_MAC)
+  QFile overrides(QDir(configDir).filePath("user-overrides.conf"));
+  const QString explicitOptions=(overrides.open(QIODevice::ReadOnly)?QString::fromUtf8(overrides.readAll()):QString())+"\n"+
+      SettingsComponent::Get().value(SETTINGS_SECTION_OTHER,"other_conf").toString();
+  // Includes may select an IPC endpoint indirectly; only the generated
+  // default belongs to us, and user-owned discovery must remain untouched.
+  g_ownsDefaultSvpIpc=!explicitOptions.contains(QRegularExpression(
+      QStringLiteral("(^|\\n)\\s*(input-ipc-server|include)\\s*=")));
+  const bool rife=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool();
+#endif
 #ifdef Q_OS_WIN
-  // SVP discovers mpv through this conventional local named pipe. Tigerest's
-  // Emby progress reporting uses the libmpv client API and does not consume
-  // the JSON IPC endpoint, so the two mechanisms can coexist.
-  config.replace("@TIGEREST_IPC_SERVER@", QStringLiteral("input-ipc-server=mpvpipe"));
+  // Suppress managed SVP discovery when RIFE owns interpolation. Explicit
+  // endpoints in user-overrides.conf/other_conf still apply afterwards.
+  config.replace("@TIGEREST_IPC_SERVER@", rife?QString():QStringLiteral("input-ipc-server=mpvpipe"));
 #elif defined(Q_OS_MAC)
   // SVP's standard macOS endpoint. Never unlink another running player's
   // socket; a user-overrides.conf endpoint can still override this default.
@@ -112,14 +121,6 @@ bool writeEmbeddedConfig(const QString& configDir)
   const bool ordinaryFile = QFileInfo(endpoint).isFile() || QFileInfo(endpoint).isDir();
   if (occupied || ordinaryFile)
     qWarning() << "SVP IPC endpoint already in use; leaving it untouched:" << endpoint;
-  QFile overrides(QDir(configDir).filePath("user-overrides.conf"));
-  const QString explicitOptions=(overrides.open(QIODevice::ReadOnly)?QString::fromUtf8(overrides.readAll()):QString())+"\n"+
-      SettingsComponent::Get().value(SETTINGS_SECTION_OTHER,"other_conf").toString();
-  // An include may set the same endpoint indirectly. Conservatively leave
-  // ownership with the user in that case, too.
-  g_ownsDefaultSvpIpc=!explicitOptions.contains(QRegularExpression(
-      QStringLiteral("(^|\\n)\\s*(input-ipc-server|include)\\s*=")));
-  const bool rife=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool();
   config.replace("@TIGEREST_IPC_SERVER@", occupied || ordinaryFile || rife
       ? QString() : QStringLiteral("input-ipc-server=/tmp/mpvsocket"));
 #else

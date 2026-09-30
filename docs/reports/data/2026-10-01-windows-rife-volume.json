@@ -1,0 +1,18 @@
+{
+  "purpose": "volume measurement only; no host graph/Monitor and distribution notices incomplete",
+  "runtimeId": "rife-trt-r79-15.16-py3.13.15-3-v2",
+  "unpackedManifestBytes": 2632245589,
+  "archiveBytes": 2106064893,
+  "archiveSha256": "f6a9359d733e0dd81af8158f00b55c13999d2d2dfab4703539c83a31fdd71aab",
+  "zipCRCValidated": true,
+  "compression": "ZIP64-capable DEFLATE level6",
+  "elapsedSeconds": 62.46222579991445,
+  "modelsBytes": 131972493,
+  "componentBytes": {
+    "python": 32311798,
+    "plugins/vsmlrt-cuda": 2466821216,
+    "plugins/models": 131972493,
+    "scripts": 38460,
+    "licenses": 92369
+  }
+}

@@ -94,6 +94,16 @@ target_compile_definitions(test_mpv_console PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_mpv_console COMMAND test_mpv_console)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
+if(WIN32)
+  add_executable(test_rife_windows_ipc test_rife_windows_ipc.cpp)
+  target_link_libraries(test_rife_windows_ipc jmp_core Qt6::Test)
+  target_include_directories(test_rife_windows_ipc PRIVATE ${TEST_INCLUDE_DIRS})
+  qt_add_resources(test_rife_windows_ipc "test_rife_windows_ipc_resources"
+    PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
+    FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
+          "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
+  add_test(NAME test_rife_windows_ipc COMMAND test_rife_windows_ipc)
+endif()
 if(WIN32 AND Python3_Interpreter_FOUND)
   add_executable(test_rife_runtime_manager test_rife_runtime_manager.cpp)
   target_link_libraries(test_rife_runtime_manager PRIVATE tigerest_rife_control)
