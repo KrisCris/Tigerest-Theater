@@ -84,4 +84,15 @@ CI 36745960700 的两个架构均在 ngtcp2 的 QUIC 检查失败。完整 CMake
 
 CI 36752790588 已通过 ngtcp2，在 LuaJIT 补丁阶段失败。原配方的 UTF-8 文件系统补丁在 Makefile 上引用了较新源码的两行上下文，而冻结的 OpenResty LuaJIT 1edc3e5 不具备这些行。现在只适配这两行未修改的上下文，保留全部 UTF-8 功能变更；以 git apply 应用，生成的补丁随 DLL 保存并计算哈希。已在实际冻结源码上复现原补丁失败，新补丁实际应用通过，三项配方回归通过。35602b3 触发 CI 36761087304，两架构仍需成功构建；尚无成功 DLL。
 
-仍需验证两份 DLL 的一帧/两帧自然结束与颜色属性，接入 Windows RuntimeManager/Player/UI，完成默认配置 4K 渲染/十分钟稳态、扩展安装与发行材料、干净 Windows 和同源码 Mac 产物。本报告不将以上原型测试视为播放器或统一发行已经完成。
+仍需验证两份 DLL 的一帧/两帧自然结束与颜色属性，接入 Windows Player/UI，完成默认配置 4K 渲染/十分钟稳态、扩展安装与发行材料、干净 Windows 和同源码 Mac 产物。本报告不将以上原型测试视为播放器或统一发行已经完成。
+
+## 2026-10-01：原生加载与播放协调原型
+
+- 新候选为 `rife-trt-r79-15.16-py3.13.15-3-v2`，包含修复后的探测进程树清理。展开文件 2,632,245,589 字节，指纹 `f78c0d6669b89c0efe644ceb818282ddb4b058c7322ac96f6f5f3261807a413d`。旧运行库及上述性能记录的指纹保留；新版本重新编译缓存，不将旧身份的引擎冒充新身份。
+- `RifeVSScriptRuntime` 从全新原生进程激活私有 Python，以 wide Windows 环境 API 处理中文路径，保留进程级 DLL 搜索目录；拒绝已加载的外部同名 Python/VS。R79 使用旧 Python 初始化 API，故必须在初始化前设置固定 CPython 3.13 的隔离、忽略环境、禁 site 和禁写 bytecode 标志。真实 VSScript 帧请求、恶意 PYTHONHOME/PYTHONPATH 隔离、外部 DLL 拒绝及加载后全文件清单完整性均通过。
+- 启动次序必须早于 `mpv_create()`：固定 mpv 的 Windows 环境读取会缓存整份环境。Coordinator 首个格式事件只验证已有激活，不负责第一次激活。此边界已审查修正；直接 DLL 测试不能替代待完成的真实 mpv 启动入口回归。
+- `RifePlaybackCoordinator` 已验证冷缓存原帧播放、准备完成仅通知、下次播放使用完整缓存、切片/停止/动态格式/倍速取消和旧结果隔离。seek 保留同尺寸编译并重置图/性能状态；恢复 1 倍速不在本片重新开启。默认协调器在启动未激活时拒绝挂载且不改环境。Player 尚未连接这些接口。
+- `dev/windows/build.bat` 通过；完整 CTest **40/40 通过（45.61 秒）**，含真实私有 GPU 帧图、全新 native VSScript 和加载后完整性检查。首次完整轮次的实际探测等待采用了 fake worker 的 5 秒限额而超时，单独复测通过；真实探测测试现按 Manager 的 75 秒限额等待，并记录失败诊断。fake worker 仍用 5 秒限额。
+- Windows 私有 core 补丁曾误写 `vsccfDisableAutoLoading`。实际应用补丁后提取完整 `drv_vss_load_core`、以冻结的 VS 头文件编译，复现未声明标识符；改为 `ccfDisableAutoLoading` 后通过。该编译检查已移到大型 CI 媒体构建之前。
+- CI 36761087304 的兼容架构已经通过 LuaJIT，随后 curl 的 ECH 检查因 static libcrypto 的压缩依赖放在 CFLAGS 中而产生链接失败。新补丁把依赖附到 `OpenSSL::Crypto` 的传递链接列表，同时作用于检测及最终链接；实际冻结 curl 源码的补丁/CMake 目标回归通过。剩余停滞的旧 v3 工具准备任务已取消。
+- CI 36768668690 在重新解析依赖时遇到临时裸 Git 目录清理失败，尚未进入媒体构建。源码锁现保存先前成功冻结的全部提交，由 CI 对原配方逐条核对仓库、原 ref、显式 GIT_RESET 与固定 SHA；每次构建不再重新解析移动分支。缺项/错仓库/ref/SHA 拒绝的测试通过。最终两份 libmpv 仍未成功构建，不能计作 EOF 或整机性能通过。

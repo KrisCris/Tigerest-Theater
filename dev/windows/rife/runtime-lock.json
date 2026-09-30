@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "runtimeId": "rife-trt-r79-15.16-py3.13.15-2-v2",
+  "runtimeId": "rife-trt-r79-15.16-py3.13.15-3-v2",
   "versions": {"python": "3.13.15", "vapoursynth": "R79", "vsmlrt": "v15.16", "tensorrt": "10.16.0", "cuda": "13.2.0", "models": "rife-4.25-lite,4.25,4.25-heavy"},
   "sources": {
     "vsmlrt": "https://github.com/AmusementClub/vs-mlrt/tree/885e8bb827fc431fce8e3109e7d60b0c38aa2035",

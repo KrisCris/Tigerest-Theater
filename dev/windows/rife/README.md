@@ -62,6 +62,14 @@ cd1edc11dc6887a50f705717619d879f5a93a488。冻结的 FFmpeg、libplacebo 提交�
 实际版本。共用 Mac EOF/颜色元数据补丁；另加 Windows EOF-aware 会话禁用插件自动加载的补丁。
 `build_mpv.py` 检查来源与补丁适用性；实际交叉编译由 `build-rife-mpv.yml` 执行，必须先
 构建 gcc，再构建 mpv。兼容 x86-64 和 AVX2 x86-64-v3 均须通过真实媒体验证。
+`mpv-source-lock.json` 保存 CI 36761087304 成功冻结的源提交；CI 对原配方
+验证该锁，不在每次构建重新解析移动分支。ngtcp2/curl 的 static OpenSSL
+补丁保留原版本与功能，并修正压缩库的传递链接顺序。
+
+主程序的私有加载必须在 `mpv_create()` 前完成完整探测和激活，Windows mpv
+会缓存环境变量。播放 Coordinator 只验证既有激活；新 native 加载测试验证
+隔离 Python、中文路径、外部同名 DLL 拒绝及不写入 bytecode，不能替代真实
+mpv 启动/EOF 集成验收。
 
 ## 发布前仍需完成
 

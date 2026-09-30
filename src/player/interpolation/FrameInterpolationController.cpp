@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <cmath>
 namespace rife {
 namespace {
 QString optionText(const QVariant& value){
@@ -22,6 +23,7 @@ QString message(const QString& reason,Backend backend=Backend::CoreMLMetal){
     if(reason=="unsupported-fps")return backend==Backend::TensorRT?QStringLiteral("当前帧率保持原帧播放（最高 60 fps）"):QStringLiteral("当前帧率保持原帧播放（最高 30 fps）");
     if(reason=="engine-preparing")return QStringLiteral("正在准备补帧引擎，本次保持原帧播放");
     if(reason=="dynamic-format")return QStringLiteral("视频格式发生变化，本次保持原帧播放");
+    if(reason=="playback-speed")return QStringLiteral("倍速播放保持原帧，恢复正常速度后下次播放可启用补帧");
     if(reason=="vfr")return QStringLiteral("变帧率视频保持原帧播放");
     if(reason=="interlaced")return QStringLiteral("隔行视频保持原帧播放");
     if(reason=="unknown-color")return QStringLiteral("色彩信息不完整，保持原帧播放");
@@ -143,6 +145,12 @@ void FrameInterpolationController::onSeek(){
     // native epoch and rejects any callback belonging to the previous graph.
     // The graph may already have rebuilt before the client receives SEEK, so
     // do not wait for another epoch relative to this event.
+}
+void FrameInterpolationController::bypassCurrentItem(const QString& why){
+    if(requested&&current!=State::Off&&current!=State::DisabledForCurrentItem&&reason!=why)disable(why,true);
+}
+void FrameInterpolationController::onPlaybackSpeed(double speed){
+    if(!std::isfinite(speed)||std::abs(speed-1.)>1e-6)bypassCurrentItem("playback-speed");
 }
 void FrameInterpolationController::poll(int64_t now,bool suspended){
     if(!filterOwned)return;

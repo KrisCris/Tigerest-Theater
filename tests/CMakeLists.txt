@@ -101,7 +101,7 @@ if(WIN32 AND Python3_Interpreter_FOUND)
     RIFE_HOST_TEST_PYTHON="${Python3_EXECUTABLE}"
     RIFE_MANAGER_WORKER_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/rife_runtime_worker_fixture.py")
   add_test(NAME test_rife_runtime_manager COMMAND test_rife_runtime_manager)
-  set_tests_properties(test_rife_runtime_manager PROPERTIES TIMEOUT 30
+  set_tests_properties(test_rife_runtime_manager PROPERTIES TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
   foreach(case runtime runtime_prepare mpv_build build_sources mpv_recipe engine_cache engine_prepare windows_job timing_tracker)
     add_test(NAME test_rife_${case} COMMAND "${Python3_EXECUTABLE}" -m unittest discover
@@ -122,6 +122,18 @@ if(WIN32 AND Python3_Interpreter_FOUND)
     set_tests_properties(test_rife_engine_prepare PROPERTIES TIMEOUT 930 RUN_SERIAL TRUE)
   endif()
   if(DEFINED ENV{RIFE_TEST_RUNTIME})
+    add_executable(test_rife_vsscript_runtime test_rife_vsscript_runtime.cpp)
+    target_include_directories(test_rife_vsscript_runtime PRIVATE ../dev/windows/rife/include)
+    target_link_libraries(test_rife_vsscript_runtime PRIVATE tigerest_rife_control)
+    foreach(mode fresh foreign)
+      add_test(NAME test_rife_vsscript_${mode} COMMAND test_rife_vsscript_runtime --${mode})
+      set_tests_properties(test_rife_vsscript_${mode} PROPERTIES TIMEOUT 30
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
+    endforeach()
+    add_test(NAME test_rife_vsscript_integrity COMMAND "${Python3_EXECUTABLE}" -B -X utf8
+      "${CMAKE_SOURCE_DIR}/dev/windows/rife/probe_runtime.py" --runtime "$ENV{RIFE_TEST_RUNTIME}"
+      --verify-only --report "${CMAKE_BINARY_DIR}/rife-vsscript-integrity.json")
+    set_tests_properties(test_rife_vsscript_integrity PROPERTIES TIMEOUT 60)
     add_executable(test_rife_monitor_registry test_rife_monitor_registry.cpp)
     target_include_directories(test_rife_monitor_registry PRIVATE ../dev/windows/rife/include)
     target_link_libraries(test_rife_monitor_registry PRIVATE tigerest_rife Qt6::Core)

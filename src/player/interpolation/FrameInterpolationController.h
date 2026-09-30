@@ -28,6 +28,8 @@ public:
     void beginItem(bool enabled,bool systemConfig);
     void onFormatChanged(const SourceInfo& source);
     void onSeek();
+    void onPlaybackSpeed(double speed);
+    void bypassCurrentItem(const QString& reason);
     void stop();
     void stopOnEndFile();
     void configureHardwareDecoding(const QString& mode);

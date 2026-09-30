@@ -86,4 +86,10 @@ int main(int argc,char**argv){
     controller.stop();paths.engine.clear();assert(controller.setRuntimePaths(paths));
     controller.beginItem(true,false);controller.onFormatChanged(source);
     assert(adds==1&&controller.diagnostics()["reason"]=="engine-preparing");
+    controller.stop();paths.engine="C:/缓存/model.engine";assert(controller.setRuntimePaths(paths));
+    controller.beginItem(true,false);controller.onPlaybackSpeed(2.);controller.onFormatChanged(source);
+    assert(adds==1&&controller.diagnostics()["reason"]=="playback-speed");
+    controller.onPlaybackSpeed(1.);controller.onFormatChanged(source);assert(adds==1);
+    controller.beginItem(true,false);controller.onPlaybackSpeed(1.);controller.onFormatChanged(source);assert(adds==2);
+    controller.onPlaybackSpeed(1.25);assert(properties["vf"].toList().isEmpty());assert(properties["hwdec"]=="auto");
 }

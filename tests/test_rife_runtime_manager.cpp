@@ -2,6 +2,7 @@
 #undef NDEBUG
 #endif
 #include "windows/RifeRuntimeManager.h"
+#include "windows/RifePlaybackCoordinator.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -14,10 +15,11 @@
 #include <QTemporaryDir>
 #include <QThread>
 #include <cassert>
+#include <cstdio>
 using namespace rife;
 static void write(const QString& path,const QByteArray& bytes){QFile f(path);assert(f.open(QIODevice::WriteOnly));assert(f.write(bytes)==bytes.size());}
 static void json(const QString& path,const QJsonObject& value){write(path,QJsonDocument(value).toJson());}
-static bool until(const std::function<bool()>& predicate){QElapsedTimer t;t.start();while(!predicate()&&t.elapsed()<5000){QCoreApplication::processEvents();QThread::msleep(10);}return predicate();}
+static bool until(const std::function<bool()>& predicate,int timeout=5000){QElapsedTimer t;t.start();while(!predicate()&&t.elapsed()<timeout){QCoreApplication::processEvents();QThread::msleep(10);}return predicate();}
 int main(int argc,char**argv){
     QCoreApplication app(argc,argv);
     QTemporaryDir temp;assert(temp.isValid());
@@ -71,6 +73,49 @@ int main(int argc,char**argv){
     auto hdr=b;hdr.hdr=true;manager.prepare(hdr,13);QCoreApplication::processEvents();assert(!ready.contains(13));
     assert(!manager.configure(root+"/missing",cache,root+"/monitor.dll",root+"/interpolate.vpy"));
     assert(!manager.pathsFor(b).available);
+    assert(manager.configure(root,cache,root+"/monitor.dll",root+"/interpolate.vpy"));
+    assert(until([&]{return manager.diagnostics()["runtimeReady"].toBool();}));
+    QVariantMap properties{{"vf",QVariantList{}},{"hwdec","auto"}};int adds=0;
+    auto command=[&](const QStringList& args){
+        if(args[0]=="vf"&&args[1]=="add"){++adds;properties["vf"]=QVariantList{QVariantMap{{"label","tigerest-rife"},{"name","vapoursynth"}}};}
+        else if(args[0]=="vf"&&args[1]=="remove")properties["vf"]=QVariantList{};
+        return true;
+    };
+    MpvAccess access{[&](const QString& k){return properties.value(k);},[&](const QString& k,const QVariant& v){properties[k]=v;return true;},command,
+        [&](const QString& k,const QVariant& v){properties[k]=v;return true;},command};
+    FrameInterpolationController controller(access,manager.pathsFor(a));
+    bool activationAllowed=true;int activations=0;
+    RifePlaybackCoordinator playback(manager,controller,[&](const RuntimePaths&,QString*){++activations;return activationAllowed;});
+    bool engineReady=false;
+    QObject::connect(&playback,&RifePlaybackCoordinator::enginePrepared,[&](quint64,bool ok,const QString&){engineReady=ok;});
+    playback.beginItem(true,false,1.);playback.onFormatChanged(a);
+    assert(controller.diagnostics()["reason"]=="engine-preparing"&&adds==0&&activations==0);
+    const int compilingLaunches=launches;playback.onSeek();playback.onFormatChanged(a);assert(launches==compilingLaunches);
+    assert(until([&]{return engineReady;}));assert(adds==0); // Ready only for next play.
+    // A playback callback must not attempt first activation after mpv_create.
+    // The default validator rejects an unprepared native process without
+    // rewriting the environment; startup owns activation.
+    {
+        FrameInterpolationController unpreparedController(access,manager.pathsFor(a));
+        RifePlaybackCoordinator unprepared(manager,unpreparedController);
+        const auto previous=qgetenv("VSSCRIPT_PATH");
+        unprepared.beginItem(true,false,1.);unprepared.onFormatChanged(a);
+        assert(adds==0&&unpreparedController.diagnostics()["reason"]=="runtime-missing");
+        assert(unprepared.activationError().contains("before mpv_create"));
+        assert(qgetenv("VSSCRIPT_PATH")==previous);unprepared.endItem();
+    }
+    playback.endItem();playback.beginItem(true,false,1.);playback.onFormatChanged(a);
+    assert(adds==1&&activations==1&&!properties["vf"].toList().isEmpty());
+    playback.onPlaybackSpeed(2.);assert(properties["vf"].toList().isEmpty());
+    playback.onPlaybackSpeed(1.);playback.onFormatChanged(a);assert(adds==1);
+    playback.endItem();playback.beginItem(true,true,1.);playback.onFormatChanged(b);assert(adds==1&&launches==compilingLaunches);
+    playback.endItem();playback.beginItem(false,false,1.);playback.onFormatChanged(b);assert(adds==1&&launches==compilingLaunches);
+    playback.endItem();playback.beginItem(true,false,1.);playback.onFormatChanged(hdr);assert(adds==1&&launches==compilingLaunches);
+    playback.endItem();playback.beginItem(true,false,1.);playback.onFormatChanged(b); // Corrupt b needs preparation again.
+    const int beforeFormatChange=launches;playback.onFormatChanged(a);assert(controller.diagnostics()["reason"]=="dynamic-format");
+    playback.endItem();playback.beginItem(true,false,1.);activationAllowed=false;playback.onFormatChanged(a);
+    assert(adds==1&&controller.diagnostics()["reason"]=="runtime-missing");assert(launches==beforeFormatChange);
+    playback.endItem();
     // Opt-in real private process and cross-language cache identity. No engine
     // compilation is allowed by this test: it must find the prepared fixture.
     if(qEnvironmentVariableIsSet("RIFE_TEST_RUNTIME")&&qEnvironmentVariableIsSet("RIFE_TEST_ENGINE_PATH")){
@@ -80,7 +125,12 @@ int main(int argc,char**argv){
         RifeRuntimeManager real;
         assert(real.configure(qEnvironmentVariable("RIFE_TEST_RUNTIME"),realCache,
             repo+"/build/src/player/interpolation/tigerest-rife-vs.dll",repo+"/resources/mpv/rife/interpolate_trt.vpy"));
-        assert(until([&]{return real.diagnostics()["runtimeReady"].toBool();}));
+        // This verifies 2.6 GB and initializes the driver; use the manager's
+        // real probe deadline instead of the short fake-worker deadline.
+        const bool probed=until([&]{return !real.diagnostics()["runtimePreparing"].toBool();},75000);
+        if(!probed||!real.diagnostics()["runtimeReady"].toBool())std::fprintf(stderr,"Private probe: %s\n",
+            QJsonDocument(QJsonObject::fromVariantMap(real.diagnostics())).toJson().constData());
+        assert(probed&&real.diagnostics()["runtimeReady"].toBool());
         assert(real.pathsFor(a).engine==QFileInfo(engine).canonicalFilePath());
         bool hit=false;QObject::connect(&real,&RifeRuntimeManager::prepared,[&](quint64 gen,bool ok,const QString&){hit=gen==44&&ok;});
         real.prepare(a,44);assert(until([&]{return hit;}));assert(real.diagnostics()["cacheHit"].toBool());

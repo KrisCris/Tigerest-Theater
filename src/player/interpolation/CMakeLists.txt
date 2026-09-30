@@ -13,7 +13,9 @@ target_compile_features(tigerest_rife_control PUBLIC cxx_std_17)
 target_include_directories(tigerest_rife_control PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tigerest_rife_control PUBLIC tigerest_rife Qt6::Core)
 if(WIN32)
-  target_sources(tigerest_rife_control PRIVATE windows/RifeRuntimeManager.cpp windows/RifeRuntimeManager.h)
+  target_sources(tigerest_rife_control PRIVATE windows/RifeRuntimeManager.cpp windows/RifeRuntimeManager.h
+    windows/RifeVSScriptRuntime.cpp windows/RifeVSScriptRuntime.h)
+  target_sources(tigerest_rife_control PRIVATE windows/RifePlaybackCoordinator.cpp windows/RifePlaybackCoordinator.h)
 endif()
 
 # Actual inference tests are enabled only with explicitly prepared fixtures.
