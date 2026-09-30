@@ -83,6 +83,7 @@ jobs:
       - name: Build patched libmpv
         run: |
           cmake -G Ninja -S recipe -B build-mpv -DTARGET_ARCH=x86_64-w64-mingw32 -DGCC_ARCH=${{ matrix.arch }} -DCOMPILER_TOOLCHAIN=gcc -DMAKEJOBS=4
+          ninja -C build-mpv gcc
           ninja -C build-mpv mpv
       - name: Record build provenance
         if: success()
