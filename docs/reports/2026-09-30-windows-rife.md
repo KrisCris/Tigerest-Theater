@@ -96,3 +96,4 @@ CI 36752790588 已通过 ngtcp2，在 LuaJIT 补丁阶段失败。原配方的 U
 - Windows 私有 core 补丁曾误写 `vsccfDisableAutoLoading`。实际应用补丁后提取完整 `drv_vss_load_core`、以冻结的 VS 头文件编译，复现未声明标识符；改为 `ccfDisableAutoLoading` 后通过。该编译检查已移到大型 CI 媒体构建之前。
 - CI 36761087304 的兼容架构已经通过 LuaJIT，随后 curl 的 ECH 检查因 static libcrypto 的压缩依赖放在 CFLAGS 中而产生链接失败。新补丁把依赖附到 `OpenSSL::Crypto` 的传递链接列表，同时作用于检测及最终链接；实际冻结 curl 源码的补丁/CMake 目标回归通过。剩余停滞的旧 v3 工具准备任务已取消。
 - CI 36768668690 在重新解析依赖时遇到临时裸 Git 目录清理失败，尚未进入媒体构建。源码锁现保存先前成功冻结的全部提交，由 CI 对原配方逐条核对仓库、原 ref、显式 GIT_RESET 与固定 SHA；每次构建不再重新解析移动分支。缺项/错仓库/ref/SHA 拒绝的测试通过。最终两份 libmpv 仍未成功构建，不能计作 EOF 或整机性能通过。
+- 新增真实 mpv 启动回归，以现有官方 dd5d17d DLL 在两个全新原生进程中对比早/晚激活：早激活通过 mpv 加载测试视频和 VS 脚本，执行全部私有 Python 隔离断言；晚激活必须无成功标记且收到精确的 VSScript 加载失败日志。两项通过（0.18/0.09 秒），启动次序问题已在实际 mpv 环境读取路径上得到验证。此用例只证明解释器执行，未检查图出帧，仍不能替代补丁 DLL 的 EOF/RIFE 验收。加上补丁和配方测试，四项 targeted CTest 全通过（3.37 秒）。
