@@ -134,3 +134,17 @@ CI 36783859235 在 MuJS 的 `git am` 阶段失败，尚未生成新的 v3 DLL。
 恢复到 pin。固定配方五项实测全部通过（5.10 秒，无 skip），任意 FFmpeg 配方改动
 仍拒绝复用。兼容比较仅归一化这处清理行为，其余依赖字节仍必须一致。只读审查
 通过；修复后的 CI、真实 v3 媒体及反汇编验收仍待执行，旧 v3 不作为可用产物。
+
+## 2026-10-01：真实 Player 与首个完整 4K 长测
+
+Windows Player 已接入真实 Coordinator、格式事件、250ms 非阻塞观察轮询、seek/倍速/停止/替换清理、引擎命中与模型选择。探测/激活仍必须早于 mpv_create，主程序启动/设置/安装入口尚未启用。实际 MpvAbstractItem 工作线程回归证实旧 Qt wakeup 吞掉初始属性，导致 Preparing 不出帧；bundled MpvQt 显式事件移交现拒绝已排队的旧回调。system MpvQt API 保留，缺少移交能力时 Windows RIFE 拒绝启用。Mac 启动暂停/异步 END 保留，修改后 Mac 编译仍未执行。
+
+真实 tiny Player 回归覆盖缓存命中、合成帧/processedPairs、暂停、seek epoch、倍速整片旁路、重新打开恢复、停止与当前播放拒绝切模型。完整 build/test 46/46 PASS，67.22秒，含真实私有 GPU、EOF、探测和 WebEngine，无 GPU 基准并行。只读复核已关闭事件移交、系统 API、缓存诊断和测量证据问题。
+
+RTX4090 首项实际 Player 长测：连续660秒合成1080p30 H264/AAC、BT709 SDR，4.25 lite 2x，默认三个 Shader，GPU-Next/D3D11、d3d11va-copy，4K240Hz屏幕。完整采样600.017秒/600样本，媒体推进600.0333秒，processedPairs增加18001；全部样本与起止点均Active/3840x2160。采样期渲染/解码新增丢帧均0，最大绝对音画偏差7.682ms，滤镜约60fps，完整引擎缓存命中。此次合成素材的日常完整渲染门限通过，不推定真实影片视觉质量通过。
+
+runId 9d2c8742a3ce4311bb3303d9579b129c；内核SHA256 d5d65b0c7527837e291eb5050da351edf2178d99244956d5b914be6ff2fbf4c3；媒体SHA256 5c6b8fd319fc826b568fecaa0e5301f1adc22d3a09816157618a95070747400a。可复现工具 benchmark_player.py/rife_player_benchmark；本地完整证据 build/rife/performance/player/lite-1080p60-4k-600s.json 与 frame PNG/native log。host包含真实 Player/MpvVideoItem/配置/Shader/音频，不包含Emby/WebEngine覆盖层；显示模式未修改，用户程序保留。
+
+采样改为截图/稳定之后同步取计数基线与时钟；后续截图时暂停，恢复后排除5秒，以免人为触发guard。早先截图前取initial的5秒JSON有窗口偏差，只作截图证据。新版对齐smoke测量5.004秒/媒体5.0167秒，新增丢帧0。报告首份、每次与最终save全部检查，UUID拒绝旧报告；锁定旧文件两种实际negative均退出1且原SHA不变。超时completed=false，内核散列对应实际staged副本。退出0/采样完成不代表性能通过。
+
+标准版/heavy长测、极限目标实际guard、其他后端/Shader/字幕/弹幕、真实影片、扩展安装、干净Windows、同源码Mac及统一版本发行仍待完成。

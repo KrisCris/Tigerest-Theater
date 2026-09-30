@@ -1,7 +1,8 @@
 # Windows RIFE 私有运行库（开发中）
 
 这套工具生成独立于系统 Python、VapourSynth、CUDA Toolkit 和 SVP 的运行库。
-主安装器不包含这些大型依赖。当前只有开发验证；尚未接入 Windows 播放器设置，不能据此声称播放器补帧已经完成。
+主安装器不包含这些大型依赖。已接入 Windows Player 生命周期并可在原生验证程序里
+实际播放；尚未接入主程序启动、扩展安装与设置，不能据此声称发行版补帧已经完成。
 
 ## 固定依赖
 
@@ -55,6 +56,34 @@ python dev/windows/rife/benchmark_filter.py --runtime RUNTIME --prepared ready.j
 不作为 GPU 推理耗时；播放诊断中无精确 GPU 计时时返回 null。
 三个目标及三模型的实测、测试范围和未通过项见 `docs/reports/2026-09-30-windows-rife.md`。
 
+### 真实 Player 的 4K 输出测量
+
+`rife_player_benchmark` 使用实际 Player、MpvVideoItem 工作线程、默认内置配置、
+Shader 和音频，打开原生 3840×2160 窗口。它不包含 Emby/WebEngine 界面覆盖层。
+测试在独立 profile 内运行，不改变系统显示模式；需要物理 4K 屏幕。
+
+```powershell
+python dev/windows/rife/benchmark_player.py --host build/tests/rife_player_benchmark.exe `
+  --mpv VERIFIED_EOF_DLL --stats build/src/player/interpolation/tigerest-rife.dll `
+  --qt-bin QT_BIN --runtime RUNTIME --cache CACHE `
+  --monitor build/src/player/interpolation/tigerest-rife-vs.dll --media SDR_CFR_MEDIA `
+  --model rife-4.25 --target 60 --seconds 600 --warmup 15 --output player.json
+```
+
+模型可选 `rife-4.25-lite`、`rife-4.25`、`rife-4.25-heavy`；目标 60/120/240
+沿用整数倍策略。后端为 `gpu-next` 或 `libmpv`，Shader 预设为
+`default`、`liveaction`、`aggressive`。媒体长度须覆盖预热、截图和完整采样。
+`--baseline` 提供同配置原帧对照；引擎须已准备，否则此次保持原帧而不作为性能测量。
+
+截图使用 mpv 的实际渲染窗口。截图时短暂暂停，恢复后排除 5 秒，再同时取
+计数/媒体时间基线与采样时钟；JSON 保存实际 4K 尺寸、Shader、合成计数、缓存命中、
+丢帧与音画偏差。每次生成独立 runId，写失败/旧文件/超时不能报告成功；内核 SHA
+对应实际加载的 staged DLL。完整 JSON、PNG 和 `.json.native.log` 是本次证据。
+
+退出码 0 或 `completed=true` 只表示采样完成。验收仍须检查完整时长、持续 Active、
+真实合成、4K 输出和默认 Shader，稳态低于 1% 丢帧且音画偏差不持续超过 80ms。
+`performanceFallback=true` 明确表示实际 guard 回退，不作为目标通过。
+
 ## mpv 内核
 
 保留源版本 dd5d17d3285a095a0f712fa9d116e22a076492de 与 shinchiro 配方
@@ -90,7 +119,8 @@ CMake 配置时保存，避免重新运行 CTest 时静默跳过已配置的真�
 滤镜吞吐工具支持 `--threads`、`--prefetch`，两项默认均为 4；它仍不测
 解码、Shader、4K 渲染、音频和显示性能。
 
-播放器生命周期与真实 EOF、完整缓存、扩展安装/下载、10 分钟播放和干净系统测试仍未完成。
+普通 x64 的真实 EOF、完整缓存和 Player 生命周期已验证；v3 修复产物、扩展安装/下载、
+完整多场景性能和干净系统测试仍需验收。
 许可证文本已开始收集（Python/VS 在各自包中；vs-mlrt GPLv3、Practical-RIFE MIT、
 TensorRT SLA 在 licenses 中）。公开分发前还需补齐 CUDA/VC 运行库通知与准确的对应源代码，
 并核实组合分发条款。当前实验运行库不得当作完成版权材料的发行附件。

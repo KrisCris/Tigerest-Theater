@@ -74,6 +74,10 @@ public:
     void eventHandler();
     mpv_handle *mpv() const;
 
+    // Transfer the event queue to a host, including already queued wakeups.
+    // Call on this object's thread before the host starts observing properties.
+    void handoffEvents(void (*callback)(void *), void *context);
+
 public Q_SLOTS:
     void init();
 

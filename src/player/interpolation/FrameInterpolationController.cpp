@@ -192,6 +192,7 @@ QVariantMap FrameInterpolationController::diagnostics()const{
     {"requestedForItem",requested},{"runtimeAvailable",paths.available},{"state",int(current)},{"status",status()},{"reason",reason},
     {"generation",qulonglong(serial)},{"epoch",qulonglong(latest.epoch)},
     {"generatedFrames",qulonglong(latest.predictions)},{"cutBypasses",qulonglong(latest.cuts)},
+    {"processedPairs",qulonglong(latest.pairs)},
     {"timingAvailable",timingAvailable},
     {"p95Ms",timingAvailable?QVariant(latest.p95Ms):QVariant()},
     {"factor",paths.factor},{"model",paths.model},

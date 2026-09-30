@@ -16,6 +16,7 @@ public:
     void endItem();
     quint64 generation()const{return serial;}
     QString activationError()const{return error;}
+    bool engineCacheHitForItem()const{return cacheHit;}
 signals:
     void enginePrepared(quint64 generation,bool ready,const QString& error);
 private:
@@ -23,7 +24,7 @@ private:
     FrameInterpolationController& controller;
     ValidateRuntime validate;
     quint64 serial=0;
-    bool inItem=false,sourceSeen=false;
+    bool inItem=false,sourceSeen=false,cacheHit=false;
     SourceInfo source;
     QString error;
 };

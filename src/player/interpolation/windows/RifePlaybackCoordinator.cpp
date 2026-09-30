@@ -17,7 +17,7 @@ RifePlaybackCoordinator::RifePlaybackCoordinator(RifeRuntimeManager& r,FrameInte
 }
 RifePlaybackCoordinator::~RifePlaybackCoordinator(){runtime.cancel(serial);}
 void RifePlaybackCoordinator::beginItem(bool enabled,bool systemConfig,double speed){
-    runtime.cancel(serial);++serial;inItem=true;sourceSeen=false;source={};error.clear();
+    runtime.cancel(serial);++serial;inItem=true;sourceSeen=false;cacheHit=false;source={};error.clear();
     controller.stop();
     auto paths=runtime.pathsFor({});paths.factor=2;
     controller.setRuntimePaths(paths);controller.beginItem(enabled,systemConfig);
@@ -34,6 +34,7 @@ void RifePlaybackCoordinator::onFormatChanged(const SourceInfo& info){
     // The item may already be bypassed by runtime/system/filter/speed policy.
     if(controller.state()!=State::Preparing)return;
     auto paths=runtime.pathsFor(info);
+    cacheHit=!paths.engine.isEmpty(); // pathsFor verifies the complete cache identity and bytes.
     const bool eligible=qualify(info,{3840,2160,60.001}).enabled;
     // Startup activates the verified runtime before mpv_create. The playback
     // hook only verifies that state; setting VSSCRIPT_PATH here is too late.
@@ -50,7 +51,7 @@ void RifePlaybackCoordinator::onPlaybackSpeed(double speed){
     controller.onPlaybackSpeed(speed);
 }
 void RifePlaybackCoordinator::endItem(){
-    runtime.cancel(serial);++serial;inItem=false;sourceSeen=false;
+    runtime.cancel(serial);++serial;inItem=false;sourceSeen=false;cacheHit=false;
     controller.stopOnEndFile();
 }
 }

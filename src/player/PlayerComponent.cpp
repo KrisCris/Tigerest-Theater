@@ -24,8 +24,9 @@
 #ifdef Q_OS_WIN
 #include "interpolation/windows/RifeRuntimeManager.h"
 #include "interpolation/windows/RifeVSScriptRuntime.h"
+#include "interpolation/windows/RifePlaybackCoordinator.h"
 #endif
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
 #include "interpolation/FrameInterpolationController.h"
 #include "interpolation/MpvPollAccess.h"
 #endif
@@ -39,9 +40,7 @@
 #include <QRegularExpression>
 #include <QLocalSocket>
 #include <QFileInfo>
-#ifdef Q_OS_MAC
 #include <QThread>
-#endif
 
 #if !defined(Q_OS_WIN)
 #include <unistd.h>
@@ -102,6 +101,10 @@ PlayerComponent::PlayerComponent(QObject* parent)
 #ifdef Q_OS_WIN
 bool PlayerComponent::prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script)
 {
+#ifndef TIGEREST_MPVQT_HAS_EVENT_HANDOFF
+  m_windowsRifeError=QStringLiteral("Windows RIFE requires Tigerest's bundled MpvQt event handoff");
+  return false;
+#endif
   if(m_mpv){m_windowsRifeError=QStringLiteral("RIFE runtime requires restart before mpv creation");return false;}
   m_windowsRifeActivated=false;m_windowsRifeError.clear();
   m_windowsRifeRoot=QFileInfo(runtime).canonicalFilePath();
@@ -113,7 +116,18 @@ QVariantMap PlayerComponent::windowsRifeStatus() const
 {
   auto status=m_windowsRifeRuntime->diagnostics();
   status["activated"]=m_windowsRifeActivated;status["error"]=m_windowsRifeError;
+  if(m_rife)status["playback"]=m_rife->diagnostics();
+  if(m_windowsRifePlayback){
+    status["itemGeneration"]=qulonglong(m_windowsRifePlayback->generation());
+    status["playbackError"]=m_windowsRifePlayback->activationError();
+    status["engineCacheHitForItem"]=m_windowsRifePlayback->engineCacheHitForItem();
+  }
   return status;
+}
+bool PlayerComponent::selectWindowsRifeModel(const QString& model,int targetFps)
+{
+  // Selection is applied before the next item; never mutate an active graph.
+  return !m_inPlayback&&m_windowsRifeRuntime->select(model,targetFps);
 }
 #endif
 
@@ -149,7 +163,17 @@ void PlayerComponent::initializeMpv()
   mpv_request_log_messages(m_mpv->mpv(), "terminal-default");
   m_mpv->setProperty("msg-level", "all=v");
 
-  mpv_set_wakeup_callback(m_mpv->mpv(), wakeup_cb, this);
+#ifdef TIGEREST_MPVQT_HAS_EVENT_HANDOFF
+  // Complete the handoff on MpvQt's worker thread before adding observations.
+  // Otherwise an old queued wakeup can steal never-changing initial values.
+  const auto handoff=[this]{m_mpv->handoffEvents(wakeup_cb,this);};
+  if(m_mpv->thread()==QThread::currentThread())handoff();
+  else QMetaObject::invokeMethod(m_mpv,handoff,Qt::BlockingQueuedConnection);
+#else
+  // System MpvQt retains its existing host API; Windows RIFE is unavailable
+  // there because it needs exclusive ownership of initial observations.
+  mpv_set_wakeup_callback(m_mpv->mpv(),wakeup_cb,this);
+#endif
 
   // Native gpu-next owns a child window. Keep it closed while idle so the
   // Emby library remains visible; the Render API can keep its in-scene target.
@@ -245,7 +269,7 @@ void PlayerComponent::initializeMpv()
   mpv_observe_property(m_mpv->mpv(), 0, "vo", MPV_FORMAT_STRING);
   mpv_observe_property(m_mpv->mpv(), 0, "gpu-api", MPV_FORMAT_STRING);
   mpv_observe_property(m_mpv->mpv(), 0, "gpu-context", MPV_FORMAT_STRING);
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   mpv_observe_property(m_mpv->mpv(), 0, "vf", MPV_FORMAT_NODE);
   mpv_observe_property(m_mpv->mpv(), 0, "hwdec", MPV_FORMAT_STRING);
   mpv_observe_property(m_mpv->mpv(), 0, "video-params", MPV_FORMAT_NODE);
@@ -271,6 +295,10 @@ void PlayerComponent::initializeMpv()
   mpv_observe_property(m_mpv->mpv(), 0, "aid", MPV_FORMAT_STRING);
   mpv_observe_property(m_mpv->mpv(), 0, "audio-params", MPV_FORMAT_NODE);
   mpv_observe_property(m_mpv->mpv(), 0, "audio-device", MPV_FORMAT_STRING);
+#ifdef Q_OS_WIN
+  mpv_observe_property(m_mpv->mpv(), 0, "avsync", MPV_FORMAT_DOUBLE);
+  mpv_observe_property(m_mpv->mpv(), 0, "speed", MPV_FORMAT_DOUBLE);
+#endif
   m_rifeAccess=std::make_unique<rife::MpvPollAccess>(rife::MpvAccess{
     [this](const QString& key){return m_mpv->getProperty(key);},
     [this](const QString& key,const QVariant& value){return m_mpv->setProperty(key,value)>=0;},
@@ -283,8 +311,14 @@ void PlayerComponent::initializeMpv()
     [this](const QString& key,const QVariant& value){return m_mpv->setPropertyAsync(key,value)>=0;},
     [this](const QStringList& arguments){return m_mpv->commandAsync(arguments)>=0;}
   });
+#ifdef Q_OS_WIN
+  m_rife=std::make_unique<rife::FrameInterpolationController>(
+      m_rifeAccess->interface(),m_windowsRifeRuntime->pathsFor({}));
+  m_windowsRifePlayback=std::make_unique<rife::RifePlaybackCoordinator>(*m_windowsRifeRuntime,*m_rife);
+#else
   m_rife=std::make_unique<rife::FrameInterpolationController>(
       m_rifeAccess->interface(),rife::bundledRuntimePaths());
+#endif
   m_rifeClock.start();m_rifeTimer.setInterval(250);
   m_rifeSuppressedSvp=MpvConfigManager::ownsDefaultSvpIpc()&&SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool();
   connect(&m_rifeTimer,&QTimer::timeout,this,&PlayerComponent::pollInterpolation);
@@ -799,7 +833,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
   {
     case MPV_EVENT_START_FILE:
     {
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
       if(m_rifeAccess)m_rifeAccess->clearMedia();
 #endif
       m_replacementPending = false;
@@ -820,6 +854,9 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     case MPV_EVENT_END_FILE:
     {
       m_nativeVideoReady = false;
+#ifdef Q_OS_WIN
+      if(m_windowsRifePlayback)m_windowsRifePlayback->endItem();
+#endif
 #ifdef Q_OS_MAC
       if(m_rife)m_rife->stopOnEndFile();
       m_rifeStartup.cancel();
@@ -883,7 +920,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     case MPV_EVENT_PROPERTY_CHANGE:
     {
       auto *prop = static_cast<mpv_event_property*>(event->data);
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
       if(m_rifeAccess) {
         static const QSet<QByteArray> watched={"vf","hwdec","video-params",
             "video-frame-info","container-fps","seeking","paused-for-cache",
@@ -892,7 +929,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
             "cscale","dscale","tscale","interpolation","deband",
             "scripts","load-scripts","video-out-params","aid",
             "audio-params","audio-device","audio-device-list","current-ao","gpu-api",
-            "vo","fullscreen","playback-time","duration"};
+            "vo","fullscreen","playback-time","duration","avsync","speed"};
         if(watched.contains(prop->name)) {
           QVariant value;
           switch(prop->format) {
@@ -1088,7 +1125,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       // We use this to block loading until we explicitly tell it to continue.
       if (!strcmp(msg->args[1], "1"))
       {
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
         beginInterpolationItem();
 #endif
         // Calling this lambda will instruct mpv to continue loading the file.
@@ -1131,7 +1168,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
 
       if (!strcmp(hook->name, "on_load"))
       {
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
         beginInterpolationItem();
 #endif
         // Calling this lambda will instruct mpv to continue loading the file.
@@ -1177,9 +1214,15 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     case MPV_EVENT_IDLE:
       completeNativeVoTransition();
       break;
+#endif
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
     case MPV_EVENT_SEEK:
       m_nativeVideoReady = false;
+#ifdef Q_OS_WIN
+      if(m_windowsRifePlayback)m_windowsRifePlayback->onSeek();
+#else
       if(m_rife)m_rife->onSeek();
+#endif
       break;
 #endif
     default:; /* ignore */
@@ -1207,12 +1250,24 @@ void PlayerComponent::publishInterpolationPause()
   if(m_mpv)m_mpv->setPropertyAsync("user-data/tigerest/rife-startup-pause",
       m_rifeStartup.waiting()?QVariant(!m_rifeStartup.waitingToPlay()):QVariant(QString()));
 }
+#endif
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
 void PlayerComponent::beginInterpolationItem()
 {
   if(!m_rife)return;
   const bool enabled=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife").toBool();
   if(MpvConfigManager::ownsDefaultSvpIpc()) {
     const auto endpoint=m_mpv->getProperty("input-ipc-server").toString();
+#ifdef Q_OS_WIN
+    const QString managedEndpoint=QStringLiteral("mpvpipe");
+    if(enabled&&endpoint==managedEndpoint) {
+      m_rifeSuppressedSvp=m_mpv->setProperty("input-ipc-server",QString())>=0;
+    } else if(!enabled&&m_rifeSuppressedSvp&&endpoint.isEmpty()) {
+      QLocalSocket existing;existing.connectToServer(managedEndpoint);
+      if(!existing.waitForConnected(100))m_mpv->setProperty("input-ipc-server",managedEndpoint);
+      m_rifeSuppressedSvp=false;
+    }
+#else
     if(enabled&&endpoint=="/tmp/mpvsocket") {
       m_rifeSuppressedSvp=m_mpv->setProperty("input-ipc-server",QString())>=0;
     } else if(!enabled&&m_rifeSuppressedSvp&&endpoint.isEmpty()) {
@@ -1222,22 +1277,30 @@ void PlayerComponent::beginInterpolationItem()
         m_mpv->setProperty("input-ipc-server","/tmp/mpvsocket");
       m_rifeSuppressedSvp=false;
     }
+#endif
   }
+#ifdef Q_OS_WIN
+  if(m_windowsRifePlayback)m_windowsRifePlayback->beginItem(enabled,MpvConfigManager::usingSystemConfig(),
+      m_mpv->getProperty("speed").toDouble());
+#else
   m_rife->beginItem(enabled,MpvConfigManager::usingSystemConfig());
   const bool prepare=m_rife->state()==rife::State::Preparing&&
       m_mpv->getProperty("vid").toString()!="no";
   m_rifeStartup.begin(prepare,m_mpv->getProperty("pause").toBool(),m_rifeClock.elapsed());
   if(prepare&&m_mpv->setProperty("pause",true)<0)m_rifeStartup.cancel();
   publishInterpolationPause();
+#endif
 }
 void PlayerComponent::pollInterpolation()
 {
+#ifdef Q_OS_MAC
   // This path must stay asynchronous even while Cocoa creates the VO. An
   // audio-only/failed load must never be left paused waiting for video metrics.
   if(m_mpv&&m_rifeStartup.expired(m_rifeClock.elapsed())) {
     if(m_rifeStartup.finish())m_mpv->setPropertyAsync("pause",false);
     publishInterpolationPause();
   }
+#endif
   // macvk can synchronously dispatch window setup to the main thread while
   // mpv's core waits for its VO. Querying that core here would deadlock both.
   if(!m_rife||!m_mpv||!m_rifeAccess||!m_inPlayback||
@@ -1250,20 +1313,33 @@ void PlayerComponent::pollInterpolation()
       !m_rifeAccess->value("video-frame-info").isValid()||
       !m_rifeAccess->value("container-fps").isValid())return;
   auto polling=m_rifeAccess->enterPolling();
+#ifdef Q_OS_WIN
+  // Speed is a global mpv property. Wait for its observed value rather than
+  // making a blocking request from this timer, including during VO transitions.
+  if(!m_rifeAccess->value("speed").isValid())return;
+  m_windowsRifePlayback->onPlaybackSpeed(m_rifeAccess->value("speed").toDouble());
+#endif
   const auto params=m_rifeAccess->value("video-params").toMap();
   const auto frame=m_rifeAccess->value("video-frame-info").toMap();
   const double fps=m_rifeAccess->value("container-fps").toDouble();
-  if(!params.isEmpty()&&frame.contains("interlaced")&&fps>0)
+  if(!params.isEmpty()&&frame.contains("interlaced")&&fps>0){
+#ifdef Q_OS_WIN
+    m_windowsRifePlayback->onFormatChanged(rife::sourceInfo(params,frame,fps));
+#else
     m_rife->onFormatChanged(rife::sourceInfo(params,frame,fps));
+#endif
+  }
   // A busy video filter can make the core idle between frames. That is part
   // of the work being measured, not evidence of a user/network suspension.
   const bool suspended=m_paused||m_bufferingPercentage<100||
       m_rifeAccess->value("seeking").toBool()||m_rifeAccess->value("paused-for-cache").toBool();
   m_rife->poll(m_rifeClock.elapsed(),suspended);
+#ifdef Q_OS_MAC
   if(m_rifeStartup.waiting()&&m_rife->state()!=rife::State::Preparing) {
     if(m_rifeStartup.finish())m_mpv->setPropertyAsync("pause",false);
     publishInterpolationPause();
   }
+#endif
 }
 #endif
 
@@ -1893,7 +1969,7 @@ QVariantMap PlayerComponent::mpvDiagnostics()
 #endif
     return m_mpv->getProperty(key);
   };
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   if(m_rife)result["rife"]=m_rife->diagnostics();
   result["rifeSetting"]=SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRife");
 #endif
@@ -2313,7 +2389,7 @@ void PlayerComponent::setVideoConfiguration()
     }
     else if (hardwareDecodingMode == "copy")
       hwdecMode = "auto-copy";
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
     if(m_rife)m_rife->configureHardwareDecoding(hwdecMode);
     else
 #endif
@@ -2513,7 +2589,7 @@ QString PlayerComponent::videoInformation() const
                                  ? "yes" : "no") << "\n";
   info << "\n";
   info << "Video:\n";
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   if(m_rife)info << m_rife->status() << "\n";
 #endif
   info << "Codec: " << MPV_PROPERTY("video-codec") << "\n";

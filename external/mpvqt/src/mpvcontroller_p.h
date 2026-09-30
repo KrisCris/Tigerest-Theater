@@ -22,6 +22,7 @@ public:
 
     MpvController *q_ptr;
     mpv_handle *m_mpv{nullptr};
+    bool externalEvents{false};
 };
 
 #endif // MPVCONTROLLER_P_H_INCLUDED

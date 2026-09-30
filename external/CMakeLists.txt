@@ -22,6 +22,7 @@ if(USE_STATIC_MPVQT)
     Qt6::Quick
     ${MPV_LIBRARY}
   )
+  target_compile_definitions(MpvQt PUBLIC TIGEREST_MPVQT_HAS_EVENT_HANDOFF=1)
   set_target_properties(MpvQt PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     AUTOMOC ON

@@ -13,12 +13,12 @@
 #include <functional>
 #include <memory>
 #include <QElapsedTimer>
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
 #include "interpolation/InterpolationPolicy.h"
 namespace rife {class FrameInterpolationController;class MpvPollAccess;}
 #endif
 #ifdef Q_OS_WIN
-namespace rife {class RifeRuntimeManager;}
+namespace rife {class RifeRuntimeManager;class RifePlaybackCoordinator;}
 #endif
 
 #include "ComponentManager.h"
@@ -48,6 +48,7 @@ public:
   // windowsRifeReady before constructing any QML MpvVideoItem/mpv handle.
   bool prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script);
   QVariantMap windowsRifeStatus() const;
+  bool selectWindowsRifeModel(const QString& model,int targetFps);
 #endif
 
   // Replace an active item atomically, or append-and-play when mpv is idle.
@@ -266,16 +267,22 @@ private:
   QString m_windowsRifeRoot,m_windowsRifeError;
   bool m_windowsRifeActivated=false;
 #endif
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   std::unique_ptr<rife::MpvPollAccess> m_rifeAccess;
   std::unique_ptr<rife::FrameInterpolationController> m_rife;
   QTimer m_rifeTimer;
   QElapsedTimer m_rifeClock;
   bool m_rifeSuppressedSvp=false;
-  rife::StartupGate m_rifeStartup;
   void beginInterpolationItem();
-  void publishInterpolationPause();
   void pollInterpolation();
+#endif
+#ifdef Q_OS_WIN
+  // Destroy the coordinator before the controller and its runtime manager.
+  std::unique_ptr<rife::RifePlaybackCoordinator> m_windowsRifePlayback;
+#endif
+#ifdef Q_OS_MAC
+  rife::StartupGate m_rifeStartup;
+  void publishInterpolationPause();
 #endif
   // this is the function actually implemented in the backends. the variantmap contains
   // a few known keys:

@@ -255,6 +255,10 @@ void MpvController::mpvEvents(void *ctx)
 
 void MpvController::eventHandler()
 {
+    // Replacing mpv's wakeup callback doesn't cancel Qt invocations queued by
+    // the old callback. They must not consume the host's initial observations.
+    if (d_ptr->externalEvents)
+        return;
     while (d_ptr->m_mpv) {
         mpv_event *event = mpv_wait_event(d_ptr->m_mpv, 0);
         if (event->event_id == MPV_EVENT_NONE) {
@@ -350,6 +354,12 @@ void MpvController::eventHandler()
             break;
         }
     }
+}
+
+void MpvController::handoffEvents(void (*callback)(void *), void *context)
+{
+    d_ptr->externalEvents = true;
+    mpv_set_wakeup_callback(d_ptr->m_mpv, callback, context);
 }
 
 mpv_handle *MpvController::mpv() const
