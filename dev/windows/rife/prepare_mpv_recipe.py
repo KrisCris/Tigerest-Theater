@@ -36,10 +36,15 @@ def prepare(recipe, lock):
         if relative == 'packages/luajit.cmake':
             text = text.replace('PATCH_COMMAND ${EXEC} git am --3way ${CMAKE_CURRENT_SOURCE_DIR}/luajit-*.patch',
                                 'PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-luajit-utf8.patch', 1)
+        if relative == 'packages/curl.cmake':
+            text = text.replace('    PATCH_COMMAND ""',
+                                '    PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-curl-static-openssl.patch', 1)
+            text = text.replace(' -lz -lbrotlienc -lbrotlidec -lbrotlicommon -lzstd -lcrypt32 -lsecur32', '')
         path.write_text(text, encoding='utf-8')
     shutil.copyfile(HERE.parents[1] / 'macos/rife/mpv-eof-aware.patch', recipe / 'tigerest-mpv-eof-aware.patch')
     shutil.copyfile(HERE / 'mpv-private-vs-core.patch', recipe / 'tigerest-mpv-private-vs-core.patch')
     shutil.copyfile(HERE / 'ngtcp2-static-openssl.patch', recipe / 'tigerest-ngtcp2-static-openssl.patch')
+    shutil.copyfile(HERE / 'curl-static-openssl.patch', recipe / 'tigerest-curl-static-openssl.patch')
     # The recipe's UTF-8 patch uses a context line from a newer LuaJIT tree.
     # Frozen OpenResty 1edc3e5 has no lj_str_hash.o on that unchanged line,
     # and the next block starts with LJVMCORE_O. Adapt only those two context

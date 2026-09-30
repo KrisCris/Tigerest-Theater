@@ -1,0 +1,16 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -831,6 +831,12 @@ endif()
+ 
+ if(CURL_USE_OPENSSL)
+   find_package(OpenSSL REQUIRED)
++  if(WIN32)
++    # The pinned static libcrypto enables compression. Attach these to the
++    # imported target so feature probes and final links use the same order.
++    set_property(TARGET OpenSSL::Crypto APPEND PROPERTY INTERFACE_LINK_LIBRARIES
++      brotlienc brotlidec brotlicommon zstd z crypt32)
++  endif()
+   set(_ssl_enabled ON)
+   set(USE_OPENSSL ON)
+ 

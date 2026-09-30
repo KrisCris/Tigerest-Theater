@@ -9,6 +9,34 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class BuildSourceLockTests(unittest.TestCase):
+    def test_checked_in_lock_is_verified_without_resolving_moving_refs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            recipe = root / 'recipe'
+            recipe.mkdir()
+            repository = 'https://github.com/fixture/unavailable.git'
+            (recipe / 'fixture.cmake').write_text(f'GIT_REPOSITORY {repository}\nGIT_TAG main\n')
+            lock = root / 'pinned.json'
+            data = {'schemaVersion': 1, 'snapshot': '2026-08-09T00:00:00Z',
+                'mpvSourceSha': 'dd5d17d3285a095a0f712fa9d116e22a076492de',
+                'rustToolchain': 'nightly-2026-08-08', 'sources': {'fixture.cmake': {
+                    'repository': repository, 'originalRef': 'main', 'sourceSha': '1' * 40}}}
+            lock.write_text(json.dumps(data))
+            command = [sys.executable, '-B', '-X', 'utf8', str(ROOT / 'dev/windows/rife/freeze_mpv_sources.py'),
+                '--recipe', str(recipe), '--verify-lock', str(lock), '--output', str(root / 'out.json')]
+            run = subprocess.run(command, capture_output=True, text=True, timeout=10)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(json.loads((root / 'out.json').read_text()), data)
+            for corruption in ('repository', 'originalRef', 'sourceSha', 'missing'):
+                changed = json.loads(json.dumps(data))
+                if corruption == 'missing':
+                    changed['sources'].clear()
+                else:
+                    changed['sources']['fixture.cmake'][corruption] = 'invalid'
+                lock.write_text(json.dumps(changed))
+                run = subprocess.run(command, capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(run.returncode, 0, corruption)
+
     def test_recipe_git_reset_takes_precedence_over_moving_tag(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

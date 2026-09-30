@@ -12,6 +12,46 @@ PREPARE = ROOT / 'dev/windows/rife/prepare_mpv_recipe.py'
 
 
 class PinnedRecipeTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('RIFE_TEST_MPV_RECIPE') and os.environ.get('RIFE_TEST_CURL_SOURCE_FILE'),
+                         'requires pinned recipe and frozen curl source')
+    def test_curl_openssl_target_keeps_transitive_static_compression_dependencies(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            recipe = base / 'recipe'
+            shutil.copytree(os.environ['RIFE_TEST_MPV_RECIPE'], recipe, ignore=shutil.ignore_patterns('.git'))
+            lock = base / 'lock.json'
+            lock.write_text(json.dumps({'sources': {'packages/curl.cmake': {'sourceSha':
+                '04ff9df3e815c33dd5ecf7b891b32202858fa039'}}, 'rustToolchain': 'nightly-2026-08-08'}))
+            run = subprocess.run([sys.executable, '-B', '-X', 'utf8', str(PREPARE), '--recipe', str(recipe), '--lock', str(lock)],
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            source = base / 'source'
+            source.mkdir()
+            shutil.copyfile(os.environ['RIFE_TEST_CURL_SOURCE_FILE'], source / 'CMakeLists.txt')
+            applied = subprocess.run(['git', '-C', str(source), 'apply', str(recipe / 'tigerest-curl-static-openssl.patch')],
+                                     capture_output=True, text=True)
+            self.assertEqual(applied.returncode, 0, applied.stderr)
+            text = (source / 'CMakeLists.txt').read_text()
+            start = text.index('  find_package(OpenSSL REQUIRED)')
+            block = text[start:text.index('  set(_ssl_enabled ON)', start)]
+            project = base / 'check'
+            project.mkdir()
+            (project / 'FindOpenSSL.cmake').write_text('add_library(OpenSSL::Crypto INTERFACE IMPORTED)\n'
+                'set_property(TARGET OpenSSL::Crypto PROPERTY INTERFACE_LINK_LIBRARIES original-dependency)\n')
+            (project / 'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.19)\nproject(check NONE)\n'
+                'set(WIN32 TRUE)\nlist(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")\n' + block +
+                '\nget_target_property(deps OpenSSL::Crypto INTERFACE_LINK_LIBRARIES)\n'
+                'file(WRITE "${CMAKE_BINARY_DIR}/libraries.txt" "${deps}")\n')
+            configured = subprocess.run(['cmake', '-G', 'Ninja', '-S', str(project), '-B', str(base / 'build')],
+                                        capture_output=True, text=True)
+            self.assertEqual(configured.returncode, 0, configured.stdout + configured.stderr)
+            libraries = (base / 'build/libraries.txt').read_text().split(';')
+            self.assertEqual(libraries[0], 'original-dependency')
+            self.assertTrue({'brotlienc', 'brotlidec', 'brotlicommon', 'zstd', 'z', 'crypt32'} <= set(libraries[1:]))
+            recipe_text = (recipe / 'packages/curl.cmake').read_text()
+            self.assertIn('PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-curl-static-openssl.patch', recipe_text)
+            self.assertNotIn('-lz -lbrotlienc', recipe_text)
+
     @unittest.skipUnless(os.environ.get('RIFE_TEST_MPV_RECIPE') and os.environ.get('RIFE_TEST_LUAJIT_SOURCE'),
                          'requires pinned recipe and frozen OpenResty LuaJIT source')
     def test_luajit_utf8_patch_applies_to_frozen_openresty_source(self):

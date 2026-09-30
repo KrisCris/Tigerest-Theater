@@ -1,0 +1,498 @@
+{
+  "mpvSourceSha": "dd5d17d3285a095a0f712fa9d116e22a076492de",
+  "rustToolchain": "nightly-2026-08-08",
+  "schemaVersion": 1,
+  "snapshot": "2026-08-09T00:00:00Z",
+  "sources": {
+    "packages/amf-headers.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git",
+      "sourceSha": "c35f613aea2e5057a688c979e75b1cf24253297e"
+    },
+    "packages/angle-headers.cmake": {
+      "originalRef": "0cb8023c01f92b29f3738ea7472d06f8f059ed84",
+      "repository": "https://github.com/google/angle.git",
+      "sourceSha": "0cb8023c01f92b29f3738ea7472d06f8f059ed84"
+    },
+    "packages/aom.cmake": {
+      "originalRef": "main",
+      "repository": "https://aomedia.googlesource.com/aom",
+      "sourceSha": "ec0dedc1a29248a35134612ddfce21caff1dfa6a"
+    },
+    "packages/avisynth-headers.cmake": {
+      "originalRef": "21fdc997f9724b994896ba5520ddf64d677976b3",
+      "repository": "https://github.com/AviSynth/AviSynthPlus.git",
+      "sourceSha": "21fdc997f9724b994896ba5520ddf64d677976b3"
+    },
+    "packages/brotli.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/google/brotli.git",
+      "sourceSha": "aa62facb4ac61f07508af8e76de01189cc71f8a9"
+    },
+    "packages/bzip2.cmake": {
+      "originalRef": "",
+      "repository": "https://gitlab.com/bzip2/bzip2.git",
+      "sourceSha": "66c46b8c9436613fd81bc5d03f63a61933a4dcc3"
+    },
+    "packages/c-ares.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/c-ares/c-ares.git",
+      "sourceSha": "1ff6b69eb10f3a0eedeaef22d84af87e3a457832"
+    },
+    "packages/curl.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/curl/curl.git",
+      "sourceSha": "04ff9df3e815c33dd5ecf7b891b32202858fa039"
+    },
+    "packages/dav1d.cmake": {
+      "originalRef": "",
+      "repository": "https://code.videolan.org/videolan/dav1d.git",
+      "sourceSha": "54706fc6bc0cdecab7e9593974a4039cc038fca7"
+    },
+    "packages/davs2.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/saindriches/davs2.git",
+      "sourceSha": "f50435051b72c168c2b566c544e27fcff71ba61a"
+    },
+    "packages/expat.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/libexpat/libexpat.git",
+      "sourceSha": "dfdbaadf8ce1946ed315b0bbed1b976ba20e5436"
+    },
+    "packages/fast_float.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/fastfloat/fast_float.git",
+      "sourceSha": "a1f63a883d2a3dd1878ff9aca969b1edbf755fa3"
+    },
+    "packages/ffmpeg.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/FFmpeg/FFmpeg.git",
+      "sourceSha": "2a20737f662fd3f3f5999e873b9e7c90b5efc375"
+    },
+    "packages/flac.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/xiph/flac.git",
+      "sourceSha": "e94ff9f68b8e7dbd3e9f8b1ac18a8eca1914f181"
+    },
+    "packages/fontconfig.cmake": {
+      "originalRef": "main",
+      "repository": "https://gitlab.freedesktop.org/fontconfig/fontconfig.git",
+      "sourceSha": "d0e618c08995bdc0e82aec8dd553840d56af7da7"
+    },
+    "packages/freetype2.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/freetype/freetype.git",
+      "sourceSha": "9e9d3b73f31367dbb4261f93c727a277f6632c77"
+    },
+    "packages/fribidi.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/fribidi/fribidi.git",
+      "sourceSha": "069a7e3d31e6aa74f2068a8e0804106ce7906639"
+    },
+    "packages/game-music-emu.cmake": {
+      "originalRef": "",
+      "repository": "https://bitbucket.org/mpyne/game-music-emu.git",
+      "sourceSha": "a5216b1dafe476b6de36a316a151c64df575197a"
+    },
+    "packages/glad.cmake": {
+      "originalRef": "glad2",
+      "repository": "https://github.com/Dav1dde/glad.git",
+      "sourceSha": "e3c14f906127dea49ead20ff4d5878294d08b7ab"
+    },
+    "packages/glslang.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/KhronosGroup/glslang.git",
+      "sourceSha": "90afccfbd49dff0349d86a41762e9de24e1df811"
+    },
+    "packages/graphengine.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/sekrit-twc/graphengine.git",
+      "sourceSha": "91c6af4c795c5396d8b974f24b4d2e2ecca04e2d"
+    },
+    "packages/harfbuzz.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/harfbuzz/harfbuzz.git",
+      "sourceSha": "9f2f03173b7fee860cc00d999857d09fa4a362e2"
+    },
+    "packages/highway.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/google/highway.git",
+      "sourceSha": "afe0998ca94cbd1ee3b3802048ee17895642f403"
+    },
+    "packages/lame.cmake": {
+      "originalRef": "",
+      "repository": "https://gitlab.com/shinchiro/lame.git",
+      "sourceSha": "9a5b35c430a2e6d150d65a96c7d7acdd64962a8f"
+    },
+    "packages/lcms2.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/mm2/Little-CMS.git",
+      "sourceSha": "a8183f542072ad4e941116ed921dc6e411077049"
+    },
+    "packages/libarchive.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/libarchive/libarchive.git",
+      "sourceSha": "48fc01808050795009e09d83ac4445b06230ae07"
+    },
+    "packages/libaribcaption.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/xqq/libaribcaption.git",
+      "sourceSha": "c64c23b8905ba514b87c9789269e9f66f949ffe0"
+    },
+    "packages/libass.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/libass/libass.git",
+      "sourceSha": "89cc0f4e450d64f74281a17d7f11ed05229665e8"
+    },
+    "packages/libbluray.cmake": {
+      "originalRef": "",
+      "repository": "https://code.videolan.org/videolan/libbluray.git",
+      "sourceSha": "065247e5ef40ccf39857db81e2c1368354a23ef8"
+    },
+    "packages/libbs2b.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/alexmarsev/libbs2b.git",
+      "sourceSha": "5ca2d59888df047f1e4b028e3a2fd5be8b5a7277"
+    },
+    "packages/libdvdcss.cmake": {
+      "originalRef": "",
+      "repository": "https://code.videolan.org/videolan/libdvdcss.git",
+      "sourceSha": "811ce97a1d4d1c9d936f4b2707f533a9ef768251"
+    },
+    "packages/libdvdnav.cmake": {
+      "originalRef": "",
+      "repository": "https://code.videolan.org/videolan/libdvdnav.git",
+      "sourceSha": "2ffc50b5c37a6ddc086829203fc44e95588198dd"
+    },
+    "packages/libdvdread.cmake": {
+      "originalRef": "",
+      "repository": "https://code.videolan.org/videolan/libdvdread.git",
+      "sourceSha": "50009a0e36bb3c0d55fcbeb4837999ab8f4e657b"
+    },
+    "packages/libjpeg.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/libjpeg-turbo/libjpeg-turbo.git",
+      "sourceSha": "b9132f0ad099e06d951867e2b6f3d358eebc1f19"
+    },
+    "packages/libjxl.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/libjxl/libjxl.git",
+      "sourceSha": "e8ff09762481785938d8e4e01333ed3917571161"
+    },
+    "packages/libmfx.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/lu-zero/mfx_dispatch.git",
+      "sourceSha": "f6aac4576826ed821c81231fdfb0d24047158e7d"
+    },
+    "packages/libmodplug.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/Konstanty/libmodplug.git",
+      "sourceSha": "d1b97ed0020bc620a059d3675d1854b40bd2608d"
+    },
+    "packages/libmysofa.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/hoene/libmysofa.git",
+      "sourceSha": "90531bdb0b485dd36e8a14b3e37ce1c47c54d669"
+    },
+    "packages/libopusenc.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/xiph/libopusenc.git",
+      "sourceSha": "3c65f440baff6220872ec11b0cbde37ef7a48f78"
+    },
+    "packages/libplacebo.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/haasn/libplacebo.git",
+      "sourceSha": "4d82c6898551068d4ae6a6b5538efcddc2c7cf64"
+    },
+    "packages/libpng.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/glennrp/libpng.git",
+      "sourceSha": "d1d0abeffede1cc898ddc3d0e600839cf026d749"
+    },
+    "packages/libpsl.cmake": {
+      "originalRef": "aa3a80e18f25caf3916636c8668dcc0fff7c016d",
+      "repository": "https://github.com/rockdaboot/libpsl.git",
+      "sourceSha": "aa3a80e18f25caf3916636c8668dcc0fff7c016d"
+    },
+    "packages/libsamplerate.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/libsndfile/libsamplerate.git",
+      "sourceSha": "2ccde9568cca73c7b32c97fefca2e418c16ae5e3"
+    },
+    "packages/libsdl2.cmake": {
+      "originalRef": "SDL2",
+      "repository": "https://github.com/libsdl-org/SDL.git",
+      "sourceSha": "a2e7c76bda17c853ba93c7d2c9fdddf8a9d621d1"
+    },
+    "packages/libsixel.cmake": {
+      "originalRef": "af12e5bc6f3f69ad83479da85ddb371420da9b17",
+      "repository": "https://github.com/saitoha/libsixel.git",
+      "sourceSha": "af12e5bc6f3f69ad83479da85ddb371420da9b17"
+    },
+    "packages/libsoxr.cmake": {
+      "originalRef": "",
+      "repository": "https://gitlab.com/shinchiro/soxr.git",
+      "sourceSha": "945b592b70470e29f917f4de89b4281fbbd540c0"
+    },
+    "packages/libsrt.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/Haivision/srt.git",
+      "sourceSha": "fcae57145c000a9e7b72aa777adb8f85c2463242"
+    },
+    "packages/libssh.cmake": {
+      "originalRef": "",
+      "repository": "https://gitlab.com/libssh/libssh-mirror.git",
+      "sourceSha": "a67838ddbeed450b3a580ffb863bbd1edd40bfe6"
+    },
+    "packages/libudfread.cmake": {
+      "originalRef": "",
+      "repository": "https://code.videolan.org/videolan/libudfread.git",
+      "sourceSha": "631163b96c6153a304a505b5b069881428638761"
+    },
+    "packages/libunibreak.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/adah1972/libunibreak.git",
+      "sourceSha": "3ce4bfa3129ff3738046a44a6db533d2ce25af2b"
+    },
+    "packages/libva.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/intel/libva.git",
+      "sourceSha": "6b07f7100512817f736967e899b8c26313c20623"
+    },
+    "packages/libvpl.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/intel/libvpl.git",
+      "sourceSha": "674d015bcb294bc39fa276e99a652ea045423e82"
+    },
+    "packages/libvpx.cmake": {
+      "originalRef": "main",
+      "repository": "https://chromium.googlesource.com/webm/libvpx.git",
+      "sourceSha": "86ecca1d566d4e892e8100933832a9510d68a039"
+    },
+    "packages/libwebp.cmake": {
+      "originalRef": "main",
+      "repository": "https://chromium.googlesource.com/webm/libwebp.git",
+      "sourceSha": "94d3c4a7b85aa34ca68963e3b3f00298f47c0bbb"
+    },
+    "packages/libxml2.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/GNOME/libxml2.git",
+      "sourceSha": "d67a71d9dede63e4d54578b5a5a034bfec4ee4fe"
+    },
+    "packages/libzimg.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/sekrit-twc/zimg.git",
+      "sourceSha": "f6cc75ad23db1bb9c53673c15523e6b6e960ffc6"
+    },
+    "packages/libzvbi.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/zapping-vbi/zvbi.git",
+      "sourceSha": "4e222f98798d7afc0140b41a7c890257ac26e321"
+    },
+    "packages/luajit.cmake": {
+      "originalRef": "v2.1-agentzh",
+      "repository": "https://github.com/openresty/luajit2.git",
+      "sourceSha": "1edc3e52b67eaf6ce5f809be8e17d6862594b8bc"
+    },
+    "packages/mbedtls.cmake": {
+      "originalRef": "1ec69067fa1351427f904362c1221b31538c8b57",
+      "repository": "https://github.com/Mbed-TLS/mbedtls.git",
+      "sourceSha": "1ec69067fa1351427f904362c1221b31538c8b57"
+    },
+    "packages/megasdk.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/meganz/sdk.git",
+      "sourceSha": "e55408ffbf5391e3b589462397a2903e48fff729"
+    },
+    "packages/mpv-packaging.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/shinchiro/mpv-packaging.git",
+      "sourceSha": "1c534ce8c21fab0be2a394ad73decc15e015693e"
+    },
+    "packages/mpv.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/mpv-player/mpv.git",
+      "sourceSha": "dd5d17d3285a095a0f712fa9d116e22a076492de"
+    },
+    "packages/mujs.cmake": {
+      "originalRef": "",
+      "repository": "https://codeberg.org/ccxvii/mujs.git",
+      "sourceSha": "e892c9fdbbddba94e52f656ccb378ed4885e30cc"
+    },
+    "packages/nettle.cmake": {
+      "originalRef": "",
+      "repository": "https://gitlab.com/shinchiro/nettle.git",
+      "sourceSha": "bb9bba13cc327d578e7dab2921b021bad9af8ee1"
+    },
+    "packages/nghttp2.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/nghttp2/nghttp2.git",
+      "sourceSha": "692c8d8fce4f31ba2a9449b903877543043b0e3f"
+    },
+    "packages/nghttp3.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/ngtcp2/nghttp3.git",
+      "sourceSha": "f78b7ff091a524b46b420597171caecf695c39b1"
+    },
+    "packages/ngtcp2.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/ngtcp2/ngtcp2.git",
+      "sourceSha": "d7fb3ed0407e1333e4ecbd011fcfd9c16499d5e0"
+    },
+    "packages/nvcodec-headers.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/FFmpeg/nv-codec-headers.git",
+      "sourceSha": "eddcea9e27f6b772057c9b3f87de2cc1737faffc"
+    },
+    "packages/ogg.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/xiph/ogg.git",
+      "sourceSha": "06a5e0262cdc28aa4ae6797627a783b5010440f0"
+    },
+    "packages/openal-soft.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/kcat/openal-soft.git",
+      "sourceSha": "6e7274b537a8968dbb23bde4619e16e65a099890"
+    },
+    "packages/openssl.cmake": {
+      "originalRef": "d8bf6cdd4849925c30e4f1911c7acb49cb34b702",
+      "repository": "https://github.com/openssl/openssl.git",
+      "sourceSha": "d8bf6cdd4849925c30e4f1911c7acb49cb34b702"
+    },
+    "packages/opus-tools.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/xiph/opus-tools.git",
+      "sourceSha": "5f894e95a50b2004d8c8171082a5fd7327f93653"
+    },
+    "packages/opus.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/xiph/opus.git",
+      "sourceSha": "3da9f7a6db1c05c3996cb363a9d1931a978bf1be"
+    },
+    "packages/opusfile.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/xiph/opusfile.git",
+      "sourceSha": "6dfd29e7adb87f2e193575fc3fa88cbf1a0b27df"
+    },
+    "packages/readline.cmake": {
+      "originalRef": "",
+      "repository": "https://git.sailfishos.org/mirror/readline.git",
+      "sourceSha": "553d6bb272f26400d6d4d1cac7c1df84c447449b"
+    },
+    "packages/rubberband.cmake": {
+      "originalRef": "default",
+      "repository": "https://github.com/breakfastquay/rubberband.git",
+      "sourceSha": "e4296ac80b1170018a110bc326fd0d45a0eb27d6"
+    },
+    "packages/shaderc.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/google/shaderc.git",
+      "sourceSha": "7060a6615a1c6e2515e696651eea685524ecadb5"
+    },
+    "packages/speex.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/xiph/speex.git",
+      "sourceSha": "05895229896dc942d453446eba6f9f5ddcf95422"
+    },
+    "packages/spirv-cross.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/KhronosGroup/SPIRV-Cross.git",
+      "sourceSha": "9c3c8e2cefdd8194b193bb8ed2fdff4d5527e382"
+    },
+    "packages/spirv-headers.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/KhronosGroup/SPIRV-Headers.git",
+      "sourceSha": "942fe4b988359a0750b79f0ae7ed735994d3147d"
+    },
+    "packages/spirv-tools.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/KhronosGroup/SPIRV-Tools.git",
+      "sourceSha": "388f5af1a6d4a4df4ab9bf69a1817255952e6ef1"
+    },
+    "packages/subrandr.cmake": {
+      "originalRef": "master",
+      "repository": "https://github.com/afishhh/subrandr.git",
+      "sourceSha": "f2d74d8596bba07a82bfc0f389cd562ac8d71a00"
+    },
+    "packages/svtav1.cmake": {
+      "originalRef": "",
+      "repository": "https://gitlab.com/AOMediaCodec/SVT-AV1.git",
+      "sourceSha": "ae2658e53b599c539f75a1367ecdfb95b45576a4"
+    },
+    "packages/uavs3d.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/uavs3/uavs3d.git",
+      "sourceSha": "0e20d2c291853f196c68922a264bcd8471d75b68"
+    },
+    "packages/uchardet.cmake": {
+      "originalRef": "",
+      "repository": "https://gitlab.freedesktop.org/uchardet/uchardet.git",
+      "sourceSha": "06029ec3340cdf6bf9a6a537dafb3f39eda0560e"
+    },
+    "packages/vapoursynth.cmake": {
+      "originalRef": "e46204429041e95a881b61eedddd46c08f9a307c",
+      "repository": "https://github.com/vapoursynth/vapoursynth.git",
+      "sourceSha": "e46204429041e95a881b61eedddd46c08f9a307c"
+    },
+    "packages/vorbis.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/xiph/vorbis.git",
+      "sourceSha": "1b75110b5a2754ba1931d82dd83cb822b266a21d"
+    },
+    "packages/vulkan-header.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/KhronosGroup/Vulkan-Headers.git",
+      "sourceSha": "f9973cd97e6f3584707e7ef1c425e336f1b92a5b"
+    },
+    "packages/vulkan.cmake": {
+      "originalRef": "main",
+      "repository": "https://github.com/KhronosGroup/Vulkan-Loader.git",
+      "sourceSha": "fbfe4e7b3126dba48e4551fef5c6a19f15d6de12"
+    },
+    "packages/x264.cmake": {
+      "originalRef": "",
+      "repository": "https://code.videolan.org/videolan/x264.git",
+      "sourceSha": "0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee"
+    },
+    "packages/x265.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/Multicorewareinc/x265.git",
+      "sourceSha": "9ddc216defd1fa85535cb91456a9f6c09a2c3abc"
+    },
+    "packages/xxhash.cmake": {
+      "originalRef": "dev",
+      "repository": "https://github.com/Cyan4973/xxHash.git",
+      "sourceSha": "c0b5ea995d66691734b1a79ad89e73a0d2fd5a53"
+    },
+    "packages/xz.cmake": {
+      "originalRef": "3d078b52adbff566ccfc51067dfbf742ecf3ef86",
+      "repository": "https://github.com/tukaani-project/xz.git",
+      "sourceSha": "3d078b52adbff566ccfc51067dfbf742ecf3ef86"
+    },
+    "packages/zlib.cmake": {
+      "originalRef": "develop",
+      "repository": "https://github.com/zlib-ng/zlib-ng.git",
+      "sourceSha": "e47ae4abdbbba521869d326defb43fbbfa7e11ad"
+    },
+    "packages/zstd.cmake": {
+      "originalRef": "dev",
+      "repository": "https://github.com/facebook/zstd.git",
+      "sourceSha": "82d322c4973d9e2968d94047a40892bc6d9a9bdf"
+    },
+    "toolchain/cppwinrt.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/microsoft/cppwinrt.git",
+      "sourceSha": "d6cff316a991152071038668fb586a8b5ab1d51f"
+    },
+    "toolchain/llvm/llvm.cmake": {
+      "originalRef": "release/22.x",
+      "repository": "https://github.com/llvm/llvm-project.git",
+      "sourceSha": "ca7933e47d3a3451d81e72ac174dcb5aa28b59d1"
+    },
+    "toolchain/mingw-w64.cmake": {
+      "originalRef": "",
+      "repository": "https://github.com/mingw-w64/mingw-w64.git",
+      "sourceSha": "5ea8e9facd013b815f5f29f20ef26a566319a3de"
+    }
+  }
+}
