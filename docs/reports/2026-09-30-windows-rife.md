@@ -74,10 +74,14 @@ lite 的 trtexec 测量（无数据传输，CUDA graph，预热 1 秒、测量 5
 
 ## 2026-10-01：mpv CI 尚未交付 DLL
 
+Windows RuntimeManager 已完成独立层验证：私有运行库探测、Qt/Python 一致的缓存身份、按模型/尺寸选择缓存、异步准备、取消及过期结果隔离。真实私有进程探测和已有小尺寸引擎的跨语言缓存命中通过，不在测试中重新编译。只读审查发现缓存命中排队通知未取消、同步 preparationStarted 重入后仍启动旧任务、probe wrapper 子孙未清理；三种失败已复现并修复，SHA256 空值误判也已关闭。同尺寸缓存内容损坏会拒绝命中。新增探测链测试的 native fixture 不持有自己的 Job，仍能随 wrapper 终止，确保由外层承担清理。
+
+最新完整构建和 CTest 为 **37/37 通过，45.14 秒**，真实 v2 图、私有进程及冻结配方环境启用。Manager 尚未接入 Windows Player 或安装器；当前开发运行库清单仍记录旧 probe helper，后续冻结扩展时须纳入新 helper 并重新生成运行库/引擎身份。
+
 固定内核 dd5d17d328 与原配方 cd1edc11dc6；冻结依赖保留配方的显式 GIT_RESET，不用移动分支覆盖它。已修复 detached 源码清理、git-am committer、Meson 版本和 GNU 同哈希镜像下载问题。
 
 CI 36745960700 的两个架构均在 ngtcp2 的 QUIC 检查失败。完整 CMake 日志证实 compression 库位于 CFLAGS、排在 libcrypto 前，静态链接产生 Brotli/zlib/zstd 未定义引用，进而误报 OpenSSL 不支持 QUIC；固定 OpenSSL d8bf6cdd4 已确实检出。a5be125 将依赖附加到 OpenSSL 链接库之后，补丁在冻结 ngtcp2 源码上实际应用并通过 CMake 库列表验证。
 
-CI 36752790588 已通过 ngtcp2，在 LuaJIT 补丁阶段失败。原配方的 UTF-8 文件系统补丁在 Makefile 上引用了较新源码的两行上下文，而冻结的 OpenResty LuaJIT 1edc3e5 不具备这些行。现在只适配这两行未修改的上下文，保留全部 UTF-8 功能变更；以 git apply 应用，生成的补丁随 DLL 保存并计算哈希。已在实际冻结源码上复现原补丁失败，新补丁实际应用通过，三项配方回归通过。两架构仍需 CI 成功构建；尚无成功 DLL。
+CI 36752790588 已通过 ngtcp2，在 LuaJIT 补丁阶段失败。原配方的 UTF-8 文件系统补丁在 Makefile 上引用了较新源码的两行上下文，而冻结的 OpenResty LuaJIT 1edc3e5 不具备这些行。现在只适配这两行未修改的上下文，保留全部 UTF-8 功能变更；以 git apply 应用，生成的补丁随 DLL 保存并计算哈希。已在实际冻结源码上复现原补丁失败，新补丁实际应用通过，三项配方回归通过。35602b3 触发 CI 36761087304，两架构仍需成功构建；尚无成功 DLL。
 
 仍需验证两份 DLL 的一帧/两帧自然结束与颜色属性，接入 Windows RuntimeManager/Player/UI，完成默认配置 4K 渲染/十分钟稳态、扩展安装与发行材料、干净 Windows 和同源码 Mac 产物。本报告不将以上原型测试视为播放器或统一发行已经完成。

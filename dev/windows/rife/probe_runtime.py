@@ -7,6 +7,10 @@ from pathlib import Path, PureWindowsPath
 import subprocess
 import uuid
 
+from windows_job import attach_cleanup_job
+
+_job = None
+
 
 class RuntimeErrorDetail(ValueError):
     def __init__(self, code, message):
@@ -86,6 +90,7 @@ def isolated_environment(root, manifest):
 
 
 def probe(root, mpv=None, verify_only=False):
+    global _job
     result = {"ok": False, "stage": "manifest", "manifestValid": False,
               "mpvVersion": None, "vsVersion": None, "trtVersion": None,
               "gpu": None, "loadedLibraries": [], "errors": []}
@@ -111,6 +116,10 @@ def probe(root, mpv=None, verify_only=False):
                    "--runtime", str(root.resolve())]
         if mpv:
             command += ["--mpv", str(mpv.resolve())]
+        # Retain the Job until this public wrapper exits. Killing or timing out
+        # the wrapper must also stop a blocked native DLL/GPU probe.
+        if os.name == 'nt' and _job is None:
+            _job = attach_cleanup_job()
         process = subprocess.run(command, cwd=root, env=isolated_environment(root, manifest),
                                  capture_output=True, encoding="utf-8", errors="replace", timeout=60,
                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

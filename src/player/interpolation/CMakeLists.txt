@@ -12,6 +12,9 @@ add_library(tigerest_rife_control STATIC FrameInterpolationController.cpp FrameI
 target_compile_features(tigerest_rife_control PUBLIC cxx_std_17)
 target_include_directories(tigerest_rife_control PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tigerest_rife_control PUBLIC tigerest_rife Qt6::Core)
+if(WIN32)
+  target_sources(tigerest_rife_control PRIVATE windows/RifeRuntimeManager.cpp windows/RifeRuntimeManager.h)
+endif()
 
 # Actual inference tests are enabled only with explicitly prepared fixtures.
 # The application never fetches models or runs Python for inference.

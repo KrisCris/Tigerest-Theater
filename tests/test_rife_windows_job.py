@@ -15,6 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 @unittest.skipUnless(os.name == 'nt', 'Windows process containment')
 class WorkerJobTests(unittest.TestCase):
     def test_terminating_public_helper_terminates_worker_and_compiler(self):
+        self.check_public_helper('prepare')
+
+    def test_terminating_probe_helper_terminates_native_worker(self):
+        self.check_public_helper('probe')
+
+    def check_public_helper(self, kind):
         kernel = ctypes.WinDLL('kernel32.dll', use_last_error=True)
         kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
         kernel.OpenProcess.restype = wintypes.HANDLE
@@ -25,8 +31,6 @@ class WorkerJobTests(unittest.TestCase):
             base = Path(temp)
             pid_file, worker_script, wrapper_script = base / 'pids.json', base / 'native.py', base / 'public.py'
             worker_script.write_text('import sys, subprocess, time, os, json\n'
-                f'sys.path.insert(0, {str(ROOT / "dev/windows/rife")!r})\n'
-                'from windows_job import attach_cleanup_job\njob = attach_cleanup_job()\n'
                 'child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])\n'
                 f'open({str(pid_file)!r}, "w").write(json.dumps([os.getpid(), child.pid]))\n'
                 'time.sleep(60)\n', encoding='utf-8')
@@ -35,12 +39,25 @@ class WorkerJobTests(unittest.TestCase):
                 'model': 'rife-4.25-lite', 'width': 256, 'height': 128}), encoding='utf-8')
             # Stub runtime discovery only. Exercise the real public helper's
             # subprocess lifetime with a real nested worker/compiler chain.
-            wrapper_script.write_text('import sys\nfrom pathlib import Path\n'
+            common = 'import sys\nfrom pathlib import Path\n' + \
                 f'sys.path.insert(0, {str(ROOT / "dev/windows/rife")!r})\n'
-                'import prepare_engine as p\n'
-                f'p.verify_manifest = lambda root: {{"entrypoints": {{"python": {sys.executable!r}, "engineWorker": {str(worker_script)!r}}}}}\n'
-                'p.private_path = lambda root, path: Path(path)\np.isolated_environment = lambda *args: None\n'
-                f'p.prepare(Path({str(request)!r}))\n', encoding='utf-8')
+            if kind == 'prepare':
+                body = 'import prepare_engine as p\n' + \
+                    f'p.verify_manifest = lambda root: {{"entrypoints": {{"python": {sys.executable!r}, "engineWorker": {str(worker_script)!r}}}}}\n'
+                call = f'p.prepare(Path({str(request)!r}))\n'
+            else:
+                entrypoints = {'python': sys.executable, 'worker': str(worker_script),
+                               'vsscript': str(worker_script), 'plugin': str(worker_script)}
+                manifest = {'runtimeId': 'fixture', 'entrypoints': entrypoints,
+                            'files': [{'path': path} for path in entrypoints.values()]}
+                body = 'import probe_runtime as p\n' + \
+                    f'p.verify_manifest = lambda root: {manifest!r}\n'
+                call = f'p.probe(Path({str(base)!r}))\n'
+            # The native fixture deliberately has no Job. Both wrappers must
+            # contain their descendants independently of the worker's behavior.
+            wrapper_script.write_text(common + body +
+                'p.private_path = lambda root, path: Path(path)\np.isolated_environment = lambda *args: None\n' +
+                call, encoding='utf-8')
             wrapper = subprocess.Popen([sys.executable, '-B', '-X', 'utf8', str(wrapper_script)],
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             handles = []

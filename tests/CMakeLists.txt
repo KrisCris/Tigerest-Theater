@@ -95,6 +95,14 @@ add_test(NAME test_mpv_console COMMAND test_mpv_console)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(WIN32 AND Python3_Interpreter_FOUND)
+  add_executable(test_rife_runtime_manager test_rife_runtime_manager.cpp)
+  target_link_libraries(test_rife_runtime_manager PRIVATE tigerest_rife_control)
+  target_compile_definitions(test_rife_runtime_manager PRIVATE
+    RIFE_HOST_TEST_PYTHON="${Python3_EXECUTABLE}"
+    RIFE_MANAGER_WORKER_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/rife_runtime_worker_fixture.py")
+  add_test(NAME test_rife_runtime_manager COMMAND test_rife_runtime_manager)
+  set_tests_properties(test_rife_runtime_manager PROPERTIES TIMEOUT 30
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
   foreach(case runtime runtime_prepare mpv_build build_sources mpv_recipe engine_cache engine_prepare windows_job timing_tracker)
     add_test(NAME test_rife_${case} COMMAND "${Python3_EXECUTABLE}" -m unittest discover
       -s "${CMAKE_CURRENT_SOURCE_DIR}" -p "test_rife_${case}.py" -v)
