@@ -9,6 +9,7 @@ on:
       - dev/windows/rife/build_mpv.py
       - dev/windows/rife/freeze_mpv_sources.py
       - dev/windows/rife/mpv-private-vs-core.patch
+      - dev/windows/rife/prepare_mpv_recipe.py
       - dev/macos/rife/mpv-eof-aware.patch
 
 permissions:
@@ -57,35 +58,23 @@ jobs:
         run: |
           git clone https://github.com/shinchiro/mpv-winbuild-cmake.git recipe
           git -C recipe checkout cd1edc11dc6887a50f705717619d879f5a93a488
-          cp dev/macos/rife/mpv-eof-aware.patch recipe/tigerest-mpv-eof-aware.patch
-          cp dev/windows/rife/mpv-private-vs-core.patch recipe/tigerest-mpv-private-vs-core.patch
-          python3 - <<'PY'
-          import json,pathlib,re
-          root=pathlib.Path('recipe')
-          lock=json.loads(pathlib.Path('source-lock.json').read_text())
-          for relative,entry in lock['sources'].items():
-              path=root/relative
-              text=path.read_text()
-              if re.search(r'GIT_TAG\s+\S+',text):
-                  text=re.sub(r'GIT_TAG\s+\S+', 'GIT_TAG '+entry['sourceSha'],text,count=1)
-              else:
-                  text=re.sub(r'(GIT_REPOSITORY\s+\S+)',r'\1\n    GIT_TAG '+entry['sourceSha'],text,count=1)
-              if relative=='packages/mpv.cmake':
-                  text=text.replace('    UPDATE_COMMAND ""','    PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-mpv-eof-aware.patch ${CMAKE_SOURCE_DIR}/tigerest-mpv-private-vs-core.patch\n    UPDATE_COMMAND ""',1)
-              path.write_text(text)
-          path=root/'toolchain/rustup.cmake'
-          text=path.read_text().replace('--default-toolchain nightly','--default-toolchain '+lock['rustToolchain'])
-          text=text.replace('BUILD_COMMAND ${EXEC} rustup update','BUILD_COMMAND ${EXEC} rustup default '+lock['rustToolchain'])
-          path.write_text(text)
-          PY
+          python3 dev/windows/rife/prepare_mpv_recipe.py --recipe recipe --lock source-lock.json
       - uses: actions/cache@v4
         with:
           path: build-mpv
-          key: rife-mpv-aug2026-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch', 'dev/windows/rife/mpv-private-vs-core.patch') }}
+          key: rife-mpv-aug2026-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch', 'dev/windows/rife/mpv-private-vs-core.patch', 'dev/windows/rife/prepare_mpv_recipe.py') }}
+          restore-keys: |
+            rife-toolchain-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/windows/rife/prepare_mpv_recipe.py') }}
       - name: Build patched libmpv
         run: |
           cmake -G Ninja -S recipe -B build-mpv -DTARGET_ARCH=x86_64-w64-mingw32 -DGCC_ARCH=${{ matrix.arch }} -DCOMPILER_TOOLCHAIN=gcc -DMAKEJOBS=4
           ninja -C build-mpv gcc
+      - uses: actions/cache/save@v4
+        with:
+          path: build-mpv
+          key: rife-toolchain-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/windows/rife/prepare_mpv_recipe.py') }}
+      - name: Build mpv and media dependencies
+        run: |
           ninja -C build-mpv mpv
       - name: Record build provenance
         if: success()

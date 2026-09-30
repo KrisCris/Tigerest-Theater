@@ -95,7 +95,7 @@ add_test(NAME test_mpv_console COMMAND test_mpv_console)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(WIN32 AND Python3_Interpreter_FOUND)
-  foreach(case runtime runtime_prepare mpv_build build_sources)
+  foreach(case runtime runtime_prepare mpv_build build_sources mpv_recipe)
     add_test(NAME test_rife_${case} COMMAND "${Python3_EXECUTABLE}" -m unittest discover
       -s "${CMAKE_CURRENT_SOURCE_DIR}" -p "test_rife_${case}.py" -v)
     set_tests_properties(test_rife_${case} PROPERTIES TIMEOUT 60 LABELS "rife-runtime")
