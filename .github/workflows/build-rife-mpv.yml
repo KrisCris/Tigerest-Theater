@@ -8,6 +8,7 @@ on:
       - .github/workflows/build-rife-mpv.yml
       - dev/windows/rife/build_mpv.py
       - dev/windows/rife/freeze_mpv_sources.py
+      - dev/windows/rife/mpv-private-vs-core.patch
       - dev/macos/rife/mpv-eof-aware.patch
 
 permissions:
@@ -57,6 +58,7 @@ jobs:
           git clone https://github.com/shinchiro/mpv-winbuild-cmake.git recipe
           git -C recipe checkout cd1edc11dc6887a50f705717619d879f5a93a488
           cp dev/macos/rife/mpv-eof-aware.patch recipe/tigerest-mpv-eof-aware.patch
+          cp dev/windows/rife/mpv-private-vs-core.patch recipe/tigerest-mpv-private-vs-core.patch
           python3 - <<'PY'
           import json,pathlib,re
           root=pathlib.Path('recipe')
@@ -69,7 +71,7 @@ jobs:
               else:
                   text=re.sub(r'(GIT_REPOSITORY\s+\S+)',r'\1\n    GIT_TAG '+entry['sourceSha'],text,count=1)
               if relative=='packages/mpv.cmake':
-                  text=text.replace('    UPDATE_COMMAND ""','    PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-mpv-eof-aware.patch\n    UPDATE_COMMAND ""',1)
+                  text=text.replace('    UPDATE_COMMAND ""','    PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/tigerest-mpv-eof-aware.patch ${CMAKE_SOURCE_DIR}/tigerest-mpv-private-vs-core.patch\n    UPDATE_COMMAND ""',1)
               path.write_text(text)
           path=root/'toolchain/rustup.cmake'
           text=path.read_text().replace('--default-toolchain nightly','--default-toolchain '+lock['rustToolchain'])
@@ -79,7 +81,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: build-mpv
-          key: rife-mpv-aug2026-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch') }}
+          key: rife-mpv-aug2026-${{ matrix.arch }}-${{ hashFiles('source-lock.json', 'dev/macos/rife/mpv-eof-aware.patch', 'dev/windows/rife/mpv-private-vs-core.patch') }}
       - name: Build patched libmpv
         run: |
           cmake -G Ninja -S recipe -B build-mpv -DTARGET_ARCH=x86_64-w64-mingw32 -DGCC_ARCH=${{ matrix.arch }} -DCOMPILER_TOOLCHAIN=gcc -DMAKEJOBS=4
@@ -93,7 +95,7 @@ jobs:
           find build-mpv -path '*/mpv-dev-*/libmpv.dll.a' -exec cp {} artifacts/ \;
           test -s artifacts/libmpv-2.dll
           cp source-lock.json artifacts/
-          sha256sum artifacts/libmpv-2.dll dev/macos/rife/mpv-eof-aware.patch > artifacts/SHA256SUMS.txt
+          sha256sum artifacts/libmpv-2.dll dev/macos/rife/mpv-eof-aware.patch dev/windows/rife/mpv-private-vs-core.patch > artifacts/SHA256SUMS.txt
           printf '%s\n' '${{ github.sha }}' > artifacts/host-source-sha.txt
       - uses: actions/upload-artifact@v4
         if: success()

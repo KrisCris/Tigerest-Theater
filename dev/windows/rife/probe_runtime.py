@@ -67,6 +67,9 @@ def verify_manifest(root):
             raise RuntimeErrorDetail("file-size", f"Wrong runtime file size: {entry['path']}")
         if file_hash(target) != entry.get("sha256"):
             raise RuntimeErrorDetail("file-hash", f"Corrupt runtime file: {entry['path']}")
+    for path in root.rglob('*'):
+        if path.is_file() and path != manifest_path and str(path).casefold() not in seen:
+            raise RuntimeErrorDetail('file-unlisted', f'Unverified runtime file: {path.relative_to(root)}')
     return manifest
 
 
@@ -103,7 +106,7 @@ def probe(root, mpv=None, verify_only=False):
         if manifest["entrypoints"]["python"] not in {entry["path"] for entry in manifest["files"]}:
             raise RuntimeErrorDetail("manifest-invalid", "Unverified private Python executable")
         result["stage"] = "runtime"
-        command = [str(python), "-I", "-S", "-X", "utf8",
+        command = [str(python), "-B", "-I", "-S", "-X", "utf8",
                    str(private_path(root, manifest["entrypoints"]["worker"])),
                    "--runtime", str(root.resolve())]
         if mpv:

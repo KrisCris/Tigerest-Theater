@@ -39,6 +39,7 @@ class MpvBuildPreparationTests(unittest.TestCase):
         self.assertEqual(code, 0, report)
         self.assertEqual(report["sourceSha"], "dd5d17d3285a095a0f712fa9d116e22a076492de")
         self.assertTrue(report["eofPatchApplicable"])
+        self.assertTrue(report['privateCorePatchApplicable'])
         self.assertEqual(subprocess.run(["git", "-C", str(source), "diff", "--quiet"]).returncode, 0)
 
 

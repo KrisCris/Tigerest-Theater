@@ -10,6 +10,7 @@ from probe_runtime import write_report
 SOURCE_SHA = "dd5d17d3285a095a0f712fa9d116e22a076492de"
 WINBUILD_SHA = "cd1edc11dc6887a50f705717619d879f5a93a488"
 EOF_PATCH = Path(__file__).resolve().parents[2] / "macos/rife/mpv-eof-aware.patch"
+PRIVATE_CORE_PATCH = Path(__file__).with_name('mpv-private-vs-core.patch')
 
 
 def check_source(source):
@@ -23,9 +24,10 @@ def check_source(source):
             return result
         subprocess.run(["git", "-C", str(source), "diff", "--exit-code", "HEAD"],
                        check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(source), "apply", "--check", str(EOF_PATCH)],
+        subprocess.run(["git", "-C", str(source), "apply", "--check", str(EOF_PATCH), str(PRIVATE_CORE_PATCH)],
                        check=True, capture_output=True)
-        result.update(ok=True, eofPatchApplicable=True,
+        result.update(ok=True, eofPatchApplicable=True, privateCorePatchApplicable=True,
+                      privateCorePatchSha256=hashlib.sha256(PRIVATE_CORE_PATCH.read_bytes()).hexdigest(),
                       eofPatchSha256=hashlib.sha256(EOF_PATCH.read_bytes()).hexdigest())
     except subprocess.CalledProcessError as error:
         output = error.stderr or error.output or b""

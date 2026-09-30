@@ -1,0 +1,28 @@
+--- a/video/filter/vf_vapoursynth.c
++++ b/video/filter/vf_vapoursynth.c
+@@ -864,10 +864,23 @@ static int drv_vss_load_core(struct priv *p)
+ {
+     // First load an empty script to get a VSScript, so that we get the vsapi
+     // and vscore.
+-    p->vs_script = p->vs_script_api->createScript(NULL);
++    p->vsapi = p->vs_script_api->getVSAPI(VAPOURSYNTH_API_VERSION);
++    if (!p->vsapi)
++        return -1;
++    VSCore *core = NULL;
++#ifdef _WIN32
++    // The managed RIFE extension loads its own plugins explicitly. Do not
++    // discover user/system plugins in an EOF-aware Windows RIFE session.
++    if (p->opts->eof_aware) {
++        core = p->vsapi->createCore(vsccfDisableAutoLoading);
++        if (!core)
++            return -1;
++    }
++#endif
++    // createScript takes ownership of a supplied core, including on failure.
++    p->vs_script = p->vs_script_api->createScript(core);
+     if (!p->vs_script)
+         return -1;
+-    p->vsapi = p->vs_script_api->getVSAPI(VAPOURSYNTH_API_VERSION);
+     p->vscore = p->vs_script_api->getCore(p->vs_script);
+     return 0;
+ }

@@ -94,6 +94,18 @@ target_compile_definitions(test_mpv_console PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_mpv_console COMMAND test_mpv_console)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
+if(WIN32 AND Python3_Interpreter_FOUND)
+  foreach(case runtime runtime_prepare mpv_build build_sources)
+    add_test(NAME test_rife_${case} COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+      -s "${CMAKE_CURRENT_SOURCE_DIR}" -p "test_rife_${case}.py" -v)
+    set_tests_properties(test_rife_${case} PROPERTIES TIMEOUT 60 LABELS "rife-runtime")
+  endforeach()
+  if(DEFINED ENV{RIFE_TEST_RUNTIME})
+    add_test(NAME test_rife_inference COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+      -s "${CMAKE_CURRENT_SOURCE_DIR}" -p "test_rife_inference.py" -v)
+    set_tests_properties(test_rife_inference PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE LABELS "rife-model")
+  endif()
+endif()
 if(APPLE)
   add_executable(test_rife_timing test_rife_timing.cpp ../src/player/interpolation/FrameTiming.cpp)
   foreach(case policy controller)
