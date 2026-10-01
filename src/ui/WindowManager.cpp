@@ -20,6 +20,29 @@
 #include <QOpenGLFunctions>
 #if defined(Q_OS_WIN)
 #include <qpa/qplatformwindow_p.h>
+#include <QLibrary>
+#include <QPlatformSurfaceEvent>
+#include <windows.h>
+
+namespace {
+void applyWindowsTitleBar(QWindow* window)
+{
+  if (!window || !window->handle()) return;
+  using SetAttribute = HRESULT (WINAPI *)(HWND, DWORD, LPCVOID, DWORD);
+  static const auto setAttribute = reinterpret_cast<SetAttribute>(
+      QLibrary::resolve(QStringLiteral("dwmapi"), "DwmSetWindowAttribute"));
+  if (!setAttribute) return;
+  const auto handle = reinterpret_cast<HWND>(window->winId());
+  const BOOL dark = TRUE;
+  // Windows 10 before 20H1 uses attribute 19; unsupported colors are ignored.
+  if (FAILED(setAttribute(handle, 20, &dark, sizeof(dark))))
+    setAttribute(handle, 19, &dark, sizeof(dark));
+  const COLORREF caption = RGB(17, 20, 27);
+  const COLORREF text = RGB(240, 242, 247);
+  setAttribute(handle, 35, &caption, sizeof(caption));
+  setAttribute(handle, 36, &text, sizeof(text));
+}
+}
 #endif
 
 
@@ -88,6 +111,9 @@ void WindowManager::initializeWindow(QQuickWindow* window)
 
   // Install event filter to track cursor enter/leave
   m_window->installEventFilter(this);
+#if defined(Q_OS_WIN)
+  applyWindowsTitleBar(m_window);
+#endif
 
   // Register host command for fullscreen toggle
   InputComponent::Get().registerHostCommand("fullscreen", this, "toggleFullscreen");
@@ -468,6 +494,14 @@ bool WindowManager::eventFilter(QObject* watched, QEvent* event)
 {
   if (watched == m_window)
   {
+#if defined(Q_OS_WIN)
+    if (event->type() == QEvent::WinIdChange ||
+        (event->type() == QEvent::PlatformSurface &&
+         static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated))
+    {
+      QTimer::singleShot(0, this, [this]() { applyWindowsTitleBar(m_window); });
+    }
+#endif
     if (event->type() == QEvent::Enter)
     {
       m_cursorInsideWindow = true;

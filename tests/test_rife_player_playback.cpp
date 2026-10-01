@@ -202,7 +202,9 @@ private slots:
         QVERIFY(controller->command(QStringList{"vf","add",filter}).metaType().id()!=qMetaTypeId<ErrorReturn>());
         QTRY_COMPARE_WITH_TIMEOUT(playback()["reason"].toString(),QString("filter-error"),10000);
         QVERIFY(controller->getProperty("pause").toBool());
-        QVERIFY(player.getPosition()>=2500);
+    // The previous media was also paused. Wait for the asynchronous replacement
+    // to reach its requested position rather than accepting the old pause flag.
+    QTRY_VERIFY_WITH_TIMEOUT(player.getPosition()>=2500,5000);
         for(const auto& value:controller->getProperty("vf").toList())
             QVERIFY(value.toMap()["label"]!="tigerest-rife");
         player.play();QTest::qWait(600);QVERIFY(player.getPosition()>3000);
@@ -225,7 +227,9 @@ private slots:
         mpv_event event{};event.event_id=MPV_EVENT_END_FILE;event.data=&fatal;
         player.handleMpvEvent(&event);
         QTRY_COMPARE_WITH_TIMEOUT(playback()["reason"].toString(),QString("filter-error"),10000);
-        QVERIFY(controller->getProperty("pause").toBool());QVERIFY(player.getPosition()>=2500);
+        QVERIFY(controller->getProperty("pause").toBool());
+        // Recovery reload is asynchronous even though the old entry was paused.
+        QTRY_VERIFY_WITH_TIMEOUT(player.getPosition()>=2500,5000);
         QCOMPARE(controller->getProperty("aid").toString(),QString("2"));
         QCOMPARE(controller->getProperty("playlist").toList().size(),2);
         const auto headers=controller->getProperty("http-header-fields").toList();

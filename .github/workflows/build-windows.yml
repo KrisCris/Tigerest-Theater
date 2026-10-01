@@ -148,6 +148,12 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'Windows tests failed' }
     - name: Verify packaged application startup
       run: node tests/smoke_windows_bundle.cjs "build/portable/Tigerest Theater.exe"
+    - name: Verify packaged settings, file dialogs and Windows appearance
+      shell: pwsh
+      run: |
+        $env:TEST_PYTHON = (Get-Command python).Source
+        node tests/test_windows_web_controls.cjs "build/portable/Tigerest Theater.exe"
+        if ($LASTEXITCODE -ne 0) { throw 'Packaged controls failed' }
     - name: Archive installer
       uses: actions/upload-artifact@v7
       with:

@@ -4,15 +4,15 @@
 
 媒体库来自你连接的 Emby Server，账号和内容权限由服务器提供。本项目提供客户端，不包含影视资源，也不会自动开通服务器访问权限。
 
-## V2.3 正式版
+## V2.3.1 正式版
 
-V2.3 将 Windows NVIDIA 与 Mac 的 RIFE 功能并入正式版，新增详情页评论区。版本变化见 [CHANGELOG](CHANGELOG.md)，完整下载和校验文件见 [GitHub Releases](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.3.0)。
+V2.3 将 Windows NVIDIA 与 Mac 的 RIFE 功能并入正式版，新增详情页评论区。V2.3.1 将 MPV 设置合并到 Emby 客户端设置页，修复扩展安装按钮与头像文件选择，改善媒体卡片、选集操作、滚动条和 Windows 标题栏。版本变化见 [CHANGELOG](CHANGELOG.md)，完整下载和校验文件见 [GitHub Releases](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.3.1)。
 
 | 平台 | 下载 | 安装 |
 | --- | --- | --- |
-| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.0/TigerestTheater-2.3.0-x64.exe) | 按向导安装，可覆盖更新 |
-| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.0/TigerestTheater-2.3.0-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
-| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.0/TigerestTheater-2.3.0-arm64.dmg) | 将应用拖入「应用程序」 |
+| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.1/TigerestTheater-2.3.1-x64.exe) | 按向导安装，可覆盖更新 |
+| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.1/TigerestTheater-2.3.1-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
+| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.1/TigerestTheater-2.3.1-arm64.dmg) | 将应用拖入「应用程序」 |
 
 基础包已包含 MPV 和所需运行库。Windows RIFE 的大型 AI 组件使用独立扩展，在客户端设置中下载或离线导入。下载文件可用发布页的 SHA-256 清单核验。
 
@@ -39,11 +39,37 @@ V2.3 将 Windows NVIDIA 与 Mac 的 RIFE 功能并入正式版，新增详情页
 
 ## RIFE AI 补帧
 
-在「MPV 设置」的视频设置中开启「AI 补帧（RIFE）」，再重新打开视频。补帧默认关闭，需使用大河内置播放配置。支持范围和性能取决于平台、硬件、输入格式及画质滤镜负载。
+进入 **Emby 设置 → Tigerest Theater 设置 → MPV 播放设置 → 视频**，开启「AI 补帧（RIFE）」，再重新打开视频。顶栏 **MPV** 按钮或 `Ctrl+,`（Mac 为 `Cmd+,`）也会进入同一设置页。补帧默认关闭，需使用大河内置播放配置。支持范围和性能取决于平台、硬件、输入格式及画质滤镜负载。
 
 ### Windows NVIDIA
 
-在设置中下载或离线导入 **RIFE NVIDIA 1.0.0 扩展**，完成后完全退出并重启客户端。扩展包含 RIFE 4.25 lite、4.25、4.25 heavy 三个模型，以及独立的 TensorRT 运行库，无需另装 SVP、Python 或 CUDA Toolkit。
+需要 NVIDIA 显卡和可用的 NVIDIA 驱动。先更新到 **V2.3.1**，再下载或离线导入 **RIFE NVIDIA 1.0.0 扩展**。扩展包含 RIFE 4.25 lite、4.25、4.25 heavy 三个模型，以及独立的 TensorRT 运行库，无需另装 SVP、Python 或 CUDA Toolkit。Intel／AMD 显卡仍可使用基础播放功能。
+
+#### 在线安装
+
+1. 进入上述设置页的「视频」分类，在 **NVIDIA RIFE 扩展** 区域点击 **下载扩展**。
+2. 等待下载、核验及安装完成；设置页会显示进度或具体错误。包约 2 GB，下载临时文件、展开内容及引擎缓存需要额外空间，建议所在磁盘预留 **10 GB 以上**。
+3. 出现 **请完全退出并重启客户端** 后，从应用退出；启用托盘时也要退出托盘中的程序，然后重新启动。
+4. 在「MPV 画质与插件」中将播放配置模式设为 **大河内置配置**，按提示重启；随后在「视频」中开启 AI 补帧，先选择 **均衡 · 4.25 / 约 60 fps**，重新打开视频。
+
+下载服务来自 GitHub；连接失败时可使用下面的离线方式。操作期间按钮暂时禁用，可使用「取消操作」停止；完成或取消后恢复可用。
+
+#### 离线导入
+
+1. 从 [RIFE NVIDIA 1.0.0 扩展下载链接](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.2.0/Tigerest-RIFE-NVIDIA-1.0.0.zip) 下载 **`Tigerest-RIFE-NVIDIA-1.0.0.zip`**。它与客户端的便携 ZIP 是两个不同文件；扩展沿用已发布的 1.0.0 包。
+2. 保持扩展 ZIP 完整，**无需解压，也无需复制到程序目录**。可在另一台电脑下载后拷贝过来，中文路径和含空格路径均可使用。
+3. 在「视频 → NVIDIA RIFE 扩展」点击 **导入离线包**，选择这个 ZIP，然后等待完整核验和安装。客户端会检查文件哈希、清单、版本及运行库 ABI，不接受自行重新压缩或修改的包。
+4. 看到重启提示后完全退出并重新启动，再按照在线安装的第 4 步启用补帧。导入完成后，下载的原始 ZIP 可自行保留作备份或删除。
+
+官方扩展 ZIP 的 SHA-256：
+
+```text
+f7a7958b119b94b374df916b39ef36e9ed34f6df15eac4fb40153d30b2aab694
+```
+
+也可在 PowerShell 中运行 `Get-FileHash -Algorithm SHA256 '你的扩展ZIP完整路径'` 核对。哈希不一致或核验失败时重新下载原包；不要关闭检查或手动替换运行库。
+
+扩展运行库由同一客户端的配置档共用，引擎缓存按当前配置保存。安装版保存在用户数据目录，便携版保存在 `data` 中；更新便携客户端时请保留这个目录。需要卸载时使用 **移除扩展**，再完全退出并重启。基础播放不依赖该扩展。
 
 可选择均衡、画质优先、高帧率和 4K 流畅预设；使用整数倍插帧接近 60／120／240 fps。首次使用某个模型和输入尺寸时需要准备引擎，期间按原帧播放，准备完成后重新打开视频。扩展下载约 **2.00 GiB**，展开约 **2.49 GiB**，引擎缓存另占空间。
 
@@ -64,6 +90,8 @@ M 系列 Mac 的模型及 Core ML／Metal 组件随基础包提供，支持最�
 - **MPV 配置：** 可选大河内置或系统配置；Windows 读取 `%APPDATA%\mpv`，Mac 读取 `~/.config/mpv` 或 `~/Library/Application Support/mpv`。
 - **下载与离线：** 暂停、恢复和删除下载任务，完成后从「打开离线媒体」进入播放；下载权限由 Emby 服务器决定。
 - **独立配置档：** 分别保存设置、缓存、日志、MPV 配置及离线文件。
+- **统一设置页：** 音频、视频、RIFE、字幕、MPV 画质与插件、弹幕样式和高级选项在 Emby 客户端设置内编辑，支持搜索、即时保存和分类恢复默认值。
+- **界面优化：** 去掉封面中央的大号绿色播放按钮，保留详情页正常播放入口；修复选集拖动后卡片悬浮不复位，采用紧凑深色翻页按钮、合理的季度间距和圆角细滚动条。Windows 原生标题栏使用深色主题，保留系统窗口控制。
 
 专属服务器的内置弹幕服务随局域网／域名连接选择地址，自建 Emby 使用大河弹幕服务域名。视频仍来自你自己的 Emby；弹幕搜索词与匹配信息会发送到弹幕服务。手动配置的第三方弹幕来源保留原设置。
 
@@ -74,6 +102,8 @@ M 系列 Mac 的模型及 Core ML／Metal 组件随基础包提供，支持最�
 **评论区未出现：** 确认使用 V2.3、大河专属 Emby 账号，以及电影／剧集／季／单集详情页。自建服务器和离线媒体暂不支持。加载失败时检查 HTTP 18443 是否可达；登录失效时重新登录。
 
 **补帧未生效：** 开启后重新打开视频。Windows 安装扩展后须完全退出并重启；首次引擎准备未完成时仍以原帧播放。检查设置中的当前状态和格式／性能回退原因。
+
+**扩展按钮或头像“浏览”没反应：** V2.3.0 存在扩展兼容范围与 Windows 文件选择器打包问题，请更新 V2.3.1，并使用完整安装包或完整解压便携包。运行其他任务时扩展按钮会暂时禁用；如果提示空间不足、校验失败或运行库异常，按设置页错误信息排查。
 
 **Windows 媒体库画面异常：** 完全退出后尝试 `"Tigerest Theater.exe" --disable-gpu`，用于排查网页 GPU 渲染；视频硬解设置保持独立。
 

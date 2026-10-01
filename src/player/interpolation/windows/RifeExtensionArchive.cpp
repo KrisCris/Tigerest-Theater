@@ -121,7 +121,20 @@ QJsonObject RifeExtensionArchive::catalogPackage(const QJsonObject& catalog,cons
     if(!idPattern.match(id).hasMatch()||!shaPattern.match(item["sourceSha"].toString()).hasMatch()||item["runtimeId"].toString().isEmpty())return fail("Invalid catalog identity");
     if(item["platform"]!="windows"||item["architecture"]!="x64"||item["abi"]!=Abi)return fail("Unsupported extension architecture or ABI");
     QVersionNumber app,minimum,maximum,packageVersion;
-    if(!version(appVersion,&app)||!version(item["minAppVersion"].toString(),&minimum)||!version(item["maxAppVersion"].toString(),&maximum)||!version(item["version"].toString(),&packageVersion)||!(minimum<=app&&app<maximum))return fail("Extension is incompatible with this application version");
+    if(!version(appVersion,&app)||!version(item["minAppVersion"].toString(),&minimum)||!version(item["maxAppVersion"].toString(),&maximum)||!version(item["version"].toString(),&packageVersion)||!(minimum<maximum))return fail("Extension is incompatible with this application version");
+    // A sealed archive retains its original version range and identity. The
+    // embedded trusted catalog can approve specific subsequently tested apps
+    // without changing that archive or weakening its hash/ABI checks.
+    bool explicitlyCompatible=false;
+    if(item.contains("compatibleAppVersions")) {
+        if(!item["compatibleAppVersions"].isArray())return fail("Invalid catalog application compatibility");
+        for(const auto& value:item["compatibleAppVersions"].toArray()) {
+            QVersionNumber approved;
+            if(!value.isString()||!version(value.toString(),&approved)||approved<minimum)return fail("Invalid catalog application compatibility");
+            explicitlyCompatible|=approved==app;
+        }
+    }
+    if(!(minimum<=app&&(app<maximum||explicitlyCompatible)))return fail("Extension is incompatible with this application version");
     if(!hashValid(item["sha256"])||!hashValid(item["manifestSha256"]))return fail("Invalid catalog hash");
     qint64 size=0,count=0;
     if(!integer(item["downloadSize"],&size,1)||!integer(item["unpackedSize"],&size,1)||!integer(item["fileCount"],&count,1)||count>MaxFiles)return fail("Invalid catalog sizes");

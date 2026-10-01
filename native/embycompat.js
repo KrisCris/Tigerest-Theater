@@ -7,7 +7,8 @@
         'tigerest/mpv-audio.js',
         'tigerest/input.js',
         'tigerest/session-navigation.js',
-        'tigerest/community.js'
+        'tigerest/community.js',
+        'tigerest/settings.js'
     ];
 
     function seedDefaultServer() {
@@ -114,6 +115,57 @@
         // the identifier to Alameda, so the in-memory module ID must include
         // that suffix as well.
         defineModule('tigerest/apphost.js', [], createAppHost);
+
+        defineModule('tigerest/settings.js', [], function () {
+            return class TigerestSettingsPlugin {
+                constructor() { this.id = 'tigerest-native-settings'; }
+                getRoutes() {
+                    return [{path: 'settings.html', type: 'settings', settingsType: 'app',
+                        title: 'MPV 播放设置', icon: '&#xe8b8;', order: 25,
+                        contentPath: 'none', templateType: 'settings',
+                        controller: 'tigerest/settings-view.js'}];
+                }
+            };
+        });
+
+        defineModule('tigerest/settings-view.js', [
+            'modules/viewmanager/baseview.js', 'appRouter'
+        ], function (baseView, appRouter) {
+            const BaseView = moduleValue(baseView), router = moduleValue(appRouter);
+            function SettingsView(view, params) {
+                BaseView.apply(this, arguments);
+                this.settingsHost = view.querySelector('.readOnlyContent');
+                this.settingsHost?.classList.add('tigerest-settings-host');
+                this.settingsSection = params?.section;
+                this.mountGeneration = 0;
+            }
+            Object.assign(SettingsView.prototype, BaseView.prototype);
+            SettingsView.prototype.onResume = function () {
+                BaseView.prototype.onResume.apply(this, arguments);
+                const generation = ++this.mountGeneration;
+                router.setTitle?.('MPV 播放设置');
+                this.settingsMount?.dispose();
+                this.mountAbort?.abort();
+                this.mountAbort = new AbortController();
+                this.settingsMount = null;
+                window.tigerestMountSettings(this.settingsHost, this.settingsSection,
+                    () => router.show('/settings'), this.mountAbort.signal).then(mount => {
+                    if (generation !== this.mountGeneration) mount?.dispose();
+                    else this.settingsMount = mount;
+                }).catch(() => {
+                    if (generation === this.mountGeneration && this.settingsHost)
+                        this.settingsHost.textContent = '设置加载失败，请返回后重试。';
+                });
+            };
+            SettingsView.prototype.onPause = function () {
+                ++this.mountGeneration;
+                this.mountAbort?.abort();
+                this.settingsMount?.dispose();
+                this.settingsMount = null;
+                BaseView.prototype.onPause.apply(this, arguments);
+            };
+            return SettingsView;
+        });
 
         defineModule('tigerest/mpv-video.js', [
             'events', 'loading', 'appRouter', 'globalize', 'apphost', 'appSettings', 'confirm'

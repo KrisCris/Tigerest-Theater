@@ -51,6 +51,13 @@ class NativeExtensionTests(unittest.TestCase):
                 self.assertEqual((self.stage/info.filename).read_bytes(),archive.read(info))
         self.assertEqual(report['manifest']['runtimeId'],'fixture-r79')
 
+    def test_explicit_app_approval_installs_the_original_sealed_archive(self):
+        self.item['compatibleAppVersions'] = ['3.0.0']
+        report = self.run_host(app='3.0.0')
+        self.assertTrue(report['ok'], report)
+        self.assertEqual(report['manifest']['maxAppVersion'], '3.0.0')
+        self.reject(app='3.0.1', pattern='application version')
+
     def test_catalog_and_disk_rejection_write_nothing(self):
         self.reject(package_id='unlisted',pattern='uniquely listed')
         self.reject(app='3.0.0',pattern='application version')

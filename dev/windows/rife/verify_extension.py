@@ -48,7 +48,14 @@ def catalog_item(catalog,package_id,app_version):
     item=matches[0]
     if item.get('architecture')!='x64' or item.get('platform')!='windows' or item.get('abi')!=ABI:
         raise ValueError('Unsupported extension architecture or ABI')
-    if not version(item['minAppVersion'])<=version(app_version)<version(item['maxAppVersion']):
+    app, minimum, maximum = version(app_version), version(item['minAppVersion']), version(item['maxAppVersion'])
+    approved = item.get('compatibleAppVersions', [])
+    if not isinstance(approved, list):
+        raise ValueError('Invalid catalog application compatibility')
+    approved = [version(value) for value in approved]
+    if any(value < minimum for value in approved):
+        raise ValueError('Invalid catalog application compatibility')
+    if not (minimum < maximum and minimum <= app and (app < maximum or app in approved)):
         raise ValueError('Extension is incompatible with this application version')
     if any(not re.fullmatch('[0-9a-f]{64}',item.get(key,'')) for key in ('sha256','manifestSha256')):
         raise ValueError('Invalid catalog hash')

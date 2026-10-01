@@ -53,11 +53,11 @@ window.NativeShell = {
     },
 
     openClientSettings() {
-        showSettingsModal();
+        openTigerestSettings('main');
     },
 
     openMpvSettings() {
-        showSettingsModal();
+        openTigerestSettings('mpv');
     },
 
     openOfflineLibrary() {
@@ -688,8 +688,9 @@ function createRifeExtensionPanel({element, player, settings, save, notify}) {
     }};
 }
 
-async function showSettingsModal() {
+async function mountTigerestSettings(host = null, initialSection = null, onReturn = null, signal = null) {
     await initCompleted;
+    if (signal?.aborted) return;
 
     let mpvDiagnostics = {};
     try {
@@ -698,7 +699,8 @@ async function showSettingsModal() {
         console.warn('Unable to read MPV diagnostics', error);
     }
 
-    const previous = document.getElementById('tigerest-settings-overlay');
+    if (signal?.aborted) return;
+    const previous = host ? host.querySelector('#tigerest-settings-inline') : document.getElementById('tigerest-settings-overlay');
     if (previous) return;
 
     const sectionMeta = {
@@ -875,6 +877,23 @@ async function showSettingsModal() {
             .tgs-setting { grid-template-columns: 1fr; gap: 9px; }
             .tgs-search { width: 35vw; }
         }
+        .tigerest-settings-host { width: 100%; max-width: 1120px; }
+        #tigerest-settings-inline .tgs-dialog {
+            width: 100%; height: auto; min-height: 520px;
+            background: var(--tgs-panel-strong, #11141b);
+            box-shadow: 0 12px 36px rgba(0,0,0,.2);
+        }
+        #tigerest-settings-inline .tgs-body { overflow: visible; }
+        #tigerest-settings-inline .tgs-content { overflow: visible; min-width: 0; }
+        #tigerest-settings-inline .tgs-tabs { align-self: start; position: sticky; top: 100px; }
+        #tigerest-settings-inline .tgs-title { font-size: 22px; }
+        #tigerest-settings-inline .tgs-search { min-width: 0; }
+        @media (max-width: 760px) {
+            #tigerest-settings-inline .tgs-dialog { border-radius: 14px; min-height: 0; }
+            #tigerest-settings-inline .tgs-tabs { position: static; }
+            #tigerest-settings-inline .tgs-header { flex-wrap: wrap; }
+            #tigerest-settings-inline .tgs-search { width: 100%; }
+        }
     `;
     document.head.appendChild(css);
 
@@ -886,7 +905,7 @@ async function showSettingsModal() {
     };
 
     const overlay = element('div');
-    overlay.id = 'tigerest-settings-overlay';
+    overlay.id = host ? 'tigerest-settings-inline' : 'tigerest-settings-overlay';
     const dialog = element('div', 'tgs-dialog');
     overlay.appendChild(dialog);
 
@@ -910,7 +929,7 @@ async function showSettingsModal() {
 
     const footer = element('div', 'tgs-footer');
     const status = element('div', 'tgs-status', '设置保存在当前客户端配置中，不会包含 Emby 密码或令牌。');
-    const closeButton = element('button', 'tgs-close', '完成');
+    const closeButton = element('button', 'tgs-close', host ? '返回设置' : '完成');
     footer.append(status, closeButton);
     dialog.appendChild(footer);
 
@@ -919,7 +938,7 @@ async function showSettingsModal() {
         .filter(entry => sectionMeta[entry.key] && jmpInfo.settingsDescriptions[entry.key]);
     const tabButtons = new Map();
     const groups = new Map();
-    let activeSection = sessionStorage.getItem('tigerestSettingsTab') || 'mpv';
+    let activeSection = initialSection || sessionStorage.getItem('tigerestSettingsTab') || 'mpv';
     if (!orderedSections.some(entry => entry.key === activeSection)) {
         activeSection = orderedSections[0]?.key || 'main';
     }
@@ -1044,14 +1063,16 @@ async function showSettingsModal() {
         reset.type = 'button';
         reset.addEventListener('click', async () => {
             if (!window.confirm(`确定恢复“${meta.title}”的默认设置吗？`)) return;
+            reset.disabled = true;
             await window.api.settings.resetToDefault(section);
+            if (disposed || signal?.aborted) return;
             showSaved('已恢复默认值。正在刷新设置页…');
-            setTimeout(() => {
-                rifeExtensionPanel?.dispose();
-                overlay.remove();
-                css.remove();
-                showSettingsModal();
-            }, 180);
+            // QWebChannel updates the settings snapshot before rebuilding.
+            const sectionToRestore = activeSection;
+            cleanup();
+            const refreshed = await mountTigerestSettings(host, sectionToRestore, onReturn, resetAbort.signal);
+            if (disposed || signal?.aborted) { refreshed?.dispose(); return; }
+            replacementMount = refreshed;
         });
         groupHead.append(groupTitle, reset);
         group.appendChild(groupHead);
@@ -1112,6 +1133,7 @@ async function showSettingsModal() {
         const values = jmpInfo.settings[section];
         for (const setting of jmpInfo.settingsDescriptions[section]) {
             const row = element('div', 'tgs-setting');
+            row.dataset.setting = `${section}.${setting.key}`;
             row.dataset.search = `${meta.title} ${setting.displayName || setting.key} ${setting.key} ${setting.help || ''}`.toLowerCase();
             const label = element('div');
             const labelTitle = element('div', 'tgs-setting-title');
@@ -1124,7 +1146,10 @@ async function showSettingsModal() {
             }
             label.appendChild(labelTitle);
             if (setting.help) label.appendChild(element('div', 'tgs-help', setting.help));
-            row.append(label, makeControl(section, setting, values[setting.key]));
+            const control = makeControl(section, setting, values[setting.key]);
+            const input = control.matches('input,select,textarea') ? control : control.querySelector('input');
+            input?.setAttribute('aria-label', setting.displayName || setting.key);
+            row.append(label, control);
             group.appendChild(row);
         }
 
@@ -1141,9 +1166,7 @@ async function showSettingsModal() {
             }
             const offline = element('button', 'tgs-action', '打开下载与离线媒体管理');
             offline.addEventListener('click', () => {
-                rifeExtensionPanel?.dispose();
-                overlay.remove();
-                css.remove();
+                close();
                 window.tigerestOpenOfflineLibrary();
             });
             actions.appendChild(offline);
@@ -1176,29 +1199,53 @@ async function showSettingsModal() {
     };
     search.addEventListener('input', applySearch);
 
-    const close = () => {
+    let replacementMount = null;
+    let disposed = false;
+    const resetAbort = new AbortController();
+    const cleanup = () => {
+        clearTimeout(showSaved.timer);
         rifeExtensionPanel?.dispose();
         document.removeEventListener('keydown', onKeyDown);
         overlay.remove();
         css.remove();
     };
+    const close = () => {
+        disposed = true;
+        resetAbort.abort();
+        replacementMount?.dispose();
+        signal?.removeEventListener('abort', close);
+        cleanup();
+    };
     const onKeyDown = event => {
         if (event.key === 'Escape') close();
     };
-    closeButton.addEventListener('click', close);
-    overlay.addEventListener('click', event => {
-        if (event.target === overlay) close();
-    });
-    document.addEventListener('keydown', onKeyDown);
-    document.body.appendChild(overlay);
+    closeButton.addEventListener('click', () => { close(); if (host) onReturn?.(); });
+    if (!host) {
+        overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
+        document.addEventListener('keydown', onKeyDown);
+    }
+    (host || document.body).appendChild(overlay);
+    signal?.addEventListener('abort', close, {once: true});
+    if (signal?.aborted) { close(); return; }
     activate(activeSection);
-    search.focus();
+    if (!host) search.focus();
+    return {dispose: close, activate};
 }
 
-// Emby 4.9.5 routes its “应用设置” item to the server-provided settings page
-// and never calls NativeShell.openClientSettings(). Keep a version-independent
-// direct entry in the top bar and a conventional Ctrl/Cmd+, shortcut.
-window.tigerestOpenMpvSettings = showSettingsModal;
+async function openTigerestSettings(section = 'mpv') {
+    if (window.Emby?.importModule) {
+        try {
+            const module = await Emby.importModule('./modules/approuter.js');
+            const router = module.default || module;
+            const route = router.getRoutes().find(route => route.controller === 'tigerest/settings-view.js');
+            if (route) return router.show(route.path + '?section=' + encodeURIComponent(section));
+        } catch (error) { console.warn('Unable to open the Emby settings route'); }
+    }
+    // First-run/server selection pages do not have an Emby router yet.
+    return mountTigerestSettings(null, section);
+}
+window.tigerestMountSettings = mountTigerestSettings;
+window.tigerestOpenMpvSettings = openTigerestSettings;
 
 // Emby shelves support touch/trackpad horizontal scrolling, but Chromium
 // starts an image drag when a desktop mouse drags an episode card. Convert a
@@ -1322,7 +1369,7 @@ function installMpvSettingsEntry() {
         button.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
-            showSettingsModal();
+            openTigerestSettings();
         });
         userButton.parentElement.insertBefore(button, userButton);
     };
@@ -1334,7 +1381,7 @@ function installMpvSettingsEntry() {
     document.addEventListener('keydown', event => {
         if ((event.ctrlKey || event.metaKey) && event.key === ',') {
             event.preventDefault();
-            showSettingsModal();
+            openTigerestSettings();
         }
     }, true);
 }

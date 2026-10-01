@@ -4,6 +4,9 @@ import QtWebEngine
 import QtWebChannel
 import QtQuick.Window
 import QtQuick.Controls
+// WebEngine loads ControlsDelegates/FilePicker.qml dynamically. Keep this
+// import explicit so deployment includes its QtQuick.Dialogs runtime.
+import QtQuick.Dialogs
 import Qt.labs.platform as Labs
 
 Window

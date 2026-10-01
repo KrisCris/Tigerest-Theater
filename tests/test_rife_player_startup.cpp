@@ -3,6 +3,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QFile>
+#include <QJsonDocument>
 #include <MpvController>
 #include "Paths.h"
 #include "core/ProfileManager.h"
@@ -33,6 +34,17 @@ private slots:
         QCOMPARE(player.rifeExtensionStatus()["state"].toString(),QString("notInstalled"));
         QVERIFY(!player.windowsRifeStatus()["activated"].toBool());
         QCOMPARE(qgetenv("VSSCRIPT_PATH"),before);
+    }
+    void releaseCatalogOffersDownloadAndOfflineImport(){
+        QFile catalog(":/rife/windows-catalog.json");QVERIFY(catalog.open(QIODevice::ReadOnly));
+        PlayerComponent player;QSignalSpy finished(&player,&PlayerComponent::windowsRifeStartupFinished);
+        player.initializeWindowsRife(root.filePath("release-catalog"),QJsonDocument::fromJson(catalog.readAll()).object());
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(),1,10000);
+        const auto packages=player.rifeExtensionStatus()["packages"].toList();
+        QCOMPARE(packages.size(),1);
+        QCOMPARE(packages.first().toMap()["id"].toString(),QString("rife-nvidia-r79"));
+        QVERIFY(packages.first().toMap()["downloadAvailable"].toBool());
+        QVERIFY(!player.rifeExtensionStatus()["busy"].toBool());
     }
     void untrustedActiveExtensionStillAllowsBaseStartup(){
         const auto extensions=root.filePath("invalid-extension");QVERIFY(QDir().mkpath(extensions));

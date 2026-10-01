@@ -20,7 +20,7 @@ class Element {
 }
 const source=fs.readFileSync(path.join(__dirname,'../native/nativeshell.js'),'utf8');
 const start=source.indexOf('function createRifeExtensionPanel(');
-const end=source.indexOf('async function showSettingsModal()',start);
+const end=source.indexOf('async function mountTigerestSettings(',start);
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 function panel(initial={}){
     assert.ok(start>=0,'Windows extension panel must exist in shipped settings code');

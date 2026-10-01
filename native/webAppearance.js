@@ -53,6 +53,43 @@ function mountTigerestAppearanceStyles() {
                 color-scheme: dark;
             }
 
+            ::-webkit-scrollbar { width: 9px; height: 9px; }
+            ::-webkit-scrollbar-track { background: transparent; }
+            ::-webkit-scrollbar-thumb {
+                background: rgba(220, 226, 238, .28);
+                border: 2px solid transparent;
+                border-radius: 999px;
+                background-clip: padding-box;
+            }
+            ::-webkit-scrollbar-thumb:hover { background-color: rgba(220, 226, 238, .48); }
+            ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+            ::-webkit-scrollbar-corner { background: transparent; }
+
+            .cardOverlayFab-primary:is([data-action="play"], [data-action="resume"], [data-action="playallfromhere"]) {
+                display: none !important;
+            }
+
+            .detailSelectSeasonContainer { padding-bottom: 22px !important; }
+
+            .emby-scrollbuttons-scrollbutton {
+                box-sizing: border-box;
+                width: 40px !important; height: 40px !important;
+                color: rgba(255, 255, 255, .92) !important;
+                background: rgba(17, 20, 27, .78) !important;
+                border: 1px solid rgba(255, 255, 255, .18) !important;
+                border-radius: 12px !important;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, .24) !important;
+                backdrop-filter: blur(12px);
+                transition: background 160ms ease, border-color 160ms ease;
+            }
+            .emby-scrollbuttons-scrollbutton:hover,
+            .emby-scrollbuttons-scrollbutton:focus-visible {
+                color: var(--tgs-accent) !important;
+                background: rgba(17, 20, 27, .96) !important;
+                border-color: rgba(255, 190, 56, .5) !important;
+            }
+            .emby-scrollbuttons-scrollbutton .md-icon { font-size: 26px !important; }
+
             .backgroundContainer {
                 position: fixed;
                 overflow: hidden;
@@ -274,18 +311,22 @@ function mountTigerestAppearanceStyles() {
             }
 
             .portraitCard:hover .cardBox,
-            .portraitCard:focus-within .cardBox,
+            .portraitCard:focus-visible .cardBox,
+            .portraitCard:has(:focus-visible) .cardBox,
             .backdropCard:hover .cardBox,
-            .backdropCard:focus-within .cardBox,
+            .backdropCard:focus-visible .cardBox,
+            .backdropCard:has(:focus-visible) .cardBox,
             .squareCard:hover .cardBox,
-            .squareCard:focus-within .cardBox {
+            .squareCard:focus-visible .cardBox,
+            .squareCard:has(:focus-visible) .cardBox {
                 transform: translateY(-12px) scale(1.04);
                 filter: brightness(1.07) saturate(1.06);
                 box-shadow: none !important;
             }
 
             .card:hover .cardImageContainer,
-            .card:focus-within .cardImageContainer {
+            .card:focus-visible .cardImageContainer,
+            .card:has(:focus-visible) .cardImageContainer {
                 box-shadow:
                     0 24px 54px rgba(0, 0, 0, .46),
                     0 0 28px rgba(91, 151, 255, .20),
@@ -293,7 +334,8 @@ function mountTigerestAppearanceStyles() {
             }
 
             .card:hover,
-            .card:focus-within {
+            .card:focus-visible,
+            .card:has(:focus-visible) {
                 z-index: 3;
             }
 

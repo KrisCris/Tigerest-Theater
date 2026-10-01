@@ -147,10 +147,15 @@ TensorRT SLA 在 licenses 中）。公开分发前还需补齐 CUDA/VC 运行库
 
 package_extension.py把已封存runtime、实际playback脚本/Monitor及notices生成ZIP64，
 不带引擎/用户设置。固定catalog记录外层SHA256、manifestSha256、版本范围、ABI、
-下载/展开大小和文件数；当前URL为空，尚无线上安装入口。verify_extension.py是
-参考校验器，不安装或执行内容。原生管理层已实现磁盘预算、取消、原子active、
-多进程使用锁、启动全量再校验和强ETag续传。主程序/设置入口及真实完整包导入仍待接入，
-不能由开发工具测试推定发行验收完成。
+下载/展开大小和文件数。正式版目录使用已发布的固定 GitHub 附件。verify_extension.py 是
+参考校验器，不安装或执行内容。原生管理层实现磁盘预算、取消、原子 active、
+多进程使用锁、启动全量再校验和强 ETag 续传；客户端提供下载、离线 ZIP 导入及卸载。
+发行验收记录见 docs/reports/2026-09-30-windows-rife.md。
+
+版本区间为 minAppVersion（含）至 maxAppVersion（不含）。已封存的扩展可通过可信目录
+compatibleAppVersions 数组显式批准额外的应用版本；该数组只列确定已验证的版本，
+不会改变原 ZIP、清单版本范围、SHA256 或 ABI 校验。新增应用版本必须更新目录并运行
+实际目录／应用版本回归，不能修改封存包的清单身份。
 
 回归实际构造原始local/central ZIP头，验证NUL/反斜杠未被zipfile规范化后隐藏；
 路径穿越、Windows保留名、Unix链接/DOS目录/重解析位、重复大小写路径、父文件冲突、
@@ -165,4 +170,4 @@ active.json原子提交；正在使用的版本持有跨进程lease，卸载等�
 下载使用独立QNAM，不传Emby鉴权。只接受可信目录的HTTPS；206要求完整Content-Range
 和同一强ETag，200重新写入，弱ETag不续传，完整SHA通过才安装。取消缓存复验保留已
 下载的文件。测试使用公开loopback TLS fixture及独立HTTP listener，不改变系统信任。
-这些状态与操作尚未暴露给网页；下载地址保持空，直到存在经过校验的发行附件。
+状态与操作通过 QWebChannel 暴露给客户端设置；打开设置不会自动开始下载。

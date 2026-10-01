@@ -144,7 +144,8 @@ if(WIN32 AND Python3_Interpreter_FOUND)
   target_compile_definitions(test_rife_player_startup PRIVATE ${TEST_COMPILE_DEFS})
   qt_add_resources(test_rife_player_startup "test_rife_player_startup_resources"
     PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
-    FILES "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
+    FILES "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json"
+          "${CMAKE_SOURCE_DIR}/resources/rife/windows-catalog.json")
   add_test(NAME test_rife_player_startup COMMAND test_rife_player_startup)
   set_tests_properties(test_rife_player_startup PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
     ENVIRONMENT "RIFE_TEST_PLAYER_MONITOR=$<TARGET_FILE:tigerest_rife_vs>"
@@ -372,11 +373,20 @@ if(Node_EXECUTABLE)
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_registration.js)
   add_test(NAME test_rife_windows_settings
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_rife_windows_settings.js)
+  add_test(NAME test_native_settings_registration
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_native_settings_registration.js)
   add_test(NAME test_server_onboarding
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_server_onboarding.js)
   execute_process(COMMAND ${Node_EXECUTABLE} -p "typeof WebSocket === 'function' && typeof fetch === 'function'"
                   OUTPUT_VARIABLE NODE_HAS_WEBENGINE_TEST_APIS OUTPUT_STRIP_TRAILING_WHITESPACE)
   if(WIN32 AND NODE_HAS_WEBENGINE_TEST_APIS STREQUAL "true")
+    if(Python3_Interpreter_FOUND)
+      add_test(NAME test_windows_web_controls
+               COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_windows_web_controls.cjs
+                       $<TARGET_FILE:${MAIN_TARGET}> --stage=ui)
+      set_tests_properties(test_windows_web_controls PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
+                           ENVIRONMENT "TEST_PYTHON=${Python3_EXECUTABLE}")
+    endif()
     add_test(NAME test_community_webengine
              COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_community_ui.cjs
                      $<TARGET_FILE:${MAIN_TARGET}> --webengine)

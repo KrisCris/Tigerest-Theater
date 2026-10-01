@@ -14,7 +14,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'dev/windows/rife'))
 from package_extension import build_extension
-from verify_extension import verify_extension
+from verify_extension import verify_extension, catalog_item
 
 
 class ExtensionPackageTests(unittest.TestCase):
@@ -70,6 +70,28 @@ class ExtensionPackageTests(unittest.TestCase):
             self.assertFalse(any(name.endswith('.engine') for name in archive.namelist()))
             # Builder forces ZIP64 local headers, even for the tiny fixture.
             self.assertTrue(any(info.extract_version >= 45 for info in archive.infolist()))
+
+    def test_catalog_can_explicitly_approve_a_new_app_without_resealing_archive(self):
+        self.item['compatibleAppVersions'] = ['3.0.0']
+        report = verify_extension(self.archive, self.catalog, 'rife-test-win64', '3.0.0')
+        self.assertEqual(report['runtimeId'], 'fixture-r79')
+        with self.assertRaisesRegex(ValueError, 'application version'):
+            catalog_item(self.catalog, 'rife-test-win64', '3.0.1')
+
+    def test_shipped_catalog_supports_the_actual_release_version(self):
+        catalog = json.loads((ROOT/'resources/rife/windows-catalog.json').read_text())
+        app = (ROOT/'VERSION').read_text().strip()
+        item = catalog_item(catalog, 'rife-nvidia-r79', app)
+        self.assertTrue(item['url'].startswith('https://github.com/Tigerest/'))
+
+    def test_explicit_compatibility_keeps_hash_and_abi_checks(self):
+        self.item['compatibleAppVersions'] = ['3.0.0']
+        self.item['sha256'] = '0'*64
+        with self.assertRaisesRegex(ValueError, 'hash'):
+            verify_extension(self.archive, self.catalog, 'rife-test-win64', '3.0.0')
+        self.item['abi'] = 'unverified-abi'
+        with self.assertRaisesRegex(ValueError, 'ABI'):
+            catalog_item(self.catalog, 'rife-test-win64', '3.0.0')
 
     def test_catalog_hash_identity_and_app_range_are_authoritative(self):
         with self.assertRaisesRegex(ValueError,'catalog'):
