@@ -259,3 +259,5 @@ Mac CI 36807849627 的 arm64 应用编译完成，但原生打包因 Homebrew �
 撤销临时日志后完整构建与 CTest **54/54 PASS，92.18 秒**（`final-compat-full-tests.log`），包含实际私有 GPU 帧图、原生播放与恢复、EOF、安装／下载、R79 显式来源共存、中文命令行及 WebEngine 回归。
 
 后续只读复核发现 Meson 1.9.2 对复用目录忽略新的 `PKG_CONFIG_PATH` 并缓存旧依赖，只有全新 CI 才不会受影响。构建现在显式传入有序 `pkg_config_path` 选项，重配置时清除 dependency cache，并在 provenance 记录私有 pkgconfig 来源。真实 Meson 1.9.2／最小 pkg-config fixture 同目录回归实际 RED（继续 cached R80／SDK80 include）→GREEN（R79／SDK79 include），五个运行库来源测试通过；这验证构建配置与缓存行为，不能替代 Mac 原生运行库／DMG 验收。
+
+`b52c63f` 本机完整构建／CTest **54/54 PASS，94.80 秒**，最终 ZIP 1,505 条目 CRC 和角色／来源校验通过。标准模型实际 4K 输出短测：Render API／默认画质 30.006 秒通过，GPU-Next／真人影视 30.007 秒通过；激进测试画质在 warmup 内触发性能保护，基准主动退出 1，未通过，不能写作原生崩溃或帧率达标。日常默认画质的三模型 600 秒通过结果保持。Windows CI 36813266753 两次在 SourceForge 的 stock SDK 下载收到 16 字节非归档，未进入编译；改为仓库内固定上游 `f7be2ee3e9f24fcd633d1fd82339c4219a109cee` 的四个未改动 C API 头文件，记录并校验 SHA／Git blob，保留 ISC 许可。预处理定义与声明匹配本机已测 SDK，仅部分注释不同。CI 直接从已验证的发行内核生成 import library，删除未使用的 stock 内核下载；两端最终同提交构建仍需追加。

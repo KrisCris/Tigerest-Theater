@@ -1,0 +1,27 @@
+{
+  "upstream": "https://github.com/mpv-player/mpv",
+  "revision": "f7be2ee3e9f24fcd633d1fd82339c4219a109cee",
+  "files": {
+    "client.h": {
+      "size": 85973,
+      "sha256": "3c073236a09cb456c6e80587d5523c8771c32fb22ca014e0f99cc3d43905b75c",
+      "gitBlob": "85cff63bd5d20797ca622834fd904d506d0d4fd8"
+    },
+    "render.h": {
+      "size": 34271,
+      "sha256": "192691941602052f00df0587f126246c48785a1cf21de68d22a92ea1908d1c55",
+      "gitBlob": "99aadeb5d837dd47a8a170ae55672cf46ec5f4c4"
+    },
+    "render_gl.h": {
+      "size": 7328,
+      "sha256": "48662c0ed9872a14dd9e1684105c97f69f94a0414709c254c5d372adc41d2e69",
+      "gitBlob": "aa2719d5c4ebfa1ecaee469b563d138e10b1df4e"
+    },
+    "stream_cb.h": {
+      "size": 9589,
+      "sha256": "188e58b6d14383e15a5dffdc4ecebbdfbf2e412b9c099ff21b571f747a8ce32d",
+      "gitBlob": "9ae6f31a16847d9a695886a78bc1b7a2c9942a27"
+    }
+  },
+  "note": "Unmodified public C API headers. Preprocessor definitions and declarations match the already tested local SDK; comments may differ. ISC license notices remain in each header."
+}
