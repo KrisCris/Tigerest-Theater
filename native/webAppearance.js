@@ -53,17 +53,31 @@ function mountTigerestAppearanceStyles() {
                 color-scheme: dark;
             }
 
-            ::-webkit-scrollbar { width: 9px; height: 9px; }
-            ::-webkit-scrollbar-track { background: transparent; }
-            ::-webkit-scrollbar-thumb {
+            /* Chromium ignores custom scrollbar painting when Emby supplies
+               a standard scrollbar-color, even though pseudo styles resolve. */
+            body.tigerest-appearance-ready,
+            body.tigerest-appearance-ready * { scrollbar-color: auto; }
+
+            body.tigerest-appearance-ready::-webkit-scrollbar,
+            body.tigerest-appearance-ready ::-webkit-scrollbar { width: 9px; height: 9px; }
+            body.tigerest-appearance-ready::-webkit-scrollbar-track,
+            body.tigerest-appearance-ready ::-webkit-scrollbar-track { background: transparent; }
+            body.tigerest-appearance-ready::-webkit-scrollbar-thumb,
+            body.tigerest-appearance-ready ::-webkit-scrollbar-thumb {
+                min-height: 42px;
                 background: rgba(220, 226, 238, .28);
                 border: 2px solid transparent;
                 border-radius: 999px;
                 background-clip: padding-box;
             }
-            ::-webkit-scrollbar-thumb:hover { background-color: rgba(220, 226, 238, .48); }
-            ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-            ::-webkit-scrollbar-corner { background: transparent; }
+            body.tigerest-appearance-ready::-webkit-scrollbar-thumb:hover,
+            body.tigerest-appearance-ready ::-webkit-scrollbar-thumb:hover {
+                background-color: rgba(220, 226, 238, .48);
+            }
+            body.tigerest-appearance-ready::-webkit-scrollbar-button,
+            body.tigerest-appearance-ready ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+            body.tigerest-appearance-ready::-webkit-scrollbar-corner,
+            body.tigerest-appearance-ready ::-webkit-scrollbar-corner { background: transparent; }
 
             .cardOverlayFab-primary:is([data-action="play"], [data-action="resume"], [data-action="playallfromhere"]) {
                 display: none !important;
@@ -431,28 +445,6 @@ function mountTigerestAppearanceStyles() {
 
             :focus-visible {
                 outline-color: var(--tgs-accent) !important;
-            }
-
-            ::-webkit-scrollbar {
-                width: 10px;
-                height: 10px;
-            }
-
-            ::-webkit-scrollbar-track {
-                background: transparent;
-            }
-
-            ::-webkit-scrollbar-thumb {
-                min-height: 42px;
-                border: 3px solid transparent;
-                border-radius: 999px;
-                background: rgba(255, 255, 255, .22);
-                background-clip: padding-box;
-            }
-
-            ::-webkit-scrollbar-thumb:hover {
-                background: rgba(255, 255, 255, .34);
-                background-clip: padding-box;
             }
 
             .tigerest-page-enter {
