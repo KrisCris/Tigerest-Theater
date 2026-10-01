@@ -22,6 +22,7 @@ test('MPV settings register a client settings route rendered within Emby', () =>
     assert.notEqual(route.settingsType,'user');
     assert.equal(route.contentPath,'none');
     assert.equal(route.templateType,'settings');
+    assert.equal(route.settingsTheme,true,'the integrated page retains the Emby settings drawer');
     assert.equal(route.title,'MPV 播放设置');
     assert.ok(registrations.has(route.controller));
 });

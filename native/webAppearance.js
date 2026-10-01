@@ -57,6 +57,9 @@ function mountTigerestAppearanceStyles() {
                a standard scrollbar-color, even though pseudo styles resolve. */
             body.tigerest-appearance-ready,
             body.tigerest-appearance-ready * { scrollbar-color: auto; }
+            body.tigerest-appearance-ready :is(.scrollX-mini, .scrollY-mini):not(.hiddenScrollX, .hiddenScrollY) {
+                scrollbar-width: auto;
+            }
 
             body.tigerest-appearance-ready::-webkit-scrollbar,
             body.tigerest-appearance-ready ::-webkit-scrollbar { width: 9px; height: 9px; }

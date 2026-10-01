@@ -122,7 +122,7 @@
                 getRoutes() {
                     return [{path: 'settings.html', type: 'settings', settingsType: 'app',
                         title: 'MPV 播放设置', icon: '&#xe8b8;', order: 25,
-                        contentPath: 'none', templateType: 'settings',
+                        contentPath: 'none', templateType: 'settings', settingsTheme: true,
                         controller: 'tigerest/settings-view.js'}];
                 }
             };
