@@ -14,9 +14,7 @@
 | Windows 10 1903+ / Windows 11，x64 | [便携版 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.18/TigerestTheater-2.0.18-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
 | macOS 26+，Apple Silicon（M 系列） | [DMG 安装包](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.18/TigerestTheater-2.0.18-arm64.dmg) | 打开 DMG，将应用拖入「应用程序」 |
 
-想试用 Mac 内置 AI 补帧，可下载 [v2.1.2 Mac 预览版](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.1.2)。
-
-Windows 与 Mac 的 [v2.2.0 RIFE 预览版](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.2.0)正在进行统一发行验收。Windows NVIDIA 使用独立扩展，包含 4.25 lite、4.25 和 4.25 heavy，无需配置 SVP、Python 或 CUDA Toolkit；安装扩展并重启后开启补帧。扩展下载约 2.00 GiB、展开约 2.49 GiB，首次准备引擎时先按原帧播放，完成后重新打开视频。Mac 沿用已有 Core ML／Metal 后端。
+想试用 AI 补帧，可下载 Windows 与 Apple Silicon Mac 统一的 [v2.2.0 RIFE 预览版](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.2.0)。Windows NVIDIA 使用独立扩展，包含 4.25 lite、4.25 和 4.25 heavy，无需配置 SVP、Python 或 CUDA Toolkit；在 MPV 设置中下载或导入扩展，完全退出并重启后开启补帧。扩展下载约 2.00 GiB、展开约 2.49 GiB，引擎缓存另占空间；首次准备引擎时先按原帧播放，完成后重新打开视频。Mac 沿用已有 Core ML／Metal 后端及原有模型／输入限制。
 
 RTX 4090 上三模型均通过合成素材 1080p30→60、默认画质处理后输出 4K 的 10 分钟测试；1080p→240 与原生 4K60→120 尚未达到实时目标，会触发原帧回退。这两个预设属于实验选项，未自动降低推理分辨率。详细边界见[实施报告](docs/reports/2026-09-30-windows-rife.md)。
 

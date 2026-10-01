@@ -1,6 +1,6 @@
 # Windows RIFE 实施验证记录
 
-更新：2026-10-01。Windows Player、原生扩展安装、启动校验和设置入口已经接通；三模型均通过合成素材的默认 4K 输出日常长测，两个极限目标未通过。完整扩展离线导入、重启全量复核和真实主程序播放已通过。当前收尾错误恢复和基础包部署；干净 Windows、同提交 Mac 产物及统一发行仍待验证。以下按日期保留实验历史，最新结果见文末。
+更新：2026-10-01。Windows Player、原生扩展安装、启动校验和设置入口已经接通；三模型均通过合成素材的默认 4K 输出日常长测，两个极限目标未通过。完整扩展离线导入、重启全量复核和最终便携包的真实主程序播放已通过；同提交 Windows CI、Apple Silicon Mac 构建、包内运行库及 DMG 打包也已通过。[v2.2.0 统一预览版](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.2.0)已发布，七份附件的服务器大小／SHA256 均与已验证的本地文件一致。干净 Windows 和真实影片视觉质量仍未验收。以下按日期保留实验历史，最新结果见文末。
 
 ## 共同基线
 
@@ -261,3 +261,17 @@ Mac CI 36807849627 的 arm64 应用编译完成，但原生打包因 Homebrew �
 后续只读复核发现 Meson 1.9.2 对复用目录忽略新的 `PKG_CONFIG_PATH` 并缓存旧依赖，只有全新 CI 才不会受影响。构建现在显式传入有序 `pkg_config_path` 选项，重配置时清除 dependency cache，并在 provenance 记录私有 pkgconfig 来源。真实 Meson 1.9.2／最小 pkg-config fixture 同目录回归实际 RED（继续 cached R80／SDK80 include）→GREEN（R79／SDK79 include），五个运行库来源测试通过；这验证构建配置与缓存行为，不能替代 Mac 原生运行库／DMG 验收。
 
 `b52c63f` 本机完整构建／CTest **54/54 PASS，94.80 秒**，最终 ZIP 1,505 条目 CRC 和角色／来源校验通过。标准模型实际 4K 输出短测：Render API／默认画质 30.006 秒通过，GPU-Next／真人影视 30.007 秒通过；激进测试画质在 warmup 内触发性能保护，基准主动退出 1，未通过，不能写作原生崩溃或帧率达标。日常默认画质的三模型 600 秒通过结果保持。Windows CI 36813266753 两次在 SourceForge 的 stock SDK 下载收到 16 字节非归档，未进入编译；改为仓库内固定上游 `f7be2ee3e9f24fcd633d1fd82339c4219a109cee` 的四个未改动 C API 头文件，记录并校验 SHA／Git blob，保留 ISC 许可。预处理定义与声明匹配本机已测 SDK，仅部分注释不同。CI 直接从已验证的发行内核生成 import library，删除未使用的 stock 内核下载；两端最终同提交构建仍需追加。
+
+### 最终应用提交与发行包验证
+
+应用源码固定为 `02413f7d0278839940956d8a8490d535ea540414`。该提交仅修复 Windows SDK／CI 来源准备，不改变 `b52c63f` 已验证的播放行为。本机重新构建、真实播放回归及打包均退出 0；最终 ZIP 1,505 条目 CRC、两个 MPV 角色和来源锁均通过，基础包不含扩展或引擎缓存。便携包内 EXE SHA256 为 `1bc29358afd3768ff403a69becb244e47ce241c8f267530704e11e321a67ec6b`。
+
+完整便携包的默认 GPU-Next 主流程和 Render API 扩展流程均实际通过，报告同时记录该 EXE SHA 与应用源码身份：启动前全量扩展校验、模型／预设保存、标准模型与默认三 shader／音频、20 次 seek、倍速整片旁路、下一项恢复补帧、自然 EOF、正常 native exitCode=0。Render API 另通过暂停 seek 保持暂停、暂停重开后恢复补帧、纯音频切换与自然 EOF。无扩展、清除开发运行库路径后的主程序 WebEngine 启动检查也通过；该检查会终止自己的进程，只计启动，不计正常退出或干净系统验证。真实主程序测试窗口为物理 1920×1080，不替代三模型的物理 4K／600 秒基准。
+
+Windows 最终安装器 SHA256 为 `02faaec3e0b789a28b1d7f76f5127fa16c93dbf53dfe16fa772a1187534ad365`，便携 ZIP 为 `882ce929197b7386577f0b2388e547b7d61e2b3f55819ee1e782b2cf501ae2fa`。附件已绑定本机干净源码构建记录、完整包校验值与实际 QA 的 EXE 校验值；本机产物不是 CI 下载品，也不是签名构建证明。Windows CI `36814797531` 已通过最终编译、打包、**44/44 CTest（101.34 秒）**、完整便携包 WebEngine 启动与附件上传。CI 未启用十项依赖本机 GPU／专用运行库与媒体夹具的测试；本机 `b52c63f` 完整 54 项及最终 `02413f7` 真实播放回归的证据分别保留。
+
+Apple Silicon 最终 job `110217412365`（run `36814793756`）已从同一提交通过构建、**29/29 CTest**、包内 Python／VapourSynth／MoltenVK 导入、依赖闭合、RIFE 模型完整性及 DMG 打包。仅发布该 arm64 附件；ARM 成功且已取回附件后取消剩余 Intel 编译，不将整个 matrix 记为通过。最终 DMG 尚未做交互播放测试。下载已实际通过 GitHub artifact `11141905544` 的外层 SHA256 `afca5edfd864f58be24dbb46af7a91ced5fc7faa589da95f7126cd0c9dc9d6a8`／CRC 检查，唯一归档成员与待发布 DMG 一致，DMG 为 343,138,745 字节、SHA256 `15ab25dc9b9036e694a24fae091c959c1960fe422c7a67a92654d7d513319820`。
+
+`TigerestTheater-2.2.0-release-manifest.json` 实际生成前要求两端 job 成功且 source SHA 一致，核对可信本机构建记录的安装器／ZIP／日志 SHA，要求 ZIP 中 EXE、ZIP 验证记录、构建记录与两份真实 QA 的 EXE SHA 完全一致；Mac 要求同提交 artifact 身份及外层 digest，并核对其中 DMG 与发行文件 SHA。性能摘要保留可用的宿主／stats／monitor SHA，去除本机路径和 GPU UUID。上述门禁已实际通过；校验清单包含五份二进制附件与 manifest。
+
+统一 release ID `400597465` 于 2026-10-01 12:53:53（上海时间）发布为 prerelease；标签 `v2.2.0` 实际指向应用源码 `02413f7d0278839940956d8a8490d535ea540414`。正式版保持 v2.0.18。发布后 API 确认 draft=false、prerelease=true、七份附件均 uploaded，大小与 digest 全部匹配；文档更新作为后续独立提交，不改动该应用标签及已测二进制。
