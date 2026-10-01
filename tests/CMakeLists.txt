@@ -367,6 +367,9 @@ endif()
 
 find_program(Node_EXECUTABLE node)
 if(Node_EXECUTABLE)
+  add_test(NAME test_community_client
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_community_client.js
+                   ${CMAKE_CURRENT_SOURCE_DIR}/test_community_registration.js)
   add_test(NAME test_rife_windows_settings
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_rife_windows_settings.js)
   add_test(NAME test_server_onboarding
@@ -374,6 +377,10 @@ if(Node_EXECUTABLE)
   execute_process(COMMAND ${Node_EXECUTABLE} -p "typeof WebSocket === 'function' && typeof fetch === 'function'"
                   OUTPUT_VARIABLE NODE_HAS_WEBENGINE_TEST_APIS OUTPUT_STRIP_TRAILING_WHITESPACE)
   if(WIN32 AND NODE_HAS_WEBENGINE_TEST_APIS STREQUAL "true")
+    add_test(NAME test_community_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_community_ui.cjs
+                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_community_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
     add_test(NAME test_webengine_startup
              COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_webengine_startup.js
                      $<TARGET_FILE:${MAIN_TARGET}>)

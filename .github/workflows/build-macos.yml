@@ -3,6 +3,12 @@ name: build-macos
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      apple_silicon_only:
+        description: Build only the supported Apple Silicon release package
+        type: boolean
+        required: false
+        default: false
   push:
     branches:
       - master
@@ -12,11 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: macos-26
-            artifact: macos-arm64
-          - runner: macos-26-intel
-            artifact: macos-x86_64
+        include: ${{ fromJSON(inputs.apple_silicon_only && '[{"runner":"macos-26","artifact":"macos-arm64"}]' || '[{"runner":"macos-26","artifact":"macos-arm64"},{"runner":"macos-26-intel","artifact":"macos-x86_64"}]') }}
     runs-on: ${{ matrix.runner }}
     steps:
     - uses: actions/checkout@v7

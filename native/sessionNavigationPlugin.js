@@ -23,6 +23,7 @@ class SessionNavigationPlugin {
     }
 
     onLogout(apiClient) {
+        window.TigerestCommunityReset?.();
         const selectServerPath = '/startup/selectserver.html';
         const finishLogout = () => this.originalLogout.call(this.appRouter, apiClient);
 

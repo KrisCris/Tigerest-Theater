@@ -6,7 +6,8 @@
         'tigerest/mpv-video.js',
         'tigerest/mpv-audio.js',
         'tigerest/input.js',
-        'tigerest/session-navigation.js'
+        'tigerest/session-navigation.js',
+        'tigerest/community.js'
     ];
 
     function seedDefaultServer() {
@@ -190,6 +191,14 @@
                         connectionManager: moduleValue(connectionManager),
                         viewManager: moduleValue(viewManager)
                     });
+                }
+            };
+        });
+
+        defineModule('tigerest/community.js', ['connectionManager', 'events'], function (connectionManager, events) {
+            return class TigerestCommunityPlugin extends window._communityPlugin {
+                constructor() {
+                    super({connectionManager: moduleValue(connectionManager), events: moduleValue(events)});
                 }
             };
         });
