@@ -29,6 +29,8 @@ if [ ! -x "${RIFE_PYTHON}" ]; then
     "$(brew --prefix python@3.13)/bin/python3.13" -m venv "${RIFE_BUILD}/venv"
 fi
 "${RIFE_BUILD}/venv/bin/pip" install meson==1.9.2
+"${RIFE_BUILD}/venv/bin/pip" install --require-hashes --only-binary=:all: --no-deps \
+    -r "${SCRIPT_DIR}/rife/requirements-runtime.txt"
 RIFE_MODEL=""
 if [ "$(uname -m)" = arm64 ]; then
     "${RIFE_BUILD}/venv/bin/pip" install -r "${SCRIPT_DIR}/rife/requirements-build.txt"
@@ -46,7 +48,7 @@ if [ "$(uname -m)" = arm64 ]; then
     fi
 fi
 "${RIFE_PYTHON}" "${SCRIPT_DIR}/rife/build_mpv.py" --output "${RIFE_BUILD}/playback" \
-    --meson "${RIFE_BUILD}/venv/bin/meson"
+    --meson "${RIFE_BUILD}/venv/bin/meson" --vapoursynth-python "${RIFE_PYTHON}"
 
 # Configure
 mkdir -p "${BUILD_DIR}"
@@ -63,6 +65,7 @@ cmake -G Ninja \
     -DUSE_STATIC_MPVQT=ON \
     -DMPV_LIBRARY_mpv="${RIFE_BUILD}/playback/mpv-build/libmpv.dylib" \
     -DTIGEREST_RIFE_MODEL_DIR="${RIFE_MODEL}" \
+    -DTIGEREST_VAPOURSYNTH_PYTHON="${RIFE_PYTHON}" \
     "${PROJECT_ROOT}"
 
 # Build

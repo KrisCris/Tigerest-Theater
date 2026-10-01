@@ -20,6 +20,7 @@ option(LINUX_X11POWER "Enable non D-Bus screensaver management" OFF)
 option(USE_STATIC_MPVQT "Build MpvQt from bundled submodule instead of using system library" OFF)
 option(MACOS_LAUNCH_WRAPPER "Wrap macOS binary in a shell script to block DYLD_FRAMEWORK_PATH injection" OFF)
 option(COVERAGE "Gemerate test code coverage with gcov" OFF)
+set(TIGEREST_VAPOURSYNTH_PYTHON "" CACHE FILEPATH "Explicit interpreter containing the verified macOS R79 package")
 
 if (NOT CHECK_FOR_UPDATES)
     add_definitions(-DDISABLE_UPDATE_CHECK)

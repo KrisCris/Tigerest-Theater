@@ -1,0 +1,4 @@
+# Official CPython abi3 wheels; build and bundle use this R79 package.
+vapoursynth==79 \
+    --hash=sha256:ea2750319e31d099b4652a4a63f47db2c297c307f7567e3e9352b75158c7b37c \
+    --hash=sha256:64eb7309439407fec0e0f6771c1b6f954d08355c46cf0c56fb55e1ba68bb7f79

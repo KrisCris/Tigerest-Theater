@@ -39,6 +39,8 @@ jobs:
       run: |
         "$(brew --prefix python@3.13)/bin/python3.13" -m venv build/rife/venv
         build/rife/venv/bin/pip install meson==1.9.2
+        build/rife/venv/bin/pip install --require-hashes --only-binary=:all: --no-deps \
+          -r dev/macos/rife/requirements-runtime.txt
         if [ "$(uname -m)" = arm64 ]; then
           build/rife/venv/bin/pip install -r dev/macos/rife/requirements-build.txt
           build/rife/venv/bin/python dev/macos/rife/prepare_model.py build/rife/source
@@ -51,7 +53,8 @@ jobs:
           echo "TIGEREST_RIFE_MODEL_DIR=$PWD/build/rife/models/1080-split-refine" >> "$GITHUB_ENV"
         fi
         build/rife/venv/bin/python dev/macos/rife/build_mpv.py \
-          --output build/rife/playback --meson "$PWD/build/rife/venv/bin/meson"
+          --output build/rife/playback --meson "$PWD/build/rife/venv/bin/meson" \
+          --vapoursynth-python "$PWD/build/rife/venv/bin/python"
     - name: Release build
       run: |
         cmake -B build -G Ninja \
@@ -63,7 +66,8 @@ jobs:
           -DCHECK_FOR_UPDATES=OFF \
           -DUSE_STATIC_MPVQT=ON \
           -DMPV_LIBRARY_mpv="$PWD/build/rife/playback/mpv-build/libmpv.dylib" \
-          -DTIGEREST_RIFE_MODEL_DIR="${TIGEREST_RIFE_MODEL_DIR:-}"
+          -DTIGEREST_RIFE_MODEL_DIR="${TIGEREST_RIFE_MODEL_DIR:-}" \
+          -DTIGEREST_VAPOURSYNTH_PYTHON="$PWD/build/rife/venv/bin/python"
         cmake --build build --target install
     - name: Run unit tests
       run: |

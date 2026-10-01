@@ -3,6 +3,7 @@
 #include <QTemporaryDir>
 #include <MpvController>
 #include "player/interpolation/MpvPollAccess.h"
+#include "player/interpolation/windows/RifePlaybackCoordinator.h"
 #include <windows.h>
 #include "Paths.h"
 #include "core/ProfileManager.h"
@@ -33,6 +34,60 @@ private slots:
         QVERIFY(player.m_inPlayback);QVERIFY(!player.m_playbackCanceled);
         start.playlist_entry_id=43;event.event_id=MPV_EVENT_START_FILE;event.data=&start;player.handleMpvEvent(&event);
         QVERIFY(!player.m_replacementPending);
+    }
+    void renderApiRemainsVisibleWhileItsVoReconfigures(){
+        for(const bool native:{false,true}) {
+            PlayerComponent player;player.m_nativeVideoOutput=native;
+            QSignalSpy visibility(&player,&PlayerComponent::windowVisible);
+            mpv_event_start_file start{};start.playlist_entry_id=17;
+            mpv_event event{};event.event_id=MPV_EVENT_START_FILE;event.data=&start;
+            player.handleMpvEvent(&event);
+            QCOMPARE(visibility.last()[0].toBool(),!native);
+            int configured=0;
+            mpv_event_property property{"vo-configured",MPV_FORMAT_FLAG,&configured};
+            event.event_id=MPV_EVENT_PROPERTY_CHANGE;event.data=&property;
+            player.handleMpvEvent(&event);
+            QCOMPARE(visibility.last()[0].toBool(),!native);
+            QVERIFY(!player.m_windowVisible); // readiness remains a real VO state
+            mpv_event_end_file ended{};ended.reason=MPV_END_FILE_REASON_EOF;
+            event.event_id=MPV_EVENT_END_FILE;event.data=&ended;
+            player.handleMpvEvent(&event);
+            QCOMPARE(visibility.last()[0].toBool(),false);
+        }
+    }
+    void renderApiWaitsForRestartBeforeQualifyingItsFormat(){
+        std::unique_ptr<QObject> controller(new MpvController);
+        PlayerComponent player;
+        player.m_mpv=static_cast<MpvController*>(controller.get());player.m_nativeVideoOutput=false;
+        player.m_inPlayback=true;player.m_nativeVideoReady=false;player.m_rifeClock.start();
+        rife::MpvAccess access{
+            [](const QString&){return QVariant();},
+            [](const QString&,const QVariant&){return true;},
+            [](const QStringList&){return true;},
+            [](const QString&,const QVariant&){return true;},
+            [](const QStringList&){return true;}};
+        player.m_rifeAccess=std::make_unique<rife::MpvPollAccess>(access);
+        player.m_rife=std::make_unique<rife::FrameInterpolationController>(access,rife::RuntimePaths{});
+        player.m_windowsRifePlayback=std::make_unique<rife::RifePlaybackCoordinator>(*player.m_windowsRifeRuntime,*player.m_rife);
+        player.m_windowsRifePlayback->beginItem(true,false,1.);
+        auto& observed=*player.m_rifeAccess;
+        observed.observe("vf",QVariantList{});observed.observe("speed",1.);
+        observed.observe("container-fps",30.);
+        observed.observe("video-frame-info",QVariantMap{{"interlaced",false}});
+        QVariantMap format{{"w",1920},{"h",1080}};
+        observed.observe("video-params",format);
+        // A replacement initially reports dimensions without settled color
+        // metadata. It must not become the immutable source identity yet.
+        player.pollInterpolation();
+        format.insert("gamma","bt.1886");format.insert("primaries","bt.709");
+        format.insert("colormatrix","bt.709");format.insert("colorlevels","limited");
+        observed.observe("video-params",format);
+        mpv_event event{};event.event_id=MPV_EVENT_PLAYBACK_RESTART;player.handleMpvEvent(&event);
+        player.pollInterpolation();
+        QCOMPARE(player.m_rife->diagnostics()["reason"].toString(),QString("runtime-missing"));
+        // After restart, a real format transition still bypasses this item.
+        format.insert("w",1280);observed.observe("video-params",format);player.pollInterpolation();
+        QCOMPARE(player.m_rife->diagnostics()["reason"].toString(),QString("dynamic-format"));
     }
     void stopCancelsPendingRecoveryReplacement(){
         PlayerComponent player;player.m_inPlayback=true;player.m_replacementPending=true;

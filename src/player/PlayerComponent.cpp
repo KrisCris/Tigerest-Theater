@@ -1012,7 +1012,9 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       m_playbackError.clear();
       m_lastPositionUpdate = 0.0;
       m_audioOutputWarningShown = false;
-      emit windowVisible(m_windowVisible);
+      // An in-scene Render API target must be visible before VO reconfigure
+      // can finish; native windows can wait for the actual VO readiness.
+      emit windowVisible(!m_nativeVideoOutput || m_windowVisible);
       break;
     }
     case MPV_EVENT_END_FILE:
@@ -1154,7 +1156,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       {
         int state = prop->format == MPV_FORMAT_FLAG ? *static_cast<int*>(prop->data) : 0;
         m_windowVisible = state;
-        emit windowVisible(m_inPlayback && m_windowVisible);
+        emit windowVisible(m_inPlayback && (!m_nativeVideoOutput || m_windowVisible));
       }
       else if (strcmp(prop->name, "duration") == 0)
       {
@@ -1496,8 +1498,9 @@ void PlayerComponent::pollInterpolation()
 #endif
   // macvk can synchronously dispatch window setup to the main thread while
   // mpv's core waits for its VO. Querying that core here would deadlock both.
-  if(!m_rife||!m_mpv||!m_rifeAccess||!m_inPlayback||
-      (m_nativeVideoOutput&&!m_nativeVideoReady))return;
+  // Render API also reports provisional color metadata during a replacement;
+  // wait for its first ready frame before fixing this item's source identity.
+  if(!m_rife||!m_mpv||!m_rifeAccess||!m_inPlayback||!m_nativeVideoReady)return;
   // Property-change events are delivered by libmpv without waiting for its
   // core. The timer must never use mpv_get_property or mpv_command while
   // macvk can be waiting for this same Cocoa main thread to remove its VO.

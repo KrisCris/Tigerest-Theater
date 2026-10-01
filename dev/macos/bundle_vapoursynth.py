@@ -6,20 +6,24 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from rife.vapoursynth_runtime import inspect_runtime
 
 
-def stage_runtime(app: Path, brew: Path) -> None:
+def stage_runtime(app: Path, brew: Path, runtime_python: Path | None = None) -> None:
     vs_root = brew / "opt/vapoursynth"
-    interpreter = vs_root / "libexec/bin/python3"
-    if not interpreter.is_file():
+    interpreter = runtime_python or vs_root / "libexec/bin/python3"
+    if not runtime_python and not interpreter.is_file():
         raise RuntimeError("Bundling requires the current Homebrew VapourSynth Python package")
-    info = json.loads(subprocess.check_output([
-        str(interpreter), "-I", "-c",
-        "import json,sys,vapoursynth; print(json.dumps({"
-        "'prefix':sys.base_prefix,'version':f'{sys.version_info.major}.{sys.version_info.minor}',"
-        "'pythonVersion':sys.version,'vapoursynthVersion':str(vapoursynth.__version__),"
-        "'package':vapoursynth.__path__[0]}))",
-    ], text=True))
+    if runtime_python:
+        info = inspect_runtime(interpreter)
+    else:
+        info = json.loads(subprocess.check_output([
+            str(interpreter), "-I", "-c",
+            "import json,sys,vapoursynth; print(json.dumps({"
+            "'prefix':sys.base_prefix,'version':f'{sys.version_info.major}.{sys.version_info.minor}',"
+            "'pythonVersion':sys.version,'vapoursynthVersion':str(vapoursynth.__version__),"
+            "'package':vapoursynth.__path__[0]}))",
+        ], text=True))
     prefix = Path(info["prefix"])
     if info['vapoursynthVersion']!='R79':
         raise RuntimeError('This bundle recipe is verified with VapourSynth R79; qualify a new runtime before updating it')
@@ -73,7 +77,7 @@ def stage_runtime(app: Path, brew: Path) -> None:
     }
     (contents / "Resources/vapoursynth-runtime.json").write_text(json.dumps(manifest, indent=2) + "\n")
     for name, license_file in [("Python", brew / f"opt/python@{version}/LICENSE"),
-                               ("VapourSynth", vs_root / "COPYING.LESSER"),
+                               ("VapourSynth", Path(info['license']) if runtime_python else vs_root / "COPYING.LESSER"),
                                ("zimg", brew / "opt/zimg/COPYING")]:
         destination = contents / "Resources/licenses" / name
         destination.mkdir(parents=True, exist_ok=True)
@@ -82,4 +86,4 @@ def stage_runtime(app: Path, brew: Path) -> None:
 
 
 if __name__ == "__main__":
-    stage_runtime(Path(sys.argv[1]), Path(sys.argv[2]))
+    stage_runtime(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]) if len(sys.argv)>3 and sys.argv[3] else None)

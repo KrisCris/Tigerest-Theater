@@ -241,3 +241,21 @@ TLS下载10项PASS10.623秒，HTTPS降级用例采用独立真实HTTP listener�
 真实便携版正常退出最初崩溃，独立 Win32 调试器抓取到 `qHashEquals<QtMsgType>` 读空地址：全局日志 handler 在 Qt 插件的晚期清理中仍访问已经销毁的全局 hash。现在 Log::Cleanup 先注销 callback，main 使用 scope guard 覆盖所有退出路径。实际便携包以只含 Windows 系统目录的 PATH 重跑完整主程序流程，通过 20 次 seek、倍速旁路、重开、自然 EOF 和**正常 native exitCode=0**（`portable-extension-shutdown-green.log`／`main-extension-acceptance.json` completed=true）。不能将此前测试驱动强制终止视为退出通过。
 
 扩展与内核归档已经上传 v2.2.0 草稿，GitHub 返回的 size/digest 与本地锁定值一致。最终目录填入该固定附件地址，公开下载要在该草稿发布后才可用；测试中打开设置不触发下载。120/240 与 4K 方案在设置中明确标为实验。Windows 基础安装版和便携 ZIP 不含大型运行库，干净系统／实际安装器安装仍未测试；不会覆盖本机已有的 2.0.17-dev 安装进行验收。
+
+### 最终包验收后发现的兼容性边界
+
+`dd32a48` 完整构建／CTest **53/53 PASS，86.71 秒**。该提交的最终便携包再次通过完整扩展校验、真实设置、标准模型播放、20 次 seek、倍速旁路、重开、自然 EOF 和 native exitCode=0；主程序 SHA256 `0cf69144ec0d7593d686507473896971615483ca2632601d5a8bea46fe2ceaaf`。便携 ZIP 的 1,505 个条目 CRC 通过，两个内核均为固定普通 x64，锁文件与源码逐字节一致，不含扩展或引擎缓存。Windows CI 36807853584 同提交构建、基础测试及无扩展打包启动通过。上述基础包已上传草稿，兼容性修复后的最终版本将替换它们。
+
+Render API 的真实 4K 基准和实际主程序均发生 GUI 同步诊断停滞；aiRife=false 对照同样失败，因此不是仅由补帧或基准启动引起。GUI 读取 `vo-passes` 会在 advanced control 下等待 render dispatch，而 Qt render 依赖 GUI 更新，违反 mpv 线程契约。关闭该选项后，实际原帧播放／诊断／正常退出通过，`voPassesAvailable=false` 如实报告；GPU-Next 行为保持。基准还需等待实际 Render API ready 后才加载媒体。
+
+实际 Render API 首次补帧、20 次 seek 和倍速旁路通过后，replace 重开仍因显示状态循环停住。视频项的可见性直接依赖 `windowVisible`；VO false 在重配置期隐藏视频项，START 只重复旧的 false。现在只让 Render API 在逻辑播放期间保持可见，真实 `m_windowVisible` 仍记录 VO readiness；native 路径及 terminal END 隐藏行为保持。对应 native 事件回归已实际 RED→GREEN（8.15 秒），完整主程序重开／EOF／退出复测仍待追加。
+
+Mac CI 36807849627 的 arm64 应用编译完成，但原生打包因 Homebrew 已升级到 VapourSynth R80 被 R79 守卫拒绝，不能冒称取得可用 DMG。Intel 依赖安装在源码编译 x265 时仍未结束，已取消此轮。修复改用官方 PyPI R79 abi3 wheel（arm64 SHA256 `ea2750319e31d099b4652a4a63f47db2c297c307f7567e3e9352b75158c7b37c`；x86_64 `64eb7309439407fec0e0f6771c1b6f954d08355c46cf0c56fb55e1ba68bb7f79`），本地下载哈希匹配。显式解释器同时决定 mpv pkgconfig、native 插件 include 和暂存的包／许可证；不会混用 R80 头文件。四个 resolver/configure 回归通过 0.623 秒，其中实际独立 venv、metadata 和 CMake 配置覆盖旧 R80 include 缓存；这是配置模拟，不是 Mac 原生执行证明。修复后的同提交 Mac 构建／闭包验证仍必须执行。
+
+### Render API 重开最终验收
+
+真实 replace 还复现了启动格式早读：首次 SourceInfo 的 `colorKnown=false`，约 300ms 后才更新为 true，被整片动态格式保护锁住。所有 renderer 现在等待 `PLAYBACK_RESTART` 后才确定该项的 source；Mac 既有原生门槛和门槛之前的异步启动超时保持。暂停加载／seek 也会先准备首帧再发 restart，不需要先取消暂停。对应事件回归实际 RED（`dynamic-format` 误判）→GREEN，真实 native 播放测试整体通过 7.86 秒；随后真实 Render API 主程序通过首次补帧、20 次 seek、倍速整片旁路、replace 恢复补帧、自然 EOF 和正常 native exitCode=0（`render-api-restart-main-green.log`／`main-render-api-acceptance.json`）。实际第一次与重开后的采用格式均为 1920×1080、30/1、逐行 SDR、完整色彩信息。真实后续格式变化仍触发旁路。临时格式日志已撤销。此主程序窗口的物理尺寸为 1920×1080，不能将它计作 4K 性能长测；4K 长测证据来自独立实际 Player／native VO 基准。
+
+撤销临时日志后完整构建与 CTest **54/54 PASS，92.18 秒**（`final-compat-full-tests.log`），包含实际私有 GPU 帧图、原生播放与恢复、EOF、安装／下载、R79 显式来源共存、中文命令行及 WebEngine 回归。
+
+后续只读复核发现 Meson 1.9.2 对复用目录忽略新的 `PKG_CONFIG_PATH` 并缓存旧依赖，只有全新 CI 才不会受影响。构建现在显式传入有序 `pkg_config_path` 选项，重配置时清除 dependency cache，并在 provenance 记录私有 pkgconfig 来源。真实 Meson 1.9.2／最小 pkg-config fixture 同目录回归实际 RED（继续 cached R80／SDK80 include）→GREEN（R79／SDK79 include），五个运行库来源测试通过；这验证构建配置与缓存行为，不能替代 Mac 原生运行库／DMG 验收。

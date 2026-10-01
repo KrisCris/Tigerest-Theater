@@ -94,6 +94,10 @@ target_compile_definitions(test_mpv_console PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_mpv_console COMMAND test_mpv_console)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME test_macos_rife_runtime_pin COMMAND "${Python3_EXECUTABLE}" -B -X utf8
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_macos_rife_runtime_pin.py")
+endif()
 if(WIN32)
   add_executable(test_rife_windows_ipc test_rife_windows_ipc.cpp)
   target_link_libraries(test_rife_windows_ipc jmp_core Qt6::Test)

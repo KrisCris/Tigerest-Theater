@@ -6,6 +6,7 @@ dependencies. Use an isolated Python 3.13 environment on Apple Silicon:
 ```sh
 python3.13 -m venv build/rife/venv
 build/rife/venv/bin/pip install -r dev/macos/rife/requirements-build.txt
+build/rife/venv/bin/pip install --require-hashes --only-binary=:all: --no-deps -r dev/macos/rife/requirements-runtime.txt
 build/rife/venv/bin/python dev/macos/rife/prepare_model.py build/rife/source
 RIFE_TEST_MODEL=build/rife/source build/rife/venv/bin/python -m unittest discover -s tests -p 'test_rife_*.py'
 ```
@@ -13,6 +14,15 @@ RIFE_TEST_MODEL=build/rife/source build/rife/venv/bin/python -m unittest discove
 Source, archive and weight digests are pinned in `model_source.json`. Never
 replace these files with unverified training code or checkpoints. No model is
 downloaded by the player. Large outputs belong under ignored `build/rife/`.
+
+Release builds use the official R79 abi3 wheel in this environment, pinned by
+architecture-specific SHA-256. Pass `--vapoursynth-python` to `build_mpv.py` and
+`TIGEREST_VAPOURSYNTH_PYTHON` to CMake so mpv headers, the native plugin headers,
+the bundled package and its license all come from that same R79 installation.
+This explicit configuration requires CMake 3.19 or newer and overrides stale
+Homebrew pkg-config cache entries. An installed Homebrew R80 is not used for
+these components. Actual macOS bundle import and dependency closure checks
+remain required after staging.
 
 The first candidate for playback is FP32 with `--grid-scale 0.5`. Motion is
 estimated at half resolution, then flow and mask are enlarged to warp the

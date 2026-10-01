@@ -72,7 +72,7 @@ endforeach()
 
 # VSScript and the native plugin are loaded dynamically, so dependency discovery
 # cannot infer their runtime Python package or model files.
-execute_process(COMMAND python3 "@SOURCE_ROOT@/dev/macos/bundle_vapoursynth.py" "${app}" "${brew_prefix}"
+execute_process(COMMAND python3 "@SOURCE_ROOT@/dev/macos/bundle_vapoursynth.py" "${app}" "${brew_prefix}" "@TIGEREST_VAPOURSYNTH_PYTHON@"
   RESULT_VARIABLE vapoursynth_result)
 if(NOT vapoursynth_result EQUAL 0)
   message(FATAL_ERROR "Unable to stage bundled VapourSynth")

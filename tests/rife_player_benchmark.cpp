@@ -121,9 +121,14 @@ int main(int argc,char** argv)
     window.setGeometry(QRect(screen->geometry().topLeft(),QSize(qRound(3840/screen->devicePixelRatio()),qRound(2160/screen->devicePixelRatio()))));
     auto* video=new BenchmarkVideo(window.contentItem());video->setObjectName("video");
     video->setWidth(window.width());video->setHeight(window.height());
+    bool renderReady=!renderApi;
+    QObject::connect(video,&MpvAbstractItem::ready,&app,[&]{renderReady=true;});
     player.setWindow(&window);window.show();
     QObject::connect(&window,&QWindow::visibleChanged,&app,[&](bool visible){if(!visible)playbackError="Benchmark window was closed or hidden";});
     auto* controller=video->mpvController();
+    clock.restart();
+    while(!renderReady&&clock.elapsed()<15000&&playbackError.isEmpty())pump();
+    if(!renderReady)return fail("Render API context was not ready before media load");
     controller->setProperty("mute",true);controller->setProperty("msg-level","all=warn");
     if(!player.load(QUrl::fromLocalFile(value("media")).toString(),{{"autoplay",true}},{},1))return fail("Real Player rejected media");
     const auto read=[&](const QString& key){const auto v=controller->getProperty(key);

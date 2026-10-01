@@ -9,12 +9,21 @@ import platform
 import shutil
 import subprocess
 import tarfile
+from vapoursynth_runtime import inspect_runtime
 
 VERSION='0.41.0'
 SHA256='ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209'
 HERE=Path(__file__).resolve().parent
 
-def build(destination,meson):
+def setup_meson(meson,out,source,arguments,env):
+    # Meson ignores changed PKG_CONFIG_PATH on reconfigure and caches found
+    # dependencies. Apply the ordered search paths as an option and rediscover
+    # dependencies, including when reusing a build created with Homebrew R80.
+    pkg_paths=[Path(p).as_posix() for p in env.get('PKG_CONFIG_PATH','').split(os.pathsep) if p]
+    subprocess.run([meson,'setup',*(['--reconfigure','--clearcache'] if (out/'build.ninja').exists() else []),
+                    str(out),str(source),*arguments,'-Dpkg_config_path='+json.dumps(pkg_paths)],env=env,check=True)
+
+def build(destination,meson,runtime_python=None):
     destination=destination.resolve();destination.mkdir(parents=True,exist_ok=True)
     archive=destination/f'mpv-v{VERSION}.tar.gz'
     if not archive.exists():
@@ -44,19 +53,23 @@ def build(destination,meson):
     env=dict(os.environ,MACOSX_DEPLOYMENT_TARGET='26.0',SDKROOT=sdk)
     brew=Path(subprocess.check_output(['brew','--prefix'],text=True).strip())
     pkg_paths=[str(brew/'opt'/name/'lib/pkgconfig') for name in ('libarchive','luajit','vapoursynth','libplacebo')]
+    runtime = inspect_runtime(runtime_python) if runtime_python else None
+    if runtime:
+        pkg_paths.insert(0,runtime['pkgconfig'])
     env['PKG_CONFIG_PATH']=os.pathsep.join(pkg_paths+[env.get('PKG_CONFIG_PATH','')])
-    subprocess.run([meson,'setup',*(['--reconfigure'] if (out/'build.ninja').exists() else []),
-                    str(out),str(source),*arguments],env=env,check=True)
+    setup_meson(meson,out,source,arguments,env)
     subprocess.run([meson,'compile','-C',str(out),'-j',str(min(os.cpu_count() or 4,8))],env=env,check=True)
     (destination/'mpv-provenance.json').write_text(json.dumps({
         'version':VERSION,'archive_sha256':SHA256,'patches':hashes,'deployment_target':'26.0',
-        'architecture':architecture},indent=2)+'\n')
+        'architecture':architecture,'vapoursynthVersion':runtime['vapoursynthVersion'] if runtime else None,
+        'vapoursynthPkgConfig':runtime['pkgconfig'] if runtime else None},indent=2)+'\n')
     return out/'libmpv.dylib'
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--meson',default=shutil.which('meson'))
+    parser.add_argument('--vapoursynth-python',type=Path)
     args=parser.parse_args()
     if not args.meson:parser.error('Install Meson 1.9.2 in the build environment')
-    print(build(args.output,args.meson))
+    print(build(args.output,args.meson,args.vapoursynth_python))

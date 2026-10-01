@@ -45,9 +45,7 @@ void MpvRenderer::render()
     if (m_mpvAItem->d_ptr->m_nativeVideoOutput)
         return;
 
-    // Advanced libmpv control requires the update callback to be acknowledged
-    // on the render thread. Besides enabling direct rendering, this makes
-    // vo-passes available to stats.lua for full per-pass pipeline timings.
+    // Consume redraw notifications on the thread owning the GL context.
     mpv_render_context_update(m_mpvAItem->d_ptr->m_mpv_gl);
 
     QOpenGLFramebufferObject *fbo = framebufferObject();
@@ -96,7 +94,10 @@ QOpenGLFramebufferObject *MpvRenderer::createFramebufferObject(const QSize &size
             display.data = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>()->display();
         }
 #endif
-        int advancedControl{1};
+        // Qt's scene graph synchronizes with the GUI thread, which also uses
+        // ordinary libmpv calls. Advanced control promises that no such wait
+        // dependency exists and can permanently deadlock this renderer.
+        int advancedControl{0};
         mpv_render_param params[]{{MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL)},
                                   {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl_init_params},
                                   {MPV_RENDER_PARAM_ADVANCED_CONTROL, &advancedControl},
