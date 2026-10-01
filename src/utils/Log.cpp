@@ -227,6 +227,9 @@ void Log::RotateLog()
 /////////////////////////////////////////////////////////////////////////////////////////
 void Log::Cleanup()
 {
+  // Qt/plugin static destructors can still emit after our global logging
+  // state has gone away. Detach the callback before that destruction starts.
+  qInstallMessageHandler(nullptr);
   QMutexLocker lock(&logMutex);
 
   // Close and delete temp log file

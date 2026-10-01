@@ -2,7 +2,8 @@
 
 这套工具生成独立于系统 Python、VapourSynth、CUDA Toolkit 和 SVP 的运行库。
 主安装器不包含这些大型依赖。已接入 Windows Player 生命周期并可在原生验证程序里
-实际播放；尚未接入主程序启动、扩展安装与设置，不能据此声称发行版补帧已经完成。
+实际播放。主程序启动、可信扩展安装及设置已接入；发行包、其他显卡和干净系统的
+完整验收仍在进行，不能将本机验证视为所有设备均可达到性能目标。
 
 ## 固定依赖
 
@@ -95,11 +96,28 @@ cd1edc11dc6887a50f705717619d879f5a93a488。冻结的 FFmpeg、libplacebo 提交�
 验证该锁，不在每次构建重新解析移动分支。ngtcp2/curl 的 static OpenSSL
 补丁保留原版本与功能，并修正压缩库的传递链接顺序。
 
-普通 x64 的真实 EOF/色彩及 tiny TRT 流式测试已连续 10 轮通过。首次 v3
-产物在解码器列表登记的结构体传值中触发 GCC 14.4 Win64 AVX 栈对齐错误，
-不作为可用内核。`mpv-win64-hwdec-pointer.patch` 通过指针参数及局部副本
-保持原语义，Windows GCC-only `noipa` 阻止 IPA 重建该传值 ABI；新产物仍需
-实际流式测试和反汇编验收。不得仅因编译成功或补丁适用就接受 v3 DLL。
+普通 x64 的真实 EOF/色彩及 tiny TRT 流式测试已连续 10 轮通过，三模型的
+默认 4K 输出均完成 600 秒长测。v3 候选先后暴露 Win64 GCC AVX 对齐崩溃；
+hwdec 与 queue 的指针/局部副本补丁修复了两个位置，但 f9b11b1 候选仍在
+无补帧的实际 4K 播放中崩溃，因此拒绝发行。两个 DLL 角色暂时都使用已验收的
+普通 x64 内核，TensorRT GPU 加速保留。不得仅因短片测试或编译成功接受 v3。
+
+发布打包通过 `mpv-runtime-lock.json` 固定实际验收的内核 SHA、大小及 CI 来源，
+不从开发机的 import library 目录恢复 stock DLL。准备独立目录后设置
+`TIGEREST_MPV_RUNTIME_DIR` 再执行 `dev/windows/bundle.bat`：
+
+```powershell
+python dev/windows/rife/prepare_mpv_runtime.py --output build/rife-mpv-runtime
+$env:TIGEREST_MPV_RUNTIME_DIR=(Resolve-Path build/rife-mpv-runtime).Path
+```
+
+默认从 v2.2.0 的固定播放内核附件获取归档，并验证外层归档与每份 DLL 的大小、
+SHA256 和构建来源。发行构建不依赖会到期的 Actions artifact；初次草稿构建需要
+有权读取该草稿的 GitHub token。离线准备可加 `--archive 已下载的归档.zip`。
+
+准备工具要求 `gh` 已登录可读取 CI 附件的账号；`--artifacts JSON` 支持本地已核验
+产物目录映射。源和最终部署的两份 DLL 都必须符合锁文件，旧目标文件即使时间戳
+相同也会重新复制、复核。Windows 打包要求 CMake 3.19+。
 CI 复用旧媒体缓存前核对固定旧提交和所有依赖配方字节，命中后必须重建
 mpv 并移除本次构建目录内旧 DLL 输出。不能用旧 DLL 填写新源码来源。
 

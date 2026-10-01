@@ -1,6 +1,7 @@
 #include <QGuiApplication>
 #include <QApplication>
 #include <QFileInfo>
+#include <QScopeGuard>
 #include <QIcon>
 #include <QtQml>
 #include <optional>
@@ -12,6 +13,10 @@
 #include <QCommandLineOption>
 #include <QDebug>
 #include <QSettings>
+#ifdef Q_OS_WIN
+#include <QProgressDialog>
+#include <QJsonDocument>
+#endif
 
 #include "shared/Names.h"
 #include "system/SystemComponent.h"
@@ -201,10 +206,6 @@ int main(int argc, char *argv[])
 
     preinitQt();
 
-    QStringList arguments;
-    for (int i = 0; i < argc; i++)
-      arguments << QString::fromLatin1(argv[i]);
-
     {
       // This is kinda dumb. But in order for the QCommandLineParser
       // to work properly we need to init if before we call process
@@ -213,10 +214,13 @@ int main(int argc, char *argv[])
       // a small chicken-or-egg problem, which we "solve" by making
       // this temporary console app.
       //
-      QCoreApplication core(newArgc, newArgv);
+      QCoreApplication core(argc, argv);
 
       // Now parse the command line.
-      parser.process(arguments);
+      // An unmodified argv lets Qt reconstruct Unicode arguments from the
+      // native Windows command line. Chromium flags are appended only for the
+      // final QApplication, so they cannot disable that native decoding here.
+      parser.process(core.arguments());
 
       // Detect portable mode while QCoreApplication exists (needed for applicationDirPath)
       Paths::detectAndEnablePortableMode();
@@ -405,6 +409,7 @@ int main(int argc, char *argv[])
       Log::SetLogLevel(logLevel);
 
     Log::Init();
+    const auto logCleanup=qScopeGuard([]{Log::Cleanup();});
 
     auto scale = parser.value("scale-factor");
     if (scale.isEmpty() || scale == "auto")
@@ -601,7 +606,30 @@ int main(int argc, char *argv[])
         WindowManager::Get().raiseWindow();
       });
     });
+#ifdef Q_OS_WIN
+    // No QML MpvVideoItem may create mpv before the verified VSScript runtime
+    // is activated. Failures finish this gate and retain base playback.
+    app.setQuitOnLastWindowClosed(false);
+    QProgressDialog rifeStartup(QStringLiteral("正在核验 RIFE 扩展…"),QString(),0,0);
+    rifeStartup.setWindowTitle(QStringLiteral("大河影院"));rifeStartup.setCancelButton(nullptr);
+    rifeStartup.setMinimumDuration(350);rifeStartup.setValue(0);
+    auto& rifePlayer=PlayerComponent::Get();
+    QObject::connect(&rifePlayer,&PlayerComponent::rifeExtensionStatusChanged,&rifeStartup,
+        [&rifeStartup](const QVariantMap& status){
+          rifeStartup.setLabelText(status["runtime"].toMap()["runtimePreparing"].toBool()
+              ?QStringLiteral("正在检查 NVIDIA 补帧运行库…"):QStringLiteral("正在核验 RIFE 扩展…"));
+        });
+    QObject::connect(&rifePlayer,&PlayerComponent::windowsRifeStartupFinished,engine,[&]{
+      rifeStartup.reset();
+      engine->load(QUrl(QStringLiteral("qrc:/webview.qml")));
+      app.setQuitOnLastWindowClosed(true);
+    },Qt::SingleShotConnection);
+    QFile rifeCatalog(QStringLiteral(":/rife/windows-catalog.json"));
+    const auto catalog=rifeCatalog.open(QIODevice::ReadOnly)?QJsonDocument::fromJson(rifeCatalog.readAll()).object():QJsonObject();
+    rifePlayer.initializeWindowsRife(Paths::globalDataDir("extensions/rife"),catalog);
+#else
     engine->load(QUrl(QStringLiteral("qrc:/webview.qml")));
+#endif
 
     // run our application
     int ret = app.exec();

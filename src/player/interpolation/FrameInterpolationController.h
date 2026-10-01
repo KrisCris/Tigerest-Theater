@@ -41,9 +41,10 @@ public:
     QString status()const;
     QVariantMap diagnostics()const;
     bool ownsDecoding()const{return hwdecOwned;}
+    bool ownsFilter()const{return filterOwned;}
 private:
     bool conflict()const;
-    bool hasFilter()const;
+    bool hasFilter(bool requireEnabled=true)const;
     void detach();
     void disable(const QString& reason,bool bypass=false);
     MpvAccess mpv;

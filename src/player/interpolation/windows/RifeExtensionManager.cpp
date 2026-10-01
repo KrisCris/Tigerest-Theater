@@ -86,7 +86,8 @@ void RifeExtensionManager::start(const QString& state,std::function<OperationRes
     connect(worker,&QThread::finished,this,[this,worker,result,startup]{
         m_worker=nullptr;worker->deleteLater();
         if(startup){m_paths=result->paths;m_lease=result->lease;}
-        auto finalStatus=result->ok?result->status:QVariantMap{{"state",m_cancelled?"cancelled":"error"},{"error",result->error}};
+        auto finalStatus=result->status;
+        if(!result->ok){finalStatus["state"]=m_cancelled?"cancelled":"error";finalStatus["error"]=result->error;}
         finalStatus["busy"]=false;
         publish(finalStatus); // A direct slot may start the next operation here.
         // No state writes after the final publish: reentrant work owns it now.
@@ -102,7 +103,8 @@ RifeExtensionArchive::Options RifeExtensionManager::archiveOptions() {
     return options;
 }
 void RifeExtensionManager::initialize(){
-    if(m_lease){emit operationFinished(false,"Runtime is already in use; restart before changing it");return;}
+    if(m_worker){emit operationRejected("An extension operation is already running");return;}
+    if(m_lease){emit operationRejected("Runtime is already in use; restart before changing it");return;}
     start("checking",[this]{return loadActive();},true);
 }
 void RifeExtensionManager::importPackage(const QString& path){start("installing",[this,path]{return install(path);});}
@@ -192,6 +194,9 @@ RifeExtensionManager::OperationResult RifeExtensionManager::loadActive() {
     if(!error.isEmpty())return fail(error);
     const auto key=versionKey(item);
     if(active["schemaVersion"]!=1||active["sha256"]!=item["sha256"]||active["versionKey"]!=key||!keyValid(key))return fail("Active extension record differs from trusted catalog");
+    // A catalog-authenticated identity remains safe to remove even if its
+    // payload is damaged. Never return runtime paths before full verification.
+    result.status["installedVersion"]=key;
     const auto root=m_root+"/versions/"+key;
     const auto verified=RifeExtensionArchive::verifyInstalled(root,item,archiveOptions());if(!verified.ok)return fail(verified.error);
     if(m_cancelled)return fail("Extension operation cancelled");
@@ -219,6 +224,6 @@ RifeExtensionManager::OperationResult RifeExtensionManager::removeVersion(const 
     if(active["versionKey"]==key&&(!plain(m_root+"/active.json")||!QFile::remove(m_root+"/active.json")))return fail("Cannot deactivate extension for removal");
     const auto inUse=versionInUse(m_root,key);
     if(!inUse&&!removeOwnedVersion(m_root,key))return fail("Cannot remove installed extension version");
-    result.ok=true;result.status={{"state","restartRequired"},{"restartRequired",true},{"removalPending",inUse},{"error",""}};return result;
+    result.ok=true;result.status={{"state","restartRequired"},{"restartRequired",true},{"installedVersion",""},{"removalPending",inUse},{"error",""}};return result;
 }
 }

@@ -69,6 +69,7 @@ cmake -GNinja ^
     -DMPV_LIBRARY="%DEPS_CMAKE%/mpv/libmpv-2.dll.lib" ^
     -DVCRUNTIME_DIR="%DEPS_CMAKE%/vcruntime" ^
     -DVCREDIST_EXE="%DEPS_CMAKE%/vc_redist.x64.exe" ^
+    -DTIGEREST_MPV_RUNTIME_DIR="%TIGEREST_MPV_RUNTIME_DIR%" ^
     -DCHECK_FOR_UPDATES=OFF ^
     -DUSE_STATIC_MPVQT=ON ^
     "%PROJECT_ROOT%"

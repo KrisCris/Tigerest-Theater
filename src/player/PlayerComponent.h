@@ -8,6 +8,9 @@
 #include <QList>
 #include <QQuickWindow>
 #include <QTimer>
+#include <QPointer>
+#include <QJsonObject>
+#include <QHash>
 #include <QTextStream>
 
 #include <functional>
@@ -18,7 +21,8 @@
 namespace rife {class FrameInterpolationController;class MpvPollAccess;}
 #endif
 #ifdef Q_OS_WIN
-namespace rife {class RifeRuntimeManager;class RifePlaybackCoordinator;}
+namespace rife {class RifeRuntimeManager;class RifePlaybackCoordinator;class RifeExtensionManager;}
+class QFileDialog;
 #endif
 
 #include "ComponentManager.h"
@@ -49,6 +53,13 @@ public:
   bool prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script);
   QVariantMap windowsRifeStatus() const;
   bool selectWindowsRifeModel(const QString& model,int targetFps);
+  // Both arguments originate in native startup code, never WebChannel.
+  void initializeWindowsRife(const QString& extensionRoot,const QJsonObject& catalog);
+  Q_INVOKABLE QVariantMap rifeExtensionStatus() const;
+  Q_INVOKABLE bool downloadRifeExtension(const QString& packageId);
+  Q_INVOKABLE bool importRifeExtension();
+  Q_INVOKABLE void cancelRifeExtensionOperation();
+  Q_INVOKABLE bool removeRifeExtension();
 #endif
 
   // Replace an active item atomically, or append-and-play when mpv is idle.
@@ -237,6 +248,8 @@ Q_SIGNALS:
   void onMpvEvents();
 #ifdef Q_OS_WIN
   void windowsRifeReady(bool ready,const QString& error);
+  void windowsRifeStartupFinished();
+  void rifeExtensionStatusChanged(const QVariantMap& status);
 #endif
 
   void onMetaData(const QVariantMap &meta, QUrl baseUrl);
@@ -262,10 +275,28 @@ Q_SIGNALS:
   void fullscreenRequested(bool fullscreen);
 
 private:
+  friend class RifePlayerPlayback;
 #ifdef Q_OS_WIN
+  // Release the installed-version lease after controllers and runtime helpers.
+  std::unique_ptr<rife::RifeExtensionManager> m_rifeExtension;
+  QPointer<QFileDialog> m_rifeImportDialog;
+  bool m_windowsRifeStartupPending=false;
   std::unique_ptr<rife::RifeRuntimeManager> m_windowsRifeRuntime;
   QString m_windowsRifeRoot,m_windowsRifeError;
   bool m_windowsRifeActivated=false;
+  struct WindowsRecoveryLoad {
+    QVariantList command,httpHeaders;
+    QVariant audioStream,subtitleStream;
+    QVariant restoreAudioId,restoreSubtitleId;
+    bool recovery=false;
+  };
+  QHash<qint64,WindowsRecoveryLoad> m_windowsRecoveryLoads;
+  WindowsRecoveryLoad m_windowsCurrentLoad;
+  qint64 m_windowsCurrentEntryId=-1;
+  quint64 m_windowsPlaybackGeneration=0;
+  qint64 m_windowsReplacementTargetEntryId=-1;
+  bool m_windowsRifeReloaded=false;
+  bool recoverWindowsRifeError(const mpv_event_end_file& event);
 #endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   std::unique_ptr<rife::MpvPollAccess> m_rifeAccess;

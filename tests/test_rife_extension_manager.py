@@ -62,6 +62,35 @@ class NativeManagerTests(unittest.TestCase):
         bad=self.run_host('initialize')
         self.assertFalse(bad['ok']);self.assertIn('Unlisted',bad['error'])
 
+    def test_corrupt_trusted_extension_can_be_removed_and_imported_again(self):
+        self.assertTrue(self.run_host()['ok'])
+        loaded=self.run_host('initialize');runtime=Path(loaded['paths']['runtime'])
+        (runtime/'fixture.dll').write_bytes(b'corrupt')
+        failed=self.run_host('initialize')
+        self.assertFalse(failed['ok']);self.assertEqual(failed['paths'],{})
+        self.assertEqual(failed['status'].get('installedVersion'),loaded['paths']['versionKey'])
+        removed=self.run_host('remove',option=failed['status']['installedVersion'])
+        self.assertTrue(removed['ok']);self.assertFalse(removed['status'].get('installedVersion'))
+        self.assertTrue(self.run_host()['ok'])
+        self.assertTrue(self.run_host('initialize')['ok'])
+
+    def test_untrusted_active_identity_does_not_expose_a_removal_key(self):
+        self.assertTrue(self.run_host()['ok'])
+        active=json.loads((self.data/'active.json').read_text())
+        active['sha256']='0'*64
+        (self.data/'active.json').write_text(json.dumps(active))
+        failed=self.run_host('initialize')
+        self.assertFalse(failed['ok']);self.assertEqual(failed['paths'],{})
+        self.assertNotIn('installedVersion',failed['status'])
+
+    def test_same_manager_clears_key_after_removing_corrupt_extension(self):
+        self.assertTrue(self.run_host()['ok'])
+        loaded=self.run_host('initialize');runtime=Path(loaded['paths']['runtime'])
+        (runtime/'fixture.dll').write_bytes(b'corrupt')
+        report=self.run_host('initialize',option='corruptRemove')
+        self.assertFalse(report['ok']);self.assertTrue(report['removalOk'],report)
+        self.assertFalse(report['removalStatus'].get('installedVersion'),report)
+
     def test_leased_version_is_retained_then_removed_on_next_start(self):
         self.assertTrue(self.run_host()['ok'])
         report=self.run_host('initialize',option='lease')
@@ -105,6 +134,14 @@ class NativeManagerTests(unittest.TestCase):
         report=self.run_host('initialize',option='doubleInitialize')
         self.assertFalse(report['secondOk'],report)
         self.assertIn('restart',report['secondError'])
+        self.assertEqual(report['paths'],report['secondPaths'])
+
+    def test_busy_initialize_with_loaded_lease_does_not_finish_active_install(self):
+        self.assertTrue(self.run_host()['ok'])
+        report=self.run_host('initialize',option='busyInitialize')
+        self.assertTrue(report['secondOk'],report)
+        self.assertEqual(report['secondCompletions'],1,report)
+        self.assertEqual(report['rejections'],1,report)
         self.assertEqual(report['paths'],report['secondPaths'])
 
     def test_cancelled_startup_does_not_remove_pending_version(self):

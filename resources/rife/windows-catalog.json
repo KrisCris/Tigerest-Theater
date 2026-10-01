@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "id": "rife-nvidia-r79",
+      "version": "1.0.0",
+      "platform": "windows",
+      "architecture": "x64",
+      "abi": "windows-nvidia-trt-r79-v1",
+      "runtimeId": "rife-trt-r79-15.16-py3.13.15-3-v2",
+      "sourceSha": "252a34a62b34cd8236b33bfc0545759ecc8f332c",
+      "minAppVersion": "2.1.2",
+      "maxAppVersion": "2.3.0",
+      "downloadSize": 2146337426,
+      "unpackedSize": 2672981155,
+      "fileCount": 115,
+      "sha256": "f7a7958b119b94b374df916b39ef36e9ed34f6df15eac4fb40153d30b2aab694",
+      "manifestSha256": "90b4ae7d3a88157cef2cf80ecd050ec0a7c35412671a49a890c8f1bd20b9dcc3",
+      "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.2.0/Tigerest-RIFE-NVIDIA-1.0.0.zip"
+    }
+  ]
+}

@@ -355,12 +355,16 @@ endif()
 if(Python3_Interpreter_FOUND)
   add_test(NAME test_rife_extension_package
            COMMAND ${Python3_EXECUTABLE} -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_rife_extension_package.py")
+  add_test(NAME test_mpv_runtime_deployment
+           COMMAND ${Python3_EXECUTABLE} -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_mpv_runtime_deployment.py")
   add_test(NAME test_bundle_integrity
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_bundle_integrity.py)
 endif()
 
 find_program(Node_EXECUTABLE node)
 if(Node_EXECUTABLE)
+  add_test(NAME test_rife_windows_settings
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_rife_windows_settings.js)
   add_test(NAME test_server_onboarding
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_server_onboarding.js)
   execute_process(COMMAND ${Node_EXECUTABLE} -p "typeof WebSocket === 'function' && typeof fetch === 'function'"
@@ -370,6 +374,10 @@ if(Node_EXECUTABLE)
              COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_webengine_startup.js
                      $<TARGET_FILE:${MAIN_TARGET}>)
     set_tests_properties(test_webengine_startup PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+    add_test(NAME test_unicode_command_line
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_unicode_command_line.js
+                     $<TARGET_FILE:TigerestTheater>)
+    set_tests_properties(test_unicode_command_line PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
     add_test(NAME test_server_onboarding_webengine
              COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_server_onboarding_webengine.js
                      $<TARGET_FILE:${MAIN_TARGET}>)

@@ -79,16 +79,15 @@ list(APPEND SEARCHDIRS ${CEC_DIR})
 # fixup_bundle("${CMAKE_INSTALL_PREFIX}/Tigerest Theater.exe" "" "${SEARCHDIRS}")
 #install(PROGRAMS ${VCREDIST_DIR}/vcredist_msvc2017_x64.exe DESTINATION .)
 
-# Install MPV DLL (MPV_LIBRARY points to .lib, we need the .dll)
-get_filename_component(MPV_DIR "@MPV_LIBRARY@" DIRECTORY)
-file(INSTALL "${MPV_DIR}/libmpv-2.dll" DESTINATION "${CMAKE_INSTALL_PREFIX}")
-
-# Install fallback libmpv if present
-get_filename_component(MPV_FALLBACK_DIR "${MPV_DIR}/../mpv-fallback" ABSOLUTE)
-if(EXISTS "${MPV_FALLBACK_DIR}/libmpv-2.dll")
-  file(INSTALL "${MPV_FALLBACK_DIR}/libmpv-2.dll" DESTINATION "${CMAKE_INSTALL_PREFIX}" RENAME "libmpv-fallback.dll")
-  message(STATUS "Installed fallback libmpv")
-endif()
+# Link-time import libraries may come from the developer's existing setup;
+# shipped kernels must match the release lock and include EOF-aware RIFE.
+set(MPV_RUNTIME_DIR "@TIGEREST_MPV_RUNTIME_DIR@")
+set(MPV_LOCK_FILE "@PROJECT_SOURCE_DIR@/dev/windows/rife/mpv-runtime-lock.json")
+set(MPV_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}")
+include("@PROJECT_SOURCE_DIR@/CMakeModules/DeployWindowsMpv.cmake")
+file(INSTALL "@PROJECT_SOURCE_DIR@/external/miniz/LICENSE"
+             "@PROJECT_SOURCE_DIR@/external/miniz/README.tigerest.md"
+     DESTINATION "${CMAKE_INSTALL_PREFIX}/licenses/miniz")
 
 if(@DO_ENABLE_ANGLE_DEP@)
   message(STATUS "Deploying separate ANGLE deps")

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "archive": {
+    "releaseTag": "v2.2.0",
+    "assetName": "Tigerest-mpv-rife-x64-7a2b62d.zip",
+    "size": 55856737,
+    "sha256": "7333f691543ee3ca1c89dad9cf9dd46e5a6fa007c44d68a501fc40f1f7790360"
+  },
+  "primary": {
+    "architecture": "x86-64",
+    "size": 136954894,
+    "sha256": "d5d65b0c7527837e291eb5050da351edf2178d99244956d5b914be6ff2fbf4c3",
+    "hostSourceSha": "7a2b62d61676c4ee49ab162c3ae6ce3a761c8d4e",
+    "buildRunId": 36772303744,
+    "artifactId": 11126948472
+  },
+  "fallback": {
+    "architecture": "x86-64",
+    "size": 136954894,
+    "sha256": "d5d65b0c7527837e291eb5050da351edf2178d99244956d5b914be6ff2fbf4c3",
+    "hostSourceSha": "7a2b62d61676c4ee49ab162c3ae6ce3a761c8d4e",
+    "buildRunId": 36772303744,
+    "artifactId": 11126948472
+  }
+}

@@ -114,6 +114,14 @@ jobs:
         # Also grab VCRedist installer for optional system-wide install
         Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile deps/vc_redist.x64.exe
       shell: powershell
+    - name: Prepare release-pinned RIFE playback kernels
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: pwsh
+      run: |
+        python dev/windows/rife/prepare_mpv_runtime.py --output build/rife-mpv-runtime
+        if ($LASTEXITCODE -ne 0) { throw 'Verified mpv runtime preparation failed' }
+        "TIGEREST_MPV_RUNTIME_DIR=$($PWD.Path)/build/rife-mpv-runtime" >> $env:GITHUB_ENV
     - name: Build
       run: |
         set "VS_PATH="

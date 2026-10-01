@@ -44,8 +44,12 @@ bool FrameInterpolationController::setRuntimePaths(RuntimePaths replacement){
     guard=PerformanceGuard(paths.backend==Backend::TensorRT?GuardParameters::windows():GuardParameters{});
     return true;
 }
-bool FrameInterpolationController::hasFilter()const{
-    for(auto v:mpv.read("vf").toList())if(v.toMap().value("label")=="tigerest-rife")return true;
+bool FrameInterpolationController::hasFilter(bool requireEnabled)const{
+    for(auto v:mpv.read("vf").toList()){
+        const auto filter=v.toMap();
+        if(filter.value("label")=="tigerest-rife"&&
+           (!requireEnabled||!filter.contains("enabled")||filter["enabled"].toBool()))return true;
+    }
     return false;
 }
 bool FrameInterpolationController::conflict()const{
@@ -59,7 +63,7 @@ bool FrameInterpolationController::conflict()const{
 }
 void FrameInterpolationController::detach(){
     closeSession(session);session=0;epoch=0;
-    if(filterOwned&&hasFilter())mpv.command({"vf","remove","@tigerest-rife"});
+    if(filterOwned&&hasFilter(false))mpv.command({"vf","remove","@tigerest-rife"});
     filterOwned=false;
     if(hwdecOwned&&optionText(mpv.read("hwdec"))=="auto-copy")mpv.set("hwdec",oldHwdec);
     hwdecOwned=false;guard.reset();preparingSince=-1;

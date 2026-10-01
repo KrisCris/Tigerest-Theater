@@ -1,10 +1,16 @@
 if(APPLE)
   set(SCRIPT CompleteBundleMac)
 elseif(WIN32)
+  if(CMAKE_VERSION VERSION_LESS 3.19)
+    message(FATAL_ERROR "Windows verified mpv/WebEngine deployment requires CMake 3.19 or newer")
+  endif()
   set(SCRIPT CompleteBundleWin)
   set(TIGEREST_WEBENGINE_RUNTIME "$ENV{TIGEREST_WEBENGINE_RUNTIME}" CACHE PATH
       "Patched QtWebEngine runtime to deploy with the matching Qt version")
   file(TO_CMAKE_PATH "${TIGEREST_WEBENGINE_RUNTIME}" TIGEREST_WEBENGINE_RUNTIME)
+  set(TIGEREST_MPV_RUNTIME_DIR "$ENV{TIGEREST_MPV_RUNTIME_DIR}" CACHE PATH
+      "Directory containing both release-pinned RIFE-capable Windows mpv DLLs")
+  file(TO_CMAKE_PATH "${TIGEREST_MPV_RUNTIME_DIR}" TIGEREST_MPV_RUNTIME_DIR)
 endif(APPLE)
 
 option(CODE_SIGN "code sign the app" OFF)

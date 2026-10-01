@@ -25,6 +25,10 @@
 #include "interpolation/windows/RifeRuntimeManager.h"
 #include "interpolation/windows/RifeVSScriptRuntime.h"
 #include "interpolation/windows/RifePlaybackCoordinator.h"
+#include "interpolation/windows/RifeExtensionManager.h"
+#include <QFileDialog>
+#include "Version.h"
+#include "core/ProfileManager.h"
 #endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
 #include "interpolation/FrameInterpolationController.h"
@@ -35,6 +39,7 @@
 #include <MpvController>
 
 #include <math.h>
+#include <cmath>
 #include <string.h>
 #include <shared/Paths.h>
 #include <QRegularExpression>
@@ -94,6 +99,8 @@ PlayerComponent::PlayerComponent(QObject* parent)
     if(ready)ready=rife::activateVSScriptRuntime(m_windowsRifeRoot,&m_windowsRifeError);
     m_windowsRifeActivated=ready;
     emit windowsRifeReady(ready,m_windowsRifeError);
+    emit rifeExtensionStatusChanged(rifeExtensionStatus());
+    if(m_windowsRifeStartupPending){m_windowsRifeStartupPending=false;emit windowsRifeStartupFinished();}
   });
 #endif
 }
@@ -127,7 +134,130 @@ QVariantMap PlayerComponent::windowsRifeStatus() const
 bool PlayerComponent::selectWindowsRifeModel(const QString& model,int targetFps)
 {
   // Selection is applied before the next item; never mutate an active graph.
-  return !m_inPlayback&&m_windowsRifeRuntime->select(model,targetFps);
+  if(m_inPlayback||!m_windowsRifeRuntime->select(model,targetFps))return false;
+  SettingsComponent::Get().setValue(SETTINGS_SECTION_VIDEO,"aiRifeModel",model);
+  SettingsComponent::Get().setValue(SETTINGS_SECTION_VIDEO,"aiRifeTarget",targetFps);
+  return true;
+}
+void PlayerComponent::initializeWindowsRife(const QString& extensionRoot,const QJsonObject& catalog)
+{
+  if(m_rifeExtension||m_mpv)return;
+  m_windowsRifeStartupPending=true;
+  m_rifeExtension=std::make_unique<rife::RifeExtensionManager>(extensionRoot,catalog,Version::GetCanonicalVersionString());
+  connect(m_rifeExtension.get(),&rife::RifeExtensionManager::statusChanged,this,[this]{
+    emit rifeExtensionStatusChanged(rifeExtensionStatus());
+  });
+  connect(m_rifeExtension.get(),&rife::RifeExtensionManager::operationFinished,this,[this](bool ok,const QString& error){
+    if(!m_windowsRifeStartupPending)return;
+    const auto paths=m_rifeExtension->runtimePaths();
+    if(ok&&!paths.isEmpty()&&prepareWindowsRife(paths["runtime"].toString(),
+        ProfileManager::activeProfile().cacheDir("rife/engines"),paths["monitor"].toString(),paths["script"].toString())) {
+      // configure() may complete synchronously on a failed helper launch.
+      if(m_windowsRifeStartupPending)m_windowsRifeRuntime->select(
+          SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRifeModel").toString(),
+          SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRifeTarget").toInt());
+      return;
+    }
+    if(!ok)m_windowsRifeError=error;
+    m_windowsRifeStartupPending=false;
+    emit rifeExtensionStatusChanged(rifeExtensionStatus());
+    emit windowsRifeStartupFinished();
+  });
+  m_rifeExtension->initialize();
+}
+QVariantMap PlayerComponent::rifeExtensionStatus() const
+{
+  auto status=m_rifeExtension?m_rifeExtension->status():QVariantMap{{"state","notInstalled"},{"busy",false},{"packages",QVariantList{}}};
+  status["runtime"]=windowsRifeStatus();
+  return status;
+}
+bool PlayerComponent::downloadRifeExtension(const QString& packageId)
+{
+  if(!m_rifeExtension||m_rifeExtension->status()["busy"].toBool())return false;
+  m_rifeExtension->download(packageId);return true;
+}
+bool PlayerComponent::importRifeExtension()
+{
+  if(!m_rifeExtension||m_rifeExtension->status()["busy"].toBool()||m_rifeImportDialog)return false;
+  auto* dialog=new QFileDialog(nullptr,QStringLiteral("导入 RIFE 扩展包"),QString(),QStringLiteral("RIFE 扩展包 (*.zip)"));
+  m_rifeImportDialog=dialog;dialog->setAttribute(Qt::WA_DeleteOnClose);
+  dialog->setFileMode(QFileDialog::ExistingFile);
+  connect(dialog,&QFileDialog::accepted,this,[this,dialog]{
+    const auto files=dialog->selectedFiles();
+    if(!files.isEmpty()&&!m_rifeExtension->status()["busy"].toBool())m_rifeExtension->importPackage(files.first());
+  });
+  dialog->open();return true;
+}
+void PlayerComponent::cancelRifeExtensionOperation(){if(m_rifeExtension)m_rifeExtension->cancel();}
+bool PlayerComponent::removeRifeExtension()
+{
+  if(!m_rifeExtension||m_rifeExtension->status()["busy"].toBool())return false;
+  const auto key=m_rifeExtension->status()["installedVersion"].toString();if(key.isEmpty())return false;
+  m_rifeExtension->scheduleRemoval(key);return true;
+}
+bool PlayerComponent::recoverWindowsRifeError(const mpv_event_end_file& event)
+{
+  if(event.reason!=MPV_END_FILE_REASON_ERROR||event.playlist_entry_id!=m_windowsCurrentEntryId||
+     m_replacementPending||m_windowsRifeReloaded||
+     m_windowsCurrentLoad.command.isEmpty()||!m_rife||!m_rife->ownsFilter()||
+     (m_rife->state()!=rife::State::Preparing&&m_rife->state()!=rife::State::Active))return false;
+  const auto position=m_rifeAccess?m_rifeAccess->value("playback-time"):QVariant();
+  const double seconds=position.toDouble();
+  if(!position.isValid()||!std::isfinite(seconds)||seconds<0)return false;
+  auto snapshot=m_windowsCurrentLoad;
+  snapshot.recovery=true;
+  if(m_rifeAccess) {
+    snapshot.restoreAudioId=m_rifeAccess->value("aid");
+    snapshot.restoreSubtitleId=m_rifeAccess->value("sid");
+  }
+  auto command=snapshot.command;
+  auto options=command.last().toMap();
+  options["start"]=QStringLiteral("+")+QString::number(seconds,'f',3);
+  options["pause"]=m_paused?QStringLiteral("yes"):QStringLiteral("no");
+  command.last()=options;
+  snapshot.command=command;
+  const auto entryId=m_windowsCurrentEntryId;
+  m_windowsRifeReloaded=true;
+  if(m_windowsRifePlayback)m_windowsRifePlayback->endItem(); // asynchronous owned-filter cleanup
+  const auto generation=++m_windowsPlaybackGeneration;
+  // Let mpv finish the failed graph/VO before issuing the one bounded reload.
+  // A stop, new load or queued item's START_FILE invalidates this callback.
+  QTimer::singleShot(0,this,[this,generation,snapshot,entryId]{
+    if(generation!=m_windowsPlaybackGeneration||!m_inPlayback||m_replacementPending)return;
+    const auto fail=[this]{
+      m_windowsReplacementTargetEntryId=-1;
+      m_replacementPending=false;m_inPlayback=false;m_windowVisible=false;
+      m_playbackError=QStringLiteral("补帧滤镜失败，恢复原帧播放失败");
+      emit windowVisible(false);updatePlaybackState();
+    };
+    const auto playlist=m_mpv->getProperty("playlist").toList();
+    int index=-1;
+    for(int i=0;i<playlist.size();++i)if(playlist[i].toMap()["id"].toLongLong()==entryId){index=i;break;}
+    if(index<0){fail();return;}
+    auto command=snapshot.command;
+    // insert-at-play only starts playback when the playlist is idle. Select
+    // the inserted entry explicitly before removing the failed current item;
+    // otherwise mpv advances to the next queued item instead of the recovery.
+    command[2]=QStringLiteral("insert-at");command[3]=index;
+    m_currentAudioStream=snapshot.audioStream;m_currentSubtitleStream=snapshot.subtitleStream;
+    if(m_mpv->setProperty("http-header-fields",snapshot.httpHeaders)<0){fail();return;}
+    m_replacementPending=true;
+    const auto result=m_mpv->command(command);
+    if(result.metaType()==QMetaType::fromType<ErrorReturn>()) {
+      fail();return;
+    }
+    const auto loaded=result.toMap();
+    if(!loaded.contains("playlist_entry_id")){fail();return;}
+    m_windowsRecoveryLoads.insert(loaded["playlist_entry_id"].toLongLong(),snapshot);
+    m_windowsReplacementTargetEntryId=loaded["playlist_entry_id"].toLongLong();
+    const auto play=m_mpv->command(QStringList{"playlist-play-index",QString::number(index)});
+    if(play.metaType()==QMetaType::fromType<ErrorReturn>()){fail();return;}
+    const auto updated=m_mpv->getProperty("playlist").toList();
+    for(int i=0;i<updated.size();++i)if(updated[i].toMap()["id"].toLongLong()==entryId){
+      m_mpv->command(QStringList{"playlist-remove",QString::number(i)});break;
+    }
+  });
+  return true;
 }
 #endif
 
@@ -293,6 +423,7 @@ void PlayerComponent::initializeMpv()
   mpv_observe_property(m_mpv->mpv(), 0, "load-scripts", MPV_FORMAT_FLAG);
   mpv_observe_property(m_mpv->mpv(), 0, "video-out-params", MPV_FORMAT_NODE);
   mpv_observe_property(m_mpv->mpv(), 0, "aid", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "sid", MPV_FORMAT_STRING);
   mpv_observe_property(m_mpv->mpv(), 0, "audio-params", MPV_FORMAT_NODE);
   mpv_observe_property(m_mpv->mpv(), 0, "audio-device", MPV_FORMAT_STRING);
 #ifdef Q_OS_WIN
@@ -600,6 +731,24 @@ bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
   m_playbackError.clear();
   m_lastPositionUpdate = 0.0;
   m_replacementPending = loadMode == QStringLiteral("replace") && m_inPlayback;
+#ifdef Q_OS_WIN
+  if(loadMode==QStringLiteral("replace")) {
+    ++m_windowsPlaybackGeneration;m_windowsReplacementTargetEntryId=-1;m_windowsRifeReloaded=false;
+    m_windowsRecoveryLoads.clear();
+  }
+  const auto loaded=commandResult.toMap();
+  if(loadMode==QStringLiteral("replace")&&loaded.contains("playlist_entry_id")) {
+    m_replacementPending=true;
+    m_windowsReplacementTargetEntryId=loaded["playlist_entry_id"].toLongLong();
+  }
+  if(loaded.contains("playlist_entry_id"))
+    m_windowsRecoveryLoads.insert(loaded["playlist_entry_id"].toLongLong(),
+        WindowsRecoveryLoad{command,m_mpv->getProperty("http-header-fields").toList(),audioStream,subtitleStream});
+  if(loadMode==QStringLiteral("append-play")&&m_inPlayback&&!m_windowsCurrentLoad.command.isEmpty()) {
+    m_currentAudioStream=m_windowsCurrentLoad.audioStream;m_currentSubtitleStream=m_windowsCurrentLoad.subtitleStream;
+    m_mpv->setProperty("http-header-fields",m_windowsCurrentLoad.httpHeaders);
+  }
+#endif
 
   QUrl jellyfinBaseUrl = qurl.adjusted(QUrl::RemovePath | QUrl::RemoveQuery);
   emit onMetaData(jellyfinMetadata, jellyfinBaseUrl);
@@ -833,10 +982,25 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
   {
     case MPV_EVENT_START_FILE:
     {
+#ifdef Q_OS_WIN
+      ++m_windowsPlaybackGeneration;
+      m_windowsCurrentEntryId=static_cast<mpv_event_start_file*>(event->data)->playlist_entry_id;
+      m_windowsCurrentLoad=m_windowsRecoveryLoads.take(m_windowsCurrentEntryId);
+      if(!m_windowsCurrentLoad.command.isEmpty()) {
+        m_currentAudioStream=m_windowsCurrentLoad.audioStream;m_currentSubtitleStream=m_windowsCurrentLoad.subtitleStream;
+        m_mpv->setProperty("http-header-fields",m_windowsCurrentLoad.httpHeaders);
+      }
+      m_windowsRifeReloaded=m_windowsCurrentLoad.recovery;
+      if(m_windowsCurrentEntryId==m_windowsReplacementTargetEntryId)m_windowsReplacementTargetEntryId=-1;
+#endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
       if(m_rifeAccess)m_rifeAccess->clearMedia();
 #endif
-      m_replacementPending = false;
+#ifdef Q_OS_WIN
+      if(m_windowsReplacementTargetEntryId<0)m_replacementPending=false;
+#else
+      m_replacementPending=false;
+#endif
       m_inPlayback = true;
       m_nativeVideoReady = false;
 #ifdef Q_OS_MAC
@@ -855,6 +1019,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     {
       m_nativeVideoReady = false;
 #ifdef Q_OS_WIN
+      if(recoverWindowsRifeError(*static_cast<mpv_event_end_file*>(event->data)))break;
       if(m_windowsRifePlayback)m_windowsRifePlayback->endItem();
 #endif
 #ifdef Q_OS_MAC
@@ -927,7 +1092,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
             "frame-drop-count","decoder-frame-drop-count","glsl-shaders",
             "current-gpu-context","current-vo","hwdec-current","scale",
             "cscale","dscale","tscale","interpolation","deband",
-            "scripts","load-scripts","video-out-params","aid",
+            "scripts","load-scripts","video-out-params","aid","sid",
             "audio-params","audio-device","audio-device-list","current-ao","gpu-api",
             "vo","fullscreen","playback-time","duration","avsync","speed"};
         if(watched.contains(prop->name)) {
@@ -1073,6 +1238,19 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     case MPV_EVENT_LOG_MESSAGE:
     {
       auto *msg = static_cast<mpv_event_log_message*>(event->data);
+#ifdef Q_OS_WIN
+      // mpv can disable a failed VS graph without updating the configured vf
+      // list's enabled flag. Its pinned frame-error notification is the native
+      // failure signal; do not keep reporting stale monitor frames as Active.
+      if(m_rife&&m_rife->ownsFilter()&&msg->log_level<=MPV_LOG_LEVEL_ERROR&&
+         strcmp(msg->prefix,"vapoursynth")==0&&strncmp(msg->text,"Filter error at frame ",22)==0) {
+        const auto generation=m_windowsPlaybackGeneration;
+        QTimer::singleShot(0,this,[this,generation]{
+          if(generation==m_windowsPlaybackGeneration&&m_inPlayback&&m_rife&&m_rife->ownsFilter())
+            m_rife->bypassCurrentItem("filter-error");
+        });
+      }
+#endif
       // Strip the trailing '\n'
       size_t len = strlen(msg->text);
       if (len > 0 && msg->text[len - 1] == '\n')
@@ -1155,6 +1333,12 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       {
         reselectStream(m_currentSubtitleStream, MediaType::Subtitle);
         reselectStream(m_currentAudioStream, MediaType::Audio);
+#ifdef Q_OS_WIN
+        if(m_windowsRifeReloaded) {
+          if(m_windowsCurrentLoad.restoreAudioId.isValid())m_mpv->setProperty("aid",m_windowsCurrentLoad.restoreAudioId);
+          if(m_windowsCurrentLoad.restoreSubtitleId.isValid())m_mpv->setProperty("sid",m_windowsCurrentLoad.restoreSubtitleId);
+        }
+#endif
         m_mpv->command( QStringList() << "hook-ack" << resumeId);
         break;
       }
@@ -1196,6 +1380,12 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       {
         reselectStream(m_currentSubtitleStream, MediaType::Subtitle);
         reselectStream(m_currentAudioStream, MediaType::Audio);
+#ifdef Q_OS_WIN
+        if(m_windowsRifeReloaded) {
+          if(m_windowsCurrentLoad.restoreAudioId.isValid())m_mpv->setProperty("aid",m_windowsCurrentLoad.restoreAudioId);
+          if(m_windowsCurrentLoad.restoreSubtitleId.isValid())m_mpv->setProperty("sid",m_windowsCurrentLoad.restoreSubtitleId);
+        }
+#endif
         mpv_hook_continue(m_mpv->mpv(), id);
         break;
       }
@@ -1280,8 +1470,11 @@ void PlayerComponent::beginInterpolationItem()
 #endif
   }
 #ifdef Q_OS_WIN
+  m_windowsRifeRuntime->select(SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRifeModel").toString(),
+      SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRifeTarget").toInt());
   if(m_windowsRifePlayback)m_windowsRifePlayback->beginItem(enabled,MpvConfigManager::usingSystemConfig(),
       m_mpv->getProperty("speed").toDouble());
+  if(m_windowsRifeReloaded)m_rife->bypassCurrentItem("filter-error");
 #else
   m_rife->beginItem(enabled,MpvConfigManager::usingSystemConfig());
   const bool prepare=m_rife->state()==rife::State::Preparing&&
@@ -1464,6 +1657,10 @@ void PlayerComponent::notifyStreamingBitrateResult(qint64 bitrate, bool success,
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::stop()
 {
+#ifdef Q_OS_WIN
+  ++m_windowsPlaybackGeneration;m_windowsReplacementTargetEntryId=-1;
+  m_replacementPending=false;m_windowsRecoveryLoads.clear();
+#endif
 #ifdef Q_OS_MAC
   m_rifeStartup.cancel();
   publishInterpolationPause();
@@ -1547,7 +1744,18 @@ void PlayerComponent::clearQueue()
     return;
   }
   QStringList args("playlist_clear");
-  m_mpv->command( args);
+  const auto result=m_mpv->command(args);
+#ifdef Q_OS_WIN
+  if(result.metaType()!=QMetaType::fromType<ErrorReturn>()) {
+    QSet<qint64> retained;
+    for(const auto& item:m_mpv->getProperty("playlist").toList())retained.insert(item.toMap()["id"].toLongLong());
+    for(auto it=m_windowsRecoveryLoads.begin();it!=m_windowsRecoveryLoads.end();)
+      if(retained.contains(it.key()))++it;else it=m_windowsRecoveryLoads.erase(it);
+    if(m_windowsReplacementTargetEntryId>=0&&!retained.contains(m_windowsReplacementTargetEntryId)) {
+      m_windowsReplacementTargetEntryId=-1;m_replacementPending=false;
+    }
+  }
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1789,6 +1997,9 @@ void PlayerComponent::reselectStream(const QVariant &streamSelection, MediaType 
 void PlayerComponent::setSubtitleStream(const QVariant &subtitleStream)
 {
   m_currentSubtitleStream = subtitleStream;
+#ifdef Q_OS_WIN
+  m_windowsCurrentLoad.subtitleStream=subtitleStream;
+#endif
   reselectStream(m_currentSubtitleStream, MediaType::Subtitle);
 }
 
@@ -1796,6 +2007,9 @@ void PlayerComponent::setSubtitleStream(const QVariant &subtitleStream)
 void PlayerComponent::setAudioStream(const QVariant &audioStream)
 {
   m_currentAudioStream = audioStream;
+#ifdef Q_OS_WIN
+  m_windowsCurrentLoad.audioStream=audioStream;
+#endif
   reselectStream(m_currentAudioStream, MediaType::Audio);
 }
 

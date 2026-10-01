@@ -1,0 +1,44 @@
+Tigerest Theater Windows NVIDIA RIFE extension 1.0.0
+
+This extension is an optional component of Tigerest Theater. It does not include
+an NVIDIA display driver. NVIDIA TensorRT/CUDA components remain subject to
+their respective NVIDIA software license agreements supplied in this directory.
+They are distributed unmodified for use with this application.
+
+Components and notices:
+- CPython 3.13.15: LICENSE.Python.txt, including Python's bundled library notices.
+  https://www.python.org/ftp/python/3.13.15/python-3.13.15-embed-amd64.zip
+- OpenSSL 3.0.21 (Python DLL file version): LICENSE.OpenSSL-3.0.21.txt.
+  Copyright (c) 1998-2026 The OpenSSL Project Authors.
+  https://github.com/openssl/openssl/tree/openssl-3.0.21
+- SQLite: dedicated to the public domain. https://sqlite.org/copyright.html
+- VapourSynth R79: LICENSE.VapourSynth (LGPL-2.1-or-later).
+  Unmodified upstream source is supplied in sources/VapourSynth-R79-acabf605.zip.
+  https://github.com/vapoursynth/vapoursynth/tree/acabf605b2205b32d65859bb2736405719d2fafd
+- zimg, bundled by upstream VapourSynth: LICENSE.zimg.txt.
+  License snapshot: https://github.com/sekrit-twc/zimg/tree/67e0603271c080e22c8429856dd4a8a56587e61e
+- vs-mlrt v15.16: LICENSE.vs-mlrt (GPL-3.0).
+  Unmodified upstream source and build recipes are supplied in sources/vs-mlrt-v15.16-885e8bb8.zip.
+  https://github.com/AmusementClub/vs-mlrt/tree/885e8bb827fc431fce8e3109e7d60b0c38aa2035
+- Practical-RIFE model family: LICENSE.Practical-RIFE (MIT).
+  Models are unmodified vs-mlrt external-models ONNX downloads. Their exact
+  source URLs, upstream asset IDs and local SHA256 values are in runtime.json.
+  These ONNX files are not asserted to be identical to Tigerest's Mac weights.
+- NVIDIA TensorRT 10.16.0: TensorRT-SLA.html.
+- NVIDIA CUDA 13.2 runtime/NVRTC: CUDA-13.2-EULA.pdf, including third party notices.
+- TensorRT OSS parser/plugins/trtexec: LICENSE.TensorRT-OSS.txt and NOTICE.TensorRT-OSS.txt.
+  https://github.com/NVIDIA/TensorRT/tree/52399f555c2f80cb690a4a558b604e1a5f227e7c
+  The upstream vs-mlrt source archive includes its trtexec changes and build recipe.
+- Microsoft Visual C++ runtime DLLs: copyright Microsoft Corporation.
+  Unmodified release runtime files, for use with this application; see
+  Microsoft-Visual-Cpp-Redistribution.html and
+  https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files
+- Tigerest's monitor, graph and private helpers: LICENSE.Tigerest.
+  Complete Tigerest source at the extension build commit is supplied in
+  sources/Tigerest-252a34a.zip. No generated TensorRT engine or user settings
+  are included. Engines are compiled locally for the selected GPU and driver.
+  https://github.com/Tigerest/Tigerest-Theater/tree/252a34a
+
+The main application separately supplies the miniz, Qt and mpv notices. miniz is
+used by the application's extension installer and is not a runtime prerequisite
+that the user must install.

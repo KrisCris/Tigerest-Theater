@@ -1,11 +1,24 @@
 #include <QtTest/QtTest>
 #include "../src/utils/Log.h"
+#include "shared/Paths.h"
+#include "core/ProfileManager.h"
+#include <QTemporaryDir>
 
 class TestLog : public QObject
 {
   Q_OBJECT
 
 private slots:
+  void cleanupDetachesNativeMessageHandler(){
+    QTemporaryDir root;QVERIFY(root.isValid());
+    Paths::setConfigDir(root.path());Paths::setCacheDir(root.filePath("cache"));
+    ProfileManager::Get().setActiveProfile(ProfileManager::createProfile("Log shutdown"));
+    const auto previous=qInstallMessageHandler(nullptr);
+    const auto defaultHandler=qInstallMessageHandler(nullptr);
+    Log::Init();Log::Cleanup();
+    const auto remaining=qInstallMessageHandler(previous);
+    QVERIFY(remaining==defaultHandler);
+  }
   // ParseLogLevel tests
   void testParseLogLevel_data();
   void testParseLogLevel();

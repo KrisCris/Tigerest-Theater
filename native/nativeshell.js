@@ -598,6 +598,96 @@ async function showLegacySettingsModal() {
     closeContainer.appendChild(close);
 }
 
+function createRifeExtensionPanel({element, player, settings, save, notify}) {
+    if (typeof player.rifeExtensionStatus !== 'function') return null;
+    const node = element('div', 'tgs-callout');
+    node.id = 'tigerest-rife-extension';
+    node.appendChild(element('strong', '', 'NVIDIA RIFE 扩展'));
+    const summary = element('div', 'tgs-help');
+    const progress = element('div', 'tgs-help');
+    const runtime = element('div', 'tgs-help');
+    node.append(summary, progress, runtime);
+    const presets = {
+        balanced: ['均衡 · 4.25 / 约 60 fps', 'rife-4.25', 60],
+        quality: ['画质对比 · heavy / 约 60 fps', 'rife-4.25-heavy', 60],
+        high: ['高帧率实验 · lite / 约 240 fps', 'rife-4.25-lite', 240],
+        '4k': ['4K 补帧实验 · lite / 约 120 fps', 'rife-4.25-lite', 120],
+    };
+    const preset = element('select', 'tgs-control');
+    preset.setAttribute?.('aria-label', 'RIFE 快速方案');
+    for (const [id, title] of [['custom', '自定义模型与目标'], ...Object.entries(presets).map(([id, value]) => [id, value[0]])]) {
+        const option = element('option', '', title); option.value = id; preset.appendChild(option);
+    }
+    const refreshPreferences = () => {
+        preset.value = Object.keys(presets).find(id => presets[id][1] === settings.aiRifeModel && presets[id][2] === settings.aiRifeTarget) || 'custom';
+    };
+    preset.addEventListener('change', () => {
+        const selected = presets[preset.value];
+        if (!selected) return;
+        save('aiRifeModel', selected[1]); save('aiRifeTarget', selected[2]);
+        refreshPreferences();
+    });
+    node.appendChild(element('div', 'tgs-help', '快速方案（下方仍可分别选模型和帧率）：'));
+    node.appendChild(preset);
+    node.appendChild(element('div', 'tgs-help', '120/240 fps 与 4K 补帧为实验方案，不保证实时速度；性能不足会恢复原帧。首次准备引擎时本次保持原帧播放，准备完成后重新打开视频生效。'));
+    const actions = element('div', 'tgs-actions');
+    const download = element('button', 'tgs-action', '下载扩展');
+    const offline = element('button', 'tgs-action', '导入离线包');
+    const cancel = element('button', 'tgs-action', '取消操作');
+    const remove = element('button', 'tgs-action', '移除扩展');
+    actions.append(download, offline, cancel, remove); node.appendChild(actions);
+    let current = {state: 'checking', busy: true}, disposed = false, pending = false, revision = 0;
+    const size = bytes => `${(Number(bytes || 0) / 1e9).toFixed(2)} GB`;
+    const render = status => {
+        if (disposed) return;
+        current = status;
+        const pack = status.packages?.[0];
+        const states = {notInstalled: '尚未安装', checking: '正在核验', downloading: '正在下载', installing: '正在安装', removing: '正在移除', ready: '已安装', restartRequired: '请完全退出并重启客户端', cancelled: '操作已取消', error: '操作失败'};
+        summary.textContent = pack
+            ? `${states[status.state] || status.state} · 扩展 ${pack.version} · 下载 ${size(pack.downloadSize)}，展开 ${size(pack.unpackedSize)}。运行库由各配置共用，引擎缓存按当前配置保存。`
+            : `${states[status.state] || status.state} · 当前版本尚未提供可安装的扩展包。`;
+        const done = Number(status.doneBytes || 0), total = Number(status.totalBytes || 0);
+        progress.textContent = status.error ? String(status.error) : status.busy && total > 0
+            ? `${Math.min(100, Math.floor(done * 100 / total))}% · ${size(done)} / ${size(total)}` : '';
+        const r = status.runtime || {};
+        runtime.textContent = status.restartRequired ? '安装或移除将在重启后生效。'
+            : r.enginePreparing ? '正在准备引擎；本次保持原帧播放，完成后下次播放生效。'
+            : r.runtimePreparing ? '正在检查 NVIDIA 运行库。'
+            : r.activated ? r.playback?.status || '运行库已就绪；模型与目标帧率在下次播放生效。'
+            : status.state === 'ready' ? r.error || '运行库尚未就绪；基础播放仍可使用。' : '';
+        const busy = pending || Boolean(status.busy);
+        download.disabled = busy || !pack?.downloadAvailable;
+        offline.disabled = busy || !pack;
+        cancel.disabled = !status.busy;
+        remove.disabled = busy || !status.installedVersion || Boolean(status.removalPending);
+        download.title = pack?.downloadAvailable ? '仅在点击后下载' : '在线附件尚未发布，可导入本版本的离线包';
+    };
+    const refresh = async () => {
+        const token = ++revision;
+        try { const status = await player.rifeExtensionStatus(); if (token === revision) render(status); }
+        catch (error) { if (!disposed && token === revision) { progress.textContent = `读取补帧状态失败：${error.message || error}`; } }
+    };
+    const changed = status => { ++revision; render(status); };
+    const request = async action => {
+        if (pending || current.busy || disposed) return;
+        pending = true; render(current);
+        try { if (!(await action())) notify('另一个操作正在进行，请稍后重试。'); }
+        catch (error) { notify(`补帧扩展操作失败：${error.message || error}`); }
+        finally { pending = false; if (!disposed) await refresh(); }
+    };
+    download.addEventListener('click', () => request(() => player.downloadRifeExtension(current.packages[0].id)));
+    offline.addEventListener('click', () => request(() => player.importRifeExtension()));
+    cancel.addEventListener('click', () => player.cancelRifeExtensionOperation());
+    remove.addEventListener('click', () => request(() => player.removeRifeExtension()));
+    player.rifeExtensionStatusChanged?.connect(changed);
+    const timer = setInterval(refresh, 1500);
+    refreshPreferences(); render(current); refresh();
+    return {node, refreshPreferences, dispose() {
+        disposed = true; ++revision; clearInterval(timer);
+        player.rifeExtensionStatusChanged?.disconnect(changed);
+    }};
+}
+
 async function showSettingsModal() {
     await initCompleted;
 
@@ -842,10 +932,18 @@ async function showSettingsModal() {
         }, 2200);
     };
 
+    const settingControls = new Map();
+    let rifeExtensionPanel = null;
     const saveSetting = (section, key, value) => {
         jmpInfo.settings[section][key] = value;
         if (section === 'video' && key === 'aiRife') updateRifeStatus();
-        showSaved(restartSettings.has(`${section}.${key}`) ? '已保存；此项将在重启后生效。' : '已保存并应用。');
+        if (section === 'video' && (key === 'aiRifeModel' || key === 'aiRifeTarget')) {
+            const control = settingControls.get(key);
+            if (control) control.select.value = String(control.options.findIndex(option => option.value == value));
+            rifeExtensionPanel?.refreshPreferences();
+        }
+        showSaved(restartSettings.has(`${section}.${key}`) ? '已保存；此项将在重启后生效。'
+            : section === 'video' && key.startsWith('aiRife') ? '已保存；重新打开视频后生效。' : '已保存并应用。');
     };
 
     let rifeCallout = null;
@@ -856,7 +954,9 @@ async function showSettingsModal() {
         if (jmpInfo.mpvConfigMode === 'system') {
             rifeCallout.textContent = 'AI 补帧需要使用内置播放配置。';
         } else if (enabled && !rife.runtimeAvailable) {
-            rifeCallout.textContent = 'AI 补帧已开启，但内置组件尚未加载。请完全退出并重新启动客户端；若仍不可用，请检查安装包是否完整。';
+            rifeCallout.textContent = typeof window.api.player.rifeExtensionStatus === 'function'
+                ? 'AI 补帧已开启；请先安装 NVIDIA RIFE 扩展并完全退出、重新启动客户端。运行库检查失败时仍可正常播放原帧。'
+                : 'AI 补帧已开启，但内置组件尚未加载。请完全退出并重新启动客户端；若仍不可用，请检查安装包是否完整。';
         } else if (enabled && rife.state === 0) {
             rifeCallout.textContent = 'AI 补帧已开启；重新打开视频后生效。';
         } else if (!enabled && (rife.state === 1 || rife.state === 2)) {
@@ -887,6 +987,7 @@ async function showSettingsModal() {
             select.addEventListener('change', () => {
                 saveSetting(section, key, setting.options[Number(select.value)].value);
             });
+            if (section === 'video') settingControls.set(key, {select, options: setting.options});
             return select;
         }
 
@@ -946,6 +1047,7 @@ async function showSettingsModal() {
             await window.api.settings.resetToDefault(section);
             showSaved('已恢复默认值。正在刷新设置页…');
             setTimeout(() => {
+                rifeExtensionPanel?.dispose();
                 overlay.remove();
                 css.remove();
                 showSettingsModal();
@@ -958,6 +1060,11 @@ async function showSettingsModal() {
             rifeCallout = element('div', 'tgs-callout');
             updateRifeStatus();
             group.appendChild(rifeCallout);
+        }
+        if (section === 'video') {
+            rifeExtensionPanel = createRifeExtensionPanel({element, player: window.api.player,
+                settings: jmpInfo.settings.video, save: (key, value) => saveSetting('video', key, value), notify: showSaved});
+            if (rifeExtensionPanel) group.appendChild(rifeExtensionPanel.node);
         }
         if (section === 'mpv') {
             const activeMode = jmpInfo.mpvConfigMode === 'system' ? '系统用户配置' : '大河内置配置';
@@ -1034,6 +1141,7 @@ async function showSettingsModal() {
             }
             const offline = element('button', 'tgs-action', '打开下载与离线媒体管理');
             offline.addEventListener('click', () => {
+                rifeExtensionPanel?.dispose();
                 overlay.remove();
                 css.remove();
                 window.tigerestOpenOfflineLibrary();
@@ -1069,6 +1177,7 @@ async function showSettingsModal() {
     search.addEventListener('input', applySearch);
 
     const close = () => {
+        rifeExtensionPanel?.dispose();
         document.removeEventListener('keydown', onKeyDown);
         overlay.remove();
         css.remove();
