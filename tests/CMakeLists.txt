@@ -105,6 +105,25 @@ if(WIN32)
   add_test(NAME test_rife_windows_ipc COMMAND test_rife_windows_ipc)
 endif()
 if(WIN32 AND Python3_Interpreter_FOUND)
+  add_executable(rife_extension_manager_host rife_extension_manager_host.cpp)
+  target_link_libraries(rife_extension_manager_host PRIVATE tigerest_rife_control)
+  add_test(NAME test_rife_extension_manager COMMAND "${Python3_EXECUTABLE}" -B -X utf8
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_rife_extension_manager.py")
+  add_test(NAME test_rife_extension_download COMMAND "${Python3_EXECUTABLE}" -B -X utf8
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_rife_extension_download.py")
+  set_tests_properties(test_rife_extension_download PROPERTIES TIMEOUT 120
+    ENVIRONMENT "RIFE_EXTENSION_MANAGER_HOST=$<TARGET_FILE:rife_extension_manager_host>"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
+  set_tests_properties(test_rife_extension_manager PROPERTIES TIMEOUT 90
+    ENVIRONMENT "RIFE_EXTENSION_MANAGER_HOST=$<TARGET_FILE:rife_extension_manager_host>"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
+  add_executable(rife_extension_archive_host rife_extension_archive_host.cpp)
+  target_link_libraries(rife_extension_archive_host PRIVATE tigerest_rife_control)
+  add_test(NAME test_rife_extension_native COMMAND "${Python3_EXECUTABLE}" -B -X utf8
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_rife_extension_native.py")
+  set_tests_properties(test_rife_extension_native PROPERTIES TIMEOUT 60
+    ENVIRONMENT "RIFE_EXTENSION_ARCHIVE_HOST=$<TARGET_FILE:rife_extension_archive_host>"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
   if(USE_STATIC_MPVQT)
   add_executable(rife_player_benchmark rife_player_benchmark.cpp)
   target_link_libraries(rife_player_benchmark PRIVATE jmp_core dbghelp)
@@ -334,6 +353,8 @@ if(APPLE)
 endif()
 
 if(Python3_Interpreter_FOUND)
+  add_test(NAME test_rife_extension_package
+           COMMAND ${Python3_EXECUTABLE} -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_rife_extension_package.py")
   add_test(NAME test_bundle_integrity
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_bundle_integrity.py)
 endif()

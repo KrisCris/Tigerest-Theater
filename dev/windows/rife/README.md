@@ -124,3 +124,27 @@ CMake 配置时保存，避免重新运行 CTest 时静默跳过已配置的真�
 许可证文本已开始收集（Python/VS 在各自包中；vs-mlrt GPLv3、Practical-RIFE MIT、
 TensorRT SLA 在 licenses 中）。公开分发前还需补齐 CUDA/VC 运行库通知与准确的对应源代码，
 并核实组合分发条款。当前实验运行库不得当作完成版权材料的发行附件。
+
+## 扩展包开发工具
+
+package_extension.py把已封存runtime、实际playback脚本/Monitor及notices生成ZIP64，
+不带引擎/用户设置。固定catalog记录外层SHA256、manifestSha256、版本范围、ABI、
+下载/展开大小和文件数；当前URL为空，尚无线上安装入口。verify_extension.py是
+参考校验器，不安装或执行内容。原生管理层已实现磁盘预算、取消、原子active、
+多进程使用锁、启动全量再校验和强ETag续传。主程序/设置入口及真实完整包导入仍待接入，
+不能由开发工具测试推定发行验收完成。
+
+回归实际构造原始local/central ZIP头，验证NUL/反斜杠未被zipfile规范化后隐藏；
+路径穿越、Windows保留名、Unix链接/DOS目录/重解析位、重复大小写路径、父文件冲突、
+尺寸/身份/哈希、变化源文件、合法已有输出和发布竞争均拒绝。发布使用同卷原子
+hardlink，不覆盖另一发布者，失败只清理自己的单个临时文件。
+
+原生ZIP64使用固定miniz3.1.2读取器，Qt进行Unicode文件I/O，并在写文件前比较完整
+local/central原始名字。安装至独立暂存目录，完整逐文件SHA/CRC通过后发布版本目录，
+active.json原子提交；正在使用的版本持有跨进程lease，卸载等退出后清理。再导入会撤销
+该版本的待卸载记录；已返回运行路径后拒绝同进程重新initialize，避免热切换DLL。
+
+下载使用独立QNAM，不传Emby鉴权。只接受可信目录的HTTPS；206要求完整Content-Range
+和同一强ETag，200重新写入，弱ETag不续传，完整SHA通过才安装。取消缓存复验保留已
+下载的文件。测试使用公开loopback TLS fixture及独立HTTP listener，不改变系统信任。
+这些状态与操作尚未暴露给网页；下载地址保持空，直到存在经过校验的发行附件。

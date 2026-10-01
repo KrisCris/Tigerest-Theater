@@ -1331,7 +1331,13 @@ void PlayerComponent::pollInterpolation()
   }
   // A busy video filter can make the core idle between frames. That is part
   // of the work being measured, not evidence of a user/network suspension.
-  const bool suspended=m_paused||m_bufferingPercentage<100||
+  // updatePlaybackState may set the UI buffering percentage to zero when a
+  // busy filter makes core-idle true. That isn't a real cache pause and must
+  // not continuously reset Windows' performance guard.
+  const bool suspended=m_paused||
+#ifdef Q_OS_MAC
+      m_bufferingPercentage<100||
+#endif
       m_rifeAccess->value("seeking").toBool()||m_rifeAccess->value("paused-for-cache").toBool();
   m_rife->poll(m_rifeClock.elapsed(),suspended);
 #ifdef Q_OS_MAC

@@ -148,3 +148,76 @@ runId 9d2c8742a3ce4311bb3303d9579b129c；内核SHA256 d5d65b0c7527837e291eb5050d
 采样改为截图/稳定之后同步取计数基线与时钟；后续截图时暂停，恢复后排除5秒，以免人为触发guard。早先截图前取initial的5秒JSON有窗口偏差，只作截图证据。新版对齐smoke测量5.004秒/媒体5.0167秒，新增丢帧0。报告首份、每次与最终save全部检查，UUID拒绝旧报告；锁定旧文件两种实际negative均退出1且原SHA不变。超时completed=false，内核散列对应实际staged副本。退出0/采样完成不代表性能通过。
 
 标准版/heavy长测、极限目标实际guard、其他后端/Shader/字幕/弹幕、真实影片、扩展安装、干净Windows、同源码Mac及统一版本发行仍待完成。
+
+## 2026-10-01：标准模型长测与实际极限回退
+
+标准4.25在相同连续1080p30/AAC、默认3Shader、GPU-Next/D3D11的4K窗口中完成
+600.027秒/600样本，媒体推进600秒，processedPairs增加17999，新增VO丢帧2
+（约0.0056%）、decoder丢帧0，最大AV偏差12.381ms，真实WASAPI48kHz mono。
+全部样本Active/4K，符合该合成素材日常门限；runId e2a46c276e3d48aab657ef1333ca1bc9。
+
+首次实际1080p24→240极限测试，持续Active却AV偏差不断累积、VO大量丢帧；发现
+Player的UI派生缓冲百分比会因core-idle被强制为0，轮询将它误作网络缓存暂停，
+反复重置Guard。只在Windows移除这一派生条件，保留实际pause/seeking/paused-for-cache，
+Mac原条件保持。相同实际链路修复后测量6.005秒便触发performance并恢复24fps；
+恢复AV约-16.7ms、actual cache-buffering=100/paused-for-cache=false。原生4K60→120
+同样测量6.005秒后触发performance，恢复60fps，恢复AV约-9.9ms。采样之前另有
+5秒预热、截图暂停和5秒恢复排除期；不将6秒误写成全部启动时长。两项requested600
+均completed=false，明确未达到极限目标；不伪造10分钟通过。原未回退记录由当前runId
+匹配的测试进程终止，保存失败状态，不操作用户进程。
+
+对应固定内核仍为d5d65b0c...；实际host SHA74a7c64f7f33b3d60770bd39b55bf3fe1a571468751471eb90826f69b78abe42。
+240/4K120 runId分别7c7057564dbf46e7b12d7e0f68b735c2/ec3837286290442cb5f79d28ecce36fe。
+bench新增实际cache/core/paused证据与1.5秒回退恢复快照；退出0仅说明回退测量记录成功。
+heavy日常长测、标准/heavy极限和其他播放场景仍待测。
+
+## 2026-10-01：heavy 日常长测与扩展安装原型
+
+相同连续660秒1080p30/AAC合成运动素材、默认3Shader、真实4K输出下，heavy完成
+600.020秒/600样本，媒体推进600.0333秒，processedPairs增加18000；新增VO/decoder
+丢帧均0，最大绝对AV偏差4.095ms。起止点及全部样本Active/4K，runId
+dc0364441a8548918cf8e8874cdb96b6。三模型都通过这份合成素材的日常门限，不能由此
+推定真实影片质量或其他显卡能力；两个极限目标仍失败。
+
+回退报告终点现于1.5秒恢复等待前保存，恢复快照独立。实际4K120重复runId
+b60f8d19243f416aa205e355340dcdbf，measured6.063秒，final媒体2.7333秒、恢复4.2333秒，
+completed=false/performanceFallback=true，恢复vf60。Guard/报告审查反馈全部关闭；
+该阶段完整47/47实际PASS，72.12秒。
+
+ZIP64封装/参考验证器九项通过。新增固定miniz3.1.2原生流式解包、暂存文件SHA/CRC、
+可信manifest锚、启动已安装文件全量再校验，以及离线安装原型的原子active记录、共享
+单版本和多使用者lease。原生暂存八项实际通过（1.117秒），含local-only名字不一致
+三条实际RED后修复，以及1.4MB流式中途取消；安装原型五项实际通过（1.055秒）。
+完整发行包、在线续传、原生UI入口、真实2GB离线导入、最终完整回归仍未完成。
+
+后续安装层审查发现的重入、重复初始化lease丢失和重新激活仍待删除的问题均以真实序列
+重现后修复；原生Manager十项PASS2.220秒，含实际Popen另进程持lease、卸载保留及退出后
+清理。独立QNAM在真实本地TLS上覆盖206强ETag、200不支持Range、变化ETag重试fresh、
+取消再续传、错误bodySHA、完整缓存复验取消保留、默认信任拒绝自签、弱ETag不续传。
+HTTPS降级负例使用独立可正常返回归档的HTTP listener，防止TLS-only端口失败造成假绿。
+UI入口、完整2GB包导入和公开下载地址仍未接入。
+
+AVX2/v3修复CI36790303630成功，artifact11133935591/源码12853d5，DLL138101262字节，
+SHA256 70f02febd0a867411c5edcdd4f4aa9536e29b258bff4404662fdff9ebe7d8206；source-lock与
+已验收普通内核完全一致，全部六补丁散列与指定Git源码一致。实际反汇编确认调用传r8指针，
+RVAe9020本地拷贝使用vmovdqu，不再生成旧的未对齐vmovdqa隐式按值参数。十轮70个新进程
+实际媒体/EOF/TRT宿主全部通过98.952秒，无skip。完整build/CTest50/50通过78.11秒，包含
+新v3 tiny Player/真实EOF、原生安装下载、WebEngine。新v3完整4K渲染长测仍在进行；
+Mac、干净系统和最终包来源验收均未完成。
+
+## 2026-10-01：原生安装与下载基础验证完成
+
+miniz3.1.2 ZIP64原生流式解包、可信目录固定哈希、原子安装/激活、重启复核、
+版本占用锁和独立HTTPS下载已实现。完整构建/CTest50/50 PASS78.11秒；真实
+TLS下载10项PASS10.623秒，HTTPS降级用例采用独立真实HTTP listener并断言
+零访问。离线安装管理11项PASS2.257秒，包含真实第二进程占用和重复请求
+不能误报正在安装的任务完成（RED/GREEN）。安装层审查反馈已关闭。
+尚未完成最终大型扩展包、可信发行目录、主程序启动和设置界面。
+
+新AVX2内核12853d5（SHA256 70f02febd0a867411c5edcdd4f4aa9536e29b258bff4404662fdff9ebe7d8206）
+通过70个短片/EOF进程回归，但实际完整4K窗口无补帧基线也崩溃，RVA4f81b。
+32字节mp_async_queue_config按值参数的GCC AVX2对齐拷贝为第二个崩溃点，
+因此明确拒绝该DLL作为发行内核。新增队列指针/内部副本补丁保留所有配置、
+加锁及计数行为，实际native C语义RED→GREEN，5项PASS1.210秒；固定媒体
+配方5项PASS4.553秒。小范围只读审查无发现。CI f9b11b1/run36798581611
+正在重新构建，仍必须通过真实4K渲染。普通内核d5d65b0c...仍是已接受版本。

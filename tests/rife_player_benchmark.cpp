@@ -133,6 +133,10 @@ int main(int argc,char** argv)
         {"voDrops",QJsonValue::fromVariant(read("frame-drop-count"))},
         {"decoderDrops",QJsonValue::fromVariant(read("decoder-frame-drop-count"))},
         {"avsyncSeconds",QJsonValue::fromVariant(read("avsync"))},
+        {"paused",QJsonValue::fromVariant(read("pause"))},
+        {"pausedForCache",QJsonValue::fromVariant(read("paused-for-cache"))},
+        {"cacheBuffering",QJsonValue::fromVariant(read("cache-buffering-state"))},
+        {"coreIdle",QJsonValue::fromVariant(read("core-idle"))},
         {"audioOutput",QJsonValue::fromVariant(read("current-ao"))},
         {"audioParams",QJsonValue::fromVariant(read("audio-params"))},
         {"osdDimensions",QJsonValue::fromVariant(read("osd-dimensions"))},
@@ -163,7 +167,11 @@ int main(int argc,char** argv)
     report["initial"]=snapshot();if(!save())return fail("Cannot save the measurement baseline");
     if(!playbackError.isEmpty())return fail(playbackError);
     const auto initial=report["initial"].toObject();const auto firstRife=initial["rife"].toObject()["playback"].toObject();
-    if(!parser.isSet("baseline")&&firstRife["state"].toInt()!=2)return fail("RIFE was not active after warmup: "+firstRife["reason"].toString());
+    if(!parser.isSet("baseline")&&firstRife["state"].toInt()!=2){
+        report["performanceFallback"]=firstRife["reason"].toString()=="performance";
+        report["final"]=initial;report["measuredSeconds"]=0.;
+        return fail("RIFE was not active after warmup: "+firstRife["reason"].toString());
+    }
     clock.restart();qint64 next=1000;bool fallback=false;
     while(clock.elapsed()<report["requestedSeconds"].toInt()*1000&&playbackError.isEmpty()){
         pump();if(clock.elapsed()<next)continue;next+=1000;
@@ -177,7 +185,13 @@ int main(int argc,char** argv)
             break;
         }
     }
-    const auto final=snapshot();report["final"]=final;report["measuredSeconds"]=clock.elapsed()/1000.;
+    const auto final=snapshot();const auto measuredSeconds=clock.elapsed()/1000.;
+    if(fallback){
+        const auto recoverUntil=clock.elapsed()+1500;
+        while(clock.elapsed()<recoverUntil&&playbackError.isEmpty())pump();
+        report["fallbackRecovery"]=snapshot();
+    }
+    report["final"]=final;report["measuredSeconds"]=measuredSeconds;
     report["performanceFallback"]=fallback;report["completed"]=playbackError.isEmpty()&&!fallback;
     report["error"]=playbackError;const bool saved=save();player.stop();
     for(int i=0;i<100;++i)pump();

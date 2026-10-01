@@ -1,6 +1,13 @@
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMPILER_FLAGS_THIRD_PARTY}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMPILER_FLAGS_THIRD_PARTY}")
 
+if(WIN32)
+  add_library(tigerest_miniz STATIC miniz/miniz.c)
+  target_include_directories(tigerest_miniz PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/miniz)
+  target_compile_definitions(tigerest_miniz PUBLIC MINIZ_NO_STDIO
+    MINIZ_NO_DEFLATE_APIS MINIZ_NO_ZLIB_APIS MINIZ_NO_ZLIB_COMPATIBLE_NAMES)
+endif()
+
 if(APPLE)
   add_subdirectory(HIDRemote)
   add_subdirectory(letsmove)
