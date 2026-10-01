@@ -1,0 +1,60 @@
+diff --git a/filters/f_async_queue.c b/filters/f_async_queue.c
+--- a/filters/f_async_queue.c
++++ b/filters/f_async_queue.c
+@@ -77,7 +77,7 @@ struct mp_async_queue *mp_async_queue_create(void)
+     };
+     mp_mutex_init(&r->q->lock);
+     talloc_set_destructor(r, on_free_queue);
+-    mp_async_queue_set_config(r, (struct mp_async_queue_config){0});
++    mp_async_queue_set_config(r, &(struct mp_async_queue_config){0});
+     return r;
+ }
+ 
+@@ -130,9 +130,13 @@ static void recompute_sizes(struct async_queue *q)
+         account_frame(q, q->frames[n], 1);
+ }
+ 
++#if defined(_WIN32) && defined(__GNUC__) && !defined(__clang__)
++__attribute__((noipa)) // avoid Win64 GCC AVX2 over-alignment of by-value copies
++#endif
+ void mp_async_queue_set_config(struct mp_async_queue *queue,
+-                               struct mp_async_queue_config cfg)
++                               const struct mp_async_queue_config *input)
+ {
++    struct mp_async_queue_config cfg = *input;
+     struct async_queue *q = queue->q;
+ 
+     cfg.max_bytes = MPCLAMP(cfg.max_bytes, 1, (size_t)-1 / 2);
+diff --git a/filters/f_async_queue.h b/filters/f_async_queue.h
+--- a/filters/f_async_queue.h
++++ b/filters/f_async_queue.h
+@@ -132,4 +132,4 @@ struct mp_async_queue_config {
+ // If the current queue contains more frames than the new config allows, the
+ // queue will remain over-allocated until these frames have been read.
+ void mp_async_queue_set_config(struct mp_async_queue *queue,
+-                               struct mp_async_queue_config cfg);
++                               const struct mp_async_queue_config *input);
+diff --git a/filters/f_decoder_wrapper.c b/filters/f_decoder_wrapper.c
+--- a/filters/f_decoder_wrapper.c
++++ b/filters/f_decoder_wrapper.c
+@@ -1148,7 +1148,7 @@
+         .max_samples = p->queue_opts->max_samples,
+         .max_duration = p->queue_opts->max_duration,
+     };
+-    mp_async_queue_set_config(p->queue, cfg);
++    mp_async_queue_set_config(p->queue, &cfg);
+ }
+ 
+ static void decf_process(struct mp_filter *f)
+diff --git a/audio/out/buffer.c b/audio/out/buffer.c
+--- a/audio/out/buffer.c
++++ b/audio/out/buffer.c
+@@ -574,7 +574,7 @@
+         .max_samples = ao->buffer,
+         .max_bytes = INT64_MAX,
+     };
+-    mp_async_queue_set_config(p->queue, cfg);
++    mp_async_queue_set_config(p->queue, &cfg);
+ 
+     if (ao->driver->write) {
+         mp_filter_graph_set_wakeup_cb(p->filter_root, wakeup_filters, ao);

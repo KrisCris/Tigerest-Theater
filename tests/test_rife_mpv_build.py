@@ -14,6 +14,74 @@ BUILDER = ROOT / "dev/windows/rife/build_mpv.py"
 
 class MpvBuildPreparationTests(unittest.TestCase):
     @unittest.skipUnless(os.environ.get('RIFE_TEST_MPV_SOURCE'), 'requires pinned source checkout')
+    def test_queue_pointer_patch_preserves_config_and_locked_recomputation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            relatives = ['filters/f_async_queue.c', 'filters/f_async_queue.h',
+                         'filters/f_decoder_wrapper.c', 'audio/out/buffer.c']
+            for relative in relatives:
+                target = base / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((Path(os.environ['RIFE_TEST_MPV_SOURCE']) / relative).read_bytes())
+            patch = ROOT / 'dev/windows/rife/mpv-win64-queue-pointer.patch'
+            if patch.exists():
+                applied = subprocess.run(['git', '-C', str(base), 'apply', str(patch)], capture_output=True)
+                self.assertEqual(applied.returncode, 0, applied.stderr.decode('utf-8', errors='replace'))
+            header = (base / relatives[1]).read_text(encoding='utf-8')
+            source = (base / relatives[0]).read_text(encoding='utf-8')
+            unit_enum = re.search(r'enum mp_async_queue_sample_unit \{.*?\n\};', header, re.S).group()
+            config = re.search(r'struct mp_async_queue_config \{.*?\n\};', header, re.S).group()
+            declaration = re.search(r'void mp_async_queue_set_config\(.*?;', header, re.S).group()
+            function = re.search(r'void mp_async_queue_set_config\(.*?\n\}', source, re.S).group()
+            unit = base / 'queue.c'
+            unit.write_text('''#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
+''' + unit_enum + '\n' + config + '''
+struct async_queue { struct mp_async_queue_config cfg; int lock; int recomputations; };
+struct mp_async_queue { struct async_queue *q; };
+static void mp_mutex_lock(int *lock) { assert(!*lock); *lock=1; }
+static void mp_mutex_unlock(int *lock) { assert(*lock); *lock=0; }
+static void recompute_sizes(struct async_queue *q) { assert(q->lock); q->recomputations++; }
+#define mp_assert assert
+#define MPMAX(a,b) ((a)>(b)?(a):(b))
+#define MPCLAMP(a,min,max) (((a)<(min))?(min):(((a)>(max))?(max):(a)))
+''' + declaration + '\n' + function + '''
+int main(void) {
+    struct async_queue q={0}; struct mp_async_queue queue={&q};
+    struct mp_async_queue_config input={0}, before=input;
+    mp_async_queue_set_config(&queue,&input);
+    assert(!memcmp(&input,&before,sizeof(input)));
+    assert(q.cfg.max_bytes==1 && q.cfg.max_samples==1 && q.cfg.max_duration==0);
+    assert(q.cfg.sample_unit==AQUEUE_UNIT_FRAME && !q.lock && !q.recomputations);
+    input.max_bytes=65536; input.max_samples=48000; input.max_duration=0.5;
+    input.sample_unit=AQUEUE_UNIT_SAMPLES; before=input;
+    mp_async_queue_set_config(&queue,&input);
+    assert(!memcmp(&input,&before,sizeof(input)) && !q.lock && q.recomputations==1);
+    assert(q.cfg.max_bytes==65536 && q.cfg.max_samples==48000 && q.cfg.max_duration==0.5);
+    input.max_bytes=-5; input.max_samples=-10; before=input;
+    mp_async_queue_set_config(&queue,&input);
+    assert(!memcmp(&input,&before,sizeof(input)) && !q.lock && q.recomputations==1);
+    assert(q.cfg.max_bytes==1 && q.cfg.max_samples==1 && q.cfg.max_duration==0.5);
+    input.max_bytes=INT64_MAX; input.max_samples=INT64_MAX;
+    input.sample_unit=AQUEUE_UNIT_FRAME; before=input;
+    mp_async_queue_set_config(&queue,&input);
+    assert(!memcmp(&input,&before,sizeof(input)) && !q.lock && q.recomputations==2);
+    assert(q.cfg.max_bytes==INT64_MAX && q.cfg.max_samples==INT64_MAX);
+    return 0;
+}
+''', encoding='utf-8')
+            executable = base / ('queue.exe' if os.name == 'nt' else 'queue')
+            compiler = os.environ.get('RIFE_TEST_C_COMPILER', 'cl' if os.name == 'nt' else 'cc')
+            flags = ['/nologo', '/TC', '/Fe:' + str(executable), '/Fo:' + str(base / 'queue.obj')] if os.name == 'nt' else ['-std=c11', '-O2', '-o', str(executable)]
+            compiled = subprocess.run([compiler, *flags, str(unit)], capture_output=True)
+            self.assertEqual(compiled.returncode, 0, (compiled.stdout+compiled.stderr).decode('utf-8', errors='replace'))
+            executed = subprocess.run([str(executable)], capture_output=True)
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+
+    @unittest.skipUnless(os.environ.get('RIFE_TEST_MPV_SOURCE'), 'requires pinned source checkout')
     def test_hwdec_pointer_patch_preserves_input_and_direct_copy_registration(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
