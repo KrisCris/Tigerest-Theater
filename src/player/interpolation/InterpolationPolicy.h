@@ -41,12 +41,14 @@ public:
     void reset();
     bool update(int64_t nowMs,uint64_t predictions,uint64_t pairs,double p95Ms,
                 uint64_t drops,double fps,bool suspended,int factor=2,bool timingAvailable=true,
-                double avsync=std::numeric_limits<double>::quiet_NaN(),uint64_t decoderDrops=0);
+                double avsync=std::numeric_limits<double>::quiet_NaN(),uint64_t decoderDrops=0,
+                double displayFps=std::numeric_limits<double>::quiet_NaN());
 private:
     GuardParameters parameters;
     int64_t start=-1;
     int64_t avSince=-1,previousPoll=-1;
     uint64_t firstPairs=0,firstDrops=0,firstDecoderDrops=0;
+    double windowDisplayFps=0;
     bool warming=true;
     unsigned slowWindows=0;
 };

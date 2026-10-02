@@ -27,18 +27,19 @@ int main(int argc,char**argv){
     QDir().mkpath(root+"/python");QDir().mkpath(root+"/scripts");QDir().mkpath(root+"/plugins");
     write(root+"/monitor.dll","host monitor fixture");write(root+"/interpolate.vpy","host script fixture");
     QJsonArray files;
-    for(const QString path:{"python/python.exe","scripts/probe_runtime.py","scripts/prepare_engine.py","plugins/model.onnx","plugins/vstrt.dll"}){
+    for(const QString path:{"python/python.exe","scripts/probe_runtime.py","scripts/prepare_engine.py","plugins/model.onnx","plugins/vstrt.dll","scripts/native_probe.py"}){
         const QByteArray bytes="Qt lifecycle fixture";write(root+"/"+path,bytes);
         files.append(QJsonObject{{"path",path},{"size",bytes.size()},{"sha256",QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex())}});
     }
     const auto model=QJsonObject{{"id","rife-4.25-lite"},{"path","plugins/model.onnx"},{"sha256",files[3].toObject()["sha256"]},{"alignment",1},{"implementation",2}};
     json(root+"/runtime.json",{{"schemaVersion",1},{"backend","windows-nvidia-trt"},{"runtimeId","fixture-v2"},{"versions",QJsonObject{{"tensorrt","10.16"}}},
-        {"files",files},{"models",QJsonArray{model}},{"entrypoints",QJsonObject{{"python","python/python.exe"},{"plugin","plugins/vstrt.dll"}}}});
+        {"files",files},{"models",QJsonArray{model}},{"entrypoints",QJsonObject{{"python","python/python.exe"},{"plugin","plugins/vstrt.dll"},{"worker","scripts/native_probe.py"}}}});
     const auto gpu=QJsonObject{{"name","Fixture NVIDIA"},{"computeCapability","8.9"},{"uuid",QString(32,'3')},{"driverVersion","616.64"},{"cudaDriverVersion",13040},{"deviceId",0}};
     json(root+"/fixture.json",{{"probe",QJsonObject{{"ok",true},{"privateLibrariesOnly",true},{"gpu",gpu}}},{"delay",20}});
-    bool isolated=false;int launches=0;
+    bool isolated=false;int launches=0;QString lastWorker;
     auto launch=[&](QProcess* process,const QString& program,const QStringList& arguments,const QProcessEnvironment& env){
         ++launches;
+        lastWorker=arguments[5];
         assert(program==root+"/python/python.exe");
         assert(arguments.mid(0,5)==QStringList({"-B","-I","-S","-X","utf8"}));
         assert(!env.contains("PYTHONHOME")&&!env.contains("PYTHONPATH"));isolated=true;
@@ -48,6 +49,11 @@ int main(int argc,char**argv){
         process->start();
     };
     RifeRuntimeManager manager(nullptr,launch);
+    // An extension verified by the native installer must not rehash its whole
+    // payload in the public wrapper. It still probes private DLLs and the GPU.
+    assert(manager.configure(root,cache,root+"/monitor.dll",root+"/interpolate.vpy",true));
+    assert(until([&]{return manager.diagnostics()["runtimeReady"].toBool();}));
+    assert(lastWorker.endsWith("scripts/native_probe.py"));
     QList<quint64> ready;
     QObject::connect(&manager,&RifeRuntimeManager::prepared,[&](quint64 generation,bool ok,const QString&){if(ok)ready<<generation;});
     assert(manager.configure(root,cache,root+"/monitor.dll",root+"/interpolate.vpy"));

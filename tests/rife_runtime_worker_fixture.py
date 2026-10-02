@@ -16,7 +16,10 @@ p.add_argument('--result', type=Path)
 args = p.parse_args()
 if args.runtime:
     state = json.loads((args.runtime / 'fixture.json').read_text(encoding='utf-8'))
-    args.report.write_text(json.dumps(state['probe']), encoding='utf-8')
+    if args.report:
+        args.report.write_text(json.dumps(state['probe']), encoding='utf-8')
+    else:
+        print(json.dumps(state['probe']))
 else:
     request = json.loads(args.request.read_text(encoding='utf-8'))
     runtime = Path(request['runtime'])

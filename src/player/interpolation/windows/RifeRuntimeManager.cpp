@@ -60,7 +60,7 @@ void RifeRuntimeManager::cancelActive(){
     if(active&&active->state()!=QProcess::NotRunning)active->kill();
     active.clear();cancellation.clear();compiling=false;probing=false;
 }
-bool RifeRuntimeManager::configure(const QString& runtime,const QString& engineCache,const QString& monitorPath,const QString& scriptPath){
+bool RifeRuntimeManager::configure(const QString& runtime,const QString& engineCache,const QString& monitorPath,const QString& scriptPath,bool extensionVerified){
     cancelActive();available=false;manifest={};gpu={};error.clear();cacheHit=false;
     const QFileInfo runtimeInfo(runtime),cacheInfo(engineCache);
     root=runtimeInfo.canonicalFilePath();
@@ -69,13 +69,14 @@ bool RifeRuntimeManager::configure(const QString& runtime,const QString& engineC
     const auto python=manifest["entrypoints"].toObject()["python"].toString();
     if(manifest["schemaVersion"]!=1||manifest["backend"]!="windows-nvidia-trt"||manifest["runtimeId"].toString().isEmpty()||
        manifest["models"].toArray().isEmpty()||!verifiedEntry(root,manifest,python)||
-       !verifiedEntry(root,manifest,"scripts/probe_runtime.py")||!verifiedEntry(root,manifest,"scripts/prepare_engine.py"))return false;
+       !verifiedEntry(root,manifest,"scripts/probe_runtime.py")||!verifiedEntry(root,manifest,"scripts/prepare_engine.py")||
+       (extensionVerified&&!verifiedEntry(root,manifest,manifest["entrypoints"].toObject()["worker"].toString())))return false;
     if(!QDir().mkpath(engineCache))return false;
     cache=QFileInfo(engineCache).canonicalFilePath();monitor=QFileInfo(monitorPath).canonicalFilePath();script=QFileInfo(scriptPath).canonicalFilePath();
     if(cache.isEmpty())return false;
     if(model().isEmpty())modelId=manifest["models"].toArray().first().toObject()["id"].toString();
     probing=true;
-    run("scripts/probe_runtime.py",{},true,[this](bool ok,const QJsonObject& result,const QString& message){
+    run(extensionVerified?manifest["entrypoints"].toObject()["worker"].toString():QStringLiteral("scripts/probe_runtime.py"),{},true,[this](bool ok,const QJsonObject& result,const QString& message){
         probing=false;gpu=result["gpu"].toObject();
         const bool identityValid=QRegularExpression("^[0-9a-f]{32}$").match(gpu["uuid"].toString()).hasMatch()&&
             !gpu["driverVersion"].toString().isEmpty()&&!gpu["computeCapability"].toString().isEmpty()&&gpu["deviceId"].toInt(-1)==0;
@@ -144,7 +145,8 @@ void RifeRuntimeManager::run(const QString& worker,const QJsonObject& request,bo
     const auto resultPath=folder->path()+"/result.json",requestPath=folder->path()+"/request.json";
     cancellation=folder->path()+"/cancel";
     QStringList args{"-B","-I","-S","-X","utf8",privateFile(root,worker)};
-    if(probe)args<<"--runtime"<<root<<"--report"<<resultPath;
+    const bool nativeProbe=probe&&worker==manifest["entrypoints"].toObject()["worker"].toString();
+    if(probe){args<<"--runtime"<<root;if(!nativeProbe)args<<"--report"<<resultPath;}
     else{
         auto payload=request;payload.insert("cancelFile",cancellation);QFile file(requestPath);
         if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(payload).toJson())<0){finished(false,{},"Cannot write preparation request");return;}
@@ -153,12 +155,15 @@ void RifeRuntimeManager::run(const QString& worker,const QJsonObject& request,bo
     QProcessEnvironment env;for(const auto& key:{"SystemRoot","WINDIR","TEMP","TMP"})if(qEnvironmentVariableIsSet(key))env.insert(key,qEnvironmentVariable(key));
     env.insert("PATH",QDir(env.value("SystemRoot","C:/Windows")).filePath("System32"));
     env.insert("PYTHONNOUSERSITE","1");env.insert("PYTHONUTF8","1");
+    if(nativeProbe)env.insert("VSSCRIPT_PATH",privateFile(root,manifest["entrypoints"].toObject()["vsscript"].toString()));
     const auto token=serial;auto* process=new QProcess(this);active=process;process->setWorkingDirectory(root);
     process->setCreateProcessArgumentsModifier([](auto* args){args->flags|=0x08000000;}); // CREATE_NO_WINDOW
     const auto done=QSharedPointer<bool>::create(false);
-    auto complete=[this,process,token,folder,resultPath,finished,done](bool ok,const QString& message){
+    auto complete=[this,process,token,folder,resultPath,finished,done,nativeProbe](bool ok,const QString& message){
         if(*done)return;*done=true;
-        if(token==serial){active.clear();cancellation.clear();finished(ok,readObject(resultPath),message);}
+        if(token==serial){active.clear();cancellation.clear();
+            const auto result=nativeProbe?QJsonDocument::fromJson(process->readAllStandardOutput()).object():readObject(resultPath);
+            finished(ok,result,message);}
         process->deleteLater();
     };
     connect(process,&QProcess::finished,this,[complete](int code,QProcess::ExitStatus status){complete(code==0&&status==QProcess::NormalExit,QString());});

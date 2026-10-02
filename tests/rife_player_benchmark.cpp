@@ -66,7 +66,8 @@ int main(int argc,char** argv)
     QCommandLineParser parser;parser.addHelpOption();
     for(const auto& key:{"runtime","cache","monitor","script","media","output","model","target","seconds","warmup","backend","preset","run-id"})
         parser.addOption(QCommandLineOption(key,key,key));
-    parser.addOption(QCommandLineOption("baseline","Original-frame comparison"));parser.process(app);
+    parser.addOption(QCommandLineOption("baseline","Original-frame comparison"));
+    parser.addOption(QCommandLineOption("controls","Exercise pause and seek during measurement"));parser.process(app);
     const auto value=[&](const char* key,const QString& fallback=QString()){
         return parser.isSet(key)?parser.value(key):fallback;
     };
@@ -177,9 +178,28 @@ int main(int argc,char** argv)
         report["final"]=initial;report["measuredSeconds"]=0.;
         return fail("RIFE was not active after warmup: "+firstRife["reason"].toString());
     }
-    clock.restart();qint64 next=1000;bool fallback=false;
+    clock.restart();qint64 next=1000;bool fallback=false,controlsDone=false;
     while(clock.elapsed()<report["requestedSeconds"].toInt()*1000&&playbackError.isEmpty()){
         pump();if(clock.elapsed()<next)continue;next+=1000;
+        if(parser.isSet("controls")&&!controlsDone&&clock.elapsed()>report["requestedSeconds"].toInt()*500){
+            controlsDone=true;player.pause();
+            auto deadline=clock.elapsed()+2000;
+            while(!read("pause").toBool()&&clock.elapsed()<deadline)pump();
+            if(!read("pause").toBool()){playbackError="Pause did not take effect";break;}
+            const auto pausedPosition=read("playback-time").toDouble();
+            deadline=clock.elapsed()+500;while(clock.elapsed()<deadline)pump();
+            if(std::abs(read("playback-time").toDouble()-pausedPosition)>.1){playbackError="Paused position advanced";break;}
+            const auto epoch=player.windowsRifeStatus()["playback"].toMap()["epoch"].toULongLong();
+            const auto targetPosition=pausedPosition+10.;player.seekTo(qint64(targetPosition*1000));player.play();
+            deadline=clock.elapsed()+12000;bool recovered=false;
+            while(clock.elapsed()<deadline&&playbackError.isEmpty()){
+                pump();const auto state=player.windowsRifeStatus()["playback"].toMap();
+                if(state["state"].toInt()==2&&state["epoch"].toULongLong()!=epoch&&
+                   read("playback-time").toDouble()>=targetPosition-.1){recovered=true;break;}
+            }
+            report["controlsPassed"]=recovered;
+            if(!recovered){playbackError="Interpolation did not recover after pause/seek";break;}
+        }
         auto sample=snapshot();sample["elapsedSeconds"]=clock.elapsed()/1000.;samples.append(sample);
         if(!save()){playbackError="Cannot save measurement samples";break;}
         if(!read("playback-time").isValid()){playbackError="Media ended before the measurement completed";break;}

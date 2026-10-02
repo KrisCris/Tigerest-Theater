@@ -4,15 +4,15 @@
 
 媒体库来自你连接的 Emby Server，账号和内容权限由服务器提供。本项目提供客户端，不包含影视资源，也不会自动开通服务器访问权限。
 
-## V2.3.1 正式版
+## V2.3.2 正式版
 
-V2.3 将 Windows NVIDIA 与 Mac 的 RIFE 功能并入正式版，新增详情页评论区。V2.3.1 将 MPV 设置合并到 Emby 客户端设置页，修复扩展安装按钮与头像文件选择，改善媒体卡片、选集操作、滚动条和 Windows 标题栏。版本变化见 [CHANGELOG](CHANGELOG.md)，完整下载和校验文件见 [GitHub Releases](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.3.1)。
+V2.3 提供 Windows NVIDIA 与 Mac RIFE 补帧、详情页评论区和整合在 Emby 设置中的 MPV 播放设置。V2.3.2 修复 Windows 23.976 fps 预设倍率与显示刷新率造成的回退问题，加速重复启动时的扩展校验；保留新版媒体卡片、选集、滚动条和深色标题栏。版本变化见 [CHANGELOG](CHANGELOG.md)，完整下载和校验文件见 [GitHub Releases](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.3.2)。
 
 | 平台 | 下载 | 安装 |
 | --- | --- | --- |
-| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.1/TigerestTheater-2.3.1-x64.exe) | 按向导安装，可覆盖更新 |
-| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.1/TigerestTheater-2.3.1-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
-| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.1/TigerestTheater-2.3.1-arm64.dmg) | 将应用拖入「应用程序」 |
+| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.2/TigerestTheater-2.3.2-x64.exe) | 按向导安装，可覆盖更新 |
+| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.2/TigerestTheater-2.3.2-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
+| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.2/TigerestTheater-2.3.2-arm64.dmg) | 将应用拖入「应用程序」 |
 
 基础包已包含 MPV 和所需运行库。Windows RIFE 的大型 AI 组件使用独立扩展，在客户端设置中下载或离线导入。下载文件可用发布页的 SHA-256 清单核验。
 
@@ -43,7 +43,7 @@ V2.3 将 Windows NVIDIA 与 Mac 的 RIFE 功能并入正式版，新增详情页
 
 ### Windows NVIDIA
 
-需要 NVIDIA 显卡和可用的 NVIDIA 驱动。先更新到 **V2.3.1**，再下载或离线导入 **RIFE NVIDIA 1.0.0 扩展**。扩展包含 RIFE 4.25 lite、4.25、4.25 heavy 三个模型，以及独立的 TensorRT 运行库，无需另装 SVP、Python 或 CUDA Toolkit。Intel／AMD 显卡仍可使用基础播放功能。
+需要 NVIDIA 显卡和可用的 NVIDIA 驱动。先更新到 **V2.3.2**，再下载或离线导入 **RIFE NVIDIA 1.0.0 扩展**。扩展包含 RIFE 4.25 lite、4.25、4.25 heavy 三个模型，以及独立的 TensorRT 运行库，无需另装 SVP、Python 或 CUDA Toolkit。Intel／AMD 显卡仍可使用基础播放功能。
 
 #### 在线安装
 
@@ -73,9 +73,15 @@ f7a7958b119b94b374df916b39ef36e9ed34f6df15eac4fb40153d30b2aab694
 
 可选择均衡、画质优先、高帧率和 4K 流畅预设；使用整数倍插帧接近 60／120／240 fps。首次使用某个模型和输入尺寸时需要准备引擎，期间按原帧播放，准备完成后重新打开视频。扩展下载约 **2.00 GiB**，展开约 **2.49 GiB**，引擎缓存另占空间。
 
+「约 60 fps」是预设目标，实际帧率由片源与整数倍率决定：23.976／24 fps 采用 2 倍，输出约 47.952／48 fps；29.97／30 fps 输出约 59.94／60 fps。模型决定画质和运算量，目标帧率决定插帧数量。V2.3.2 修正了 23.976 fps 被误算为 3 倍、输出 71.928 fps 的情况；更新后无需重新下载扩展或重建已有引擎。
+
+**启动检查：** 安装、首次升级到 V2.3.2 或文件变化后仍须完整校验。后续启动在支持变更日志的本地 NTFS 上快速检查文件身份、大小和变更记录，未变化的扩展文件不再反复读取数 GB 内容；校验记录受当前 Windows 用户保护。文件损坏、缺失、出现多余文件或记录异常时会重新核验或拒绝加载。显卡和私有运行库仍会进行实际探测；ReFS、网络盘或变更日志不可用时保留完整校验。
+
 格式门槛最高为逐行 SDR 4K／60 fps 输入，程序不自动缩小推理尺寸或转换 HDR。性能不足、倍速播放或不支持的输入会恢复原帧播放。
 
 实测 RTX 4090 的三个模型均通过合成素材 1080p30→60、默认画质处理后输出 4K 的 10 分钟测试。**1080p→240 和原生 4K60→120 仍属实验选项，尚未达到实时目标**，可能触发原帧回退。激进画质也会增加负载。详细测试边界见 [RIFE 实施报告](docs/reports/2026-09-30-windows-rife.md)。
+
+V2.3.2 另使用真实 1080p／23.976 fps 动画验证三档模型，各测量 3 分钟，暂停和跳转通过，测量段没有新增 VO／解码丢帧或性能回退。本机完整客户端首次启动约 18.4 秒，后续约 2.8～3.6 秒（包含显卡探测与运行库激活）；环境和范围见 [稳定性验收记录](docs/reports/2026-10-03-windows-rife-stability.md)。
 
 ### Apple Silicon Mac
 
@@ -103,7 +109,9 @@ M 系列 Mac 的模型及 Core ML／Metal 组件随基础包提供，支持最�
 
 **补帧未生效：** 开启后重新打开视频。Windows 安装扩展后须完全退出并重启；首次引擎准备未完成时仍以原帧播放。检查设置中的当前状态和格式／性能回退原因。
 
-**扩展按钮或头像“浏览”没反应：** V2.3.0 存在扩展兼容范围与 Windows 文件选择器打包问题，请更新 V2.3.1，并使用完整安装包或完整解压便携包。运行其他任务时扩展按钮会暂时禁用；如果提示空间不足、校验失败或运行库异常，按设置页错误信息排查。
+**Windows 补帧很快回退：** 先更新 V2.3.2，它修复了常见 23.976 fps 动画的额外倍率，以及输出帧率超过显示刷新率时将正常丢帧视为过载的问题。先用均衡、约 60 fps 和默认画质验证；120／240 fps、4K 与激进画质会提高负载。持续音画不同步或额外丢帧仍会回退，GPU 总占用率不能单独代表解码、帧转换和渲染流水线能否实时输出。日志中的 `RIFE realtime fallback` 记录当时的模型、倍率、丢帧和音画偏差，便于排查。
+
+**扩展按钮或头像“浏览”没反应：** V2.3.0 存在扩展兼容范围与 Windows 文件选择器打包问题，请更新 V2.3.2，并使用完整安装包或完整解压便携包。运行其他任务时扩展按钮会暂时禁用；如果提示空间不足、校验失败或运行库异常，按设置页错误信息排查。
 
 **Windows 媒体库画面异常：** 完全退出后尝试 `"Tigerest Theater.exe" --disable-gpu`，用于排查网页 GPU 渲染；视频硬解设置保持独立。
 

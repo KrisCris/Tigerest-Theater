@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QDebug>
 #include <cmath>
 namespace rife {
 namespace {
@@ -16,7 +17,7 @@ QString quote(const QString& text){return "%"+QString::number(text.toUtf8().size
 bool same(const SourceInfo&a,const SourceInfo&b){return a.width==b.width&&a.height==b.height&&a.fpsNum==b.fpsNum&&a.fpsDen==b.fpsDen&&a.progressive==b.progressive&&a.cfr==b.cfr&&a.hdr==b.hdr&&a.colorKnown==b.colorKnown;}
 QString message(const QString& reason,Backend backend=Backend::CoreMLMetal){
     if(reason=="hdr")return QStringLiteral("当前 HDR 视频保持原帧播放");
-    if(reason=="performance")return QStringLiteral("性能不足，已恢复原帧播放");
+    if(reason=="performance")return QStringLiteral("补帧未能持续实时输出，已恢复原帧播放");
     if(reason=="system-config")return QStringLiteral("AI 补帧需要使用内置播放配置");
     if(reason=="external-filter")return QStringLiteral("已有外部补帧滤镜，保持当前播放配置");
     if(reason=="unsupported-size")return backend==Backend::TensorRT?QStringLiteral("当前分辨率保持原帧播放（最高 4K）"):QStringLiteral("当前分辨率保持原帧播放（最高 1080p）");
@@ -78,7 +79,7 @@ void FrameInterpolationController::configureHardwareDecoding(const QString& mode
     if(!mpv.set("hwdec",copy?QStringLiteral("auto-copy"):mode)&&active)
         disable("decode-error");
 }
-void FrameInterpolationController::stop(){++serial;detach();current=State::Off;reason.clear();source={};latest={};}
+void FrameInterpolationController::stop(){++serial;detach();current=State::Off;reason.clear();source={};latest={};lastFailure.clear();}
 void FrameInterpolationController::stopOnEndFile(){
     ++serial;
     closeSession(session);session=0;epoch=0;
@@ -178,8 +179,18 @@ void FrameInterpolationController::onMetrics(uint64_t generation,const Metrics&m
     if(suspended)preparingSince=-1;
     else if(preparingSince<0)preparingSince=now;
     else if(!m.epoch&&now-preparingSince>15000){disable("filter-error");return;}
+    const auto display=mpv.read("display-fps");
+    const double displayFps=display.isValid()?display.toDouble():std::numeric_limits<double>::quiet_NaN();
     if(guard.update(now,m.predictions,m.pairs,m.p95Ms,drops,double(source.fpsNum)/source.fpsDen,suspended,
-                    paths.factor,m.timingAvailable,avsync,decoderDrops))disable("performance");
+                    paths.factor,m.timingAvailable,avsync,decoderDrops,displayFps)){
+        lastFailure={{"voDrops",qulonglong(drops)},{"decoderDrops",qulonglong(decoderDrops)},
+            {"avsyncSeconds",std::isfinite(avsync)?QVariant(avsync):QVariant()},
+            {"displayFps",std::isfinite(displayFps)?QVariant(displayFps):QVariant()},
+            {"processedPairs",qulonglong(m.pairs)},{"factor",paths.factor},{"model",paths.model},
+            {"sourceFps",double(source.fpsNum)/source.fpsDen}};
+        qWarning().noquote()<<"RIFE realtime fallback:"<<QString::fromUtf8(QJsonDocument::fromVariant(lastFailure).toJson(QJsonDocument::Compact));
+        disable("performance");
+    }
 }
 QString FrameInterpolationController::status()const{
     if(current==State::Off)return QStringLiteral("AI 补帧已关闭");
@@ -200,6 +211,7 @@ QVariantMap FrameInterpolationController::diagnostics()const{
     {"timingAvailable",timingAvailable},
     {"p95Ms",timingAvailable?QVariant(latest.p95Ms):QVariant()},
     {"factor",paths.factor},{"model",paths.model},
+    {"failureMetrics",lastFailure},
     {"pipeline",paths.backend==Backend::TensorRT?QStringLiteral("TensorRT"):QStringLiteral("Core ML + Metal (split)")}};}
 SourceInfo sourceInfo(const QVariantMap& p,const QVariantMap& frame,double fps){
     const auto rate=rationalFrameRate(fps);

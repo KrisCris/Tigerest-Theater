@@ -55,6 +55,7 @@ private:
     bool requested=false,filterOwned=false,hwdecOwned=false,notified=false;
     QString oldHwdec,reason;
     Metrics latest;
+    QVariantMap lastFailure;
     PerformanceGuard guard;
     int64_t preparingSince=-1;
 };

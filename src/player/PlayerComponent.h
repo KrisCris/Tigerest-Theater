@@ -50,7 +50,7 @@ public:
 #ifdef Q_OS_WIN
   // Native-only: caller supplies a catalog-approved root and must wait for
   // windowsRifeReady before constructing any QML MpvVideoItem/mpv handle.
-  bool prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script);
+  bool prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script,bool extensionVerified=false);
   QVariantMap windowsRifeStatus() const;
   bool selectWindowsRifeModel(const QString& model,int targetFps);
   // Both arguments originate in native startup code, never WebChannel.

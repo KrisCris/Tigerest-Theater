@@ -1,5 +1,6 @@
 import hashlib
 import json
+import mmap
 import os
 from pathlib import Path
 import subprocess
@@ -61,6 +62,67 @@ class NativeManagerTests(unittest.TestCase):
         (runtime/'unlisted.py').write_bytes(b'bad')
         bad=self.run_host('initialize')
         self.assertFalse(bad['ok']);self.assertIn('Unlisted',bad['error'])
+
+    def test_unchanged_warm_start_reuses_verified_files(self):
+        self.assertTrue(self.run_host()['ok'])
+        cold=self.run_host('initialize')
+        self.assertTrue(cold['ok'],cold)
+        self.assertGreater(cold['status'].get('verificationHashedBytes',0),0)
+        warm=self.run_host('initialize')
+        self.assertTrue(warm['ok'],warm)
+        self.assertEqual(warm['status'].get('verificationHashedBytes'),0)
+        self.assertGreater(warm['status'].get('verificationCachedFiles',0),0)
+
+    def test_cached_file_write_with_restored_mtime_is_revalidated(self):
+        self.assertTrue(self.run_host()['ok'])
+        loaded=self.run_host('initialize')
+        payload=Path(loaded['paths']['runtime'])/'fixture.dll'
+        before=payload.stat()
+        payload.write_bytes(b'x'*before.st_size)
+        os.utime(payload,ns=(before.st_atime_ns,before.st_mtime_ns))
+        failed=self.run_host('initialize')
+        self.assertFalse(failed['ok'],failed)
+        self.assertIn('hash',failed['error'])
+        self.assertEqual(failed['paths'],{})
+
+    def test_modified_receipt_requires_full_verification(self):
+        self.assertTrue(self.run_host()['ok'])
+        self.assertTrue(self.run_host('initialize')['ok'])
+        receipts=list((self.data/'verification').glob('*.bin'))
+        self.assertEqual(len(receipts),1)
+        receipts[0].write_bytes(b'forged verification record')
+        loaded=self.run_host('initialize')
+        self.assertTrue(loaded['ok'],loaded)
+        self.assertGreater(loaded['status']['verificationHashedBytes'],0)
+        self.assertEqual(loaded['status']['verificationCachedFiles'],0)
+
+    def test_cached_mapped_write_is_revalidated(self):
+        self.assertTrue(self.run_host()['ok'])
+        loaded=self.run_host('initialize')
+        payload=Path(loaded['paths']['runtime'])/'fixture.dll'
+        with payload.open('r+b') as file:
+            with mmap.mmap(file.fileno(),0,access=mmap.ACCESS_WRITE) as view:
+                view[:]=b'x'*len(view)
+                view.flush()
+        failed=self.run_host('initialize')
+        self.assertFalse(failed['ok'],failed)
+        self.assertIn('hash',failed['error'])
+        self.assertEqual(failed['paths'],{})
+
+    def test_live_mapped_writer_cannot_create_or_reuse_receipts(self):
+        self.assertTrue(self.run_host()['ok'])
+        loaded=self.run_host('initialize')
+        payload=Path(loaded['paths']['runtime'])/'fixture.dll'
+        original=payload.read_bytes()
+        with payload.open('r+b') as file:
+            with mmap.mmap(file.fileno(),0,access=mmap.ACCESS_WRITE) as view:
+                for content in [original,b'x'*len(original),original]:
+                    view[:]=content
+                    view.flush()
+                    held=self.run_host('initialize')
+                    self.assertFalse(held['ok'],held)
+                    self.assertEqual(held['paths'],{})
+        self.assertTrue(self.run_host('initialize')['ok'])
 
     def test_corrupt_trusted_extension_can_be_removed_and_imported_again(self):
         self.assertTrue(self.run_host()['ok'])

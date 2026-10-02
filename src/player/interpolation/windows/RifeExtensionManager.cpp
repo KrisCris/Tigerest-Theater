@@ -23,7 +23,7 @@ bool plain(const QString& path) {
 }
 bool ensureRoot(const QString& root) {
     if(!plain(root)||!QDir().mkpath(root))return false;
-    for(const auto& child:{"versions","leases","staging"})if(!plain(root+"/"+child)||!QDir().mkpath(root+"/"+child))return false;
+    for(const auto& child:{"versions","leases","staging","verification"})if(!plain(root+"/"+child)||!QDir().mkpath(root+"/"+child))return false;
     return true;
 }
 QJsonObject readRecord(const QString& path) {
@@ -198,14 +198,16 @@ RifeExtensionManager::OperationResult RifeExtensionManager::loadActive() {
     // payload is damaged. Never return runtime paths before full verification.
     result.status["installedVersion"]=key;
     const auto root=m_root+"/versions/"+key;
-    const auto verified=RifeExtensionArchive::verifyInstalled(root,item,archiveOptions());if(!verified.ok)return fail(verified.error);
+    auto options=archiveOptions();options.verificationCachePath=m_root+"/verification/"+key+".bin";
+    const auto verified=RifeExtensionArchive::verifyInstalled(root,item,options);if(!verified.ok)return fail(verified.error);
     if(m_cancelled)return fail("Extension operation cancelled");
     const auto leaseDirectory=m_root+"/leases/"+key;
     if(!plain(leaseDirectory)||!QDir().mkpath(leaseDirectory))return fail("Cannot create extension use lease");
     auto lease=std::make_shared<QLockFile>(leaseDirectory+"/"+QUuid::createUuid().toString(QUuid::Id128)+".lock");lease->setStaleLockTime(0);
     if(!lease->tryLock(0))return fail("Cannot acquire extension use lease");
     result.lease=lease;result.paths={{"runtime",root+"/runtime"},{"monitor",root+"/playback/tigerest-rife-vs.dll"},{"script",root+"/playback/interpolate_trt.vpy"},{"versionKey",key}};
-    result.ok=true;result.status={{"state","ready"},{"restartRequired",false},{"installedVersion",key},{"error",""}};return result;
+    result.ok=true;result.status={{"state","ready"},{"restartRequired",false},{"installedVersion",key},{"error",""},
+        {"verificationHashedBytes",verified.hashedBytes},{"verificationCachedFiles",verified.cachedFiles}};return result;
 }
 
 RifeExtensionManager::OperationResult RifeExtensionManager::removeVersion(const QString& key) {

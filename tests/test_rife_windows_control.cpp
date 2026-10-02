@@ -21,6 +21,7 @@ int main(int argc,char**argv){
     assert(integerMultiplier({30,1},240)==8);
     assert(integerMultiplier({60000,1001},120)==2);
     assert(integerMultiplier({24,1},60)==2); // Equal distances: use the lower integer.
+    assert(integerMultiplier({24000,1001},60)==2); // NTSC 24p follows the same nominal preset.
     assert(integerMultiplier({0,1},240)==0);
     assert(integerMultiplier({24,1},0)==0);
     PerformanceGuard guard(GuardParameters::windows());
@@ -92,4 +93,36 @@ int main(int argc,char**argv){
     controller.onPlaybackSpeed(1.);controller.onFormatChanged(source);assert(adds==1);
     controller.beginItem(true,false);controller.onPlaybackSpeed(1.);controller.onFormatChanged(source);assert(adds==2);
     controller.onPlaybackSpeed(1.25);assert(properties["vf"].toList().isEmpty());assert(properties["hwdec"]=="auto");
+
+    // 60 fps output on a 30 Hz screen intentionally discards every other
+    // frame. The display cadence alone must not disable an otherwise fast graph.
+    properties["display-fps"]=30.;paths.factor=2;
+    FrameInterpolationController cadence(access,paths);
+    cadence.beginItem(true,false);cadence.onFormatChanged({1920,1080,30,1,true,true,false,true});
+    metrics.epoch=80;metrics.pairs=metrics.predictions=30;
+    cadence.onMetrics(cadence.generation(),metrics,0,false,0,0.);
+    metrics.pairs=metrics.predictions=180;
+    cadence.onMetrics(cadence.generation(),metrics,5000,false,150,0.);
+    metrics.pairs=metrics.predictions=480;
+    cadence.onMetrics(cadence.generation(),metrics,15000,false,450,0.);
+    assert(cadence.state()==State::Active);
+    // Real losses beyond the display's expected cadence still recover.
+    metrics.pairs=metrics.predictions=780;
+    cadence.onMetrics(cadence.generation(),metrics,25000,false,810,0.);
+    assert(cadence.state()==State::DisabledForCurrentItem);
+    assert(cadence.diagnostics()["failureMetrics"].toMap()["voDrops"].toULongLong()==810);
+
+    // Do not apply a new refresh rate to drops collected at the old rate.
+    for (const auto& rates : {std::pair<double,double>{30.,60.},{60.,30.}}) {
+        guard.reset();
+        const uint64_t oldDrops=rates.first==30.?150:0;
+        const uint64_t windowDrops=rates.first==30.?300:0;
+        assert(!guard.update(0,30,30,0,0,30,false,2,false,0.,0,rates.first));
+        assert(!guard.update(5000,180,180,0,oldDrops,30,false,2,false,0.,0,rates.first));
+        assert(!guard.update(15000,480,480,0,oldDrops+windowDrops,30,false,2,false,0.,0,rates.second));
+        const uint64_t expected=rates.second==30.?300:0;
+        assert(!guard.update(25000,780,780,0,oldDrops+windowDrops+expected,30,false,2,false,0.,0,rates.second));
+        // Overload remains visible after the refresh transition.
+        assert(guard.update(35000,1080,1080,0,oldDrops+windowDrops+2*expected+60,30,false,2,false,0.,0,rates.second));
+    }
 }

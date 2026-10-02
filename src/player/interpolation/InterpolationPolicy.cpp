@@ -23,19 +23,29 @@ Rational rationalFrameRate(double fps) {
 }
 int integerMultiplier(Rational source,int target){
     if(source.num<=0||source.den<=0||target<=0)return 0;
-    const double desired=double(target)*source.den/source.num;
+    // NTSC rates belong to their nominal 24/30/60 fps preset. In particular,
+    // 23.976p must not select 3x where 24p selects 2x at the 60 fps midpoint.
+    const double nominal=source.den==1001&&source.num%1000==0?double(source.num)/1000:
+        double(source.num)/source.den;
+    const double desired=double(target)/nominal;
     if(!std::isfinite(desired))return 0;
     // Ties use the lower integer, avoiding unnecessary extra inference.
     return int(std::clamp(std::ceil(desired-.5),2.,15.));
 }
-void PerformanceGuard::reset(){start=avSince=previousPoll=-1;firstPairs=firstDrops=firstDecoderDrops=0;slowWindows=0;warming=true;}
+void PerformanceGuard::reset(){start=avSince=previousPoll=-1;firstPairs=firstDrops=firstDecoderDrops=0;windowDisplayFps=0;slowWindows=0;warming=true;}
 bool PerformanceGuard::update(int64_t now,uint64_t predictions,uint64_t pairs,double p95,
                                uint64_t drops,double fps,bool suspended,int factor,bool timingAvailable,
-                               double avsync,uint64_t decoderDrops) {
+                               double avsync,uint64_t decoderDrops,double displayFps) {
     if(parameters.windowsBackend){
         if(suspended||!pairs||!std::isfinite(fps)||fps<=0||factor<2||factor>15){reset();return false;}
+        const double refresh=std::isfinite(displayFps)&&displayFps>0?displayFps:0.;
         if(start<0||now<start||pairs<firstPairs||drops<firstDrops||decoderDrops<firstDecoderDrops){
-            reset();start=now;firstPairs=pairs;firstDrops=drops;firstDecoderDrops=decoderDrops;return false;
+            reset();start=now;firstPairs=pairs;firstDrops=drops;firstDecoderDrops=decoderDrops;windowDisplayFps=refresh;return false;
+        }
+        if(std::abs(refresh-windowDisplayFps)>.1){
+            // A window's cadence belongs to one refresh rate. Rebase only its
+            // drop counters on a display switch; sustained A/V drift still counts.
+            start=now;firstPairs=pairs;firstDrops=drops;firstDecoderDrops=decoderDrops;windowDisplayFps=refresh;
         }
         if(warming){
             if(now-start<parameters.warmupMs)return false;
@@ -49,8 +59,13 @@ bool PerformanceGuard::update(int64_t now,uint64_t predictions,uint64_t pairs,do
         // VO drops are already part of the filter's produced output. Decoder
         // drops precede the filter and represent factor output opportunities.
         const double decodedDrops=double(decoderDrops-firstDecoderDrops)*factor;
-        const double opportunities=double(pairs-firstPairs)*factor+decodedDrops;
-        const double lost=double(drops-firstDrops)+decodedDrops;
+        const double produced=double(pairs-firstPairs)*factor;
+        const double opportunities=produced+decodedDrops;
+        // VO counts also include frames intentionally omitted when the output
+        // rate exceeds the display. Only losses beyond that cadence are load.
+        const double cadenceDrops=windowDisplayFps>0
+            ?produced*std::max(0.,1.-windowDisplayFps/(fps*factor)):0.;
+        const double lost=std::max(0.,double(drops-firstDrops)-cadenceDrops)+decodedDrops;
         const bool slow=opportunities>0&&lost/opportunities>parameters.maxDropRatio;
         start=now;firstPairs=pairs;firstDrops=drops;firstDecoderDrops=decoderDrops;
         return slow;

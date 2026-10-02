@@ -305,7 +305,7 @@
       {
         "value": "aiRife",
         "display_name": "AI 补帧（RIFE）",
-        "help": "对支持的视频进行 AI 补帧，性能不足时恢复原帧播放。模型与目标帧率在重新打开视频后生效。",
+        "help": "对支持的视频进行 AI 补帧，无法持续实时输出时恢复原帧播放。模型与目标帧率在重新打开视频后生效。",
         "default": false,
         "platforms": ["osx", "windows"]
       },
@@ -320,7 +320,7 @@
       {
         "value": "aiRifeTarget",
         "display_name": "RIFE 目标帧率",
-        "help": "采用接近目标的整数倍，保持视频时长。23.976 fps 可补至 119.88／239.76 fps；不会自动缩小视频分辨率。",
+        "help": "采用接近目标的整数倍，保持视频时长。约 60 fps 档对 23.976／24 fps 输出 47.952／48 fps，对 30 fps 输出 60 fps。120／240 fps 为实验方案；不会自动缩小视频分辨率。",
         "default": 60,
         "platforms": "windows",
         "possible_values": [[0,"源帧率两倍"],[60,"接近 60 fps"],[120,"接近 120 fps"],[240,"接近 240 fps"]]

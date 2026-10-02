@@ -15,8 +15,9 @@ public:
     explicit RifeRuntimeManager(QObject* parent=nullptr,Launch launch={});
     ~RifeRuntimeManager() override;
     // Called only with an extension root approved by the installer/catalog.
-    // A separate private probe verifies every file before cached engines can run.
-    bool configure(const QString& runtime,const QString& cache,const QString& monitor,const QString& script);
+    // Standalone roots get full verification. Only the native extension-manager
+    // success path may assert extensionVerified and reuse its completed check.
+    bool configure(const QString& runtime,const QString& cache,const QString& monitor,const QString& script,bool extensionVerified=false);
     bool select(const QString& model,int targetFps);
     void prepare(const SourceInfo& source,quint64 generation);
     void cancel(quint64 generation);

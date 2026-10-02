@@ -13,8 +13,9 @@ public:
         std::atomic_bool* cancelled=nullptr;
         std::function<void(qint64,qint64)> progress;
         std::function<qint64(const QString&)> availableBytes;
+        QString verificationCachePath;
     };
-    struct Result { bool ok=false; QString error; QJsonObject manifest; };
+    struct Result { bool ok=false; QString error; QJsonObject manifest; qint64 hashedBytes=0; int cachedFiles=0; };
     static QJsonObject catalogPackage(const QJsonObject& catalog,const QString& id,
         const QString& appVersion,QString* error);
     static Result extract(const QString& archive,const QJsonObject& trustedItem,

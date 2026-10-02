@@ -1,4 +1,5 @@
 #include "RifeExtensionArchive.h"
+#include "RifeVerificationCache.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
@@ -256,6 +257,7 @@ RifeExtensionArchive::Result RifeExtensionArchive::verifyInstalled(const QString
     qint64 fileCount=0,unpackedSize=0;
     const auto files=result.manifest["files"].toArray();
     if(!integer(item["fileCount"],&fileCount,1)||fileCount>MaxFiles||!integer(item["unpackedSize"],&unpackedSize,1)||!result.manifest["files"].isArray()||files.size()+1!=fileCount)return fail("Installed file count differs from catalog");
+    RifeVerificationCache cache(options.verificationCachePath,root,item["manifestSha256"].toString());
     QSet<QString> expected{"extension.json"};qint64 done=bytes.size();
     for(const auto& value:files) {
         if(cancelled(options))return fail("Extension operation cancelled");
@@ -264,8 +266,16 @@ RifeExtensionArchive::Result RifeExtensionArchive::verifyInstalled(const QString
         expected.insert(key);
         if(!integer(entry["size"],&size)||size>unpackedSize-done||!hashValid(entry["sha256"]))return fail("Invalid installed file size/hash");
         QFile file(root+"/"+name);
-        if(!plainTree(file.fileName())||!QFileInfo(file).isFile()||!file.open(QIODevice::ReadOnly)||file.size()!=size)return fail("Missing/changed installed file: "+name);
-        if(digest(file,options)!=entry["sha256"].toString())return fail(cancelled(options)?"Extension operation cancelled":"Corrupt installed file hash: "+name);
+        if(!plainTree(file.fileName())||!QFileInfo(file).isFile()||!RifeVerificationCache::openForVerification(file)||file.size()!=size)return fail("Missing/changed or busy installed file: "+name);
+        const auto before=RifeVerificationCache::fingerprint(file);
+        if(cache.contains(name,entry["sha256"].toString(),before))++result.cachedFiles;
+        else {
+            if(digest(file,options)!=entry["sha256"].toString())return fail(cancelled(options)?"Extension operation cancelled":"Corrupt installed file hash: "+name);
+            result.hashedBytes+=size;
+        }
+        const auto after=RifeVerificationCache::fingerprint(file);
+        if(before!=after)return fail("Installed file changed during verification: "+name);
+        cache.remember(name,entry["sha256"].toString(),after);
         done+=size;if(options.progress)options.progress(done,unpackedSize);
     }
     if(done!=unpackedSize)return fail("Installed unpacked size differs from catalog");
@@ -280,6 +290,8 @@ RifeExtensionArchive::Result RifeExtensionArchive::verifyInstalled(const QString
         found.insert(name.toCaseFolded());
     }
     if(found!=expected)return fail("Missing installed extension file");
+    if(cancelled(options))return fail("Extension operation cancelled");
+    cache.save();
     result.ok=true;return result;
 }
 }

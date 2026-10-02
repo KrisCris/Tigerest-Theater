@@ -106,7 +106,7 @@ PlayerComponent::PlayerComponent(QObject* parent)
 }
 
 #ifdef Q_OS_WIN
-bool PlayerComponent::prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script)
+bool PlayerComponent::prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script,bool extensionVerified)
 {
 #ifndef TIGEREST_MPVQT_HAS_EVENT_HANDOFF
   m_windowsRifeError=QStringLiteral("Windows RIFE requires Tigerest's bundled MpvQt event handoff");
@@ -115,7 +115,7 @@ bool PlayerComponent::prepareWindowsRife(const QString& runtime,const QString& c
   if(m_mpv){m_windowsRifeError=QStringLiteral("RIFE runtime requires restart before mpv creation");return false;}
   m_windowsRifeActivated=false;m_windowsRifeError.clear();
   m_windowsRifeRoot=QFileInfo(runtime).canonicalFilePath();
-  if(m_windowsRifeRuntime->configure(runtime,cache,monitor,script))return true;
+  if(m_windowsRifeRuntime->configure(runtime,cache,monitor,script,extensionVerified))return true;
   m_windowsRifeError=QStringLiteral("Invalid or missing verified RIFE extension");
   return false;
 }
@@ -151,7 +151,7 @@ void PlayerComponent::initializeWindowsRife(const QString& extensionRoot,const Q
     if(!m_windowsRifeStartupPending)return;
     const auto paths=m_rifeExtension->runtimePaths();
     if(ok&&!paths.isEmpty()&&prepareWindowsRife(paths["runtime"].toString(),
-        ProfileManager::activeProfile().cacheDir("rife/engines"),paths["monitor"].toString(),paths["script"].toString())) {
+        ProfileManager::activeProfile().cacheDir("rife/engines"),paths["monitor"].toString(),paths["script"].toString(),true)) {
       // configure() may complete synchronously on a failed helper launch.
       if(m_windowsRifeStartupPending)m_windowsRifeRuntime->select(
           SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRifeModel").toString(),
@@ -428,6 +428,7 @@ void PlayerComponent::initializeMpv()
   mpv_observe_property(m_mpv->mpv(), 0, "audio-device", MPV_FORMAT_STRING);
 #ifdef Q_OS_WIN
   mpv_observe_property(m_mpv->mpv(), 0, "avsync", MPV_FORMAT_DOUBLE);
+  mpv_observe_property(m_mpv->mpv(), 0, "display-fps", MPV_FORMAT_DOUBLE);
   mpv_observe_property(m_mpv->mpv(), 0, "speed", MPV_FORMAT_DOUBLE);
 #endif
   m_rifeAccess=std::make_unique<rife::MpvPollAccess>(rife::MpvAccess{
@@ -1096,7 +1097,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
             "cscale","dscale","tscale","interpolation","deband",
             "scripts","load-scripts","video-out-params","aid","sid",
             "audio-params","audio-device","audio-device-list","current-ao","gpu-api",
-            "vo","fullscreen","playback-time","duration","avsync","speed"};
+            "vo","fullscreen","playback-time","duration","avsync","speed","display-fps"};
         if(watched.contains(prop->name)) {
           QVariant value;
           switch(prop->format) {

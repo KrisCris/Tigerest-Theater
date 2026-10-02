@@ -34,6 +34,7 @@ def main():
     parser.add_argument('--backend', choices=('gpu-next','libmpv'), default='gpu-next')
     parser.add_argument('--preset', choices=('default','liveaction','aggressive'), default='default')
     parser.add_argument('--baseline', action='store_true')
+    parser.add_argument('--controls', action='store_true')
     args = parser.parse_args()
     if not 5 <= args.seconds <= 3600 or not 5 <= args.warmup <= 120:
         parser.error('seconds must be 5..3600; warmup must be 5..120')
@@ -55,6 +56,8 @@ def main():
         command += ['--script', str(ROOT/'resources/mpv/rife/interpolate_trt.vpy')]
         if args.baseline:
             command.append('--baseline')
+        if args.controls:
+            command.append('--controls')
         environment = dict(os.environ, RIFE_BENCH_EXPECTED_MPV=str(stage/'libmpv-2.dll'),
                            PATH=str(args.qt_bin.resolve())+os.pathsep+os.environ.get('PATH',''))
         log = args.output.with_suffix('.log')
