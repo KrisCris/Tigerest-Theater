@@ -12,6 +12,7 @@ import urllib.request
 import zipfile
 
 from probe_runtime import file_hash, private_path, verify_manifest
+from gpu_architecture import ARCHITECTURES, partition_manifest
 
 HERE = Path(__file__).resolve().parent
 
@@ -80,7 +81,36 @@ def extract_7z(extractor, archive, root, selected, workspace):
                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
 
 
-def build_runtime(lock, archives, output):
+def write_partition(root, manifest, architecture):
+    selected = partition_manifest(manifest, architecture)
+    retained = {entry['path'] for entry in selected['files']}
+    # root is the newly created private staging tree, never the source runtime.
+    for entry in manifest['files']:
+        if entry['path'] not in retained:
+            private_path(root, entry['path']).unlink()
+    (root / 'runtime.json').write_text(json.dumps(selected, ensure_ascii=False, indent=2), encoding='utf-8')
+    verify_manifest(root)
+    return selected
+
+
+def copy_runtime(source, output, architecture):
+    source, output = source.resolve(), output.resolve()
+    manifest = partition_manifest(verify_manifest(source), architecture)
+    if output.exists() or output.is_relative_to(source):
+        raise ValueError('Output must be a new directory outside the source runtime')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='rife-build-', dir=output.parent) as temporary:
+        root = Path(temporary) / 'runtime'
+        root.mkdir()
+        for entry in manifest['files']:
+            target = private_path(root, entry['path'])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(private_path(source, entry['path']), target)
+        write_partition(root, manifest, architecture)
+        os.rename(root, output)
+
+
+def build_runtime(lock, archives, output, gpu_architecture='full'):
     if output.exists():
         raise ValueError('Output already exists; choose a new version directory: ' + str(output))
     models = lock.get('models', [])
@@ -146,8 +176,7 @@ def build_runtime(lock, archives, output):
                                    'trtexec': 'plugins/vsmlrt-cuda/trtexec.exe'},
                     'files': files, 'models': model_entries, 'model': model_entries[0],
                     'unpackedBytes': sum(entry['size'] for entry in files)}
-        (root / 'runtime.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
-        verify_manifest(root)
+        manifest = write_partition(root, manifest, gpu_architecture)
         os.rename(root, output)
         print(json.dumps({'runtime': str(output), 'runtimeId': manifest['runtimeId'],
                           'unpackedBytes': manifest['unpackedBytes']}, ensure_ascii=False))
@@ -159,14 +188,19 @@ def main():
     parser.add_argument('--archives', type=Path, default=HERE.parents[2] / 'build/rife/downloads')
     parser.add_argument('--lock', type=Path, default=HERE / 'runtime-lock.json')
     parser.add_argument('--offline', action='store_true')
+    parser.add_argument('--from-runtime', type=Path, help='Copy a verified runtime into a new architecture variant')
+    parser.add_argument('--gpu-architecture', choices=ARCHITECTURES, default='full')
     args = parser.parse_args()
     try:
+        if args.from_runtime:
+            copy_runtime(args.from_runtime, args.output, args.gpu_architecture)
+            return
         lock = json.loads(args.lock.read_text(encoding='utf-8'))
         if lock.get('schemaVersion') != 1:
             raise ValueError('Unsupported dependency lock')
         directory = args.archives.resolve()
         archives = {entry['id']: acquire(entry, directory, args.offline) for entry in lock['archives']}
-        build_runtime(lock, archives, args.output.resolve())
+        build_runtime(lock, archives, args.output.resolve(), args.gpu_architecture)
     except (OSError, ValueError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
         parser.exit(1, str(error) + '\n')
 

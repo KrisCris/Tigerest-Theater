@@ -12,6 +12,30 @@ PREPARE = ROOT / 'dev/windows/rife/prepare_runtime.py'
 
 
 class RuntimePreparationTests(unittest.TestCase):
+    def test_copy_architecture_runtime_preserves_original_and_rejects_expansion(self):
+        import test_rife_extension_package
+        fixture=test_rife_extension_package.ExtensionPackageTests();fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        original=fixture.architecture_runtime()
+        output=fixture.root/'sm89 runtime'
+        result=subprocess.run([sys.executable,'-B','-X','utf8',str(PREPARE),
+            '--from-runtime',str(fixture.runtime),'--output',str(output),'--gpu-architecture','sm89'],
+            capture_output=True,encoding='utf-8',timeout=15)
+        self.assertEqual(result.returncode,0,result.stderr)
+        manifest=json.loads((output/'runtime.json').read_text())
+        self.assertEqual(manifest['gpuArchitecture'],'sm89')
+        self.assertEqual(len(manifest['files']),3)
+        self.assertEqual(json.loads((fixture.runtime/'runtime.json').read_text()),original)
+        self.assertEqual({p.relative_to(output).as_posix() for p in output.rglob('*') if p.is_file()},
+            {'runtime.json','fixture.dll','plugins/vsmlrt-cuda/nvinfer_builder_resource_sm89_10.dll',
+             'plugins/vsmlrt-cuda/nvinfer_builder_resource_ptx_10.dll'})
+        result=subprocess.run([sys.executable,'-B','-X','utf8',str(PREPARE),
+            '--from-runtime',str(output),'--output',str(fixture.root/'invalid'),'--gpu-architecture','full'],
+            capture_output=True,encoding='utf-8',timeout=15)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Cannot expand',result.stderr)
+        self.assertFalse((fixture.root/'invalid').exists())
+
     def test_three_v2_models_are_pinned_with_independent_hashes_and_internal_padding(self):
         lock = json.loads((PREPARE.parent / 'runtime-lock.json').read_text(encoding='utf-8'))
         models = {model['id']: model for model in lock['models']}

@@ -12,6 +12,7 @@ import unicodedata
 import zipfile
 
 from probe_runtime import file_hash
+from gpu_architecture import ARCHITECTURES
 
 ABI = 'windows-nvidia-trt-r79-v1'
 MAX_FILES = 4096
@@ -48,6 +49,8 @@ def catalog_item(catalog,package_id,app_version):
     item=matches[0]
     if item.get('architecture')!='x64' or item.get('platform')!='windows' or item.get('abi')!=ABI:
         raise ValueError('Unsupported extension architecture or ABI')
+    if item.get('gpuArchitecture','full') not in ARCHITECTURES:
+        raise ValueError('Unsupported extension GPU architecture')
     app, minimum, maximum = version(app_version), version(item['minAppVersion']), version(item['maxAppVersion'])
     approved = item.get('compatibleAppVersions', [])
     if not isinstance(approved, list):
@@ -108,7 +111,7 @@ def verify_extension(archive_path,catalog,package_id,app_version):
         manifest=json.loads(header_bytes)
         if manifest.get('schemaVersion')!=1:
             raise ValueError('Unsupported extension manifest')
-        for key in ('id','version','platform','architecture','abi','runtimeId','minAppVersion','maxAppVersion','sourceSha'):
+        for key in ('id','version','platform','architecture','abi','runtimeId','minAppVersion','maxAppVersion','sourceSha','gpuArchitecture'):
             if manifest.get(key)!=item.get(key):
                 raise ValueError('Extension identity differs from catalog: '+key)
         files=manifest.get('files')

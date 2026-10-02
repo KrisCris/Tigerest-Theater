@@ -1,6 +1,7 @@
 """Build a sealed ZIP64 extension; no engines, credentials or user settings."""
 import argparse
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -10,13 +11,14 @@ import tempfile
 import zipfile
 
 from probe_runtime import file_hash, private_path, verify_manifest
+from gpu_architecture import ARCHITECTURES, partition_manifest
 from verify_extension import ABI, MAX_FILES, MAX_MANIFEST, safe_name, verify_extension
 
 
 def build_extension(runtime,playback,notices,output,*,package_id,version: str,source_sha,
-                    min_app_version,max_app_version):
+                    min_app_version,max_app_version,gpu_architecture=None):
     runtime,playback,notices,output=map(Path,(runtime,playback,notices,output))
-    manifest=verify_manifest(runtime.resolve())
+    manifest=partition_manifest(verify_manifest(runtime.resolve()),gpu_architecture)
     if output.exists():
         raise ValueError('Output already exists; never replace an existing extension')
     if not re.fullmatch('[a-z0-9][a-z0-9-]{0,63}',package_id) or not re.fullmatch('[0-9a-f]{40}',source_sha):
@@ -27,7 +29,8 @@ def build_extension(runtime,playback,notices,output,*,package_id,version: str,so
     if parse_version(min_app_version)>=parse_version(max_app_version):
         raise ValueError('Invalid application version range')
     sources={}
-    for entry in [{'path':'runtime.json'},*manifest['files']]:
+    sources['runtime/runtime.json']=json.dumps(manifest,ensure_ascii=False,sort_keys=True,indent=2).encode('utf-8')+b'\n'
+    for entry in manifest['files']:
         sources[safe_name('runtime/'+entry['path'])]=private_path(runtime.resolve(),entry['path'])
     for name in ('interpolate_trt.vpy','trt_pipeline.py','tigerest-rife-vs.dll'):
         source=private_path(playback.resolve(),name)
@@ -49,10 +52,12 @@ def build_extension(runtime,playback,notices,output,*,package_id,version: str,so
         if name.casefold() in keys or name.casefold().endswith(('.engine','.plan')):
             raise ValueError('Duplicate or generated engine in extension')
         keys.add(name.casefold())
-        files.append({'path':name,'size':source.stat().st_size,'sha256':file_hash(source)})
+        files.append({'path':name,'size':len(source) if isinstance(source,bytes) else source.stat().st_size,
+                      'sha256':hashlib.sha256(source).hexdigest() if isinstance(source,bytes) else file_hash(source)})
     metadata={'schemaVersion':1,'id':package_id,'version':version,'platform':'windows',
               'architecture':'x64','abi':ABI,'runtimeId':manifest['runtimeId'],
-              'sourceSha':source_sha,'minAppVersion':min_app_version,'maxAppVersion':max_app_version}
+              'sourceSha':source_sha,'minAppVersion':min_app_version,'maxAppVersion':max_app_version,
+              'gpuArchitecture':manifest['gpuArchitecture']}
     header=json.dumps(dict(metadata,files=files),ensure_ascii=False,sort_keys=True,indent=2).encode('utf-8')+b'\n'
     if len(header)>MAX_MANIFEST or len(files)+1>MAX_FILES:
         raise ValueError('Extension manifest too large')
@@ -71,7 +76,8 @@ def build_extension(runtime,playback,notices,output,*,package_id,version: str,so
                     if name=='extension.json':
                         destination.write(header)
                     else:
-                        with sources[name].open('rb') as source:
+                        payload=sources[name]
+                        with (io.BytesIO(payload) if isinstance(payload,bytes) else payload.open('rb')) as source:
                             for block in iter(lambda:source.read(1024*1024),b''):
                                 destination.write(block);digest.update(block);size+=len(block)
                         if size!=entry['size'] or digest.hexdigest()!=entry['sha256']:
@@ -94,9 +100,12 @@ def main():
         parser.add_argument('--'+key,type=Path,required=True)
     for key in ('id','version','source-sha','min-app-version','max-app-version'):
         parser.add_argument('--'+key,required=True)
+    parser.add_argument('--gpu-architecture',choices=ARCHITECTURES,
+                        help='Single-SM package; full (default) preserves every GPU architecture')
     args=parser.parse_args()
     item=build_extension(args.runtime,args.playback,args.notices,args.output,package_id=args.id,version=args.version,
-        source_sha=args.source_sha,min_app_version=args.min_app_version,max_app_version=args.max_app_version)
+        source_sha=args.source_sha,min_app_version=args.min_app_version,max_app_version=args.max_app_version,
+        gpu_architecture=args.gpu_architecture)
     args.catalog_item.write_text(json.dumps(item,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(item,ensure_ascii=False,indent=2))
 

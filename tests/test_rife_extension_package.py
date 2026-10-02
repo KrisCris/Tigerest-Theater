@@ -207,6 +207,63 @@ class ExtensionPackageTests(unittest.TestCase):
         self.assertEqual(output.read_bytes(),b'other publisher owns this')
         self.assertFalse(list(self.root.glob('*.zip.tmp')))
 
+    def architecture_runtime(self):
+        manifest=json.loads((self.runtime/'runtime.json').read_text())
+        manifest['versions']={'tensorrt':'10.16.0'}
+        for architecture in ('ptx','sm75','sm80','sm86','sm89','sm90','sm100','sm120'):
+            name='plugins/vsmlrt-cuda/nvinfer_builder_resource_'+architecture+'_10.dll'
+            path=self.runtime/name;path.parent.mkdir(parents=True,exist_ok=True)
+            data=('resource-'+architecture).encode();path.write_bytes(data)
+            manifest['files'].append({'path':name,'size':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+        (self.runtime/'runtime.json').write_text(json.dumps(manifest))
+        return manifest
+
+    def build_architecture(self,architecture):
+        return build_extension(self.runtime,self.playback,self.notices,self.root/(architecture+'.zip'),
+            package_id='rife-test-'+architecture,version='0.1.0',source_sha='a'*40,
+            min_app_version='2.1.2',max_app_version='3.0.0',gpu_architecture=architecture)
+
+    def test_each_architecture_package_retains_ptx_shared_files_and_models(self):
+        original=self.architecture_runtime()
+        for architecture in ('sm75','sm80','sm86','sm89','sm90','sm100','sm120'):
+            with self.subTest(architecture=architecture):
+                item=self.build_architecture(architecture)
+                verify_extension(self.root/(architecture+'.zip'),{'schemaVersion':1,'packages':[item]},item['id'],'2.1.2')
+                with zipfile.ZipFile(self.root/(architecture+'.zip')) as archive:
+                    runtime=json.loads(archive.read('runtime/runtime.json'))
+                    self.assertEqual(runtime['gpuArchitecture'],architecture)
+                    self.assertEqual(item['gpuArchitecture'],architecture)
+                    self.assertEqual(runtime['runtimeId'],'fixture-r79-'+architecture)
+                    self.assertEqual({x['path'] for x in runtime['files']},{'fixture.dll',
+                        'plugins/vsmlrt-cuda/nvinfer_builder_resource_ptx_10.dll',
+                        'plugins/vsmlrt-cuda/nvinfer_builder_resource_'+architecture+'_10.dll'})
+                    self.assertEqual(archive.read('runtime/fixture.dll'),b'isolated-runtime-test-fixture')
+        self.assertEqual(json.loads((self.runtime/'runtime.json').read_text()),original)
+        full=self.build_architecture('full')
+        with zipfile.ZipFile(self.root/'full.zip') as archive:
+            self.assertEqual(len(json.loads(archive.read('runtime/runtime.json'))['files']),9)
+            self.assertEqual(full['runtimeId'],'fixture-r79')
+
+    def test_architecture_package_rejects_missing_ptx_or_requested_resource(self):
+        manifest=self.architecture_runtime()
+        for missing in ('ptx','sm89'):
+            reduced=dict(manifest,files=[x for x in manifest['files'] if '_'+missing+'_' not in x['path']])
+            removed=self.runtime/next(x['path'] for x in manifest['files'] if '_'+missing+'_' in x['path'])
+            data=removed.read_bytes();removed.unlink()
+            (self.runtime/'runtime.json').write_text(json.dumps(reduced))
+            with self.assertRaisesRegex(ValueError,'builder resource'):
+                self.build_architecture('sm89')
+            removed.write_bytes(data)
+        (self.runtime/'runtime.json').write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError,'architecture'):
+            self.build_architecture('sm999')
+
+    def test_architecture_identity_cannot_be_relabeled_by_catalog(self):
+        self.architecture_runtime()
+        item=self.build_architecture('sm89');item['gpuArchitecture']='sm86'
+        with self.assertRaisesRegex(ValueError,'identity'):
+            verify_extension(self.root/'sm89.zip',{'schemaVersion':1,'packages':[item]},item['id'],'2.1.2')
+
 
 if __name__ == '__main__':
     unittest.main()
