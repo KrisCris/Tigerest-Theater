@@ -22,7 +22,8 @@ QString message(const QString& reason,Backend backend=Backend::CoreMLMetal){
     if(reason=="external-filter")return QStringLiteral("已有外部补帧滤镜，保持当前播放配置");
     if(reason=="unsupported-size")return backend==Backend::TensorRT?QStringLiteral("当前分辨率保持原帧播放（最高 4K）"):QStringLiteral("当前分辨率保持原帧播放（最高 1080p）");
     if(reason=="unsupported-fps")return backend==Backend::TensorRT?QStringLiteral("当前帧率保持原帧播放（最高 60 fps）"):QStringLiteral("当前帧率保持原帧播放（最高 30 fps）");
-    if(reason=="engine-preparing")return QStringLiteral("正在准备补帧引擎，本次保持原帧播放");
+    if(reason=="engine-preparing")return QStringLiteral("正在准备补帧引擎，完成后自动播放");
+    if(reason=="engine-prepare-error")return QStringLiteral("补帧引擎准备失败，已恢复原帧播放");
     if(reason=="dynamic-format")return QStringLiteral("视频格式发生变化，本次保持原帧播放");
     if(reason=="playback-speed")return QStringLiteral("倍速播放保持原帧，恢复正常速度后下次播放可启用补帧");
     if(reason=="vfr")return QStringLiteral("变帧率视频保持原帧播放");
@@ -67,7 +68,11 @@ void FrameInterpolationController::detach(){
     if(filterOwned&&hasFilter(false))mpv.command({"vf","remove","@tigerest-rife"});
     filterOwned=false;
     if(hwdecOwned&&optionText(mpv.read("hwdec"))=="auto-copy")mpv.set("hwdec",oldHwdec);
-    hwdecOwned=false;guard.reset();preparingSince=-1;
+    if(videoSyncOwned){
+        effectiveVideoSync=optionText(mpv.read("video-sync"));
+        if(effectiveVideoSync=="audio"&&mpv.set("video-sync",oldVideoSync))effectiveVideoSync=oldVideoSync;
+    }
+    hwdecOwned=false;videoSyncOwned=false;guard.reset();preparingSince=-1;
 }
 void FrameInterpolationController::configureHardwareDecoding(const QString& mode){
     // Settings refreshes and new loads use the same entry point. Remember the
@@ -79,6 +84,19 @@ void FrameInterpolationController::configureHardwareDecoding(const QString& mode
     if(!mpv.set("hwdec",copy?QStringLiteral("auto-copy"):mode)&&active)
         disable("decode-error");
 }
+void FrameInterpolationController::configureVideoSync(const QString& mode){
+    const bool active=paths.backend==Backend::TensorRT&&
+        (current==State::Preparing||current==State::Active)&&qualify(source,{3840,2160,60.001}).enabled;
+    oldVideoSync=mode;
+    videoSyncOwned=active&&!mode.isEmpty()&&mode!="audio";
+    // Display-resample can discard TensorRT output under the full native UI
+    // workload. Use the audio clock only for this graph's lifetime.
+    if(!mode.isEmpty()){
+        const auto applied=videoSyncOwned?QStringLiteral("audio"):mode;
+        if(mpv.set("video-sync",applied))effectiveVideoSync=applied;
+        else if(active)disable("sync-error");
+    }
+}
 void FrameInterpolationController::stop(){++serial;detach();current=State::Off;reason.clear();source={};latest={};lastFailure.clear();}
 void FrameInterpolationController::stopOnEndFile(){
     ++serial;
@@ -89,7 +107,8 @@ void FrameInterpolationController::stopOnEndFile(){
     if(filterOwned)mpv.commandAsync({"vf","remove","@tigerest-rife"});
     filterOwned=false;
     if(hwdecOwned)mpv.setAsync("hwdec",oldHwdec);
-    hwdecOwned=false;guard.reset();preparingSince=-1;
+    if(videoSyncOwned&&mpv.setAsync("video-sync",oldVideoSync))effectiveVideoSync=oldVideoSync;
+    hwdecOwned=false;videoSyncOwned=false;guard.reset();preparingSince=-1;
     current=State::Off;reason.clear();source={};latest={};
 }
 void FrameInterpolationController::beginItem(bool enabled,bool systemConfig){
@@ -125,7 +144,15 @@ void FrameInterpolationController::onFormatChanged(const SourceInfo& info){
         current=State::Preparing;
     }
     if(conflict()){disable("external-filter",true);return;}
-    if(paths.backend==Backend::TensorRT&&paths.engine.isEmpty()){disable("engine-preparing",true);return;}
+    if(paths.backend==Backend::TensorRT&&!videoSyncOwned){
+        effectiveVideoSync=optionText(mpv.read("video-sync"));
+        configureVideoSync(effectiveVideoSync);
+        if(current==State::DisabledForCurrentItem)return;
+    }
+    if(paths.backend==Backend::TensorRT&&paths.engine.isEmpty()){
+        reason="engine-preparing";current=State::Preparing;return;
+    }
+    reason.clear();
     session=openSession();
     QJsonObject options{{"model_path",paths.model},{"plugin_path",paths.plugin},
         {"fps_num",double(source.fpsNum)},{"fps_den",double(source.fpsDen)},
@@ -205,6 +232,7 @@ QVariantMap FrameInterpolationController::diagnostics()const{
                                latest.predictions>30&&latest.timingAvailable;
     return {
     {"requestedForItem",requested},{"runtimeAvailable",paths.available},{"state",int(current)},{"status",status()},{"reason",reason},
+    {"effectiveSync",effectiveVideoSync},{"savedSync",oldVideoSync},{"ownsVideoSync",videoSyncOwned},
     {"generation",qulonglong(serial)},{"epoch",qulonglong(latest.epoch)},
     {"generatedFrames",qulonglong(latest.predictions)},{"cutBypasses",qulonglong(latest.cuts)},
     {"processedPairs",qulonglong(latest.pairs)},

@@ -57,6 +57,11 @@ public:
             const bool accepted=base.commandAsync(args);
             if(accepted)updateFilterCache(args);
             return accepted;
+        },
+        [this](const QString& key,const QVariant& value,int id){
+            const bool accepted=base.setAsyncTagged?base.setAsyncTagged(key,value,id):base.setAsync(key,value);
+            if(accepted)observed.insert(key,value);
+            return accepted;
         }
     };}
 

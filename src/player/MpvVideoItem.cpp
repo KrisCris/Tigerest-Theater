@@ -519,7 +519,7 @@ void MpvVideoItem::mouseDoubleClickEvent(QMouseEvent* event)
     if (event->button() == Qt::LeftButton) {
         // Do not combine mpv's own click timing with an explicitly injected
         // double-click.  That can toggle pause twice and appear to do nothing.
-        commandAsync({QStringLiteral("cycle"), QStringLiteral("pause")});
+        togglePause();
         m_leftDoubleClickHandledLocally = true;
         event->accept();
         return;
@@ -657,7 +657,7 @@ void MpvVideoItem::keyPressEvent(QKeyEvent* event)
     // bindings from the user's input.conf.
     if (event->key() == Qt::Key_Space && event->modifiers() == Qt::NoModifier) {
         m_spaceHandledLocally = true;
-        commandAsync({QStringLiteral("cycle"), QStringLiteral("pause")});
+        togglePause();
         event->accept();
         return;
     }
@@ -666,6 +666,14 @@ void MpvVideoItem::keyPressEvent(QKeyEvent* event)
     if (!key.isEmpty())
         commandAsync({QStringLiteral("keydown"), key});
     event->accept();
+}
+
+void MpvVideoItem::togglePause()
+{
+    // Qt-hosted input must change preparation intent before touching mpv's
+    // physical pause. Standalone items retain their normal native toggle.
+    if(m_player)m_player->togglePause();
+    else commandAsync({QStringLiteral("cycle"), QStringLiteral("pause")});
 }
 
 void MpvVideoItem::keyReleaseEvent(QKeyEvent* event)

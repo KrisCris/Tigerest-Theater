@@ -230,6 +230,9 @@
              * @private
              */
             this.onPause = () => {
+                // An explicit native pause is a valid user state, including
+                // preparation completed while the user chose to stay paused.
+                this.clearStartupTimer();
                 this._paused = true;
                 // For Syncplay ready notification
                 this.events.trigger(this, 'pause');
@@ -322,6 +325,7 @@
         }
 
         clearStartupTimer() {
+            this._startupCheckId = (this._startupCheckId || 0) + 1;
             if (this._startupTimer != null) {
                 clearTimeout(this._startupTimer);
                 this._startupTimer = null;
@@ -331,10 +335,47 @@
         startStartupTimer() {
             this.clearStartupTimer();
             const startupSessionId = this._sessionId;
-            this._startupTimer = setTimeout(() => {
-                if (this._sessionId !== startupSessionId || !this._sessionActive || this._started) return;
-                this.onError('播放器启动超时（30 秒）');
-            }, 30000);
+            const startupCheckId = this._startupCheckId;
+            const startedAt = Date.now();
+            let preparing = false;
+            const isCurrent = () => this._sessionId === startupSessionId &&
+                this._startupCheckId === startupCheckId && this._sessionActive && !this._started;
+            const fail = () => {
+                if (isCurrent()) this.onError(preparing ? 'RIFE 准备超时，请重试播放' : '播放器启动超时（30 秒）');
+            };
+            const check = async () => {
+                if (!isCurrent()) return;
+                this._startupTimer = null;
+                const player = window.api.player;
+                // Keep normal startup bounded. Only the native startup hold can
+                // extend it, and a hung bridge or stale native clock cannot wait
+                // forever (worker: 950 s; first-frame gate: 15 s).
+                if (!player.rifeExtensionStatus || Date.now() - startedAt >= 1000000) {
+                    fail();
+                    return;
+                }
+                this._startupTimer = setTimeout(fail, 1500);
+                let status;
+                try {
+                    status = await player.rifeExtensionStatus();
+                } catch (_) {
+                    fail();
+                    return;
+                }
+                if (!isCurrent()) return;
+                clearTimeout(this._startupTimer);
+                this._startupTimer = null;
+                const runtime = status?.runtime;
+                if (runtime?.startupWaiting === true &&
+                    Number.isFinite(runtime.preparationElapsedMs) &&
+                    runtime.preparationElapsedMs >= 0 && runtime.preparationElapsedMs < 980000) {
+                    preparing = true;
+                    this._startupTimer = setTimeout(check, 5000);
+                } else {
+                    fail();
+                }
+            };
+            this._startupTimer = setTimeout(check, 30000);
         }
 
         requestNativeStop() {

@@ -41,9 +41,16 @@ private slots:
         player.initializeWindowsRife(root.filePath("release-catalog"),QJsonDocument::fromJson(catalog.readAll()).object());
         QTRY_COMPARE_WITH_TIMEOUT(finished.size(),1,10000);
         const auto packages=player.rifeExtensionStatus()["packages"].toList();
-        QCOMPARE(packages.size(),1);
-        QCOMPARE(packages.first().toMap()["id"].toString(),QString("rife-nvidia-r79"));
-        QVERIFY(packages.first().toMap()["downloadAvailable"].toBool());
+        // Full compatibility remains available even when this machine also
+        // receives a smaller architecture-specific recommendation.
+        QVERIFY(packages.size()==1||packages.size()==2);
+        bool fullAvailable=false;
+        for(const auto& package:packages){
+            const auto item=package.toMap();
+            QVERIFY(item["downloadAvailable"].toBool());
+            if(item["id"].toString()=="rife-nvidia-r79")fullAvailable=true;
+        }
+        QVERIFY(fullAvailable);
         QVERIFY(!player.rifeExtensionStatus()["busy"].toBool());
     }
     void untrustedActiveExtensionStillAllowsBaseStartup(){

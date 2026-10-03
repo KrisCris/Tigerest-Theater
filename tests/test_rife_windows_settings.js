@@ -62,7 +62,7 @@ test('restart requirement and engine preparation are shown separately',async()=>
     const p=panel({state:'restartRequired',restartRequired:true});await settle();
     assert.match(p.result.node.all().map(n=>n.textContent).join(' '),/重启/);
     p.update({state:'ready',restartRequired:false,runtime:{activated:true,enginePreparing:true}});
-    assert.match(p.result.node.all().map(n=>n.textContent).join(' '),/下次播放/);
+    assert.match(p.result.node.all().map(n=>n.textContent).join(' '),/准备完成后自动开始/);
     p.result.dispose();
 });
 test('failed install remains retryable and errors are rendered as text',async()=>{

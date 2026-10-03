@@ -17,6 +17,7 @@ public:
     quint64 generation()const{return serial;}
     QString activationError()const{return error;}
     bool engineCacheHitForItem()const{return cacheHit;}
+    bool preparingEngine()const{return preparing&&!preparationFinished;}
 signals:
     void enginePrepared(quint64 generation,bool ready,const QString& error);
 private:
@@ -25,7 +26,10 @@ private:
     ValidateRuntime validate;
     quint64 serial=0;
     bool inItem=false,sourceSeen=false,cacheHit=false;
+    bool preparing=false,preparationFinished=false,preparationSucceeded=false;
     SourceInfo source;
     QString error;
+    void cancelPreparation();
+    void completePreparation();
 };
 }

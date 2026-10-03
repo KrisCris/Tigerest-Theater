@@ -28,6 +28,10 @@ else:
         time.sleep(.01)
         if Path(request['cancelFile']).exists():
             sys.exit(2)
+    if state.get('compileError'):
+        args.result.write_text(json.dumps({'ready': False, 'error': state['compileError'],
+                                          'generation': request['generation']}), encoding='utf-8')
+        sys.exit(1)
     manifest = json.loads((runtime / 'runtime.json').read_text(encoding='utf-8'))
     model = next(m for m in manifest['models'] if m['id'] == request['model'])
     identity = engine_identity(manifest, model, state['probe']['gpu'], request['width'], request['height'])

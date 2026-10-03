@@ -1,6 +1,7 @@
 """Exercise the native ZIP64 reader using actual sealed and hostile archives."""
 import hashlib
 import json
+import json
 import os
 from pathlib import Path
 import stat
@@ -57,6 +58,33 @@ class NativeExtensionTests(unittest.TestCase):
         self.assertTrue(report['ok'], report)
         self.assertEqual(report['manifest']['maxAppVersion'], '3.0.0')
         self.reject(app='3.0.1', pattern='application version')
+
+    def test_catalog_cannot_relabel_a_sealed_gpu_architecture(self):
+        self.item['gpuArchitecture']='sm89'
+        self.reject(pattern='identity')
+
+    def test_unknown_gpu_package_architecture_is_rejected_before_extracting(self):
+        self.item['gpuArchitecture']='sm999'
+        self.reject(pattern='GPU architecture')
+        self.assertEqual(list(self.stage.iterdir()),[])
+
+    def test_legacy_catalog_and_manifest_without_gpu_metadata_still_install(self):
+        target=self.root/'legacy.zip'
+        with zipfile.ZipFile(self.archive) as source,zipfile.ZipFile(target,'w') as output:
+            for info in source.infolist():
+                data=source.read(info)
+                if info.filename=='extension.json':
+                    manifest=json.loads(data);manifest.pop('gpuArchitecture')
+                    data=json.dumps(manifest).encode()
+                    self.item['manifestSha256']=hashlib.sha256(data).hexdigest()
+                output.writestr(info,data)
+        self.item.pop('gpuArchitecture')
+        self.item['sha256']=hashlib.sha256(target.read_bytes()).hexdigest()
+        self.item['downloadSize']=target.stat().st_size
+        with zipfile.ZipFile(target) as source:
+            self.item['unpackedSize']=sum(x.file_size for x in source.infolist())
+        result=self.run_host(target)
+        self.assertTrue(result['ok'],result)
 
     def test_catalog_and_disk_rejection_write_nothing(self):
         self.reject(package_id='unlisted',pattern='uniquely listed')

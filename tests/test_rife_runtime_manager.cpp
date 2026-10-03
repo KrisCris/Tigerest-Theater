@@ -96,31 +96,59 @@ int main(int argc,char**argv){
     QObject::connect(&playback,&RifePlaybackCoordinator::enginePrepared,[&](quint64,bool ok,const QString&){engineReady=ok;});
     playback.beginItem(true,false,1.);playback.onFormatChanged(a);
     assert(controller.diagnostics()["reason"]=="engine-preparing"&&adds==0&&activations==0);
+    assert(controller.state()==State::Preparing); // Cold playback waits; it is not bypassed.
     const int compilingLaunches=launches;playback.onSeek();playback.onFormatChanged(a);assert(launches==compilingLaunches);
-    assert(until([&]{return engineReady;}));assert(adds==0); // Ready only for next play.
+    assert(until([&]{playback.onFormatChanged(a);return engineReady;}));
+    assert(adds==1&&activations==1&&controller.ownsFilter()); // Attach the same paused item.
+    assert(!playback.engineCacheHitForItem());
+    playback.onFormatChanged(a);assert(adds==1); // A repeated observation cannot attach twice.
     // A playback callback must not attempt first activation after mpv_create.
     // The default validator rejects an unprepared native process without
     // rewriting the environment; startup owns activation.
+    playback.endItem();
     {
         FrameInterpolationController unpreparedController(access,manager.pathsFor(a));
         RifePlaybackCoordinator unprepared(manager,unpreparedController);
         const auto previous=qgetenv("VSSCRIPT_PATH");
         unprepared.beginItem(true,false,1.);unprepared.onFormatChanged(a);
-        assert(adds==0&&unpreparedController.diagnostics()["reason"]=="runtime-missing");
+        assert(adds==1&&unpreparedController.diagnostics()["reason"]=="runtime-missing");
         assert(unprepared.activationError().contains("before mpv_create"));
         assert(qgetenv("VSSCRIPT_PATH")==previous);unprepared.endItem();
     }
     playback.endItem();playback.beginItem(true,false,1.);playback.onFormatChanged(a);
-    assert(adds==1&&activations==1&&!properties["vf"].toList().isEmpty());
+    assert(adds==2&&activations==2&&!properties["vf"].toList().isEmpty());
+    assert(playback.engineCacheHitForItem());
     playback.onPlaybackSpeed(2.);assert(properties["vf"].toList().isEmpty());
-    playback.onPlaybackSpeed(1.);playback.onFormatChanged(a);assert(adds==1);
-    playback.endItem();playback.beginItem(true,true,1.);playback.onFormatChanged(b);assert(adds==1&&launches==compilingLaunches);
-    playback.endItem();playback.beginItem(false,false,1.);playback.onFormatChanged(b);assert(adds==1&&launches==compilingLaunches);
-    playback.endItem();playback.beginItem(true,false,1.);playback.onFormatChanged(hdr);assert(adds==1&&launches==compilingLaunches);
+    playback.onPlaybackSpeed(1.);playback.onFormatChanged(a);assert(adds==2);
+    playback.endItem();playback.beginItem(true,true,1.);playback.onFormatChanged(b);assert(adds==2&&launches==compilingLaunches);
+    playback.endItem();playback.beginItem(false,false,1.);playback.onFormatChanged(b);assert(adds==2&&launches==compilingLaunches);
+    playback.endItem();playback.beginItem(true,false,1.);playback.onFormatChanged(hdr);assert(adds==2&&launches==compilingLaunches);
     playback.endItem();playback.beginItem(true,false,1.);playback.onFormatChanged(b); // Corrupt b needs preparation again.
     const int beforeFormatChange=launches;playback.onFormatChanged(a);assert(controller.diagnostics()["reason"]=="dynamic-format");
     playback.endItem();playback.beginItem(true,false,1.);activationAllowed=false;playback.onFormatChanged(a);
-    assert(adds==1&&controller.diagnostics()["reason"]=="runtime-missing");assert(launches==beforeFormatChange);
+    assert(adds==2&&controller.diagnostics()["reason"]=="runtime-missing");assert(launches==beforeFormatChange);
+    playback.endItem();
+    activationAllowed=true;
+    // A fully completed worker result can still belong to a stopped item.
+    const SourceInfo c{224,96,24,1,true,true,false,true};
+    playback.beginItem(true,false,1.);playback.onFormatChanged(c);
+    const auto cancelledGeneration=playback.generation();
+    assert(until([&]{return ready.contains(cancelledGeneration);}));
+    playback.endItem();playback.beginItem(false,false,1.);playback.onFormatChanged(c);
+    assert(adds==2&&!controller.ownsFilter()&&controller.state()==State::Off);
+    playback.endItem();
+    const SourceInfo d{208,80,24,1,true,true,false,true};
+    playback.beginItem(true,false,1.);playback.onFormatChanged(d);
+    playback.onPlaybackSpeed(1.25);playback.onFormatChanged(d);
+    assert(!playback.preparingEngine()&&controller.diagnostics()["reason"]=="playback-speed"&&adds==2);
+    playback.endItem();
+    json(root+"/fixture.json",{{"probe",QJsonObject{{"ok",true},{"privateLibrariesOnly",true},{"gpu",gpu}}},
+        {"delay",1},{"compileError","Controlled compiler failure"}});
+    engineReady=true;
+    playback.beginItem(true,false,1.);playback.onFormatChanged(d);
+    assert(until([&]{playback.onFormatChanged(d);return !playback.preparingEngine();}));
+    assert(!engineReady&&adds==2&&controller.diagnostics()["reason"]=="engine-prepare-error");
+    assert(playback.activationError().contains("Controlled compiler failure"));
     playback.endItem();
     // Opt-in real private process and cross-language cache identity. No engine
     // compilation is allowed by this test: it must find the prepared fixture.

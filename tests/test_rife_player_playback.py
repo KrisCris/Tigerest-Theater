@@ -32,7 +32,11 @@ class PlayerPlaybackTests(unittest.TestCase):
                                RIFE_TEST_PLAYER_CACHE=str(Path(prepared['enginePath']).parent.parent))
             qt_log = stage / 'qt-test.txt'
             try:
-                run = subprocess.run([str(executable), '-o', str(qt_log)+',txt'], capture_output=True, timeout=110, env=environment)
+                # Input/overlay CPU tests create their own plain mpv cores.
+                # Run the actual runtime activation in a fresh process before
+                # any core exists, exactly as production startup does.
+                run = subprocess.run([str(executable), 'actualCachedPlaybackSeekPauseSpeedAndReload',
+                                      '-o', str(qt_log)+',txt'], capture_output=True, timeout=110, env=environment)
             except subprocess.TimeoutExpired as error:
                 failure = ROOT / 'build/rife/player-failures' / stage.name
                 failure.mkdir(parents=True)

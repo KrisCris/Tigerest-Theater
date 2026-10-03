@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import unittest
+import zipfile
 import test_rife_extension_package as fixture_api
 
 
@@ -20,9 +21,14 @@ class NativeManagerTests(unittest.TestCase):
     def run_host(self,action=None,*,free='default',option='',catalog=None):
         value=dict(catalog or self.fixture.catalog,testArchive=str(self.fixture.archive))
         self.catalog.write_text(json.dumps(value),encoding='utf-8')
+        environment=dict(os.environ)
+        if 'testGpuReport' in value:
+            environment.pop('CUDA_VISIBLE_DEVICES',None);environment.pop('CUDA_DEVICE_ORDER',None)
+            environment.update(value.get('testGpuEnvironment',{}))
         result=subprocess.run([self.host,str(action or self.fixture.archive),str(self.catalog),
-            str(self.data),'2.1.2',str(free),option],capture_output=True,timeout=25)
+            str(self.data),'2.1.2',str(free),option],capture_output=True,timeout=25,env=environment)
         self.assertEqual(result.returncode,0,result.stderr.decode(errors='replace'))
+        self.assertTrue(result.stdout.startswith(b'{'),repr((result.stdout,result.stderr)))
         return json.loads(result.stdout)
 
     def test_atomic_import_restart_and_shared_single_copy(self):
@@ -39,6 +45,123 @@ class NativeManagerTests(unittest.TestCase):
         self.assertTrue(self.run_host()['ok'])
         self.assertEqual((self.data/'active.json').read_bytes(),before)
         self.assertEqual(len(list((self.data/'versions').iterdir())),1)
+
+    def architecture_catalog(self,count,major,minor):
+        common=dict(self.fixture.item,url='https://example.invalid/full.zip')
+        packages=[dict(common,id='rife-full')]
+        for architecture in ('sm75','sm80','sm86','sm89','sm90','sm100','sm120'):
+            packages.append(dict(common,id='rife-'+architecture,gpuArchitecture=architecture,
+                                 url='https://example.invalid/'+architecture+'.zip'))
+        return {'schemaVersion':1,'packages':packages,'testGpuCount':count,'testGpuMajor':major,'testGpuMinor':minor}
+
+    def test_single_cuda_device_selects_all_existing_architectures(self):
+        for major,minor,expected in ((7,5,'sm75'),(8,0,'sm80'),(8,6,'sm86'),(8,9,'sm89'),
+                                    (9,0,'sm90'),(10,0,'sm100'),(12,0,'sm120')):
+            with self.subTest(capability=(major,minor)):
+                result=self.run_host('packageSelection',catalog=self.architecture_catalog(1,major,minor))
+                self.assertEqual(result['recommendedPackageId'],'rife-'+expected)
+                self.assertEqual(result['packages'][0]['id'],'rife-'+expected)
+                self.assertEqual({x['id'] for x in result['packages']},{'rife-full','rife-'+expected})
+
+    def test_unknown_missing_or_multiple_devices_use_full_package(self):
+        for count,major,minor in ((0,0,0),(2,8,9),(-1,8,9),(1,12,1),(1,6,1),(1,0,0)):
+            with self.subTest(gpu=(count,major,minor)):
+                result=self.run_host('packageSelection',catalog=self.architecture_catalog(count,major,minor))
+                self.assertEqual(result['recommendedPackageId'],'rife-full')
+                self.assertEqual([x['id'] for x in result['packages']],['rife-full'])
+
+    def test_missing_or_incompatible_variant_falls_back_without_guessing(self):
+        catalog=self.architecture_catalog(1,8,9)
+        catalog['packages']=[x for x in catalog['packages'] if x['id']!='rife-sm89']
+        self.assertEqual(self.run_host('packageSelection',catalog=catalog)['recommendedPackageId'],'rife-full')
+        catalog=self.architecture_catalog(1,8,9)
+        next(x for x in catalog['packages'] if x['id']=='rife-sm89')['abi']='incompatible'
+        self.assertEqual(self.run_host('packageSelection',catalog=catalog)['recommendedPackageId'],'rife-full')
+        catalog=self.architecture_catalog(1,12,1);catalog['packages'].pop(0)
+        result=self.run_host('packageSelection',catalog=catalog)
+        self.assertEqual(result['packages'],[])
+        self.assertEqual(result['recommendedPackageId'],'')
+
+    def test_isolated_gpu_report_accepts_one_device_and_fails_closed(self):
+        for report,expected in (('8.9\r\n','sm89'),('12.0\n','sm120'),(' 7.5 \n','sm75'),
+                                ('8.9\n8.9\n','full'),('8.9\n8.6\n','full'),('', 'full'),
+                                ('[N/A]\n','full'),('12.1\n','full'),('GPU 0: 8.9','full'),
+                                ('8.9\nwarning','full')):
+            with self.subTest(report=report):
+                catalog=dict(self.fixture.catalog,testGpuReport=report)
+                self.assertEqual(self.run_host('parseGpuReport',catalog=catalog)['architecture'],expected)
+
+    def install_architecture_fixture(self):
+        full=dict(self.fixture.item,url='https://example.invalid/full.zip')
+        self.fixture.architecture_runtime()
+        small=self.fixture.build_architecture('sm89')
+        small['url']='https://example.invalid/sm89.zip'
+        self.fixture.archive=self.root/'sm89.zip'
+        self.fixture.catalog={'schemaVersion':1,'packages':[full,small]}
+        imported=self.run_host()
+        self.assertTrue(imported['ok'],imported)
+        return imported['status']['installedVersion']
+
+    def test_installed_sm_package_cannot_start_with_uncertain_gpu_environment(self):
+        installed=self.install_architecture_fixture()
+        active=(self.data/'active.json').read_bytes()
+        for key in ('CUDA_VISIBLE_DEVICES','CUDA_DEVICE_ORDER'):
+            with self.subTest(environment=key):
+                catalog=dict(self.fixture.catalog,testGpuReport='8.9\n',testGpuEnvironment={key:'0'})
+                loaded=self.run_host('initialize',catalog=catalog)
+                self.assertFalse(loaded['ok'],loaded)
+                self.assertEqual(loaded['paths'],{})
+                self.assertEqual(loaded['leaseCount'],0)
+                self.assertEqual(loaded['status']['state'],'error')
+                self.assertFalse(loaded['status']['busy'])
+                self.assertEqual(loaded['status']['installedVersion'],installed)
+                self.assertEqual(loaded['status']['recommendedPackageId'],'rife-test-win64')
+                self.assertTrue(loaded['status']['packages'][0]['downloadAvailable'])
+                self.assertRegex(loaded['error'],'matching|full')
+                self.assertEqual((self.data/'active.json').read_bytes(),active)
+                self.assertTrue((self.data/'versions'/installed/'runtime/runtime.json').is_file())
+
+    def test_installed_sm_package_requires_matching_single_known_gpu(self):
+        installed=self.install_architecture_fixture()
+        for report in ('8.6\n','[N/A]\n','8.9\n8.9\n','12.1\n'):
+            with self.subTest(report=report):
+                catalog=dict(self.fixture.catalog,testGpuReport=report)
+                loaded=self.run_host('initialize',catalog=catalog)
+                self.assertFalse(loaded['ok'],loaded)
+                self.assertEqual(loaded['paths'],{})
+                self.assertEqual(loaded['leaseCount'],0)
+                self.assertEqual(loaded['status']['installedVersion'],installed)
+                self.assertEqual(loaded['status']['recommendedPackageId'],'rife-test-win64')
+                self.assertTrue(loaded['status']['packages'][0]['downloadAvailable'])
+        matching=self.run_host('initialize',catalog=dict(self.fixture.catalog,testGpuReport='8.9\n'))
+        self.assertTrue(matching['ok'],matching)
+        self.assertEqual(matching['status']['state'],'ready')
+        self.assertEqual(matching['paths']['versionKey'],installed)
+        self.assertEqual(matching['leaseCount'],1)
+
+    def test_legacy_full_package_starts_when_gpu_is_unknown_or_different(self):
+        target=self.root/'legacy.zip'
+        with zipfile.ZipFile(self.fixture.archive) as source,zipfile.ZipFile(target,'w') as output:
+            for info in source.infolist():
+                data=source.read(info)
+                if info.filename=='extension.json':
+                    manifest=json.loads(data);manifest.pop('gpuArchitecture')
+                    data=json.dumps(manifest).encode()
+                    self.fixture.item['manifestSha256']=hashlib.sha256(data).hexdigest()
+                output.writestr(info,data)
+        self.fixture.item.pop('gpuArchitecture')
+        self.fixture.item['sha256']=hashlib.sha256(target.read_bytes()).hexdigest()
+        self.fixture.item['downloadSize']=target.stat().st_size
+        with zipfile.ZipFile(target) as archive:
+            self.fixture.item['unpackedSize']=sum(x.file_size for x in archive.infolist())
+        self.fixture.archive=target
+        self.assertTrue(self.run_host()['ok'])
+        for report in ('[N/A]\n','8.6\n','8.9\n8.6\n'):
+            with self.subTest(report=report):
+                loaded=self.run_host('initialize',catalog=dict(self.fixture.catalog,testGpuReport=report))
+                self.assertTrue(loaded['ok'],loaded)
+                self.assertEqual(loaded['status']['state'],'ready')
+                self.assertEqual(loaded['leaseCount'],1)
 
     def test_failures_cancel_and_space_preserve_active(self):
         self.assertTrue(self.run_host()['ok'])

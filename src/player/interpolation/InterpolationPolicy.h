@@ -17,17 +17,23 @@ int integerMultiplier(Rational source,int targetFps);
 // independent of the temporary pause used for preparation.
 class StartupGate {
 public:
-    void begin(bool enabled,bool paused,int64_t now) {pending=enabled;resume=!paused;since=now;}
+    void begin(bool enabled,bool paused,int64_t now) {++serial;pending=enabled;resume=!paused;since=started=now;compiling=false;}
+    uint64_t generation()const{return serial;}
     bool waiting()const{return pending;}
     bool waitingToPlay()const{return pending&&resume;}
-    bool expired(int64_t now)const{return pending&&now-since>=15000;}
+    bool expired(int64_t now)const{return pending&&!compiling&&now-since>=15000;}
+    void setEnginePreparing(bool preparing,int64_t now){
+        if(pending&&compiling!=preparing){compiling=preparing;since=now;}
+    }
+    int64_t elapsed(int64_t now)const{return pending&&now>started?now-started:0;}
     void togglePause(){if(pending)resume=!resume;}
     bool requestPause(bool paused){resume=!paused;return pending||paused;}
-    bool finish(){const bool play=pending&&resume;pending=false;return play;}
-    void cancel(){pending=false;resume=false;}
+    bool finish(){const bool play=pending&&resume;pending=false;compiling=false;return play;}
+    void cancel(){++serial;pending=false;resume=false;compiling=false;}
 private:
-    bool pending=false,resume=false;
-    int64_t since=0;
+    bool pending=false,resume=false,compiling=false;
+    int64_t since=0,started=0;
+    uint64_t serial=0;
 };
 struct GuardParameters {
     bool windowsBackend=false;

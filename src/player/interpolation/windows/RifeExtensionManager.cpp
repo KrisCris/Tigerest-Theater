@@ -1,5 +1,6 @@
 #include "RifeExtensionManager.h"
 #include "RifeExtensionDownload.h"
+#include "RifeGpuArchitecture.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
@@ -10,11 +11,37 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QStorageInfo>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QUuid>
+#include <algorithm>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 namespace rife {
 namespace {
+QString deviceCapabilityReport() {
+#ifdef Q_OS_WIN
+    // Keep vendor driver initialization/teardown out of the player process.
+    // Never search PATH, download a detector or start a shell. An absent tool,
+    // unsupported query, timeout or ambiguous report uses the full package.
+    wchar_t directory[MAX_PATH];const auto length=GetSystemDirectoryW(directory,MAX_PATH);
+    if(!length||length>=MAX_PATH)return {};
+    const auto tool=QString::fromWCharArray(directory)+"/nvidia-smi.exe";
+    if(!QFileInfo(tool).isFile())return {};
+    QProcess process;
+    process.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* args){args->flags|=CREATE_NO_WINDOW;});
+    process.start(tool,{"--query-gpu=compute_cap","--format=csv,noheader,nounits"});
+    if(!process.waitForStarted(1000)||!process.waitForFinished(3000)) {
+        process.kill();process.waitForFinished(1000);return {};
+    }
+    if(process.exitStatus()!=QProcess::NormalExit||process.exitCode()!=0||!process.readAllStandardError().isEmpty())return {};
+    return QString::fromUtf8(process.readAllStandardOutput());
+#else
+    return {};
+#endif
+}
 QString versionKey(const QJsonObject& item){return item["id"].toString()+"-"+item["version"].toString()+"-"+item["sha256"].toString().left(16);}
 bool keyValid(const QString& key){static const QRegularExpression pattern("^[a-z0-9][a-z0-9-]{0,63}-[0-9]+\\.[0-9]+\\.[0-9]+-[0-9a-f]{16}$");return key.size()<=120&&pattern.match(key).hasMatch();}
 bool plain(const QString& path) {
@@ -60,18 +87,38 @@ bool removeOwnedVersion(const QString& root,const QString& key) {
 }
 }
 
-RifeExtensionManager::RifeExtensionManager(QString root,QJsonObject catalog,QString appVersion,QObject* parent)
-    :QObject(parent),m_root(QDir::cleanPath(QFileInfo(root).absoluteFilePath())),m_appVersion(std::move(appVersion)),m_catalog(std::move(catalog))
+RifeExtensionManager::RifeExtensionManager(QString root,QJsonObject catalog,QString appVersion,QObject* parent,
+                                         std::function<QString()> gpuReportProvider)
+    :QObject(parent),m_root(QDir::cleanPath(QFileInfo(root).absoluteFilePath())),m_appVersion(std::move(appVersion)),
+     m_catalog(std::move(catalog)),m_gpuReportProvider(std::move(gpuReportProvider))
 {
     m_status={{"state","notInstalled"},{"busy",false},{"restartRequired",false}};
+    const auto selection=packageSelection(m_catalog,m_appVersion,0,0,0);
+    for(auto it=selection.cbegin();it!=selection.cend();++it)m_status[it.key()]=it.value();
+}
+QVariantMap RifeExtensionManager::packageSelection(const QJsonObject& catalog,const QString& appVersion,
+                                                 int deviceCount,int major,int minor) {
+    return packageSelectionForArchitecture(catalog,appVersion,gpuPackageArchitecture(deviceCount,major,minor));
+}
+QVariantMap RifeExtensionManager::packageSelectionForArchitecture(const QJsonObject& catalog,const QString& appVersion,
+                                                                const QString& architecture) {
     QVariantList packages;
-    for(const auto& value:m_catalog["packages"].toArray()) {
+    for(const auto& value:catalog["packages"].toArray()) {
         const auto item=value.toObject();QString error;
-        const auto validated=RifeExtensionArchive::catalogPackage(m_catalog,item["id"].toString(),m_appVersion,&error);
-        if(error.isEmpty())packages.append(QVariantMap{{"id",validated["id"].toString()},{"version",validated["version"].toString()},
-            {"downloadSize",validated["downloadSize"].toDouble()},{"unpackedSize",validated["unpackedSize"].toDouble()},{"downloadAvailable",!validated["url"].toString().isEmpty()}});
+        const auto validated=RifeExtensionArchive::catalogPackage(catalog,item["id"].toString(),appVersion,&error);
+        const auto target=validated["gpuArchitecture"].toString("full");
+        if(error.isEmpty()&&(target=="full"||target==architecture))packages.append(QVariantMap{
+            {"id",validated["id"].toString()},{"version",validated["version"].toString()},{"gpuArchitecture",target},
+            {"downloadSize",validated["downloadSize"].toDouble()},{"unpackedSize",validated["unpackedSize"].toDouble()},
+            {"downloadAvailable",!validated["url"].toString().isEmpty()}});
     }
-    m_status["packages"]=packages;
+    std::stable_sort(packages.begin(),packages.end(),[&](const QVariant& a,const QVariant& b){
+        const auto left=a.toMap(),right=b.toMap();
+        if(left["downloadAvailable"]!=right["downloadAvailable"])return left["downloadAvailable"].toBool();
+        return left["gpuArchitecture"]==architecture&&right["gpuArchitecture"]!=architecture;
+    });
+    return {{"packages",packages},{"gpuArchitecture",architecture},
+            {"recommendedPackageId",packages.isEmpty()?QString():packages.front().toMap()["id"].toString()}};
 }
 RifeExtensionManager::~RifeExtensionManager(){cancel();if(m_worker)m_worker->wait();}
 void RifeExtensionManager::publish(const QVariantMap& status){for(auto it=status.cbegin();it!=status.cend();++it)m_status[it.key()]=it.value();emit statusChanged(m_status);}
@@ -105,7 +152,16 @@ RifeExtensionArchive::Options RifeExtensionManager::archiveOptions() {
 void RifeExtensionManager::initialize(){
     if(m_worker){emit operationRejected("An extension operation is already running");return;}
     if(m_lease){emit operationRejected("Runtime is already in use; restart before changing it");return;}
-    start("checking",[this]{return loadActive();},true);
+    start("checking",[this]{
+        // The runtime strips CUDA overrides, so an override in this process
+        // makes its device identity uncertain even if a query reports one GPU.
+        const auto architecture=(qEnvironmentVariableIsSet("CUDA_VISIBLE_DEVICES")||qEnvironmentVariableIsSet("CUDA_DEVICE_ORDER"))
+            ?QStringLiteral("full"):gpuPackageArchitectureFromReport(m_gpuReportProvider?m_gpuReportProvider():deviceCapabilityReport());
+        auto result=loadActive(architecture);
+        const auto selection=packageSelectionForArchitecture(m_catalog,m_appVersion,architecture);
+        for(auto it=selection.cbegin();it!=selection.cend();++it)result.status[it.key()]=it.value();
+        return result;
+    },true);
 }
 void RifeExtensionManager::importPackage(const QString& path){start("installing",[this,path]{return install(path);});}
 void RifeExtensionManager::download(const QString& id){start("downloading",[this,id]{
@@ -169,7 +225,7 @@ RifeExtensionManager::OperationResult RifeExtensionManager::install(const QStrin
     result.ok=true;result.status={{"state","restartRequired"},{"restartRequired",true},{"removalPending",false},{"installedVersion",key},{"error",""}};return result;
 }
 
-RifeExtensionManager::OperationResult RifeExtensionManager::loadActive() {
+RifeExtensionManager::OperationResult RifeExtensionManager::loadActive(const QString& gpuArchitecture) {
     OperationResult result;auto fail=[&](const QString& text){result.error=text;return result;};
     if(!ensureRoot(m_root))return fail("Cannot create private extension root");
     QLockFile lock(m_root+"/install.lock");lock.setStaleLockTime(0);
@@ -197,6 +253,9 @@ RifeExtensionManager::OperationResult RifeExtensionManager::loadActive() {
     // A catalog-authenticated identity remains safe to remove even if its
     // payload is damaged. Never return runtime paths before full verification.
     result.status["installedVersion"]=key;
+    const auto requiredArchitecture=item["gpuArchitecture"].toString("full");
+    if(requiredArchitecture!="full"&&requiredArchitecture!=gpuArchitecture)
+        return fail(QStringLiteral("Installed RIFE extension (%1) does not match a verified single GPU. Install the matching extension or the full offline package.").arg(requiredArchitecture));
     const auto root=m_root+"/versions/"+key;
     auto options=archiveOptions();options.verificationCachePath=m_root+"/verification/"+key+".bin";
     const auto verified=RifeExtensionArchive::verifyInstalled(root,item,options);if(!verified.ok)return fail(verified.error);

@@ -1,4 +1,5 @@
 #include "RifeExtensionArchive.h"
+#include "RifeGpuArchitecture.h"
 #include "RifeVerificationCache.h"
 #include <QCryptographicHash>
 #include <QDir>
@@ -121,6 +122,7 @@ QJsonObject RifeExtensionArchive::catalogPackage(const QJsonObject& catalog,cons
     static const QRegularExpression shaPattern(QStringLiteral("^[0-9a-f]{40}$"));
     if(!idPattern.match(id).hasMatch()||!shaPattern.match(item["sourceSha"].toString()).hasMatch()||item["runtimeId"].toString().isEmpty())return fail("Invalid catalog identity");
     if(item["platform"]!="windows"||item["architecture"]!="x64"||item["abi"]!=Abi)return fail("Unsupported extension architecture or ABI");
+    if(item.contains("gpuArchitecture")&&(!item["gpuArchitecture"].isString()||!validGpuPackageArchitecture(item["gpuArchitecture"].toString())))return fail("Unsupported extension GPU architecture");
     QVersionNumber app,minimum,maximum,packageVersion;
     if(!version(appVersion,&app)||!version(item["minAppVersion"].toString(),&minimum)||!version(item["maxAppVersion"].toString(),&maximum)||!version(item["version"].toString(),&packageVersion)||!(minimum<maximum))return fail("Extension is incompatible with this application version");
     // A sealed archive retains its original version range and identity. The
@@ -205,7 +207,7 @@ RifeExtensionArchive::Result RifeExtensionArchive::extract(const QString& archiv
     const auto document=QJsonDocument::fromJson(bytes,&parseError);
     if(parseError.error!=QJsonParseError::NoError||!document.isObject()||document.object()["schemaVersion"]!=1)return fail("Unsupported extension manifest");
     result.manifest=document.object();
-    for(const auto& key:{"id","version","platform","architecture","abi","runtimeId","minAppVersion","maxAppVersion","sourceSha"})if(result.manifest[key]!=item[key])return fail(QStringLiteral("Extension identity differs from catalog: ")+key);
+    for(const auto& key:{"id","version","platform","architecture","abi","runtimeId","minAppVersion","maxAppVersion","sourceSha","gpuArchitecture"})if(result.manifest.value(key)!=item.value(key))return fail(QStringLiteral("Extension identity differs from catalog: ")+key);
     const auto files=result.manifest["files"].toArray();
     if(!result.manifest["files"].isArray()||files.size()+1!=fileCount)return fail("Extension file list differs from archive entries");
     QMap<QString,QJsonObject> expected;
@@ -253,7 +255,7 @@ RifeExtensionArchive::Result RifeExtensionArchive::verifyInstalled(const QString
     QJsonParseError error;const auto doc=QJsonDocument::fromJson(bytes,&error);
     if(error.error!=QJsonParseError::NoError||!doc.isObject()||doc.object()["schemaVersion"]!=1)return fail("Unsupported installed manifest");
     result.manifest=doc.object();
-    for(const auto& key:{"id","version","platform","architecture","abi","runtimeId","minAppVersion","maxAppVersion","sourceSha"})if(result.manifest[key]!=item[key])return fail("Installed extension identity differs from catalog");
+    for(const auto& key:{"id","version","platform","architecture","abi","runtimeId","minAppVersion","maxAppVersion","sourceSha","gpuArchitecture"})if(result.manifest.value(key)!=item.value(key))return fail("Installed extension identity differs from catalog");
     qint64 fileCount=0,unpackedSize=0;
     const auto files=result.manifest["files"].toArray();
     if(!integer(item["fileCount"],&fileCount,1)||fileCount>MaxFiles||!integer(item["unpackedSize"],&unpackedSize,1)||!result.manifest["files"].isArray()||files.size()+1!=fileCount)return fail("Installed file count differs from catalog");

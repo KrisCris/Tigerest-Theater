@@ -14,8 +14,8 @@
 #include <QDebug>
 #include <QSettings>
 #ifdef Q_OS_WIN
-#include <QProgressDialog>
 #include <QJsonDocument>
+#include "ui/RifeStartupDialog.h"
 #endif
 
 #include "shared/Names.h"
@@ -610,17 +610,22 @@ int main(int argc, char *argv[])
     // No QML MpvVideoItem may create mpv before the verified VSScript runtime
     // is activated. Failures finish this gate and retain base playback.
     app.setQuitOnLastWindowClosed(false);
-    QProgressDialog rifeStartup(QStringLiteral("正在核验 RIFE 扩展…"),QString(),0,0);
-    rifeStartup.setWindowTitle(QStringLiteral("大河影院"));rifeStartup.setCancelButton(nullptr);
-    rifeStartup.setMinimumDuration(350);rifeStartup.setValue(0);
+    RifeStartupDialog rifeStartup;
+    rifeStartup.begin();
     auto& rifePlayer=PlayerComponent::Get();
     QObject::connect(&rifePlayer,&PlayerComponent::rifeExtensionStatusChanged,&rifeStartup,
-        [&rifeStartup](const QVariantMap& status){
-          rifeStartup.setLabelText(status["runtime"].toMap()["runtimePreparing"].toBool()
-              ?QStringLiteral("正在检查 NVIDIA 补帧运行库…"):QStringLiteral("正在核验 RIFE 扩展…"));
-        });
+        &RifeStartupDialog::updateStatus);
+    // The extension finishes before configure() starts the runtime probe, and
+    // that probe has no progress events. Refresh only while this gate is held.
+    QTimer rifeStartupStatus;
+    rifeStartupStatus.setInterval(250);
+    QObject::connect(&rifeStartupStatus,&QTimer::timeout,&rifeStartup,[&]{
+      rifeStartup.updateStatus(rifePlayer.rifeExtensionStatus());
+    });
+    rifeStartupStatus.start();
     QObject::connect(&rifePlayer,&PlayerComponent::windowsRifeStartupFinished,engine,[&]{
-      rifeStartup.reset();
+      rifeStartupStatus.stop();
+      rifeStartup.finish();
       engine->load(QUrl(QStringLiteral("qrc:/webview.qml")));
       app.setQuitOnLastWindowClosed(true);
     },Qt::SingleShotConnection);

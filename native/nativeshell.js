@@ -629,7 +629,7 @@ function createRifeExtensionPanel({element, player, settings, save, notify}) {
     });
     node.appendChild(element('div', 'tgs-help', '快速方案（下方仍可分别选模型和帧率）：'));
     node.appendChild(preset);
-    node.appendChild(element('div', 'tgs-help', '120/240 fps 与 4K 补帧为实验方案，不保证实时速度；性能不足会恢复原帧。首次准备引擎时本次保持原帧播放，准备完成后重新打开视频生效。'));
+    node.appendChild(element('div', 'tgs-help', '120/240 fps 与 4K 补帧为实验方案，不保证实时速度；性能不足会恢复原帧。首次准备引擎时暂停播放并显示进度，完成后自动开始；已有引擎会直接复用。Windows 补帧期间使用音频时钟保持同步。'));
     const actions = element('div', 'tgs-actions');
     const download = element('button', 'tgs-action', '下载扩展');
     const offline = element('button', 'tgs-action', '导入离线包');
@@ -643,15 +643,16 @@ function createRifeExtensionPanel({element, player, settings, save, notify}) {
         current = status;
         const pack = status.packages?.[0];
         const states = {notInstalled: '尚未安装', checking: '正在核验', downloading: '正在下载', installing: '正在安装', removing: '正在移除', ready: '已安装', restartRequired: '请完全退出并重启客户端', cancelled: '操作已取消', error: '操作失败'};
+        const packageKind = pack?.gpuArchitecture && pack.gpuArchitecture !== 'full' ? '当前显卡适配包' : '完整兼容包';
         summary.textContent = pack
-            ? `${states[status.state] || status.state} · 扩展 ${pack.version} · 下载 ${size(pack.downloadSize)}，展开 ${size(pack.unpackedSize)}。运行库由各配置共用，引擎缓存按当前配置保存。`
+            ? `${states[status.state] || status.state} · 推荐下载扩展 ${pack.version} · ${packageKind}：下载 ${size(pack.downloadSize)}，展开 ${size(pack.unpackedSize)}。运行库由各配置共用，引擎缓存按当前配置保存。`
             : `${states[status.state] || status.state} · 当前版本尚未提供可安装的扩展包。`;
         const done = Number(status.doneBytes || 0), total = Number(status.totalBytes || 0);
         progress.textContent = status.error ? String(status.error) : status.busy && total > 0
             ? `${Math.min(100, Math.floor(done * 100 / total))}% · ${size(done)} / ${size(total)}` : '';
         const r = status.runtime || {};
         runtime.textContent = status.restartRequired ? '安装或移除将在重启后生效。'
-            : r.enginePreparing ? '正在准备引擎；本次保持原帧播放，完成后下次播放生效。'
+            : r.enginePreparing ? '正在准备引擎，播放已暂停；准备完成后自动开始。首次准备可能需要数分钟。'
             : r.runtimePreparing ? '正在检查 NVIDIA 运行库。'
             : r.activated ? r.playback?.status || '运行库已就绪；模型与目标帧率在下次播放生效。'
             : status.state === 'ready' ? r.error || '运行库尚未就绪；基础播放仍可使用。' : '';

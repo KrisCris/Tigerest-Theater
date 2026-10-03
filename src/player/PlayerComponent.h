@@ -93,6 +93,7 @@ public:
   Q_INVOKABLE virtual void streamSwitch();
 
   Q_INVOKABLE virtual void pause();
+  void togglePause();
   Q_INVOKABLE virtual void play();
 
   // OS media integration notifications (called from JavaScript)
@@ -296,7 +297,9 @@ private:
   quint64 m_windowsPlaybackGeneration=0;
   qint64 m_windowsReplacementTargetEntryId=-1;
   bool m_windowsRifeReloaded=false;
+  bool m_windowsPreparationOverlayVisible=false;
   bool recoverWindowsRifeError(const mpv_event_end_file& event);
+  void updateInterpolationPreparationOverlay();
 #endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   std::unique_ptr<rife::MpvPollAccess> m_rifeAccess;
@@ -311,9 +314,16 @@ private:
   // Destroy the coordinator before the controller and its runtime manager.
   std::unique_ptr<rife::RifePlaybackCoordinator> m_windowsRifePlayback;
 #endif
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   rife::StartupGate m_rifeStartup;
+  uint64_t m_rifeResumeGeneration=0;
+  int m_rifeResumeRequest=0,m_rifeResumeSequence=0;
+  qint64 m_rifeResumeSince=0;
+  bool m_rifePauseBindings=false;
   void publishInterpolationPause();
+  void finishInterpolationStartup();
+  void checkInterpolationResume(qint64 now);
+  void failInterpolationResume();
 #endif
   // this is the function actually implemented in the backends. the variantmap contains
   // a few known keys:

@@ -10,14 +10,16 @@ RifePlaybackCoordinator::RifePlaybackCoordinator(RifeRuntimeManager& r,FrameInte
     :QObject(parent),runtime(r),controller(c),validate(std::move(validation)){
     if(!validate)validate=[](const RuntimePaths& paths,QString* error){return validateVSScriptRuntime(paths.runtime,error);};
     connect(&runtime,&RifeRuntimeManager::prepared,this,[this](quint64 generation,bool ready,const QString& message){
-        // A completed compile only informs this item. It never replaces its
-        // graph; the verified cache will be picked up by the next beginItem.
-        if(inItem&&generation==serial)emit enginePrepared(generation,ready,message);
+        // Attach on the next format poll, inside the player's asynchronous
+        // mpv-access scope. A worker callback must not block on VO reconfigure.
+        if(inItem&&generation==serial&&preparing){
+            preparationFinished=true;preparationSucceeded=ready;error=message;
+        }
     });
 }
 RifePlaybackCoordinator::~RifePlaybackCoordinator(){runtime.cancel(serial);}
 void RifePlaybackCoordinator::beginItem(bool enabled,bool systemConfig,double speed){
-    runtime.cancel(serial);++serial;inItem=true;sourceSeen=false;cacheHit=false;source={};error.clear();
+    cancelPreparation();++serial;inItem=true;sourceSeen=false;cacheHit=false;source={};error.clear();
     controller.stop();
     auto paths=runtime.pathsFor({});paths.factor=2;
     controller.setRuntimePaths(paths);controller.beginItem(enabled,systemConfig);
@@ -26,8 +28,12 @@ void RifePlaybackCoordinator::beginItem(bool enabled,bool systemConfig,double sp
 void RifePlaybackCoordinator::onFormatChanged(const SourceInfo& info){
     if(!inItem)return;
     if(sourceSeen){
-        if(!same(source,info)){runtime.cancel(serial);controller.bypassCurrentItem("dynamic-format");}
-        else controller.onFormatChanged(info);
+        if(!same(source,info)){cancelPreparation();controller.bypassCurrentItem("dynamic-format");}
+        else {
+            if(preparing&&preparationFinished)completePreparation();
+            else controller.onFormatChanged(info);
+            if(preparing&&controller.state()!=State::Preparing)cancelPreparation();
+        }
         return;
     }
     sourceSeen=true;source=info;
@@ -42,16 +48,39 @@ void RifePlaybackCoordinator::onFormatChanged(const SourceInfo& info){
         controller.bypassCurrentItem("runtime-missing");return;
     }
     controller.setRuntimePaths(paths);controller.onFormatChanged(info);
-    if(controller.diagnostics()["reason"]=="engine-preparing")runtime.prepare(info,serial);
+    if(controller.state()==State::Preparing&&controller.diagnostics()["reason"]=="engine-preparing"){
+        preparing=true;preparationFinished=false;runtime.prepare(info,serial);
+    }
+}
+void RifePlaybackCoordinator::cancelPreparation(){
+    runtime.cancel(serial);preparing=false;preparationFinished=false;
+}
+void RifePlaybackCoordinator::completePreparation(){
+    preparing=false;preparationFinished=false;
+    if(controller.state()!=State::Preparing)return;
+    if(!preparationSucceeded){
+        controller.bypassCurrentItem("engine-prepare-error");
+        emit enginePrepared(serial,false,error);return;
+    }
+    const auto paths=runtime.pathsFor(source); // Revalidate identity and bytes before attaching.
+    if(paths.engine.isEmpty()||!validate(paths,&error)||!controller.setRuntimePaths(paths)){
+        if(error.isEmpty())error=QStringLiteral("Prepared RIFE engine is unavailable");
+        controller.bypassCurrentItem("runtime-missing");
+        emit enginePrepared(serial,false,error);return;
+    }
+    controller.onFormatChanged(source);
+    const bool attached=controller.ownsFilter();
+    if(!attached&&error.isEmpty())error=QStringLiteral("Cannot attach prepared RIFE engine");
+    emit enginePrepared(serial,attached,error);
 }
 void RifePlaybackCoordinator::onSeek(){if(inItem)controller.onSeek();}
 void RifePlaybackCoordinator::onPlaybackSpeed(double speed){
     if(!inItem)return;
-    if(!std::isfinite(speed)||std::abs(speed-1.)>1e-6)runtime.cancel(serial);
+    if(!std::isfinite(speed)||std::abs(speed-1.)>1e-6)cancelPreparation();
     controller.onPlaybackSpeed(speed);
 }
 void RifePlaybackCoordinator::endItem(){
-    runtime.cancel(serial);++serial;inItem=false;sourceSeen=false;cacheHit=false;
+    cancelPreparation();++serial;inItem=false;sourceSeen=false;cacheHit=false;
     controller.stopOnEndFile();
 }
 }

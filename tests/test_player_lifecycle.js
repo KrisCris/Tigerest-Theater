@@ -25,6 +25,8 @@ function makeElement() {
 
 async function main() {
     const timers = new Map();
+    const timerDelays = new Map();
+    let now = 0;
     let timerId = 0;
     let videoDialog = null;
     const bodyClasses = new Set();
@@ -89,8 +91,14 @@ async function main() {
     const context = {
         console,
         URL,
-        setTimeout(callback) { const id = ++timerId; timers.set(id, callback); return id; },
-        clearTimeout(id) { timers.delete(id); },
+        Date: {now: () => now},
+        setTimeout(callback, delay) {
+            const id = ++timerId;
+            timers.set(id, callback);
+            timerDelays.set(id, delay);
+            return id;
+        },
+        clearTimeout(id) { timers.delete(id); timerDelays.delete(id); },
         document: {
             body,
             querySelector(selector) { return selector === '.videoPlayerContainer' ? videoDialog : null; },
@@ -253,6 +261,101 @@ async function main() {
     assert.strictEqual(fullscreenRequests.length, fullscreenCountBeforeWindowedPlayback,
         'a truthy non-boolean fullscreen value unexpectedly requested system fullscreen');
     await nonFullscreenInstance.stop(true);
+
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+    async function fireNextTimer() {
+        const [id, callback] = timers.entries().next().value;
+        now += timerDelays.get(id);
+        timers.delete(id);
+        timerDelays.delete(id);
+        callback();
+        await flush();
+    }
+    // A real native preparation hold may exceed the ordinary 30-second startup
+    // window. It must not be stopped or replaced with a transcode retry.
+    const preparationInstance = nonFullscreenInstance;
+    player.rifeExtensionStatus = async () => ({runtime: {
+        startupWaiting: true, enginePreparing: true, preparingForItem: true,
+        preparationElapsedMs: 30000,
+    }});
+    await preparationInstance.play(options);
+    const stopsBeforePreparation = nativeStops;
+    await fireNextTimer();
+    assert.strictEqual(nativeStops, stopsBeforePreparation,
+        'the startup watchdog aborted a valid native RIFE preparation hold');
+    assert.ok(videoDialog, 'preparation removed the playback surface');
+    assert.strictEqual(timers.size, 1, 'preparation lost its bounded startup watchdog');
+    await fireNextTimer();
+    assert.strictEqual(nativeStops, stopsBeforePreparation, 'a preparation recheck aborted the same item');
+    preparationInstance.onPlaying();
+    assert.strictEqual(timers.size, 0, 'successful preparation left a watchdog armed');
+    await preparationInstance.stop(false);
+
+    // Explicit pause is a user state, including when the engine becomes ready
+    // while paused. It is never an unresponsive autoplay attempt.
+    await preparationInstance.play(options);
+    const stopsBeforePause = nativeStops;
+    player.paused.emit();
+    assert.strictEqual(timers.size, 0, 'explicit pause left the autoplay watchdog armed');
+    assert.strictEqual(nativeStops, stopsBeforePause);
+    await preparationInstance.stop(false);
+
+    for (const runtime of [
+        {startupWaiting: false, preparationElapsedMs: 30000},
+        {startupWaiting: true, preparationElapsedMs: NaN},
+        {startupWaiting: true, preparationElapsedMs: -1},
+        {startupWaiting: true, preparationElapsedMs: 1000000},
+    ]) {
+        player.rifeExtensionStatus = async () => ({runtime});
+        await preparationInstance.play(options);
+        const stopsBeforeInvalidStatus = nativeStops;
+        await fireNextTimer();
+        assert.strictEqual(nativeStops, stopsBeforeInvalidStatus + 1,
+            'absent, invalid or expired native preparation suppressed startup failure');
+        assert.strictEqual(timers.size, 0);
+    }
+
+    player.rifeExtensionStatus = async () => { throw new Error('native status unavailable'); };
+    await preparationInstance.play(options);
+    const stopsBeforeRejection = nativeStops;
+    await fireNextTimer();
+    assert.strictEqual(nativeStops, stopsBeforeRejection + 1, 'status rejection disabled startup protection');
+
+    let finishStatus;
+    player.rifeExtensionStatus = () => new Promise(resolve => { finishStatus = resolve; });
+    await preparationInstance.play(options);
+    const stopsBeforeHungStatus = nativeStops;
+    await fireNextTimer();
+    assert.strictEqual(nativeStops, stopsBeforeHungStatus);
+    assert.strictEqual(timers.size, 1, 'an unresponsive native bridge has no deadline');
+    await fireNextTimer();
+    assert.strictEqual(nativeStops, stopsBeforeHungStatus + 1, 'an unresponsive bridge hung autoplay forever');
+    finishStatus({runtime: {startupWaiting: true, preparationElapsedMs: 30000}});
+    await flush();
+    assert.strictEqual(timers.size, 0, 'late native status resurrected failed playback');
+
+    await preparationInstance.play(options);
+    await fireNextTimer();
+    const oldStatus = finishStatus;
+    await preparationInstance.stop(false);
+    await preparationInstance.play(options);
+    const currentTimer = [...timers.keys()][0];
+    const stopsBeforeLateStatus = nativeStops;
+    oldStatus({runtime: {startupWaiting: false, preparationElapsedMs: 0}});
+    await flush();
+    assert.strictEqual(nativeStops, stopsBeforeLateStatus, 'stale native status stopped a replacement item');
+    assert.deepStrictEqual([...timers.keys()], [currentTimer], 'stale status changed the new startup watchdog');
+    await preparationInstance.stop(false);
+
+    player.rifeExtensionStatus = async () => ({runtime: {startupWaiting: true, preparationElapsedMs: 30000}});
+    await preparationInstance.play(options);
+    const stopsBeforeStuckPreparation = nativeStops;
+    await fireNextTimer();
+    now += 1000000;
+    await fireNextTimer();
+    assert.strictEqual(nativeStops, stopsBeforeStuckPreparation + 1,
+        'a stale native elapsed value allowed an unlimited preparation hold');
+    await preparationInstance.stop(true);
 
     console.log('player lifecycle: all checks passed');
 }

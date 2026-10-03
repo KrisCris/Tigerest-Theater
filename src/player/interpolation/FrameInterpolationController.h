@@ -19,6 +19,7 @@ struct MpvAccess {
     std::function<bool(const QStringList&)> command;
     std::function<bool(const QString&,const QVariant&)> setAsync;
     std::function<bool(const QStringList&)> commandAsync;
+    std::function<bool(const QString&,const QVariant&,int)> setAsyncTagged;
 };
 class FrameInterpolationController {
 public:
@@ -33,6 +34,8 @@ public:
     void stop();
     void stopOnEndFile();
     void configureHardwareDecoding(const QString& mode);
+    void configureVideoSync(const QString& mode);
+    void onVideoSyncChanged(const QString& mode){effectiveVideoSync=mode;}
     void poll(int64_t nowMs,bool suspended);
     void onMetrics(uint64_t generation,const Metrics& metrics,int64_t nowMs,bool suspended,uint64_t drops,
                    double avsync=std::numeric_limits<double>::quiet_NaN(),uint64_t decoderDrops=0);
@@ -54,6 +57,8 @@ private:
     uint64_t serial=0,session=0,epoch=0;
     bool requested=false,filterOwned=false,hwdecOwned=false,notified=false;
     QString oldHwdec,reason;
+    bool videoSyncOwned=false;
+    QString oldVideoSync,effectiveVideoSync;
     Metrics latest;
     QVariantMap lastFailure;
     PerformanceGuard guard;

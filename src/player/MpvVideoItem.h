@@ -50,6 +50,7 @@ protected:
     void keyReleaseEvent(QKeyEvent* event) override;
 
 private:
+    friend class RifePlayerPlayback;
 #if defined(Q_OS_MAC)
     void installMacInputMonitor();
     void removeMacInputMonitor();
@@ -66,6 +67,7 @@ private:
     void updateNativeHostWindow();
     void syncFullscreenToMpv();
     void sendMousePosition(const QPointF& position);
+    void togglePause();
     QString mouseButtonName(Qt::MouseButton button) const;
     QString keyName(QKeyEvent* event) const;
 

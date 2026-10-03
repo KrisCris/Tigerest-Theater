@@ -169,7 +169,7 @@ void MpvVideoItem::installMacInputMonitor()
             const NSPoint point = [content convertPoint:event.locationInWindow fromView:nil];
             if (NSPointInRect(point, content.bounds)) {
                 doubleClickDown = true;
-                commandAsync({QStringLiteral("cycle"), QStringLiteral("pause")});
+                togglePause();
                 return nil;
             }
         }

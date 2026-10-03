@@ -4,15 +4,15 @@
 
 媒体库来自你连接的 Emby Server，账号和内容权限由服务器提供。本项目提供客户端，不包含影视资源，也不会自动开通服务器访问权限。
 
-## V2.3.2 正式版
+## V2.3.3 正式版
 
-V2.3 提供 Windows NVIDIA 与 Mac RIFE 补帧、详情页评论区和整合在 Emby 设置中的 MPV 播放设置。V2.3.2 修复 Windows 23.976 fps 预设倍率与显示刷新率造成的回退问题，加速重复启动时的扩展校验；保留新版媒体卡片、选集、滚动条和深色标题栏。版本变化见 [CHANGELOG](CHANGELOG.md)，完整下载和校验文件见 [GitHub Releases](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.3.2)。
+V2.3 提供 Windows NVIDIA 与 Mac RIFE 补帧、详情页评论区和整合在 Emby 设置中的 MPV 播放设置。V2.3.3 调整 Windows 补帧的音画同步，首次引擎准备显示等待进度、完成后直接播放，并按显卡提供更小的扩展包；保留新版媒体卡片、选集、滚动条和深色标题栏。版本变化见 [CHANGELOG](CHANGELOG.md)，完整下载和校验文件见 [GitHub Releases](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.3.3)。
 
 | 平台 | 下载 | 安装 |
 | --- | --- | --- |
-| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.2/TigerestTheater-2.3.2-x64.exe) | 按向导安装，可覆盖更新 |
-| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.2/TigerestTheater-2.3.2-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
-| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.2/TigerestTheater-2.3.2-arm64.dmg) | 将应用拖入「应用程序」 |
+| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/TigerestTheater-2.3.3-x64.exe) | 按向导安装，可覆盖更新 |
+| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/TigerestTheater-2.3.3-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
+| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/TigerestTheater-2.3.3-arm64.dmg) | 将应用拖入「应用程序」 |
 
 基础包已包含 MPV 和所需运行库。Windows RIFE 的大型 AI 组件使用独立扩展，在客户端设置中下载或离线导入。下载文件可用发布页的 SHA-256 清单核验。
 
@@ -43,12 +43,12 @@ V2.3 提供 Windows NVIDIA 与 Mac RIFE 补帧、详情页评论区和整合在 
 
 ### Windows NVIDIA
 
-需要 NVIDIA 显卡和可用的 NVIDIA 驱动。先更新到 **V2.3.2**，再下载或离线导入 **RIFE NVIDIA 1.0.0 扩展**。扩展包含 RIFE 4.25 lite、4.25、4.25 heavy 三个模型，以及独立的 TensorRT 运行库，无需另装 SVP、Python 或 CUDA Toolkit。Intel／AMD 显卡仍可使用基础播放功能。
+需要受扩展运行库支持的 NVIDIA 显卡和可用的 NVIDIA 驱动。先更新到 **V2.3.3**，再下载或离线导入 **RIFE NVIDIA 1.0.0 扩展**。扩展包含 RIFE 4.25 lite、4.25、4.25 heavy 三个模型，以及独立的 TensorRT 运行库，无需另装 SVP、Python 或 CUDA Toolkit。Intel／AMD 显卡仍可使用基础播放功能。
 
 #### 在线安装
 
 1. 进入上述设置页的「视频」分类，在 **NVIDIA RIFE 扩展** 区域点击 **下载扩展**。
-2. 等待下载、核验及安装完成；设置页会显示进度或具体错误。包约 2 GB，下载临时文件、展开内容及引擎缓存需要额外空间，建议所在磁盘预留 **10 GB 以上**。
+2. 客户端自动选择当前显卡适配包，约 **724–1040 MiB**；多显卡、无法识别或没有匹配小包时使用约 **2 GiB** 的完整兼容包。等待下载、核验及安装完成；设置页会显示包大小、进度或具体错误。临时文件、展开内容及引擎缓存需要额外空间，建议预留 **10 GB 以上**。
 3. 出现 **请完全退出并重启客户端** 后，从应用退出；启用托盘时也要退出托盘中的程序，然后重新启动。
 4. 在「MPV 画质与插件」中将播放配置模式设为 **大河内置配置**，按提示重启；随后在「视频」中开启 AI 补帧，先选择 **均衡 · 4.25 / 约 60 fps**，重新打开视频。
 
@@ -56,22 +56,28 @@ V2.3 提供 Windows NVIDIA 与 Mac RIFE 补帧、详情页评论区和整合在 
 
 #### 离线导入
 
-1. 从 [RIFE NVIDIA 1.0.0 扩展下载链接](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.2.0/Tigerest-RIFE-NVIDIA-1.0.0.zip) 下载 **`Tigerest-RIFE-NVIDIA-1.0.0.zip`**。它与客户端的便携 ZIP 是两个不同文件；扩展沿用已发布的 1.0.0 包。
+1. 从 [V2.3.3 发布页](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.3.3) 下载与显卡架构对应的 **`Tigerest-RIFE-NVIDIA-smXX-1.0.0.zip`**；不确定架构、准备给多台电脑使用或更换显卡时，选 [完整兼容包 `Tigerest-RIFE-NVIDIA-1.0.0.zip`](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.2.0/Tigerest-RIFE-NVIDIA-1.0.0.zip)。它与客户端便携 ZIP 是两个不同文件。
 2. 保持扩展 ZIP 完整，**无需解压，也无需复制到程序目录**。可在另一台电脑下载后拷贝过来，中文路径和含空格路径均可使用。
 3. 在「视频 → NVIDIA RIFE 扩展」点击 **导入离线包**，选择这个 ZIP，然后等待完整核验和安装。客户端会检查文件哈希、清单、版本及运行库 ABI，不接受自行重新压缩或修改的包。
 4. 看到重启提示后完全退出并重新启动，再按照在线安装的第 4 步启用补帧。导入完成后，下载的原始 ZIP 可自行保留作备份或删除。
 
-官方扩展 ZIP 的 SHA-256：
+完整兼容包沿用原始 1.0.0 ZIP，其 SHA-256 为：
 
 ```text
 f7a7958b119b94b374df916b39ef36e9ed34f6df15eac4fb40153d30b2aab694
 ```
 
-也可在 PowerShell 中运行 `Get-FileHash -Algorithm SHA256 '你的扩展ZIP完整路径'` 核对。哈希不一致或核验失败时重新下载原包；不要关闭检查或手动替换运行库。
+各适配包的校验值见发布页扩展 SHA-256 清单。也可在 PowerShell 中运行 `Get-FileHash -Algorithm SHA256 '你的扩展ZIP完整路径'` 核对。哈希不一致或核验失败时重新下载原包；不要关闭检查或手动替换运行库。
+
+适配包覆盖 **sm75、sm80、sm86、sm89、sm90、sm100、sm120**，完整包仍保留全部这些架构。每个小包只去掉其他架构的 TensorRT 编译资源，保留公共运行库、PTX 和全部三种模型。以 sm89 为例，下载为 **787 MiB**，比原完整包减少约 **62%**。可按 [NVIDIA 官方计算能力列表](https://developer.nvidia.com/cuda-gpus) 确认架构；普通用户优先使用客户端自动下载。
+
+**为什么仍比 Mac 大？** Mac 使用系统提供的 Core ML／Metal，Windows 这条补帧路径需要分发 TensorRT 及相关运行库。适配包减少重复的显卡架构资源，未通过删掉其他显卡的支持来缩小基础功能范围。已安装的完整包可以继续用，无需为了更新客户端重新下载；主动换成小包会重新准备引擎。更换显卡后应安装匹配包或完整包。
 
 扩展运行库由同一客户端的配置档共用，引擎缓存按当前配置保存。安装版保存在用户数据目录，便携版保存在 `data` 中；更新便携客户端时请保留这个目录。需要卸载时使用 **移除扩展**，再完全退出并重启。基础播放不依赖该扩展。
 
-可选择均衡、画质优先、高帧率和 4K 流畅预设；使用整数倍插帧接近 60／120／240 fps。首次使用某个模型和输入尺寸时需要准备引擎，期间按原帧播放，准备完成后重新打开视频。扩展下载约 **2.00 GiB**，展开约 **2.49 GiB**，引擎缓存另占空间。
+可选择均衡、画质优先、高帧率和 4K 流畅预设；使用整数倍插帧接近 60／120／240 fps。首次使用某个模型和输入尺寸时需要准备引擎：播放暂时暂停，画面显示准备阶段、估算进度和已用时间；完成后直接开始当前视频。估算进度不代表固定剩余时间。下次播放会复用通过校验的缓存；用户主动暂停时不会强制开始。完整包展开约 **2.49 GiB**，小包更少，引擎缓存另占空间。
+
+Windows RIFE 准备及播放期间使用音频时钟同步，减少高刷新率显示器上显示同步时序抖动导致的额外丢帧。退出补帧后恢复原同步设置；Mac 的同步方式保持原有行为。
 
 「约 60 fps」是预设目标，实际帧率由片源与整数倍率决定：23.976／24 fps 采用 2 倍，输出约 47.952／48 fps；29.97／30 fps 输出约 59.94／60 fps。模型决定画质和运算量，目标帧率决定插帧数量。V2.3.2 修正了 23.976 fps 被误算为 3 倍、输出 71.928 fps 的情况；更新后无需重新下载扩展或重建已有引擎。
 
@@ -81,11 +87,11 @@ f7a7958b119b94b374df916b39ef36e9ed34f6df15eac4fb40153d30b2aab694
 
 实测 RTX 4090 的三个模型均通过合成素材 1080p30→60、默认画质处理后输出 4K 的 10 分钟测试。**1080p→240 和原生 4K60→120 仍属实验选项，尚未达到实时目标**，可能触发原帧回退。激进画质也会增加负载。详细测试边界见 [RIFE 实施报告](docs/reports/2026-09-30-windows-rife.md)。
 
-V2.3.2 另使用真实 1080p／23.976 fps 动画验证三档模型，各测量 3 分钟，暂停和跳转通过，测量段没有新增 VO／解码丢帧或性能回退。本机完整客户端首次启动约 18.4 秒，后续约 2.8～3.6 秒（包含显卡探测与运行库激活）；环境和范围见 [稳定性验收记录](docs/reports/2026-10-03-windows-rife-stability.md)。
+先前 V2.3.2 的本地素材测试未覆盖完整 Emby 网络播放、弹幕和高刷新率全屏组合。V2.3.3 在真实客户端复现并修复该组合的显示同步回退；最终适配包的三个模型分别持续补帧采样 105–125 秒，同时验证首次准备、主动暂停、停止后重开及缓存复用。实测条件与边界见[本轮客户端报告](docs/reports/2026-10-03-windows-rife-client-prepare.md)。各架构包均做完整性校验；实际 GPU 编译和播放验证仅覆盖 RTX 4090，不代表所有显卡的实时性能。
 
 ### Apple Silicon Mac
 
-M 系列 Mac 的模型及 Core ML／Metal 组件随基础包提供，支持最高 1080p、30 fps 的逐行 SDR 恒定帧率视频，以两倍帧率播放。HDR、4K、变帧率及色彩信息不完整的视频保持原帧播放，性能不足时自动回退。
+M 系列 Mac 的模型与补帧插件随基础包提供，推理使用 macOS 自带的 Core ML／Metal。支持最高 1080p、30 fps 的逐行 SDR 恒定帧率视频，以两倍帧率播放。HDR、4K、变帧率及色彩信息不完整的视频保持原帧播放，性能不足时自动回退。
 
 ## 其他主要功能
 
@@ -107,9 +113,9 @@ M 系列 Mac 的模型及 Core ML／Metal 组件随基础包提供，支持最�
 
 **评论区未出现：** 确认使用 V2.3、大河专属 Emby 账号，以及电影／剧集／季／单集详情页。自建服务器和离线媒体暂不支持。加载失败时检查 HTTP 18443 是否可达；登录失效时重新登录。
 
-**补帧未生效：** 开启后重新打开视频。Windows 安装扩展后须完全退出并重启；首次引擎准备未完成时仍以原帧播放。检查设置中的当前状态和格式／性能回退原因。
+**补帧未生效：** 开启后重新打开视频。Windows 安装扩展后须完全退出并重启；首次引擎准备会显示等待进度，完成后自动播放。检查设置中的当前状态和格式／性能回退原因。
 
-**Windows 补帧很快回退：** 先更新 V2.3.2，它修复了常见 23.976 fps 动画的额外倍率，以及输出帧率超过显示刷新率时将正常丢帧视为过载的问题。先用均衡、约 60 fps 和默认画质验证；120／240 fps、4K 与激进画质会提高负载。持续音画不同步或额外丢帧仍会回退，GPU 总占用率不能单独代表解码、帧转换和渲染流水线能否实时输出。日志中的 `RIFE realtime fallback` 记录当时的模型、倍率、丢帧和音画偏差，便于排查。
+**Windows 补帧很快回退：** 先更新 V2.3.3，它进一步处理真实客户端中的显示同步问题；保留 V2.3.2 的 23.976 fps 倍率修正。先用均衡、约 60 fps 和默认画质验证；120／240 fps、4K 与激进画质会提高负载。持续音画不同步或额外丢帧仍会回退，GPU 总占用率不能单独代表整个播放过程能否实时输出。日志中的 `RIFE realtime fallback` 记录当时的模型、倍率、丢帧和音画偏差，便于排查。
 
 **扩展按钮或头像“浏览”没反应：** V2.3.0 存在扩展兼容范围与 Windows 文件选择器打包问题，请更新 V2.3.2，并使用完整安装包或完整解压便携包。运行其他任务时扩展按钮会暂时禁用；如果提示空间不足、校验失败或运行库异常，按设置页错误信息排查。
 

@@ -1,8 +1,10 @@
 #include "windows/RifeExtensionManager.h"
 #include "windows/RifeExtensionDownload.h"
+#include "windows/RifeGpuArchitecture.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QDirIterator>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QThread>
@@ -12,7 +14,22 @@ int main(int argc,char** argv) {
     QCoreApplication app(argc,argv);const auto args=app.arguments();
     if(args.size()!=7)return 3;
     QFile catalogFile(args[2]);if(!catalogFile.open(QIODevice::ReadOnly))return 3;
-    rife::RifeExtensionManager manager(args[3],QJsonDocument::fromJson(catalogFile.readAll()).object(),args[4]);
+    const auto trustedCatalog=QJsonDocument::fromJson(catalogFile.readAll()).object();
+    std::function<QString()> gpuReportProvider;
+    if(trustedCatalog.contains("testGpuReport"))gpuReportProvider=[report=trustedCatalog["testGpuReport"].toString()]{return report;};
+    rife::RifeExtensionManager manager(args[3],trustedCatalog,args[4],nullptr,std::move(gpuReportProvider));
+    if(args[1]=="packageSelection") {
+        catalogFile.seek(0);const auto catalog=QJsonDocument::fromJson(catalogFile.readAll()).object();
+        const auto bytes=QJsonDocument::fromVariant(rife::RifeExtensionManager::packageSelection(
+            catalog,args[4],catalog["testGpuCount"].toInt(),catalog["testGpuMajor"].toInt(),catalog["testGpuMinor"].toInt())).toJson(QJsonDocument::Compact);
+        fwrite(bytes.constData(),1,static_cast<size_t>(bytes.size()),stdout);return 0;
+    }
+    if(args[1]=="parseGpuReport") {
+        catalogFile.seek(0);const auto catalog=QJsonDocument::fromJson(catalogFile.readAll()).object();
+        const auto bytes=QJsonDocument(QJsonObject{{"architecture",rife::gpuPackageArchitectureFromReport(
+            catalog["testGpuReport"].toString())}}).toJson(QJsonDocument::Compact);
+        fwrite(bytes.constData(),1,static_cast<size_t>(bytes.size()),stdout);return 0;
+    }
     if(args[1]=="verifyCacheCancel") {
         catalogFile.seek(0);const auto item=QJsonDocument::fromJson(catalogFile.readAll()).object()["packages"].toArray()[0].toObject();
         std::atomic_bool cancelled{false};rife::RifeExtensionArchive::Options options;options.cancelled=&cancelled;
@@ -55,6 +72,9 @@ int main(int argc,char** argv) {
     while(!done&&timer.elapsed()<budget){QCoreApplication::processEvents();QThread::msleep(1);}
     if(!done)return 4;
     QVariantMap result{{"ok",ok},{"error",error},{"status",manager.status()},{"paths",manager.runtimePaths()},{"busyLostWhileInstalling",busyLost},{"completions",completions},{"rejections",rejections}};
+    QDirIterator leases(args[3]+"/leases",{"*.lock"},QDir::Files,QDirIterator::Subdirectories);
+    int leaseCount=0;while(leases.hasNext()){leases.next();++leaseCount;}
+    result["leaseCount"]=leaseCount;
     if(args[6]=="corruptRemove") {
         done=false;manager.scheduleRemoval(manager.status()["installedVersion"].toString());
         timer.restart();while(!done&&timer.elapsed()<15000){QCoreApplication::processEvents();QThread::msleep(1);}

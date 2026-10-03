@@ -125,4 +125,40 @@ int main(int argc,char**argv){
         // Overload remains visible after the refresh transition.
         assert(guard.update(35000,1080,1080,0,oldDrops+windowDrops+2*expected+60,30,false,2,false,0.,0,rates.second));
     }
+    // TensorRT's output cadence must use the audio clock while it owns the
+    // graph, then restore the user's selected synchronization mode.
+    properties["vf"]=QVariantList{};properties["video-sync"]="display-resample";
+    FrameInterpolationController sync(access,paths);
+    sync.beginItem(true,false);sync.onFormatChanged(source);
+    assert(properties["video-sync"]=="audio");
+    sync.stop();assert(properties["video-sync"]=="display-resample");
+    sync.beginItem(true,false);sync.onFormatChanged(source);
+    sync.configureVideoSync("display-resample-vdrop");
+    assert(properties["video-sync"]=="audio");
+    assert(sync.diagnostics()["savedSync"]=="display-resample-vdrop");
+    sync.stopOnEndFile();assert(properties["video-sync"]=="display-resample-vdrop");
+    sync.beginItem(true,false);sync.onFormatChanged(source);
+    sync.onPlaybackSpeed(2.);assert(properties["video-sync"]=="display-resample-vdrop");
+    sync.beginItem(true,false);sync.onFormatChanged(source);
+    Metrics failed;failed.error="filter-error";
+    sync.onMetrics(sync.generation(),failed,0,false,0);
+    assert(properties["video-sync"]=="display-resample-vdrop");
+    sync.beginItem(false,false);sync.onFormatChanged(source);
+    assert(properties["video-sync"]=="display-resample-vdrop");
+    sync.beginItem(true,true);sync.onFormatChanged(source);
+    assert(properties["video-sync"]=="display-resample-vdrop");
+    sync.beginItem(true,false);auto syncHdr=source;syncHdr.hdr=true;sync.onFormatChanged(syncHdr);
+    assert(properties["video-sync"]=="display-resample-vdrop");
+    auto coldPaths=paths;coldPaths.engine.clear();
+    sync.stop();assert(sync.setRuntimePaths(coldPaths));sync.beginItem(true,false);sync.onFormatChanged(source);
+    assert(properties["video-sync"]=="audio"&&sync.state()==State::Preparing);
+    sync.stop();assert(properties["video-sync"]=="display-resample-vdrop");
+    properties["video-sync"]="audio";
+    sync.beginItem(true,false);sync.onFormatChanged(source);sync.stop();
+    assert(properties["video-sync"]=="audio");
+    properties["video-sync"]="display-resample";
+    auto macPaths=paths;macPaths.backend=Backend::CoreMLMetal;
+    FrameInterpolationController mac(access,macPaths);
+    mac.beginItem(true,false);mac.onFormatChanged({1920,1080,24,1,true,true,false,true});
+    assert(properties["video-sync"]=="display-resample");mac.stop();
 }

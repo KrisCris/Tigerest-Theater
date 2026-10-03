@@ -397,11 +397,11 @@
       {
         "value": "sync_mode",
         "display_name": "音画同步模式",
-        "help": "控制音频与视频如何同步。显示重采样会轻微调整音频以贴合显示刷新率，减少跳帧或重复帧；音频时钟最稳健；丢补音频仅建议排错时使用。系统配置模式下以用户 mpv.conf 为准。",
+        "help": "控制音频与视频如何同步。显示重采样会轻微调整音频以贴合显示刷新率；音频时钟更稳健。Windows RIFE 补帧期间自动跟随音频时钟，结束后恢复此设置。丢补音频仅建议排错；系统配置模式下以用户 mpv.conf 为准。",
         "default": "display-resample",
         "possible_values": [
           [ "audio", "跟随音频时钟" ],
-          [ "display-resample", "显示重采样（推荐）" ],
+          [ "display-resample", "显示重采样" ],
           [ "display-adrop", "丢弃/补充音频帧" ]
         ]
       },

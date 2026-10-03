@@ -20,6 +20,13 @@ int main() {
     startup.togglePause();assert(startup.waitingToPlay());
     startup.togglePause();assert(!startup.finish());
     startup.begin(true,true,800);startup.togglePause();assert(startup.finish());
+    startup.begin(true,false,1000);startup.setEnginePreparing(true,1200);
+    assert(!startup.expired(901000)); // Engine compilation has its own bounded worker timeout.
+    startup.requestPause(true);
+    startup.setEnginePreparing(false,901000);
+    assert(!startup.expired(915999)&&startup.expired(916000)); // Fresh first-frame deadline.
+    assert(!startup.finish()); // User pause is independent of either preparation stage.
+    startup.begin(true,false,920000);assert(startup.expired(935000));
     rife::SourceInfo s{1920,1080,30000,1001,true,true,false,true};
     assert(rife::qualify(s).enabled);
     for (int kind=0;kind<7;++kind) {

@@ -4,6 +4,14 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 ${REQUIRED_QT_VERSION} REQUIRED COMPONENTS Test)
 
+if(WIN32)
+  add_executable(test_rife_startup_dialog test_rife_startup_dialog.cpp ../src/ui/RifeStartupDialog.cpp)
+  target_include_directories(test_rife_startup_dialog PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_link_libraries(test_rife_startup_dialog PRIVATE Qt6::Widgets Qt6::Test)
+  add_test(NAME test_rife_startup_dialog COMMAND test_rife_startup_dialog)
+  set_tests_properties(test_rife_startup_dialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+
 set(TEST_INCLUDE_DIRS
   ${CMAKE_SOURCE_DIR}/src
   ${CMAKE_SOURCE_DIR}/src/core
@@ -107,6 +115,37 @@ if(WIN32)
     FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
           "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
   add_test(NAME test_rife_windows_ipc COMMAND test_rife_windows_ipc)
+  if(USE_STATIC_MPVQT)
+    add_executable(test_rife_player_playback test_rife_player_playback.cpp)
+    qt_add_resources(test_rife_player_playback "test_rife_player_playback_resources"
+      PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
+      FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
+            "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
+    target_link_libraries(test_rife_player_playback jmp_core Qt6::Test)
+    target_include_directories(test_rife_player_playback PRIVATE ${TEST_INCLUDE_DIRS})
+    target_compile_definitions(test_rife_player_playback PRIVATE ${TEST_COMPILE_DEFS})
+    add_dependencies(test_rife_player_playback tigerest_rife_vs)
+    add_test(NAME test_rife_player_lifecycle COMMAND test_rife_player_playback
+      replacementDoesNotFinishOnSupersededNativeStart
+      preparationPauseReportsBufferingUntilUserPauses
+      stopCancelsPreparationBeforeNativeEndFileArrives
+      nativePreparationToggleChangesIntentWithoutReleasingHold
+      preparationOverlayAndResumeFollowTheCurrentHold
+      preparationResumeRetainsHoldUntilAcknowledged
+      rejectedPreparationResumeReportsPlaybackError
+      preparationResumeReplyIsScopedToItemAndPauseIntent
+      preparationResumeErrorsAndMissingRepliesAreBounded
+      nativeSpaceDuringPreparationDoesNotRacePhysicalPause
+      queuedPreparationTogglesAfterResumeRemainDistinct
+      qtSpaceAndDoubleClickPreservePreparationIntent
+      preparationOverlayCommandsAreAcceptedByMpv
+      renderApiRemainsVisibleWhileItsVoReconfigures
+      renderApiWaitsForRestartBeforeQualifyingItsFormat
+      stopCancelsPendingRecoveryReplacement
+      recoveryDoesNotMarkAnUnrelatedNativeStart)
+    set_tests_properties(test_rife_player_lifecycle PROPERTIES TIMEOUT 30
+      ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+  endif()
 endif()
 if(WIN32 AND Python3_Interpreter_FOUND)
   add_executable(rife_extension_manager_host rife_extension_manager_host.cpp)
@@ -214,15 +253,6 @@ if(WIN32 AND Python3_Interpreter_FOUND)
         endif()
       endforeach()
       if(USE_STATIC_MPVQT AND DEFINED ENV{RIFE_TEST_STREAM_PREPARED})
-        add_executable(test_rife_player_playback test_rife_player_playback.cpp)
-      qt_add_resources(test_rife_player_playback "test_rife_player_playback_resources"
-        PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
-        FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
-              "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
-        target_link_libraries(test_rife_player_playback jmp_core Qt6::Test)
-        target_include_directories(test_rife_player_playback PRIVATE ${TEST_INCLUDE_DIRS})
-        target_compile_definitions(test_rife_player_playback PRIVATE ${TEST_COMPILE_DEFS})
-        add_dependencies(test_rife_player_playback tigerest_rife_vs)
         add_test(NAME test_rife_player_playback COMMAND "${Python3_EXECUTABLE}" -B -X utf8 -m unittest discover
           -s "${CMAKE_CURRENT_SOURCE_DIR}" -p "test_rife_player_playback.py" -v)
         set_tests_properties(test_rife_player_playback PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE
