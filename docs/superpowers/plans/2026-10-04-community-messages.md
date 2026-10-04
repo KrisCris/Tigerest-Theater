@@ -37,8 +37,8 @@
 
 ### Task 4: Version and delivery
 - [x] Update VERSION/CHANGELOG/README to 2.4.0.
-- [ ] Run relevant Node, CTest, browser and bundle regressions; build installer and portable ZIP.
-- [ ] Fresh whole-change review and fixes, final artifact checks and report.
+- [x] Run relevant Node, CTest, browser and bundle regressions; build installer and portable ZIP.
+- [x] Fresh whole-change review and fixes, final artifact checks and report.
 
 ## Decisions
 The deployed private backend already owns the admin website on LAN 18444. Existing untracked web/admin drafts remain untouched and are not part of the 2.4 client release. Existing in-progress branch is the continuation workspace; no main/master edits or new competing checkout.

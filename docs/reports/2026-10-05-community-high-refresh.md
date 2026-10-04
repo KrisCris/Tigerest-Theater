@@ -41,6 +41,17 @@ RTX 4090 / 4K 240 Hz 主屏与 60 Hz 副屏，用户已关闭 VRR 和外部限�
 - 全量 CTest 首轮 47/51。四个 UI 测试中，三项受测试环境 WebEngine 资源覆盖影响，旧安装版同样超时；一项 fixture 配置目录不是有效 UUID。去掉无效覆盖并修正 fixture 后四项复跑通过。随后最终全量 CTest 51/51 通过。最终复核另发现较早请求返回 401 会被列表版本号忽略的问题；补上两个失败场景并修复后，Chromium 与实际打包脚本的 QtWebEngine 流程均通过（43 次 fixture 请求），重新编译后的完整 CTest 再次 51/51。
 - 构建环境曾漏配 MPV DLL 和 Qt 平台插件，已写入 `AGENTS.md`、`dev/windows/TESTING.md` 与 `Enter-TestEnvironment.ps1`，测试前检查依赖；不再依赖会丢失的临时 shell 环境。
 
+## 最终发行文件
+
+`windows_all` 构建成功，输出位于 `build/`，源码提交为 `7c29c95`。交付本地安装包与便携包；本轮没有覆盖本机安装或发布 GitHub。
+
+| 文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| TigerestTheater-2.4.0-x64.exe | 236136316 | bbb5b4fbe4a89a68244ebfd18dea25ac536a0b8f7d761f521aadd477f368c714 |
+| TigerestTheater-2.4.0-x64.zip | 301315104 | 2d47aa754b965e21a2474206c543ff832d8b30ba0139232500bba7544989e0c4 |
+
+校验文件为 `build/TigerestTheater-2.4.0-SHA256SUMS.txt`。ZIP 的 1582 个条目通过 CRC 检查，包内主程序与已验证的暂存程序哈希相同，未包含用户配置、缓存或后台草稿。清除工具链 PATH 与 Qt 环境覆盖后，仅靠包内运行库启动成功；嵌入版本为 2.4.0，实际嵌入的消息中心脚本通过 43 次 fixture 请求。最终完整回归为 51/51（43.17 秒）。交付结束时主屏仍为 3840×2160、240 Hz。
+
 ## 参考源码与文档
 
 - [mpv video-sync](https://mpv.io/manual/master/#options-video-sync)：音频时钟与显示时钟的语义、限制。
