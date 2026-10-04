@@ -33,6 +33,7 @@
         #tigerest-community textarea{box-sizing:border-box;width:100%;min-height:96px;resize:vertical;background:rgba(127,145,170,.08);color:inherit;border:1px solid rgba(127,145,170,.45);border-radius:10px;padding:12px;font:inherit}
         #tigerest-community .tc-muted{opacity:.72;font-size:14px}#tigerest-community .tc-status{min-height:24px;margin:8px 0;white-space:pre-wrap}
         #tigerest-community .tc-card{border-top:1px solid rgba(127,145,170,.22);padding:20px 0}
+        #tigerest-community .tc-highlight{outline:2px solid #72c6ff;outline-offset:6px;border-radius:6px;background:rgba(77,155,235,.08)}
         #tigerest-community .tc-header{display:flex;gap:10px;align-items:center}#tigerest-community .tc-avatar{width:36px;height:36px;border-radius:50%;background:#2c4d72;color:white;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
         #tigerest-community .tc-avatar img{width:100%;height:100%;object-fit:cover}
         #tigerest-community .tc-body{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0;line-height:1.65}
@@ -44,10 +45,13 @@
         (document.head || document.documentElement).appendChild(style);
     }
     class CommunityPlugin {
-        constructor({connectionManager, events}) {
+        constructor({connectionManager, events, appRouter}) {
             this.connectionManager = connectionManager;
             this.events = events;
             this.client = new Client();
+            this.appRouter=appRouter;
+            this.messages=window.TigerestCommunityMessages?new window.TigerestCommunityMessages({
+                connectionManager,openDiscussion:message=>this.openDiscussion(message)}):null;
             this.epoch = 0;
             this.itemShow = event => this.onItem(event);
             this.viewShow = event => this.onView(event);
@@ -55,20 +59,38 @@
                 const view=this.state?.view || this.metadataView;
                 if (view && (event.target === view || event.target.contains?.(view))) this.close();
             };
-            this.sessionChanged = () => this.close();
+            this.sessionChanged = () => {this.close();this.pendingFocus=null;this.messages?.reset(true);};
+            this.signedIn = () => {this.close();this.pendingFocus=null;this.messages?.reset();this.messages?.sync();};
             document.addEventListener('itemshow', this.itemShow);
             document.addEventListener('viewshow', this.viewShow);
             document.addEventListener('viewbeforehide', this.hideView);
             events?.on(connectionManager, 'localusersignedout', this.sessionChanged);
-            events?.on(connectionManager, 'localusersignedin', this.sessionChanged);
+            events?.on(connectionManager, 'localusersignedin', this.signedIn);
             this.poll = setInterval(() => {
                 if (this.state && !this.valid(this.state)) this.close();
+                this.messages?.sync();
             }, 500);
             // Logout starts a network operation: clear drafts before it finishes.
-            this.reset = () => this.close();
+            this.reset = this.sessionChanged;
             window.TigerestCommunityReset = this.reset;
+            this.messages?.sync();
         }
         session() { return Client.session(this.connectionManager.currentApiClient?.()); }
+        async openDiscussion(message) {
+            const session=this.session(),location=message.location;
+            if(!Client.supported(session)||message.availability==='unavailable'||!location?.itemId||
+                location.embyServerId!==session.serverId||!this.appRouter?.show)throw new Error('无法打开讨论');
+            const focus={itemId:String(location.itemId),scope:location.scope,topicId:location.topicId,
+                rootId:location.canNavigate?location.rootId:null,commentId:location.canNavigate?location.commentId:null,
+                sessionKey:JSON.stringify(session)};
+            this.pendingFocus=focus;
+            if(this.state?.item.Id===focus.itemId && this.valid(this.state)){
+                this.state.scope=focus.scope==='episode'&&this.state.item.Type==='Episode'?'episode':'work';
+                this.state.focus=focus;this.pendingFocus=null;await this.load(this.state);return;
+            }
+            try {await this.appRouter.show('/item?id='+encodeURIComponent(focus.itemId)+'&serverId='+encodeURIComponent(session.serverId));}
+            catch(error){if(this.pendingFocus===focus)this.pendingFocus=null;throw error;}
+        }
         valid(state) {
             if (this.state !== state) return false;
             const session = this.session();
@@ -108,6 +130,10 @@
             const state = {panel, view, item, sessionKey:JSON.stringify(session), scope:item.Type==='Episode'?'episode':'work',
                 avatars:new Map(), urls:new Set(), rootIds:new Set(), version:0, reply:null, busy:false};
             this.state = state;
+            if(this.pendingFocus?.itemId===String(item.Id)&&this.pendingFocus.sessionKey===state.sessionKey){
+                state.focus=this.pendingFocus;this.pendingFocus=null;
+                state.scope=state.focus.scope==='episode'&&item.Type==='Episode'?'episode':'work';
+            }
             event.detail?.signal?.addEventListener('abort', () => {if (this.state===state) this.close();}, {once:true});
             if (event.detail?.signal?.aborted) {this.close();return;}
             panel.appendChild(node('h2', '评论区'));
@@ -118,7 +144,7 @@
                 const tab = button(label, () => {
                     if (!this.valid(state) || state.busy || state.scope===scope) return;
                     this.client.cancelRequests();
-                    state.scope=scope;
+                    state.scope=scope;state.focus=null;
                     state.input.value='';state.reply=null;state.dialog.replaceChildren();
                     this.updateComposer(state);this.load(state);
                 });
@@ -148,6 +174,7 @@
         async load(state) {
             if (!this.valid(state) || state.busy) return;
             const version=++state.version;
+            const focus=state.focus;state.focus=null;
             state.loading=true;state.me=null;state.topic=null;state.cursor=null;state.rootIds.clear();
             state.list.replaceChildren();state.more.hidden=true;
             state.status.textContent='正在加载评论…';
@@ -162,10 +189,19 @@
                 if(!this.valid(state)||version!==state.version)return;
                 state.topic=topic;
                 state.topicLabel.textContent=(state.scope==='episode'?'当前发言对象：本集 · ':'当前发言对象：作品 · ')+(topic.title||state.item.Name||'');
-                const data=await this.client.comments(topic.id);
+                const anchor=focus?.topicId===topic.id?focus.rootId:null;
+                let data,missing=false;
+                try{data=await this.client.comments(topic.id,null,anchor);}
+                catch(error){
+                    if(!anchor||error.status!==404)throw error;
+                    if(!this.valid(state)||version!==state.version)return;
+                    missing=true;data=await this.client.comments(topic.id);
+                }
                 if(!this.valid(state)||version!==state.version)return;
                 this.appendRoots(state,data);
                 state.status.textContent=me.muted?'你已被禁言，可浏览评论和删除自己的评论。':('以 '+me.author.name+' 的身份发言');
+                if(anchor&&!missing){await this.focusComment(state,version,focus,data);if(!this.valid(state)||version!==state.version)return;}
+                if(missing||(focus?.commentId&&!anchor))state.status.textContent='目标评论已不可用，已显示当前讨论。';
             } catch(error) {if(version===state.version)this.showError(state,error);}
             finally {if(this.valid(state)&&version===state.version){state.loading=false;this.updateComposer(state);}}
         }
@@ -179,6 +215,29 @@
             state.replyLabel.textContent=state.reply?'正在回复 @'+state.reply.author.name:'';
             state.refresh.disabled=Boolean(state.loading||state.busy);
             for(const tab of state.tabs)tab.disabled=Boolean(state.busy);
+        }
+        async focusComment(state,version,focus,data) {
+            const root=data.items?.find(comment=>comment.id===focus.rootId);
+            if(!root)return;
+            if(focus.commentId!==focus.rootId){
+                let replies;
+                try{replies=await this.client.replies(focus.rootId,null,focus.commentId);}
+                catch(error){
+                    if(error.status!==404)throw error;
+                    if(this.valid(state)&&version===state.version)state.status.textContent='目标回复已不可用，已显示当前讨论。';
+                    return;
+                }
+                if(!this.valid(state)||version!==state.version)return;
+                root.replies=replies.items||[];root.repliesNextCursor=replies.nextCursor;
+            }
+            const existing=Array.from(state.list.children).find(row=>row.dataset.commentId===root.id);
+            const card=this.card(state,root);
+            if(existing)existing.replaceWith(card);
+            else {state.list.querySelector('.tc-empty')?.remove();state.rootIds.add(root.id);state.list.prepend(card);}
+            const target=focus.commentId===root.id?card:Array.from(card.querySelectorAll('[data-comment-id]')).find(row=>row.dataset.commentId===focus.commentId);
+            if(!target){state.status.textContent='目标评论已不可用，已显示当前讨论。';return;}
+            target.classList.add('tc-highlight');target.tabIndex=-1;target.focus({preventScroll:true});
+            target.scrollIntoView({block:'center',behavior:'smooth'});
         }
         showError(state,error) {
             if(this.state!==state||error.name==='AbortError')return;
@@ -199,7 +258,7 @@
                     try {state.me=await this.client.me();}catch(_){}
                 }
             } finally {if(this.valid(state)){state.busy=false;this.updateComposer(state);}}
-            if(sent)await this.load(state);
+            if(sent){await this.load(state);this.messages?.refreshSummary();}
             else if(deletedError){await this.load(state);this.showError(state,deletedError);}
         }
         appendRoots(state,data) {
@@ -364,10 +423,11 @@
         }
         destroy() {
             this.close();clearInterval(this.poll);
+            this.messages?.destroy();
             document.removeEventListener('itemshow',this.itemShow);document.removeEventListener('viewbeforehide',this.hideView);
             document.removeEventListener('viewshow',this.viewShow);
             this.events?.off(this.connectionManager,'localusersignedout',this.sessionChanged);
-            this.events?.off(this.connectionManager,'localusersignedin',this.sessionChanged);
+            this.events?.off(this.connectionManager,'localusersignedin',this.signedIn);
             if(window.TigerestCommunityReset===this.reset)delete window.TigerestCommunityReset;
         }
     }

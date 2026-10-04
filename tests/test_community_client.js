@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 
 function load(crypto = require('node:crypto').webcrypto) {
-    const context = { URL, AbortController, setTimeout, clearTimeout, crypto };
+    const context = { URL, URLSearchParams, AbortController, setTimeout, clearTimeout, crypto };
     context.window = context;
     const file = path.join(__dirname, '../native/communityClient.js');
     if (fs.existsSync(file)) vm.runInNewContext(fs.readFileSync(file, 'utf8'), context);
@@ -101,4 +101,65 @@ test('HTTP pages without randomUUID still generate valid idempotency UUIDs', asy
     const client=new Client({fetch:async (url,options)=>{payload=JSON.parse(options.body);return ok({});}});
     client.setContext(session(),'item');await client.send('topic','HTTP 正文');
     assert.match(payload.clientRequestId,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test('message lists use account context without an item; detail reads still require item authorization', async () => {
+    const Client=load(), calls=[];
+    const client=new Client({fetch:async(url,options)=>{calls.push({url,options});return ok({items:[]});}});
+    assert.equal(client.setSession(session()),true);
+    await client.messageSummary();await client.messages('sent','a+/=');await client.messages('replies');
+    assert.equal(new URL(calls[0].url).pathname,'/community/v1/me/replies');
+    assert.equal(new URL(calls[0].url).searchParams.get('limit'),'1');
+    assert.equal(new URL(calls[1].url).pathname,'/community/v1/me/comments');
+    assert.equal(new URL(calls[2].url).pathname,'/community/v1/me/replies');
+    assert.equal(new URL(calls[1].url).searchParams.get('cursor'),'a+/=');
+    for(const call of calls)assert.equal(call.options.headers['X-Tigerest-Item-Id'],undefined);
+    await assert.rejects(client.comments('topic'),/详情/);
+    await assert.rejects(client.messages('everyone'),/类型/);
+    assert.equal(calls.length,3);
+    assert.equal(client.setSession({...session(),serverId:'other'}),false);
+    await assert.rejects(client.messageSummary(),/登录/);
+});
+
+test('read state posts notification IDs or an opaque account snapshot to the deployed endpoint', async () => {
+    const Client=load(),calls=[];
+    const client=new Client({fetch:async(url,options)=>{calls.push({url,options});return ok({});}});
+    client.setSession(session());
+    const through='snapshot.opaque+/=not-a-date';
+    await client.readMessage('a/b');await client.readAllMessages(through);
+    assert.match(calls[0].url,/me\/replies$/);assert.equal(calls[0].options.method,'POST');
+    assert.deepEqual(JSON.parse(calls[0].options.body),{messageIds:['a/b']});
+    assert.deepEqual(JSON.parse(calls[1].options.body),{readThroughToken:through});
+    await assert.rejects(client.readAllMessages(''),/刷新/);
+    for(const call of calls)assert.equal(call.options.headers['X-Tigerest-Item-Id'],undefined);
+    assert.equal(calls.length,2);
+});
+
+test('anchors locate roots and replies with item authorization and never share a query with a cursor', async () => {
+    const Client=load(),calls=[];
+    const client=new Client({fetch:async(url,options)=>{calls.push({url,options});return ok({items:[]});}});
+    client.setContext(session(),'episode');
+    await client.comments('topic',null,'root+/=');
+    await client.replies('root',null,'reply+/=');
+    assert.equal(new URL(calls[0].url).searchParams.get('anchorId'),'root+/=');
+    assert.equal(new URL(calls[1].url).searchParams.get('anchorId'),'reply+/=');
+    for(const call of calls){assert.equal(call.options.headers['X-Tigerest-Item-Id'],'episode');assert.equal(new URL(call.url).searchParams.has('cursor'),false);}
+    await assert.rejects(client.comments('topic','cursor','root'),/分页/);
+    await client.messages('replies','opaque',true);
+    const url=new URL(calls[2].url);
+    assert.equal(url.searchParams.get('unreadOnly'),'true');
+    assert.equal(url.searchParams.get('cursor'),'opaque');
+    assert.equal(calls[2].options.headers['X-Tigerest-Item-Id'],undefined);
+});
+
+test('account-wide requests are aborted when the identity changes or authentication expires', async () => {
+    const Client=load();let release,signal;
+    const client=new Client({fetch:(url,options)=>{signal=options.signal;return new Promise(r=>release=r);}});
+    client.setSession(session());const pending=client.messages('replies');
+    client.setSession(session(undefined,'different-token'));assert.equal(signal.aborted,true);
+    release(ok({items:[{body:'private old reply'}]}));
+    await assert.rejects(pending,error=>error.name==='AbortError');
+    const invalid=new Client({fetch:async()=>new Response(JSON.stringify({error:{code:'AUTH_INVALID'}}),{status:401})});
+    invalid.setSession(session());await assert.rejects(invalid.messageSummary(),error=>error.status===401);
+    assert.equal(invalid.context,null);
 });

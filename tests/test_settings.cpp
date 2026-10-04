@@ -2,6 +2,8 @@
 #include "../src/player/MpvVideoItem.h"
 #include "../src/settings/SettingsValue.h"
 #include "../src/settings/SettingsSection.h"
+#include "../src/player/PlaybackSyncPolicy.h"
+#include <limits>
 
 class TestSettings : public QObject
 {
@@ -37,6 +39,7 @@ private slots:
   void testSetValueHidden();
   void testStorageFlag();
   void testNativeGpuNextPlatformPolicy();
+  void testHighRefreshSyncPolicy();
 };
 
 
@@ -419,6 +422,23 @@ void TestSettings::testStorageFlag()
 
   section.setStorage(true);
   QVERIFY(section.isStorage());
+}
+
+void TestSettings::testHighRefreshSyncPolicy()
+{
+  // The compatibility choice follows the display, without mutating the saved mode.
+  const QString display = QStringLiteral("display-resample");
+  for (double hz : {144., 165., 239.76, 240., 360.})
+    QCOMPARE(playbackVideoSync(display, hz, true, true), QStringLiteral("audio"));
+  for (double hz : {0., 59.94, 60., 119.88, 120., 120.01,
+                    std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()})
+    QCOMPARE(playbackVideoSync(display, hz, true, true), display);
+  QCOMPARE(playbackVideoSync(display, 240., false, true), display);
+  QCOMPARE(playbackVideoSync(display, 240., true, false), display);
+  for (const QString mode : {QStringLiteral("audio"), QStringLiteral("display-adrop"), QStringLiteral("desync")})
+    QCOMPARE(playbackVideoSync(mode, 240., true, true), mode);
+  QCOMPARE(playbackVideoSync(display, 240., true, true), QStringLiteral("audio"));
+  QCOMPARE(playbackVideoSync(display, 120., true, true), display);
 }
 
 QTEST_APPLESS_MAIN(TestSettings)

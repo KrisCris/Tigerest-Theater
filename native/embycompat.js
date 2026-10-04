@@ -247,10 +247,10 @@
             };
         });
 
-        defineModule('tigerest/community.js', ['connectionManager', 'events'], function (connectionManager, events) {
+        defineModule('tigerest/community.js', ['connectionManager', 'events', 'appRouter'], function (connectionManager, events, appRouter) {
             return class TigerestCommunityPlugin extends window._communityPlugin {
                 constructor() {
-                    super({connectionManager: moduleValue(connectionManager), events: moduleValue(events)});
+                    super({connectionManager: moduleValue(connectionManager), events: moduleValue(events), appRouter:moduleValue(appRouter)});
                 }
             };
         });

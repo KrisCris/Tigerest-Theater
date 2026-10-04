@@ -1,0 +1,53 @@
+{
+  "completed": true,
+  "scope": "2.4.0 packaged Qt/MPV client, isolated local file 640x360 48 fps clip, default shaders, no RIFE or Emby account",
+  "results": [
+    {
+      "phase": "compatibility-off",
+      "seconds": 20.03,
+      "displayHz": [
+        240
+      ],
+      "sync": [
+        "display-resample"
+      ],
+      "outputDrops": 28,
+      "decoderDrops": 0,
+      "meanEstimatedHz": 232.8278417142857,
+      "meanJitter": 0.1729130476190476,
+      "maxAbsoluteAvMs": 19.669
+    },
+    {
+      "phase": "compatibility-on",
+      "seconds": 20.03,
+      "displayHz": [
+        240
+      ],
+      "sync": [
+        "audio"
+      ],
+      "outputDrops": 0,
+      "decoderDrops": 0,
+      "meanEstimatedHz": 231.886585,
+      "meanJitter": 0.187074,
+      "maxAbsoluteAvMs": 0.005
+    }
+  ],
+  "checks": [
+    "advanced explicit video-sync override retained",
+    "reload restores high refresh policy"
+  ],
+  "renderer": "gpu-next",
+  "context": "d3d11",
+  "renderSize": {
+    "w": 1920,
+    "h": 1080,
+    "par": 1,
+    "aspect": 1.777778,
+    "mt": 0,
+    "mb": 0,
+    "ml": 0,
+    "mr": 0
+  },
+  "statisticsNote": "After switching to audio, estimated-display-fps/vsync-jitter may retain the preceding display-sync sample; these are not active audio-mode timing measurements."
+}

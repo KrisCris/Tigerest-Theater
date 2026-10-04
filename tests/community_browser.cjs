@@ -1,0 +1,80 @@
+// Isolated Chromium/QtWebEngine fixture host; never uses an Emby account.
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const http=require('node:http');
+const net=require('node:net');
+const os=require('node:os');
+const {spawn}=require('node:child_process');
+const {setTimeout:delay}=require('node:timers/promises');
+
+module.exports=async function withBrowser(routes,work,{settings={},gpu=false,visible=false}={}){
+    const executable=process.argv[2]?path.resolve(process.argv[2]):null,webengine=process.argv.includes('--webengine');
+    assert.ok(executable&&fs.existsSync(executable),'supply a browser executable');
+    const server=http.createServer((req,res)=>{
+        const route=routes[new URL(req.url,'http://fixture').pathname];
+        if(!route){res.writeHead(404);res.end();return;}
+        res.setHeader('Content-Type',route.type||'text/javascript; charset=utf-8');
+        res.end(route.path?fs.readFileSync(route.path):route.body);
+    });
+    await new Promise(r=>server.listen(0,'127.0.0.1',r));
+    const url='http://127.0.0.1:'+server.address().port;
+    const profile=fs.mkdtempSync(path.join(os.tmpdir(),'tigerest-messages-'));
+    let port;
+    if(webengine){
+        const listener=net.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));
+        port=listener.address().port;await new Promise(r=>listener.close(r));
+        const id=require('node:crypto').randomUUID().replaceAll('-','');
+        const folder=path.join(profile,'profiles',id);fs.mkdirSync(folder,{recursive:true});
+        fs.writeFileSync(path.join(folder,'profile.json'),JSON.stringify({name:'MessagesFixture'}));
+        fs.writeFileSync(path.join(folder,'Tigerest Theater.conf'),JSON.stringify({version:10,sections:{
+            ...settings,main:{...settings.main,enableWindowsTrayIcon:false},path:{...settings.path,startupurl_desktop:url}}}));
+    }
+    const args=webengine?['--config-dir',profile,'--profile','MessagesFixture',...(gpu?[]:['--disable-gpu']),'--remote-debugging-port','127.0.0.1:'+port]
+        :['--headless','--disable-gpu','--remote-debugging-port=0','--user-data-dir='+profile,url];
+    const child=spawn(executable,args,{stdio:['ignore','pipe','pipe'],windowsHide:!visible,cwd:path.dirname(executable)});
+    let startup='';child.stdout.on('data',d=>startup=(startup+d).slice(-2000));child.stderr.on('data',d=>startup=(startup+d).slice(-2000));
+    let socket;
+    try{
+        for(let i=0;i<120;i++){
+            assert.equal(child.exitCode,null,'browser exited: '+startup);
+            try{
+                if(!webengine)port=fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0];
+                await fetch('http://127.0.0.1:'+port+'/json/list');break;
+            }catch{await delay(100);}
+        }
+        let page;
+        for(let i=0;i<100;i++){
+            const pages=await(await fetch('http://127.0.0.1:'+port+'/json/list')).json();
+            page=pages.find(p=>p.type==='page');if(page)break;await delay(100);
+        }
+        assert.ok(page,'browser page available');
+        socket=new WebSocket(page.webSocketDebuggerUrl);
+        await new Promise((r,j)=>{socket.addEventListener('open',r,{once:true});socket.addEventListener('error',j,{once:true});});
+        let id=0;const pending=new Map();
+        socket.addEventListener('message',e=>{
+            const m=JSON.parse(e.data),entry=pending.get(m.id);
+            if(entry){pending.delete(m.id);m.error?entry.reject(Error(m.error.message)):entry.resolve(m.result);}
+        });
+        const call=(method,params={})=>new Promise((resolve,reject)=>{
+            const current=++id,timer=setTimeout(()=>{pending.delete(current);reject(Error(method+' timeout'));},15000);
+            pending.set(current,{resolve:v=>{clearTimeout(timer);resolve(v);},reject:e=>{clearTimeout(timer);reject(e);}});
+            socket.send(JSON.stringify({id:current,method,params}));
+        });
+        const evaluate=async expression=>{
+            const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});
+            if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));
+            return r.result.value;
+        };
+        await call('Page.navigate',{url});
+        for(let i=0;i<100;i++){if(await evaluate('document.readyState==="complete"'))break;await delay(50);}
+        await work({url,call,evaluate,webengine});
+    }finally{
+        socket?.close();
+        if(child.exitCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}
+        await new Promise(r=>server.close(r));await delay(150);
+        assert.equal(path.dirname(path.resolve(profile)),path.resolve(os.tmpdir()));
+        assert.ok(path.basename(profile).startsWith('tigerest-messages-'));
+        fs.rmSync(profile,{recursive:true,force:true,maxRetries:10,retryDelay:200});
+    }
+};

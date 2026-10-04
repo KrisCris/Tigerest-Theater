@@ -406,6 +406,13 @@
         ]
       },
       {
+        "value": "highRefreshCompatibility",
+        "display_name": "高刷新率兼容",
+        "help": "Windows 显示器超过 120 Hz 时，将显示重采样改为跟随音频时钟，减轻呈现时序波动引起的卡顿；显示器刷新率和补帧目标保持不变。可能出现少量正常的重复或丢帧，MPV 时域混合插帧不生效，AI／SVP 补帧仍可工作。关闭后按音画同步模式设置播放；Windows 内置 RIFE 仍使用其独立的音频时钟策略。系统 mpv.conf 和高级手动设置优先。",
+        "default": true,
+        "platforms": [ "windows" ]
+      },
+      {
         "value": "audio_delay.normal",
         "default": 0,
         "hidden": true,

@@ -34,6 +34,15 @@ DisplayComponent::~DisplayComponent()
 {
 }
 
+void DisplayComponent::setApplicationWindow(QWindow* window)
+{
+  disconnect(m_windowScreenConnection);
+  m_applicationWindow = window;
+  if (window)
+    m_windowScreenConnection = connect(window, &QWindow::screenChanged,
+      this, &DisplayComponent::refreshRateChanged, Qt::QueuedConnection);
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 bool DisplayComponent::initializeDisplayManager()
 {

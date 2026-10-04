@@ -1,6 +1,6 @@
 # 评论服务端 API 对接说明（v1）
 
-此文档供另一台机器实现客户端。当前只支持大河的固定 Emby：`62526c3bf747439c99327ddec5fed4a8`。服务端源码位于独立私有仓库，不随客户端公开。V2.3 客户端已接入详情页评论 UI。
+此文档供另一台机器实现客户端。当前只支持大河的固定 Emby：`62526c3bf747439c99327ddec5fed4a8`。服务端源码位于独立私有仓库，不随客户端公开。客户端已实现评论区；v2.4.0 接入个人消息中心。
 
 ## 连接与认证
 
@@ -49,7 +49,7 @@ X-Emby-User-Id: <登录响应的 User.Id>
 
 客户端只提交 Item.Id，TMDB ID、季集编号由服务端向 Emby 读取。没有可靠 TMDB 或季集信息时仍能使用本服话题。映射冲突不会自动移动已有评论；`mappingConflict=true` 时正常展示当前话题即可。
 
-所有评论读取、发送、回复、自身删除都额外携带：
+详情页的评论读取、发送、回复、自身删除都额外携带（消息中心汇总不需要此头）：
 
 ```http
 X-Tigerest-Item-Id: <此详情页可访问的 Emby Item.Id>
@@ -65,6 +65,9 @@ X-Tigerest-Item-Id: <此详情页可访问的 Emby Item.Id>
 |---|---|---|
 | GET `/health` | 无认证 | `{status, enabled}`，可用 200，否则 503 |
 | GET `/me` | 认证 | 上述身份信息 |
+| GET `/me/comments` | `?limit=20&cursor=...` | `{items,nextCursor,totalCount}`，本人评论及回复汇总 |
+| GET `/me/replies` | `?limit=20&cursor=...&unreadOnly=true` | `{items,nextCursor,unreadCount,readThroughToken}`，收到的直接回复 |
+| POST `/me/replies` | `{messageIds:[...]}` 或 `{readThroughToken}` | `{markedCount,unreadCount}`，持久化已读 |
 | POST `/topics/resolve` | `{itemId, scope}` | 话题 |
 | GET `/topics/{topicId}/comments` | `?limit=20&cursor=...` | `{items, nextCursor, rootCount}` |
 | POST `/topics/{topicId}/comments` | `{body, clientRequestId}` | `{comment, replayed}` |
@@ -79,6 +82,44 @@ X-Tigerest-Item-Id: <此详情页可访问的 Emby Item.Id>
 | GET `/admin/actions` | `?limit=20&cursor=...` | `{items,nextCursor}` |
 
 分页 limit 范围 1–50，默认 20；`nextCursor=null` 表示结束。游标按原样传回，不跨话题或列表复用。主评论按新到旧，回复按旧到新。主评论列表内置最多 3 条回复和 `repliesNextCursor`；继续加载用该游标，打开完整回复页则从无游标开始，按评论 ID 去重。
+
+## 消息中心与直接跳转（2026-10-04 新增）
+
+消息中心仍使用 HTTP 18443 的 `/community/v1` 和上述三个 Emby 身份头，不要求 `X-Tigerest-Item-Id`。用户身份由服务端决定，不接受 userId/authorId 作为汇总查询参数。
+
+`GET /me/comments` 返回本人所有主评论和回复，包括删除状态占位，按新到旧分页。每条为 `{comment,location,availability}`，comment 沿用下文对象；totalCount 包括全部历史记录。已删除正文为 null；话题隐藏、媒体移除或当前无权访问时 availability=unavailable、location=null、正文及回复目标资料被清除。不要把该状态当作网络错误或可直接跳转内容。
+
+可用位置示例：
+
+```json
+{
+  "embyServerId": "62526c3bf747439c99327ddec5fed4a8",
+  "itemId": "Emby 条目 ID",
+  "scope": "episode",
+  "topicId": "话题 UUID",
+  "rootId": "主评论 UUID",
+  "commentId": "要定位的评论或回复 UUID",
+  "title": "本集名称",
+  "workTitle": "剧集名称",
+  "seasonNumber": 1,
+  "episodeNumber": 3,
+  "canNavigate": true
+}
+```
+
+scope=work 跳到电影/整剧详情，episode 跳到单集详情；季集编号可能为 null，不能据此猜测 Item.Id。canNavigate=false 表示目标评论已不在可展示列表，仍可用 itemId 打开媒体，不进行评论定位。
+
+跳转时先打开 itemId 对应详情并切到 scope，原 `GET /topics/{topicId}/comments?anchorId={rootId}` 直接从该主评论开始返回一页；定位回复时再用原 `GET /comments/{rootId}/replies?anchorId={commentId}` 取得目标回复起始页。两个请求仍携带当前详情页的 Item 头；anchorId 与 cursor 互斥。后续加载使用返回的 nextCursor；目标已删除/无权访问返回 404。未传 anchorId 的现有接口行为保持兼容。
+
+`GET /me/replies` 每条为 `{id,createdAt,readAt,isRead,availability,reply,originalComment,location}`：reply 是直接回复自己的内容，originalComment 是被回复的本人主评论或回复。自我回复不产生通知，讨论内其他回复不会额外提醒。原评论删除时正文 null；收到的回复删除、讨论隐藏或媒体权限不足时返回通用不可用占位，reply/originalComment/location 都为 null。
+
+unreadOnly 仅允许 true/false，省略为 false。unreadCount 是未读且回复未删除/讨论未隐藏的通知数；无媒体权限的消息以占位呈现，可标记已读。获取列表或轮询不会自动读消息。旧回复在升级时回填为已读历史，新回复才产生提醒。
+
+用户打开消息后，`POST /me/replies` 提交 `{ "messageIds": ["消息UUID"] }`，每批 1–50 个，仅本人消息；混入未知或他人 ID 整批拒绝。重复标记幂等，markedCount 只计本次新增已读。
+
+“全部已读”提交最新列表返回的 `{ "readThroughToken": "不透明令牌" }`，与 messageIds 二选一。该令牌绑定账号和列表快照，有效 30 分钟；只标记快照内记录，随后收到的新回复仍未读。令牌失效返回 400，刷新列表后重试。已读状态跨客户端、重启保持；无需在客户端维护永久已读清单。
+
+个人列表游标绑定账号、筛选和快照，切换账号或 unreadOnly 时重新从首页请求。取消账号切换前的请求并清空列表/未读缓存；503 应显示暂不可用，不回写空列表或零未读。
 
 ## 评论、回复及删除
 
@@ -134,4 +175,3 @@ X-Tigerest-Item-Id: <此详情页可访问的 Emby Item.Id>
 并发详情请求应在切换页面/账号时取消，响应只应用到原来的账号和 Item。错误可展示 requestId 供定位，但不要展示认证头。
 
 后续开放其他 Emby 时需要新增可信身份接入方案；目前不能仅改 ServerId 就接入。TMDB 归档已预留电影、剧集、季和集的独立命名空间。
-

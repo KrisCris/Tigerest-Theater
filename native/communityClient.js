@@ -9,7 +9,8 @@
         TARGET_DELETED: '回复目标已删除，请刷新后重新选择。', PROTECTED_ADMIN: '评论管理员不可被禁言。',
         IDEMPOTENCY_CONFLICT: '本次发送的内容已变更，请刷新后重试。',
         AUTH_UNAVAILABLE: '身份验证服务暂不可用，请稍后重试。',
-        COMMUNITY_UNAVAILABLE: '评论服务暂不可用，请稍后重试。'
+        COMMUNITY_UNAVAILABLE: '评论服务暂不可用，请稍后重试。',
+        MESSAGES_UNAVAILABLE: '消息功能尚未启用，请联系管理员升级评论服务。'
     };
     function abortError() { const error = new Error('评论请求已取消'); error.name = 'AbortError'; return error; }
     function uuid() {
@@ -43,8 +44,9 @@
                     ['192.168.5.150', 'nas.tigerest.top'].includes(url.hostname.toLowerCase());
             } catch (_) { return false; }
         }
-        setContext(session, itemId) {
-            const next = CommunityClient.supported(session) && itemId ? {...session, itemId: String(itemId)} : null;
+        setSession(session) { return this.setContext(session); }
+        setContext(session, itemId = null) {
+            const next = CommunityClient.supported(session) ? {...session, itemId: itemId ? String(itemId) : null} : null;
             const key = next ? JSON.stringify(next) : '';
             if (key !== this.contextKey) {
                 this.clear();
@@ -70,6 +72,7 @@
         }
         async request(path, {method = 'GET', body, item = false, image = false} = {}) {
             if (!this.context) throw new Error(messages.AUTH_REQUIRED);
+            if (item && !this.context.itemId) throw new Error('请先打开可访问的媒体详情。');
             const generation = this.generation;
             const controller = new AbortController();
             this.controllers.add(controller);
@@ -125,11 +128,14 @@
         }
         me() { return this.request('/me'); }
         resolve(scope) { return this.request('/topics/resolve', {method:'POST', body:{itemId:this.context?.itemId, scope}}); }
-        page(path, cursor, item = true) {
-            return this.request(path + '?limit=20' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''), {item});
+        page(path, cursor, item = true, anchorId = null) {
+            if (cursor && anchorId) return Promise.reject(new Error('定位与分页不能同时使用。'));
+            return this.request(path + (path.includes('?') ? '&' : '?') + 'limit=20' +
+                (cursor ? '&cursor=' + encodeURIComponent(cursor) : '') +
+                (anchorId ? '&anchorId=' + encodeURIComponent(anchorId) : ''), {item});
         }
-        comments(topicId, cursor) { return this.page('/topics/' + encodeURIComponent(topicId) + '/comments', cursor); }
-        replies(rootId, cursor) { return this.page('/comments/' + encodeURIComponent(rootId) + '/replies', cursor); }
+        comments(topicId, cursor, anchorId) { return this.page('/topics/' + encodeURIComponent(topicId) + '/comments', cursor, true, anchorId); }
+        replies(rootId, cursor, anchorId) { return this.page('/comments/' + encodeURIComponent(rootId) + '/replies', cursor, true, anchorId); }
         async send(topicId, text, reply = null) {
             const body = text.trim();
             if (!body || Array.from(body).length > 2000) throw new Error('请输入 1–2000 个字符。');
@@ -154,6 +160,24 @@
         unmute(id) { return this.request('/admin/authors/' + encodeURIComponent(id) + '/mute', {method:'DELETE'}); }
         mutes(cursor) { return this.page('/admin/mutes', cursor, false); }
         actions(cursor) { return this.page('/admin/actions', cursor, false); }
+        messageSummary() { return this.request('/me/replies?limit=1'); }
+        messages(kind = 'replies', cursor, unreadOnly = false) {
+            if (!['sent', 'replies'].includes(kind)) return Promise.reject(new Error('消息类型无效。'));
+            return this.page(kind === 'sent' ? '/me/comments' : '/me/replies?unreadOnly=' + Boolean(unreadOnly), cursor, false);
+        }
+        readMessage(id) { return this.request('/me/replies', {method:'POST', body:{messageIds:[id]}}); }
+        readAllMessages(readThroughToken) {
+            if (typeof readThroughToken !== 'string' || !readThroughToken) return Promise.reject(new Error('消息快照无效，请刷新后重试。'));
+            return this.request('/me/replies', {method:'POST', body:{readThroughToken}});
+        }
+        adminMessages(filters = {}, cursor) {
+            const query = new URLSearchParams({limit:'20'});
+            for (const key of ['query', 'kind', 'state', 'rootId']) {
+                if (filters[key]) query.set(key, String(filters[key]));
+            }
+            if (cursor) query.set('cursor', cursor);
+            return this.request('/admin/messages?' + query);
+        }
         avatar(path) {
             if (!/^\/community\/v1\/avatars\/[0-9a-z-]+(?:\?v=[^#]*)?$/i.test(path || ''))
                 return Promise.reject(new Error('头像暂不可用'));

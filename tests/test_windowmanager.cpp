@@ -6,6 +6,7 @@
 #include <qt_windows.h>
 #endif
 #include "../src/player/PlayerComponent.h"
+#include "../src/display/DisplayComponent.h"
 
 #define private public
 #include "../src/ui/WindowManager.h"
@@ -27,6 +28,7 @@ class TestWindowManager : public QObject
 
 private slots:
   void cleanup();
+  void testMovingToAnotherScreenRefreshesPlaybackPolicy();
   void testFullscreenStateIsIndependentFromRestoreVisibility();
   void testPlaybackSessionRestoresMaximizedWindow();
   void testPlaybackSessionPreservesPreexistingFullscreen();
@@ -48,6 +50,25 @@ void TestWindowManager::cleanup()
 {
   PlayerComponent::Get().setNativeVideoOutput(false);
   clearOverrideCursor();
+}
+
+void TestWindowManager::testMovingToAnotherScreenRefreshesPlaybackPolicy()
+{
+  QWindow first, second;
+  auto& display = DisplayComponent::Get();
+  QSignalSpy changed(&display, &DisplayComponent::refreshRateChanged);
+  display.setApplicationWindow(&first);
+  // Supply the same boundary notification Qt emits on a monitor transition.
+  first.screenChanged(first.screen());
+  QTRY_COMPARE(changed.count(), 1);
+  display.setApplicationWindow(&second);
+  first.screenChanged(first.screen());
+  second.screenChanged(second.screen());
+  QTRY_COMPARE(changed.count(), 2);
+  display.setApplicationWindow(nullptr);
+  second.screenChanged(second.screen());
+  QCoreApplication::processEvents();
+  QCOMPARE(changed.count(), 2);
 }
 
 void TestWindowManager::testFullscreenStateIsIndependentFromRestoreVisibility()

@@ -972,6 +972,7 @@ QString SystemComponent::getNativeShellScript()
     ":/web-client/extension/inputPlugin.js",
     ":/web-client/extension/sessionNavigationPlugin.js",
     ":/web-client/extension/communityClient.js",
+    ":/web-client/extension/communityMessages.js",
     ":/web-client/extension/communityPlugin.js",
     ":/web-client/extension/updatePlugin.js",
     ":/web-client/extension/connectivityHelper.js",

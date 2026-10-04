@@ -1,4 +1,5 @@
 #include "PlayerComponent.h"
+#include "PlaybackSyncPolicy.h"
 #include <QString>
 #include <Qt>
 #include <QDir>
@@ -2698,6 +2699,10 @@ void PlayerComponent::setVideoConfiguration()
   if (!MpvConfigManager::usingSystemConfig())
   {
     QVariant syncMode = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "sync_mode");
+#ifdef Q_OS_WIN
+    syncMode = playbackVideoSync(syncMode.toString(), DisplayComponent::Get().currentRefreshRate(),
+        SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "highRefreshCompatibility").toBool(), true);
+#endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
     if(m_rife)m_rife->configureVideoSync(syncMode.toString());
     else
