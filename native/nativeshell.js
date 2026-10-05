@@ -629,7 +629,7 @@ function createRifeExtensionPanel({element, player, settings, save, notify}) {
     });
     node.appendChild(element('div', 'tgs-help', '快速方案（下方仍可分别选模型和帧率）：'));
     node.appendChild(preset);
-    node.appendChild(element('div', 'tgs-help', '120/240 fps 与 4K 补帧为实验方案，不保证实时速度；性能不足会恢复原帧。首次准备引擎时暂停播放并显示进度，完成后自动开始；已有引擎会直接复用。Windows 补帧期间使用音频时钟保持同步。'));
+    node.appendChild(element('div', 'tgs-help', '目标帧率由你决定；持续丢帧只提示，不自动关闭补帧或降低目标。建议先试 lite＋两倍帧率，再逐步提高。首次准备引擎时暂停播放并显示进度，完成后自动开始；已有引擎会直接复用。补帧保留你选择的音画同步模式。'));
     const actions = element('div', 'tgs-actions');
     const download = element('button', 'tgs-action', '下载扩展');
     const offline = element('button', 'tgs-action', '导入离线包');
@@ -687,6 +687,24 @@ function createRifeExtensionPanel({element, player, settings, save, notify}) {
         disposed = true; ++revision; clearInterval(timer);
         player.rifeExtensionStatusChanged?.disconnect(changed);
     }};
+}
+
+function createRifeTargetControl({element, value, save, notify}) {
+    const input = element('input', 'tgs-control');
+    input.type = 'number'; input.min = '0'; input.max = '360'; input.step = '1';
+    let saved = value;
+    input.value = value;
+    input.addEventListener('change', () => {
+        const raw = String(input.value).trim(), target = Number(raw);
+        if (!raw || !Number.isInteger(target) || (target !== 0 && (target < 24 || target > 360))) {
+            input.value = saved;
+            notify('请输入 24–360 的整数帧率，或输入 0 使用源帧率两倍。');
+            return;
+        }
+        saved = target; save(target);
+    });
+    input.setSavedValue = newValue => { saved = newValue; input.value = newValue; };
+    return input;
 }
 
 async function mountTigerestSettings(host = null, initialSection = null, onReturn = null, signal = null) {
@@ -959,7 +977,8 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         if (section === 'video' && key === 'aiRife') updateRifeStatus();
         if (section === 'video' && (key === 'aiRifeModel' || key === 'aiRifeTarget')) {
             const control = settingControls.get(key);
-            if (control) control.select.value = String(control.options.findIndex(option => option.value == value));
+            if (control?.input) control.input.setSavedValue(value);
+            else if (control) control.select.value = String(control.options.findIndex(option => option.value == value));
             rifeExtensionPanel?.refreshPreferences();
         }
         showSaved(restartSettings.has(`${section}.${key}`) ? '已保存；此项将在重启后生效。'
@@ -996,6 +1015,12 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
 
     const makeControl = (section, setting, currentValue) => {
         const key = setting.key;
+        if (section === 'video' && key === 'aiRifeTarget') {
+            const input = createRifeTargetControl({element, value:currentValue,
+                save:value => saveSetting(section, key, value), notify:showSaved});
+            settingControls.set(key, {input});
+            return input;
+        }
         if (setting.options) {
             const select = element('select', 'tgs-control');
             setting.options.forEach((option, index) => {

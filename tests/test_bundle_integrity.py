@@ -259,8 +259,12 @@ def test_settings() -> None:
 
 def test_mpv_bundle() -> None:
     config = read("resources/mpv/mpv.conf.in")
-    require("load-stats-overlay=yes" in config,
-            "embedded MPV must load the stats overlay for diagnostics")
+    require("load-stats-overlay=no" in config and
+            "script=~~/plugins/stats.lua" in config,
+            "embedded MPV must load only the shipped Chinese stats overlay")
+    require("display-stats-toggle" in read("resources/mpv/plugins/stats.lua") and
+            "display-page-" in read("resources/mpv/plugins/stats.lua"),
+            "shipped stats must preserve the diagnostic script bindings")
     require("[tigerest-quality-base]" in config and
             config.count("profile=tigerest-quality-base") == 3,
             "shader profiles must share a shader-free quality base")

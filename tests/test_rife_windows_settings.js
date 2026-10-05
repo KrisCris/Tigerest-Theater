@@ -79,6 +79,17 @@ test('presets save actual model and integer target preferences',async()=>{
     }
     p.settings.aiRifeTarget=0;p.result.refreshPreferences();assert.equal(select.value,'custom');p.result.dispose();
 });
+test('custom frame targets validate before saving and accept values beyond presets',async()=>{
+    const p=panel(); await settle(); const saved=[], notices=[];
+    const input=p.context.createRifeTargetControl({element:(...args)=>new Element(...args), value:60,
+        save:value=>saved.push(value), notify:message=>notices.push(message)});
+    for (const value of ['144','96','360','0']) { input.value=value; await input.emit('change'); }
+    assert.deepEqual(saved,[144,96,360,0]);
+    for (const value of ['', 'NaN', '119.88', '-1', '23', '361', 'Infinity']) {
+        input.value=value; await input.emit('change'); assert.equal(Number(input.value),0);
+    }
+    assert.equal(saved.length,4); assert.equal(notices.length,7); p.result.dispose();
+});
 test('closing disconnects status signal and polling',async()=>{
     const p=panel();await settle();assert.equal(p.signal.handlers.size,1);assert.equal(p.timers.size,1);
     p.result.dispose();assert.equal(p.signal.handlers.size,0);assert.equal(p.timers.size,0);

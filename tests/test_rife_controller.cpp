@@ -93,7 +93,16 @@ int main(int argc,char**argv) {
     assert(slowController.state()==State::Active);
     slowMetrics.predictions=slowMetrics.pairs=90;
     slowController.onMetrics(slowController.generation(),slowMetrics,6000,false,2);
-    assert(slowController.state()==State::DisabledForCurrentItem&&slow.notices==1);
+    assert(slowController.state()==State::Active&&slow.notices==1);
+    assert(slowController.ownsFilter()&&slow.removed.isEmpty());
+    assert(slow.props["hwdec"]=="auto-copy");
+    assert(slowController.diagnostics()["performanceWarning"].toBool());
+    slowMetrics.predictions=slowMetrics.pairs=120;
+    slowController.onMetrics(slowController.generation(),slowMetrics,9000,false,5);
+    assert(slowController.state()==State::Active&&slow.notices==1); // no OSD spam
+    slowMetrics.error="inference-error";
+    slowController.onMetrics(slowController.generation(),slowMetrics,10000,false,5);
+    assert(slowController.state()==State::DisabledForCurrentItem&&slow.notices==2); // real faults still stop
     Fake ending;FrameInterpolationController endingController(ending.access(),paths);
     endingController.beginItem(true,false);endingController.onFormatChanged(source);
     assert(ending.props["hwdec"]=="auto-copy"&&ending.props["vf"].toList().size()==2);

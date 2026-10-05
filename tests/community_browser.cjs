@@ -8,7 +8,7 @@ const os=require('node:os');
 const {spawn}=require('node:child_process');
 const {setTimeout:delay}=require('node:timers/promises');
 
-module.exports=async function withBrowser(routes,work,{settings={},gpu=false,visible=false}={}){
+module.exports=async function withBrowser(routes,work,{settings={},gpu=false,visible=false,prepareProfile,startupTimeout=12000}={}){
     const executable=process.argv[2]?path.resolve(process.argv[2]):null,webengine=process.argv.includes('--webengine');
     assert.ok(executable&&fs.existsSync(executable),'supply a browser executable');
     const server=http.createServer((req,res)=>{
@@ -20,7 +20,8 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
     await new Promise(r=>server.listen(0,'127.0.0.1',r));
     const url='http://127.0.0.1:'+server.address().port;
     const profile=fs.mkdtempSync(path.join(os.tmpdir(),'tigerest-messages-'));
-    let port;
+    let port,child,socket;
+    try{
     if(webengine){
         const listener=net.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));
         port=listener.address().port;await new Promise(r=>listener.close(r));
@@ -29,14 +30,14 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         fs.writeFileSync(path.join(folder,'profile.json'),JSON.stringify({name:'MessagesFixture'}));
         fs.writeFileSync(path.join(folder,'Tigerest Theater.conf'),JSON.stringify({version:10,sections:{
             ...settings,main:{...settings.main,enableWindowsTrayIcon:false},path:{...settings.path,startupurl_desktop:url}}}));
+        if(prepareProfile)await prepareProfile(profile,folder);
     }
     const args=webengine?['--config-dir',profile,'--profile','MessagesFixture',...(gpu?[]:['--disable-gpu']),'--remote-debugging-port','127.0.0.1:'+port]
         :['--headless','--disable-gpu','--remote-debugging-port=0','--user-data-dir='+profile,url];
-    const child=spawn(executable,args,{stdio:['ignore','pipe','pipe'],windowsHide:!visible,cwd:path.dirname(executable)});
+    child=spawn(executable,args,{stdio:['ignore','pipe','pipe'],windowsHide:!visible,cwd:path.dirname(executable)});
     let startup='';child.stdout.on('data',d=>startup=(startup+d).slice(-2000));child.stderr.on('data',d=>startup=(startup+d).slice(-2000));
-    let socket;
-    try{
-        for(let i=0;i<120;i++){
+        const startupDeadline=Date.now()+startupTimeout;
+        while(Date.now()<startupDeadline){
             assert.equal(child.exitCode,null,'browser exited: '+startup);
             try{
                 if(!webengine)port=fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0];
@@ -44,11 +45,11 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
             }catch{await delay(100);}
         }
         let page;
-        for(let i=0;i<100;i++){
+        while(Date.now()<startupDeadline){
             const pages=await(await fetch('http://127.0.0.1:'+port+'/json/list')).json();
             page=pages.find(p=>p.type==='page');if(page)break;await delay(100);
         }
-        assert.ok(page,'browser page available');
+        assert.ok(page,'browser page available: '+startup);
         socket=new WebSocket(page.webSocketDebuggerUrl);
         await new Promise((r,j)=>{socket.addEventListener('open',r,{once:true});socket.addEventListener('error',j,{once:true});});
         let id=0;const pending=new Map();
@@ -71,7 +72,7 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         await work({url,call,evaluate,webengine});
     }finally{
         socket?.close();
-        if(child.exitCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}
+        if(child&&child.exitCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}
         await new Promise(r=>server.close(r));await delay(150);
         assert.equal(path.dirname(path.resolve(profile)),path.resolve(os.tmpdir()));
         assert.ok(path.basename(profile).startsWith('tigerest-messages-'));

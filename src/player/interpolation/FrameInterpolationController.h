@@ -56,8 +56,8 @@ private:
     SourceInfo source;
     uint64_t serial=0,session=0,epoch=0;
     bool requested=false,filterOwned=false,hwdecOwned=false,notified=false;
+    bool performanceWarning=false;
     QString oldHwdec,reason;
-    bool videoSyncOwned=false;
     QString oldVideoSync,effectiveVideoSync;
     Metrics latest;
     QVariantMap lastFailure;

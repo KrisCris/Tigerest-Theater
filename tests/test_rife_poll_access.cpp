@@ -47,7 +47,7 @@ int main(int argc,char**argv) {
         const int readsBeforeDiagnostics=syncCalls;
         const auto preparing=controller.diagnostics();
         assert(syncCalls==readsBeforeDiagnostics);
-        assert(preparing["effectiveSync"]==(backend==rife::Backend::TensorRT?"audio":"display-resample"));
+        assert(preparing["effectiveSync"]=="display-resample");
         controller.stopOnEndFile();
         const auto stopped=controller.diagnostics();
         assert(syncCalls==readsBeforeDiagnostics);

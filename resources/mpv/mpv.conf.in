@@ -13,8 +13,11 @@ input-default-bindings=yes
 input-conf=~~/input.conf
 # 不自动扫描 scripts 目录，避免用户脚本与内置 UOSC、弹幕脚本重复加载。
 load-scripts=no
-# 启用 mpv 官方 stats 脚本；默认不显示，只在快捷键或 UOSC 诊断按钮触发时出现。
-load-stats-overlay=yes
+# 使用内置中文 stats（保留官方统计图表），避免与 mpv 原版同时加载。
+# Ctrl+J 显示概览，Ctrl+Shift+J 查看处理步骤，统计页内按 6 查看排障帮助。
+load-stats-overlay=no
+# 加载随播放器提供的中文统计脚本。
+script=~~/plugins/stats.lua
 # 鼠标停止移动 800 毫秒后自动隐藏，减少全屏播放时的遮挡。
 cursor-autohide=800
 # 文件播放结束后卸载当前媒体，不把最后一帧永久停在播放器窗口中。

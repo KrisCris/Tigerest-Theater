@@ -89,7 +89,7 @@ bool RifeRuntimeManager::configure(const QString& runtime,const QString& engineC
 }
 QJsonObject RifeRuntimeManager::model()const{for(const auto& m:manifest["models"].toArray())if(m.toObject()["id"]==modelId)return m.toObject();return {};}
 bool RifeRuntimeManager::select(const QString& id,int fps){
-    if(fps!=0&&fps!=60&&fps!=120&&fps!=240)return false;
+    if(fps!=0&&(fps<24||fps>360))return false;
     bool found=false;for(const auto& m:manifest["models"].toArray())if(m.toObject()["id"]==id)found=true;
     if(!found)return false;
     if(id==modelId&&fps==targetFps)return true;

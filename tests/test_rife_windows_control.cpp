@@ -106,11 +106,13 @@ int main(int argc,char**argv){
     metrics.pairs=metrics.predictions=480;
     cadence.onMetrics(cadence.generation(),metrics,15000,false,450,0.);
     assert(cadence.state()==State::Active);
-    // Real losses beyond the display's expected cadence still recover.
+    // Real losses warn, but never tear down the user's interpolation graph.
     metrics.pairs=metrics.predictions=780;
     cadence.onMetrics(cadence.generation(),metrics,25000,false,810,0.);
-    assert(cadence.state()==State::DisabledForCurrentItem);
-    assert(cadence.diagnostics()["failureMetrics"].toMap()["voDrops"].toULongLong()==810);
+    assert(cadence.state()==State::Active&&cadence.ownsFilter());
+    assert(cadence.diagnostics()["performanceWarning"].toBool());
+    assert(cadence.diagnostics()["warningMetrics"].toMap()["voDrops"].toULongLong()==810);
+    cadence.stop();
 
     // Do not apply a new refresh rate to drops collected at the old rate.
     for (const auto& rates : {std::pair<double,double>{30.,60.},{60.,30.}}) {
@@ -125,16 +127,15 @@ int main(int argc,char**argv){
         // Overload remains visible after the refresh transition.
         assert(guard.update(35000,1080,1080,0,oldDrops+windowDrops+2*expected+60,30,false,2,false,0.,0,rates.second));
     }
-    // TensorRT's output cadence must use the audio clock while it owns the
-    // graph, then restore the user's selected synchronization mode.
+    // Interpolation must respect the selected clock throughout its lifecycle.
     properties["vf"]=QVariantList{};properties["video-sync"]="display-resample";
     FrameInterpolationController sync(access,paths);
     sync.beginItem(true,false);sync.onFormatChanged(source);
-    assert(properties["video-sync"]=="audio");
+    assert(properties["video-sync"]=="display-resample");
     sync.stop();assert(properties["video-sync"]=="display-resample");
     sync.beginItem(true,false);sync.onFormatChanged(source);
     sync.configureVideoSync("display-resample-vdrop");
-    assert(properties["video-sync"]=="audio");
+    assert(properties["video-sync"]=="display-resample-vdrop");
     assert(sync.diagnostics()["savedSync"]=="display-resample-vdrop");
     sync.stopOnEndFile();assert(properties["video-sync"]=="display-resample-vdrop");
     sync.beginItem(true,false);sync.onFormatChanged(source);
@@ -151,7 +152,7 @@ int main(int argc,char**argv){
     assert(properties["video-sync"]=="display-resample-vdrop");
     auto coldPaths=paths;coldPaths.engine.clear();
     sync.stop();assert(sync.setRuntimePaths(coldPaths));sync.beginItem(true,false);sync.onFormatChanged(source);
-    assert(properties["video-sync"]=="audio"&&sync.state()==State::Preparing);
+    assert(properties["video-sync"]=="display-resample-vdrop"&&sync.state()==State::Preparing);
     sync.stop();assert(properties["video-sync"]=="display-resample-vdrop");
     properties["video-sync"]="audio";
     sync.beginItem(true,false);sync.onFormatChanged(source);sync.stop();

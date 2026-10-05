@@ -11,8 +11,28 @@ local anchor_pos, anchor_time
 local speed, speed_correction = 1, 1
 local clock_correction = 1
 local render_timer
+local frame_interval, next_frame_time = 1 / 120, nil
+local owned_sync
 local overlay_low = mp.create_osd_overlay('ass-events')
 local overlay_high = mp.create_osd_overlay('ass-events')
+
+local function update_presentation()
+    local mode = mp.get_property('video-sync')
+    if shown and ENABLED and COMMENTS ~= nil and #COMMENTS > 0 then
+        if mode == 'audio' then
+            -- mpv's ordinary audio path coalesces OSD into video frames.
+            -- display-vdrop keeps audio unresampled while presenting repeats
+            -- at display cadence, so comments can move between video frames.
+            if mp.set_property('video-sync', 'display-vdrop') then owned_sync = 'audio' end
+        elseif mode ~= 'display-vdrop' then
+            owned_sync = nil -- a newer manual clock choice belongs to the user
+        end
+    elseif owned_sync then
+        local previous = owned_sync
+        owned_sync = nil
+        if mode == 'display-vdrop' then mp.set_property('video-sync', previous) end
+    end
+end
 
 local function realtime_position_text(event, pos, displayarea)
     if not event.move then
@@ -172,29 +192,46 @@ local function animate()
         -- delayed cache/seek notification cannot let comments drift away.
         render(clock_position(mp.get_time()))
     end
+    -- Anchor deadlines to the refresh cadence instead of the previous wakeup.
+    -- A periodic timer adds every scheduler delay to the following frame.
+    local now = mp.get_time()
+    next_frame_time = (next_frame_time or now) + frame_interval
+    if next_frame_time <= now then
+        -- Skip missed deadlines after a stall; never spin to catch up.
+        next_frame_time = next_frame_time +
+            (math.floor((now - next_frame_time) / frame_interval) + 1) * frame_interval
+    end
+    render_timer.timeout = math.max(0.001, next_frame_time - now)
+    render_timer:resume()
 end
 
-render_timer = mp.add_periodic_timer(1 / 60, animate)
-render_timer:kill()
+render_timer = mp.add_timeout(frame_interval, animate, true)
+
+local function restart_timer()
+    next_frame_time = mp.get_time() + frame_interval
+    render_timer.timeout = frame_interval
+    render_timer:resume()
+end
 
 local function update_animation()
     render_timer:kill()
     reset_clock()
     if shown and ENABLED and COMMENTS ~= nil and not pause and not buffering and not seeking then
-        render_timer:resume()
+        restart_timer()
     end
 end
 
 local function update_display_fps()
     local fps = mp.get_property_number('display-fps')
-    if not fps or fps <= 0 then fps = mp.get_property_number('estimated-display-fps', 60) end
-    if not fps or fps <= 0 or fps ~= fps or fps == math.huge then fps = 60 end
+    -- Estimated refresh may be stale in audio mode; use the physical display
+    -- report, falling back to 120 only when the display reports no usable rate.
+    if not fps or fps <= 0 or fps ~= fps or fps == math.huge then fps = 120 end
     local interval = 1 / fps
-    if math.abs(interval - render_timer.timeout) < 0.0001 then return end
+    if math.abs(interval - frame_interval) < 0.0001 then return end
     local running = render_timer:is_enabled()
     render_timer:kill()
-    render_timer.timeout = interval
-    if running then render_timer:resume() end
+    frame_interval = interval
+    if running then restart_timer() end
 end
 
 local function start_time_observer()
@@ -237,6 +274,7 @@ end
 
 function show_danmaku_func()
     shown = true
+    update_presentation()
     mp.set_property_bool(HAS_DANMAKU, true)
     set_danmaku_visibility(true)
     render()
@@ -256,6 +294,7 @@ end
 
 function hide_danmaku_func()
     shown = false
+    update_presentation()
     render_timer:kill()
     anchor_pos = nil
     stop_time_observer()
@@ -302,7 +341,7 @@ mp.observe_property('pause', 'bool', function(_, value)
 end)
 
 mp.observe_property('display-fps', 'number', update_display_fps)
-mp.observe_property('estimated-display-fps', 'number', update_display_fps)
+mp.observe_property('video-sync', 'string', update_presentation)
 mp.observe_property('speed', 'number', function(_, value)
     speed = value or 1
     update_animation()
@@ -331,6 +370,7 @@ end)
 
 mp.add_hook("on_unload", 50, function()
     shown = false
+    update_presentation()
     render_timer:kill()
     anchor_pos = nil
     mp.set_property_bool(HAS_DANMAKU, false)

@@ -16,7 +16,8 @@
         "2.3.1",
         "2.3.2",
         "2.3.3",
-        "2.4.0"
+        "2.4.0",
+        "2.4.1"
       ],
       "downloadSize": 2146337426,
       "unpackedSize": 2672981155,
@@ -43,7 +44,8 @@
       "manifestSha256": "002e9050170121d940b6b18f24299f8b1323d56ef2cc39c5327f1036194db77e",
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm75-1.0.0.zip",
       "compatibleAppVersions": [
-        "2.4.0"
+        "2.4.0",
+        "2.4.1"
       ]
     },
     {
@@ -64,7 +66,8 @@
       "manifestSha256": "219ae9b9330e7079ac41abbb9819ccdcd2fe777d5c76713394705d9b2bffa03c",
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm80-1.0.0.zip",
       "compatibleAppVersions": [
-        "2.4.0"
+        "2.4.0",
+        "2.4.1"
       ]
     },
     {
@@ -85,7 +88,8 @@
       "manifestSha256": "f2536880eb0a26db14d5b505bcc3676db1bff4856b1a0db5f55fa8786f5bf908",
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm86-1.0.0.zip",
       "compatibleAppVersions": [
-        "2.4.0"
+        "2.4.0",
+        "2.4.1"
       ]
     },
     {
@@ -106,7 +110,8 @@
       "manifestSha256": "ef5879193d891994c03dc570d4f3e0cac38cd9ed836b09d9d289b01b958daae6",
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm89-1.0.0.zip",
       "compatibleAppVersions": [
-        "2.4.0"
+        "2.4.0",
+        "2.4.1"
       ]
     },
     {
@@ -127,7 +132,8 @@
       "manifestSha256": "072455c0322c5443c582d1e590425c1377177731d66446431bb66132f5ae4333",
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm90-1.0.0.zip",
       "compatibleAppVersions": [
-        "2.4.0"
+        "2.4.0",
+        "2.4.1"
       ]
     },
     {
@@ -148,7 +154,8 @@
       "manifestSha256": "0be1feb3a2da400854f8a6fd6eb64a97fce4bcab819f2806a58c5160baef63d3",
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm100-1.0.0.zip",
       "compatibleAppVersions": [
-        "2.4.0"
+        "2.4.0",
+        "2.4.1"
       ]
     },
     {
@@ -169,7 +176,8 @@
       "manifestSha256": "54de9a21ba22a990393e882bf96889f0846a453ec02c1202ca918cc4c3e1c445",
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm120-1.0.0.zip",
       "compatibleAppVersions": [
-        "2.4.0"
+        "2.4.0",
+        "2.4.1"
       ]
     }
   ]

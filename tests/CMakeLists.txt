@@ -390,6 +390,12 @@ endif()
 if(Python3_Interpreter_FOUND)
   add_test(NAME test_rife_extension_package
            COMMAND ${Python3_EXECUTABLE} -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_rife_extension_package.py")
+  if(WIN32)
+    add_test(NAME test_mpv_stats_overlay
+             COMMAND ${Python3_EXECUTABLE} -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_mpv_stats_overlay.py")
+    set_tests_properties(test_mpv_stats_overlay PROPERTIES TIMEOUT 60
+      ENVIRONMENT "TIGEREST_STATS_MPV_DLL=${CMAKE_BINARY_DIR}/output/libmpv-2.dll")
+  endif()
   add_test(NAME test_mpv_runtime_deployment
            COMMAND ${Python3_EXECUTABLE} -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_mpv_runtime_deployment.py")
   add_test(NAME test_bundle_integrity

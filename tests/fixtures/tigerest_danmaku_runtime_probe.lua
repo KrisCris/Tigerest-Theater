@@ -28,7 +28,8 @@ local function sandbox()
     api.get_property = api.get_property_native
     api.get_property_number = api.get_property_native
     api.get_property_bool = api.get_property_native
-    function api.set_property_native(name, value) props[name] = value end
+    function api.set_property_native(name, value) props[name] = value; return true end
+    api.set_property = api.set_property_native
     api.set_property_bool = api.set_property_native
     function api.get_time() return now end
     function api.get_script_name() return 'uosc_danmaku' end
@@ -101,7 +102,7 @@ local function sandbox()
         local copy = {}; for _, fn in ipairs(observers[name] or {}) do copy[#copy + 1] = fn end
         for _, fn in ipairs(copy) do fn(name, value) end
     end
-    function state.advance(seconds)
+    function state.advance(seconds, wake_delay)
         local finish = now + seconds
         for _ = 1, 10000 do
             local next_timer
@@ -111,7 +112,8 @@ local function sandbox()
                 end
             end
             if not next_timer then break end
-            now = next_timer.due
+            now = next_timer.due + (wake_delay or 0)
+            if now > finish then break end
             next_timer.enabled = next_timer.periodic or false
             next_timer.due = now + next_timer.timeout
             next_timer.callback()
@@ -187,6 +189,26 @@ function cases.display_animation()
     count = s.overlays[1].updates; s.advance(0.1)
     assert(s.overlays[1].updates == count and s.overlays[1].removed, 'Hidden danmaku must stay hidden')
 end
+function cases.audio_clock_keeps_display_rate_danmaku()
+    local s = sandbox(); s.props['video-sync'] = 'audio'; s.start_render()
+    assert(s.props['video-sync'] == 'display-vdrop', 'Visible danmaku needs refresh-driven presentation even with audio timing')
+    s.env.hide_danmaku_func()
+    assert(s.props['video-sync'] == 'audio', 'Hiding danmaku must restore the original audio mode')
+    s.env.show_danmaku_func()
+    s.set('video-sync', 'display-resample')
+    s.env.hide_danmaku_func()
+    assert(s.props['video-sync'] == 'display-resample', 'A newer user synchronization choice must survive hiding')
+    s.set('video-sync', 'audio'); s.env.show_danmaku_func(); s.emit('on_unload')
+    assert(s.props['video-sync'] == 'audio', 'End of file must release the temporary presentation mode')
+end
+function cases.display_clock_is_preserved()
+    for _, mode in ipairs({'display-resample', 'display-vdrop', 'display-adrop'}) do
+        local s = sandbox(); s.props['video-sync'] = mode; s.start_render()
+        assert(s.props['video-sync'] == mode, 'Visible danmaku must preserve display-driven clock choices')
+        s.env.hide_danmaku_func()
+        assert(s.props['video-sync'] == mode, 'Hiding danmaku cannot change an unowned mode')
+    end
+end
 function cases.stale_requests()
     local s = sandbox()
     local called = false
@@ -210,6 +232,13 @@ function cases.measured_fps_jitter()
     count = s.overlays[1].updates; s.advance(0.05)
     assert(s.overlays[1].updates - count >= 2 and s.overlays[1].updates - count <= 3,
         'Moving to a 60Hz display must update the rendering cadence')
+end
+function cases.timer_wakeup_drift()
+    local s = sandbox(); s.start_render()
+    local count = s.overlays[1].updates
+    s.advance(1, 0.001)
+    assert(s.overlays[1].updates - count >= 119,
+        'Small wakeup delays must not accumulate and turn 120Hz into roughly 107Hz')
 end
 function cases.timestamp_jitter()
     local s = sandbox(); s.start_render()

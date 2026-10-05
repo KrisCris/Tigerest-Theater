@@ -54,6 +54,17 @@ int main(int argc,char**argv){
     assert(manager.configure(root,cache,root+"/monitor.dll",root+"/interpolate.vpy",true));
     assert(until([&]{return manager.diagnostics()["runtimeReady"].toBool();}));
     assert(lastWorker.endsWith("scripts/native_probe.py"));
+    // User-selected targets need not belong to a small preset list. The graph
+    // still uses integral source multiples, preserving source duration.
+    const SourceInfo targetSource{1920,1080,24000,1001,true,true,false,true};
+    assert(manager.select("rife-4.25-lite",144));
+    assert(manager.pathsFor(targetSource).factor==6);
+    assert(manager.select("rife-4.25-lite",96));
+    assert(manager.pathsFor(targetSource).factor==4);
+    assert(manager.select("rife-4.25-lite",360));
+    assert(manager.pathsFor(targetSource).factor==15);
+    for(int invalid : {-1,1,23,361,100000})assert(!manager.select("rife-4.25-lite",invalid));
+    assert(manager.select("rife-4.25-lite",60));
     QList<quint64> ready;
     QObject::connect(&manager,&RifeRuntimeManager::prepared,[&](quint64 generation,bool ok,const QString&){if(ok)ready<<generation;});
     assert(manager.configure(root,cache,root+"/monitor.dll",root+"/interpolate.vpy"));
