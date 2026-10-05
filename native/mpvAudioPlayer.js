@@ -65,6 +65,7 @@ class mpvAudioPlayer {
                 player.playing.connect(onPlaying);
                 player.positionUpdate.connect(onTimeUpdate);
                 player.finished.connect(onEnded);
+                player.canceled?.connect(onCanceled);
                 player.updateDuration.connect(onDuration);
                 player.error.connect(onError);
                 player.paused.connect(onPause);
@@ -93,16 +94,14 @@ class mpvAudioPlayer {
             });
         }
 
-        self.onEndedInternal = () => {
-            const stopInfo = {
-                src: self._currentSrc
-            };
-
-            self.events.trigger(self, 'stopped', [stopInfo]);
+        self.onEndedInternal = (options = {}) => {
+            if (!self._currentSrc) return;
+            const stopInfo = { src: self._currentSrc, ...options };
 
             self._currentTime = null;
             self._currentSrc = null;
             self._currentPlayOptions = null;
+            self.events.trigger(self, 'stopped', [stopInfo]);
         };
 
         self.stop = (destroyPlayer) => {
@@ -138,6 +137,7 @@ class mpvAudioPlayer {
             player.playing.disconnect(onPlaying);
             player.positionUpdate.disconnect(onTimeUpdate);
             player.finished.disconnect(onEnded);
+            player.canceled?.disconnect(onCanceled);
             self._duration = undefined;
             player.updateDuration.disconnect(onDuration);
             player.error.disconnect(onError);
@@ -152,6 +152,9 @@ class mpvAudioPlayer {
 
         function onEnded() {
             self.onEndedInternal();
+        }
+        function onCanceled() {
+            self.onEndedInternal({playNext: false, resetPlayQueue: true});
         }
 
         function onTimeUpdate(time) {

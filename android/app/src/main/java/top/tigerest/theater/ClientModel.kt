@@ -1,0 +1,9 @@
+package top.tigerest.theater
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+class ClientModel(application: Application): AndroidViewModel(application) {
+    val settings = SettingsStore(application)
+    val player = PlaybackController(application,settings)
+    val danmaku = DanmakuRepository(application,settings)
+    override fun onCleared() { danmaku.close(); player.destroy() }
+}

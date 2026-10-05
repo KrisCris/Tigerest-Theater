@@ -1,0 +1,142 @@
+package top.tigerest.theater
+
+import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.Color
+import android.hardware.display.DisplayManager
+import android.net.Uri
+import android.os.Bundle
+import android.view.Gravity
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
+import android.view.WindowManager
+import android.webkit.ValueCallback
+import android.webkit.WebView
+import android.widget.*
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
+import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlin.concurrent.thread
+
+class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
+    private val model: ClientModel by viewModels()
+    val danmaku get() = model.danmaku
+    lateinit var webHost: WebHost; private set
+    private lateinit var bridge: BridgeDispatcher
+    private lateinit var root: FrameLayout
+    private lateinit var video: FrameLayout
+    private lateinit var overlay: DanmakuOverlay
+    private lateinit var controls: VideoControls
+    private lateinit var progress: ProgressBar
+    private var webFileCallback: ValueCallback<Array<Uri>>? = null
+    private var importToken = 0L
+    private var hinge = JSONObject()
+    var fullscreen = false; private set
+    private var beforePlaybackFullscreen: Boolean? = null
+    private val webFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val uris = result.data?.let { data -> data.clipData?.let { clip -> Array(clip.itemCount) { clip.getItemAt(it).uri } } ?: data.data?.let { arrayOf(it) } }
+        webFileCallback?.onReceiveValue(uris); webFileCallback = null
+    }
+    private val danmakuFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri != null) {
+        val token = importToken
+        thread {
+        runCatching { contentResolver.openInputStream(uri)!!.use { input -> val bytes = input.readNBytes(16*1024*1024+1); require(bytes.size <= 16*1024*1024) { "弹幕文件过大" }; danmaku.importText(uri.toString(),"本地弹幕",bytes.toString(Charsets.UTF_8),token) } }.onFailure { runOnUiThread { notify(it.message ?: "弹幕文件无法读取") } }
+    } } }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.setDecorFitsSystemWindows(false)
+        try {
+            root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }; setContentView(root)
+            val web = WebView(this); root.addView(web,FrameLayout.LayoutParams(-1,-1))
+            video = FrameLayout(this).apply { setBackgroundColor(Color.BLACK); visibility = View.GONE }
+            video.addView(MpvSurface(this,model.player),FrameLayout.LayoutParams(-1,-1))
+            overlay = DanmakuOverlay(this,model.settings,model.player,danmaku); video.addView(overlay,FrameLayout.LayoutParams(-1,-1))
+            controls = VideoControls(this,model.player,danmaku); video.addView(controls,FrameLayout.LayoutParams(-1,-1)); root.addView(video,FrameLayout.LayoutParams(-1,-1))
+            progress = ProgressBar(this).apply { visibility = View.GONE }; root.addView(progress,FrameLayout.LayoutParams(64,64,Gravity.CENTER))
+            bridge = BridgeDispatcher(this,model.settings,model.player); webHost = WebHost(this,web,model.settings,bridge); webHost.applySettings()
+            setFullscreen(model.settings.bool("main","fullscreen"))
+            model.player.signal = { name,args -> bridge.emit("player",name,args) }
+            model.player.message = { text -> notify(text) }
+            model.player.visible = { shown -> video.visibility = if(shown) View.VISIBLE else View.GONE; setPlaybackScreenAwake(shown); if(!shown && !model.player.state.active) danmaku.clear() }
+            model.player.itemChanged = { item -> controls.setTitle(item.optString("SeriesName",item.optString("Name"))); controls.showControls(); danmaku.autoMatch(item) }
+            model.settings.changed = { section,values -> bridge.emit("settings","sectionValueUpdate",JSONArray().put(section).put(values)); runOnUiThread { model.player.applySettings(); overlay.rebuild(); if(section == "main") { setFullscreen(model.settings.bool("main","fullscreen")); webHost.applySettings() } } }
+            danmaku.changed = { runOnUiThread { overlay.rebuild(); bridge.emit("danmaku","sourcesChanged",JSONArray().put(danmaku.sourceSnapshot())) } }
+            danmaku.status = { text -> runOnUiThread { notify(text); bridge.emit("danmaku","status",JSONArray().put(text)) } }
+            root.setOnApplyWindowInsetsListener { view,insets -> val safe = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime()); view.setPadding(safe.left,safe.top,safe.right,safe.bottom); updateWindowMetrics(); insets }
+            root.addOnLayoutChangeListener { _,_,_,_,_,_,_,_,_ -> updateWindowMetrics() }
+            lifecycleScope.launch { WindowInfoTracker.getOrCreate(this@MainActivity).windowLayoutInfo(this@MainActivity).collect { info ->
+                val fold = info.displayFeatures.filterIsInstance<FoldingFeature>().firstOrNull { it.isSeparating }
+                hinge = if(fold == null) JSONObject() else JSONObject().put("left",fold.bounds.left).put("top",fold.bounds.top).put("right",fold.bounds.right).put("bottom",fold.bounds.bottom)
+                updateWindowMetrics()
+            } }
+            getSystemService(DisplayManager::class.java).registerDisplayListener(this,android.os.Handler(mainLooper))
+            onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true) { override fun handleOnBackPressed() {
+                if(video.visibility == View.VISIBLE) { model.player.dispatch("stop",JSONArray()); endPlaybackSession() }
+                else if(model.player.state.active && model.player.isVideo()) { video.visibility = View.VISIBLE; setPlaybackScreenAwake(true) }
+                else if(web.canGoBack()) web.goBack() else finish()
+            } })
+            if(BuildConfig.DEBUG && intent.hasExtra("url")) { val url = intent.getStringExtra("url")!!; model.settings.set("main","userWebClient",url); webHost.open(url) }
+            else if(savedInstanceState != null) { webHost.restore(savedInstanceState) }
+            else webHost.openSaved()
+        } catch(error: Exception) {
+            setContentView(TextView(this).apply { setTextColor(Color.WHITE); setBackgroundColor(Color.rgb(16,16,16)); textSize = 18f; gravity = Gravity.CENTER; text = "客户端初始化失败\n${error.message}" })
+            android.util.Log.e("TigerestAndroid","Initialization failed",error)
+        }
+    }
+    fun input(action: String) { bridge.emit("input","hostInput",JSONArray().put(JSONArray().put(action))) }
+    fun bitrate(value: Long) { bridge.emit("player","streamingBitrateRequested",JSONArray().put(value)) }
+    fun subtitle(index: Int) { bridge.emit("player","subtitleStreamRequested",JSONArray().put(index)) }
+    fun diagnostics(): JSONObject = JSONObject().put("platform","Android").put("version",android.os.Build.VERSION.RELEASE).put("sdk",android.os.Build.VERSION.SDK_INT).put("width",root.width).put("height",root.height).put("density",resources.displayMetrics.density).put("paused",model.player.state.paused).put("active",model.player.state.active).put("videoVisible",video.visibility == View.VISIBLE).put("controlsVisible",controls.controlsVisible()).put("danmakuFrames",overlay.drawnFrames).put("refreshRate",display?.refreshRate ?: 60f)
+    fun loading(active: Boolean) { if(::progress.isInitialized) progress.visibility = if(active) View.VISIBLE else View.GONE }
+    fun webError(message: String) { loading(false); notify(message) }
+    fun notify(message: String) { if(!isFinishing) Toast.makeText(this,message,Toast.LENGTH_LONG).show() }
+    fun openExternal(url: String) { runCatching { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url))) }.onFailure { notify("没有可打开链接的浏览器") } }
+    fun chooseWebFile(callback: ValueCallback<Array<Uri>>,intent: Intent) { webFileCallback?.onReceiveValue(null); webFileCallback = callback; webFile.launch(intent) }
+    fun chooseDanmakuFile() { importToken = danmaku.currentToken(); danmakuFile.launch(arrayOf("text/*","application/json","application/xml","application/octet-stream")) }
+    fun toggleDanmaku() { model.settings.set("mpv","enableDanmaku",!model.settings.bool("mpv","enableDanmaku")); overlay.rebuild() }
+    fun showWebSettings(section: String = "video") {
+        video.visibility = View.GONE
+        // The same settings component is available before and after Emby login.
+        webHost.view.evaluateJavascript("(async()=>{const panel=await window.tigerestMountSettings?.(null,${JSONObject.quote(section)});if(!panel)return;const observer=new MutationObserver(()=>{if(!document.getElementById('tigerest-settings-overlay')){observer.disconnect();window.tigerestAndroidApi.player.setVideoOnlyMode(true)}});observer.observe(document.body,{childList:true});})()",null)
+    }
+    fun setPlaybackScreenAwake(active: Boolean) { if(active) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    fun beginPlaybackSession() { if(beforePlaybackFullscreen == null) beforePlaybackFullscreen = fullscreen; setPlaybackScreenAwake(true) }
+    fun endPlaybackSession() { beforePlaybackFullscreen?.let { setFullscreen(it) }; beforePlaybackFullscreen = null; setPlaybackScreenAwake(false) }
+    fun setFullscreen(enabled: Boolean) {
+        fullscreen = enabled
+        window.insetsController?.let { controller -> controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE; if(enabled) controller.hide(WindowInsets.Type.systemBars()) else controller.show(WindowInsets.Type.systemBars()) }
+        if(::bridge.isInitialized) bridge.emit("window","fullScreenSwitched",JSONArray().put(enabled))
+    }
+    fun updateWindowMetrics() {
+        if(!::webHost.isInitialized) return
+        val width = root.width-root.paddingLeft-root.paddingRight
+        val height = root.height-root.paddingTop-root.paddingBottom
+        val fold = if(hinge.has("left")) Pane(hinge.getInt("left")-root.paddingLeft,hinge.getInt("top")-root.paddingTop,hinge.getInt("right")-root.paddingLeft,hinge.getInt("bottom")-root.paddingTop) else null
+        val pane = WindowLayout.pane(width,height,fold)
+        for(child in listOf(webHost.view,video)) {
+            val old = child.layoutParams as FrameLayout.LayoutParams
+            val w = pane.right-pane.left; val h = pane.bottom-pane.top
+            if(old.width != w || old.height != h || old.leftMargin != pane.left || old.topMargin != pane.top) child.layoutParams = FrameLayout.LayoutParams(w,h).apply { leftMargin = pane.left; topMargin = pane.top }
+        }
+        val density = resources.displayMetrics.density
+        val metrics = windowManager.currentWindowMetrics
+        val value = JSONObject().put("width",(pane.right-pane.left)/density).put("height",(pane.bottom-pane.top)/density).put("density",density).put("displayId",display?.displayId ?: 0).put("refreshRate",display?.refreshRate ?: 60f).put("hinge",hinge).put("boundsWidth",metrics.bounds.width()).put("boundsHeight",metrics.bounds.height())
+        val js = "window.tigerestWindowMetrics=$value;if(document.documentElement)document.documentElement.dataset.tigerestWindow=window.innerWidth<600?'compact':window.innerWidth<840?'medium':'expanded';window.dispatchEvent(new CustomEvent('tigerest-window-changed',{detail:window.tigerestWindowMetrics}));"
+        webHost.view.evaluateJavascript(js,null)
+    }
+    override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig); root.requestApplyInsets(); updateWindowMetrics(); if(::overlay.isInitialized) overlay.rebuild(); if(::controls.isInitialized) controls.refreshMetrics() }
+    override fun onDisplayAdded(displayId: Int) { updateWindowMetrics() }
+    override fun onDisplayRemoved(displayId: Int) { updateWindowMetrics() }
+    override fun onDisplayChanged(displayId: Int) { updateWindowMetrics() }
+    override fun onStop() { super.onStop(); if(::webHost.isInitialized) model.player.background() }
+    override fun onSaveInstanceState(outState: Bundle) { if(::webHost.isInitialized) webHost.view.saveState(outState); super.onSaveInstanceState(outState) }
+    override fun onDestroy() { getSystemService(DisplayManager::class.java).unregisterDisplayListener(this); webFileCallback?.onReceiveValue(null); if(::bridge.isInitialized) bridge.close(); if(::webHost.isInitialized) webHost.close(); super.onDestroy() }
+}

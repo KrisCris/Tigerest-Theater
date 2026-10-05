@@ -14,12 +14,12 @@ const features = [
     "displaymode",
     "screensaver",
     "fileinput"
-];
+].filter(feature => !window.tigerestAndroidApi || feature !== 'filedownload');
 
 const getPlugins = () => {
     const basePlugins = [
         'inputPlugin',
-        'updatePlugin'
+        ...(window.tigerestAndroidApi ? [] : ['updatePlugin'])
     ];
 
     const mpvEnabled = jmpInfo.settings?.main?.enableMPV !== false;
@@ -222,9 +222,11 @@ function getDeviceProfile() {
 
 async function createApi() {
     // Can't append script until document exists
-    await new Promise(resolve => {
-        document.addEventListener('DOMContentLoaded', resolve);
-    });
+    if (document.readyState === 'loading') {
+        await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, {once: true}));
+    }
+
+    if (window.tigerestAndroidApi) return window.tigerestAndroidApi;
 
     const channel = await new Promise((resolve) => {
         /*global QWebChannel */
@@ -752,6 +754,12 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             subtitle: '直接传入 mpv.conf 选项'
         }
     };
+    if (window.tigerestAndroidApi) {
+        sectionMeta.main.subtitle = '服务器、窗口与网页浏览';
+        sectionMeta.audio.subtitle = '声道与音量均衡';
+        sectionMeta.mpv = {title: '播放器', subtitle: '音轨偏好、HDR、缓存与弹幕'};
+        sectionMeta.danmaku.subtitle = '字号、描边、速度、透明度与显示范围';
+    }
     const restartSettings = new Set([
         'main.enableMPV',
         'mpv.configMode',
@@ -931,7 +939,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     const header = element('div', 'tgs-header');
     header.appendChild(element('div', 'tgs-brand'));
     const heading = element('div');
-    heading.appendChild(element('h2', 'tgs-title', '大河影院 / MPV 设置'));
+    heading.appendChild(element('h2', 'tgs-title', window.tigerestAndroidApi ? '大河影院 / 客户端设置' : '大河影院 / MPV 设置'));
     heading.appendChild(element('div', 'tgs-subtitle', '常规配置即时应用；带“需重启”标记的项目在下次启动生效'));
     header.appendChild(heading);
     const search = element('input', 'tgs-search');
@@ -1195,7 +1203,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
                 close();
                 window.tigerestOpenOfflineLibrary();
             });
-            actions.appendChild(offline);
+            if (!window.tigerestAndroidApi) actions.appendChild(offline);
             group.appendChild(actions);
         }
 
@@ -1440,7 +1448,8 @@ function installWindowModeEntry() {
     const updateButton = () => {
         const button = document.getElementById('tigerest-window-mode-button');
         if (!button) return;
-        button.textContent = fullscreen ? '窗口' : '全屏';
+        const label = fullscreen ? '窗口' : '全屏';
+        if (button.textContent !== label) button.textContent = label;
         button.title = fullscreen ? '恢复播放前的窗口状态' : '切换为全屏';
         button.setAttribute('aria-label', button.title);
     };

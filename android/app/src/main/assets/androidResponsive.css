@@ -1,0 +1,19 @@
+:root { --tgs-hinge-width:0px; --tgs-hinge-left:0px; }
+html,body { overscroll-behavior:none; -webkit-tap-highlight-color:transparent; }
+body { touch-action:pan-x pan-y; }
+#offline-button { display:none !important; }
+button,select,input,textarea { font-size:16px; }
+.tgs-action { min-height:48px; }
+body .headerRight { flex-wrap:wrap; }
+@media(pointer:coarse) {
+ .paper-icon-button-light,.headerButton,#tigerest-community .tc-button { min-height:44px; min-width:44px; }
+ .card:hover,.card:hover .cardBox { transform:none !important; }
+}
+@media(max-width:600px) {
+ .tgs-header { flex-wrap:wrap; }.tgs-search { width:100% !important; margin:12px 0 0 !important; }
+ #tigerest-settings-overlay .tgs-dialog { width:100vw !important; height:100dvh !important; border-radius:0 !important; }
+ .tgs-setting { gap:12px; flex-wrap:wrap; }.tgs-control { max-width:100%; }
+ #tigerest-community .tc-actions { gap:8px; }
+ #tigerest-community textarea { scroll-margin-bottom:90px; }
+}
+@media(min-width:840px) { .detailPageContent { max-width:1400px; margin-inline:auto; } }

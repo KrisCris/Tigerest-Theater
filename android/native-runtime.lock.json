@@ -1,0 +1,188 @@
+{
+  "upstream": "https://github.com/mpv-android/mpv-android",
+  "tag": "2026-09-17",
+  "artifact": {
+    "url": "https://github.com/mpv-android/mpv-android/releases/download/2026-09-17/app-default-universal-release.apk",
+    "sha256": "c3b505e45b919b767b9867e7f0d16fd823d77bc7c9a6e6b181b80ea60c018a70"
+  },
+  "libraries": [
+    {
+      "path": "lib/arm64-v8a/libavcodec.so",
+      "sha256": "403df40505a0d43ec6fb160e08ec21785f0da3ce5bb802b536ce790038598a57",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/arm64-v8a/libavdevice.so",
+      "sha256": "4f4593ea81ae39ee71d71ed08d1e76c8c5961eb93f05fa21f7c625116da6b68b",
+      "loadSegmentAlignment": [
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/arm64-v8a/libavfilter.so",
+      "sha256": "38aa94839ed4183b24165174d1de4ee2cda607973e25466e923170395b35b9b8",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/arm64-v8a/libavformat.so",
+      "sha256": "28812d328fcf7d1833c4df18bd46a67517ccb74d0dd8369f45d4b2aab2959d88",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/arm64-v8a/libavutil.so",
+      "sha256": "7089c47b942828b58d76ed88366eef87a8a4b0956821e4a4d6eb176198921771",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/arm64-v8a/libc++_shared.so",
+      "sha256": "b5d97c38a728afe28d341cda3369f512d35eaf9c680c1b0563cd6a63e395230f",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/arm64-v8a/libmpv.so",
+      "sha256": "03d2d02db0451cebf4da2648188df7b2502005c6409fad1841b1d2b91ca8a814",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/arm64-v8a/libplayer.so",
+      "sha256": "5557256657de1ccfa3bea365dbe7f81b5c1026a8d54b8346807fdda5c170643d",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/arm64-v8a/libswresample.so",
+      "sha256": "31c8d864c63d8f50632b654bffe8cb570100bfb98b2af6d0012faab2a1914759",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/arm64-v8a/libswscale.so",
+      "sha256": "702b612f848bbc58a7f60071778e6a2ca32b73e5d51b4c7885529e9ca7f3704d",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/x86_64/libavcodec.so",
+      "sha256": "79b444748d22ecf0541e3867a8e06888ba0f3d4684b2b5b069bdc79b282cc6b6",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/x86_64/libavdevice.so",
+      "sha256": "eef390360374e2941a44a8e00d1f64f710c80faa3e58ed8f60884bf476eb73e8",
+      "loadSegmentAlignment": [
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/x86_64/libavfilter.so",
+      "sha256": "c566b75ef9f4af1268ce75ecf1da530bea890f742f9c17252d58485946962572",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/x86_64/libavformat.so",
+      "sha256": "b3833dd4986c8b094cd2944bb172c5239af56dcf310aebf58db4d749de660e93",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/x86_64/libavutil.so",
+      "sha256": "6bf80ed2d0faa682703818a3aa2bed98f09eb5b0c1b9cfd8ea7ee84f81f59684",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/x86_64/libc++_shared.so",
+      "sha256": "39faf2d59346e65a18980f207794fab2f1faff8a8de3f087b8319a181fa16fbd",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/x86_64/libmpv.so",
+      "sha256": "97f0621d8f6e236ed5491a89565c2ed526f5450074ec58df560ada5f5f1bc5f8",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/x86_64/libplayer.so",
+      "sha256": "7b53223663f774d33706a266fc7a55dfc44f378296631d318ea909f6ba9be410",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/x86_64/libswresample.so",
+      "sha256": "30d548d3391fbef2fe34ca1841c41b3009f21e092bd8b5b2c373ceb18f2812b4",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "path": "lib/x86_64/libswscale.so",
+      "sha256": "08bae96ccfb332c319a2dd5bf90bae0d2ed0caaf5ed1c89322812a14baa0e1ab",
+      "loadSegmentAlignment": [
+        16384,
+        16384,
+        16384
+      ]
+    }
+  ]
+}

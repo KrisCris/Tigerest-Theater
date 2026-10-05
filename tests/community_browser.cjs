@@ -9,6 +9,7 @@ const {spawn}=require('node:child_process');
 const {setTimeout:delay}=require('node:timers/promises');
 
 module.exports=async function withBrowser(routes,work,{settings={},gpu=false,visible=false,prepareProfile,startupTimeout=12000}={}){
+    if(process.env.TIGEREST_ANDROID_FIXTURE) return require('../android/tests/android_browser.cjs')(routes,work,{settings});
     const executable=process.argv[2]?path.resolve(process.argv[2]):null,webengine=process.argv.includes('--webengine');
     assert.ok(executable&&fs.existsSync(executable),'supply a browser executable');
     const server=http.createServer((req,res)=>{

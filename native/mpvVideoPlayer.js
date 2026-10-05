@@ -163,6 +163,7 @@
             };
 
             this.onStopped = () => console.log('[MPV Signal] stopped');
+            this.onSubtitleStreamRequested = (index) => this.setSubtitleStreamIndex(Number(index));
             this.onBuffering = (percent) => console.log(`[MPV Signal] buffering: ${percent}`);
             this.onStateChanged = (newState, oldState) => console.log(`[MPV Signal] stateChanged: ${oldState} -> ${newState}`);
             this.onVideoPlaybackActive = (active) => console.log(`[MPV Signal] videoPlaybackActive: ${active}`);
@@ -465,6 +466,13 @@
                 const player = window.api.player;
 
                 const streams = options.mediaSource?.MediaStreams || [];
+                if (window.api.system?.isAndroid) {
+                    streamdata.media.subtitleStreams = streams.filter(stream => stream.Type === 'Subtitle').map(stream => ({
+                        index: stream.Index,
+                        title: stream.DisplayTitle || stream.Title || stream.Language || '字幕',
+                        language: stream.Language || ''
+                    }));
+                }
 
                 // Handle audio
                 const audioRelIndex = this._audioTrackIndexToSetOnPlaying != null && this._audioTrackIndexToSetOnPlaying >= 0
@@ -656,6 +664,7 @@
             player.finished.disconnect(this.onEnded);
             player.canceled.disconnect(this.onCanceled);
             player.stopped.disconnect(this.onStopped);
+            player.subtitleStreamRequested?.disconnect(this.onSubtitleStreamRequested);
             this._duration = undefined;
             player.updateDuration.disconnect(this.onDuration);
             player.error.disconnect(this.onError);
@@ -713,6 +722,7 @@
                     player.finished.connect(this.onEnded);
                     player.canceled.connect(this.onCanceled);
                     player.stopped.connect(this.onStopped);
+                    player.subtitleStreamRequested?.connect(this.onSubtitleStreamRequested);
                     player.updateDuration.connect(this.onDuration);
                     player.error.connect(this.onError);
                     player.paused.connect(this.onPause);

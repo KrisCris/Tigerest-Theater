@@ -1,0 +1,29 @@
+Tigerest Theater Android embeds unmodified native libraries extracted from the
+official mpv-android 2026-09-17 release APK. Their individual SHA-256 hashes and
+ABI/ELF alignment are recorded in android/native-runtime.lock.json.
+
+mpv-android JNI bridge and MPVLib.kt: MIT; source:
+https://github.com/mpv-android/mpv-android/tree/2026-09-17
+mpv runtime reports v0.41.0-1049-g0b7ed670f; source:
+https://github.com/mpv-player/mpv/tree/0b7ed670f
+mpv is GPLv2 or later in the default upstream build. FFmpeg is built with
+--enable-gpl --enable-version3 by the upstream recipe, making this native
+distribution subject to GPLv3 or later. Full license texts accompany this notice.
+
+The upstream build recipe and dependency versions are in:
+https://github.com/mpv-android/mpv-android/tree/2026-09-17/buildscripts
+FFmpeg recipe pins n9.0. Some upstream static dependencies use floating Git
+revisions; the release recipe alone does not prove byte-identical rebuilding of
+the prebuilt runtime. Packaging of the pinned binaries is reproducible; a fresh
+native rebuild must separately record all resolved revisions.
+
+Additional native components: dav1d, libass, libplacebo, FreeType, fontconfig,
+FriBidi, HarfBuzz, libunibreak, libxml2, Lua, mbedTLS, curl and Android NDK libc++.
+Their notices are included in this directory. The Android/Kotlin/OkHttp portions
+also retain their Apache 2.0 notices. See provenance.json for source URLs and
+checksums of the fetched license texts. Upstream source files retain their
+individual copyright/license headers; these notices do not replace them.
+
+This local deliverable contains the client source in its Git branch and a pinned
+upstream source/build reference. Public redistribution should accompany the
+complete corresponding native source and resolved dependency revisions.

@@ -1,0 +1,13 @@
+.gradle/
+**/build/
+local.properties
+app/src/main/jniLibs/
+app/src/main/assets/shared/
+app/src/main/assets/cacert.pem
+app/src/main/assets/fonts/
+test-artifacts/
+dist/
+tools/__pycache__/
+*.keystore
+*.p12
+signing.properties

@@ -1,0 +1,107 @@
+[
+  {
+    "path": "mpv-GPLv2.txt",
+    "source": "https://raw.githubusercontent.com/mpv-player/mpv/0b7ed670f/Copyright",
+    "sha256": "bfe9ee4cceabcb8ecbfadf208d04156f73d801e6a57369a5606bb8341e204a23"
+  },
+  {
+    "path": "GPLv3.txt",
+    "source": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0/COPYING.GPLv3",
+    "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+  },
+  {
+    "path": "FFmpeg-license.txt",
+    "source": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0/LICENSE.md",
+    "sha256": "2e1d16c72fd74e12063776371da757322f8b77589386532f4fd8634bde7de1af"
+  },
+  {
+    "path": "LLVM-license.txt",
+    "source": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-21.1.8/LICENSE.TXT",
+    "sha256": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee"
+  },
+  {
+    "path": "libass-ISC.txt",
+    "source": "https://raw.githubusercontent.com/libass/libass/master/COPYING",
+    "sha256": "f7e30699d02798351e7f839e3d3bfeb29ce65e44efa7735c225464c4fd7dfe9c"
+  },
+  {
+    "path": "curl-license.txt",
+    "source": "https://raw.githubusercontent.com/curl/curl/curl-8_21_0/COPYING",
+    "sha256": "82f2f4427d6545ee5aaac4f0b80428da6cc8ba41c2cf5da3a03680ec327b9681"
+  },
+  {
+    "path": "harfbuzz-license.txt",
+    "source": "https://raw.githubusercontent.com/harfbuzz/harfbuzz/14.4.0/COPYING",
+    "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64"
+  },
+  {
+    "path": "GPLv2.txt",
+    "source": "https://raw.githubusercontent.com/mpv-player/mpv/0b7ed670f/LICENSE.GPL",
+    "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+  },
+  {
+    "path": "LGPLv2.1.txt",
+    "source": "https://raw.githubusercontent.com/mpv-player/mpv/0b7ed670f/LICENSE.LGPL",
+    "sha256": "72b672113d642cbb8ef5dcc76938db801983c56e50b1400ab930f1a64d6dc8d9"
+  },
+  {
+    "path": "AndroidX-Apache2.txt",
+    "source": "https://raw.githubusercontent.com/androidx/androidx/androidx-main/LICENSE.txt",
+    "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0"
+  },
+  {
+    "path": "Kotlin-Apache2.txt",
+    "source": "https://raw.githubusercontent.com/JetBrains/kotlin/v2.2.21/license/LICENSE.txt",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "path": "okhttp-Apache2.txt",
+    "source": "https://raw.githubusercontent.com/square/okhttp/parent-4.12.0/LICENSE.txt",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "path": "libplacebo-LGPL2.1.txt",
+    "source": "https://raw.githubusercontent.com/haasn/libplacebo/master/LICENSE",
+    "sha256": "b3aa400aca6d2ba1f0bd03bd98d03d1fe7489a3bbb26969d72016360af8a5c9d"
+  },
+  {
+    "path": "dav1d-BSD2.txt",
+    "source": "https://raw.githubusercontent.com/videolan/dav1d/master/COPYING",
+    "sha256": "dd92c3c2247c5651606fc23a5e2d6a1ebc5ace9a3e49cbde0e12f05ad1cb1ee5"
+  },
+  {
+    "path": "fribidi-LGPL2.1.txt",
+    "source": "https://raw.githubusercontent.com/fribidi/fribidi/v1.0.16/COPYING",
+    "sha256": "32434afcc8666ba060e111d715bfdb6c2d5dd8a35fa4d3ab8ad67d8f850d2f2b"
+  },
+  {
+    "path": "FreeType-license.txt",
+    "source": "https://raw.githubusercontent.com/freetype/freetype/VER-2-14-3/docs/FTL.TXT",
+    "sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f"
+  },
+  {
+    "path": "Lua-MIT.txt",
+    "source": "https://www.lua.org/license.html",
+    "sha256": "9fa02db000d8178643a592032fab2e1d2ba6d9e2f609f149fc113d30d32dbea2"
+  },
+  {
+    "path": "mbedtls-Apache2.txt",
+    "source": "https://raw.githubusercontent.com/Mbed-TLS/mbedtls/mbedtls-3.6.7/LICENSE",
+    "sha256": "9b405ef4c89342f5eae1dd828882f931747f71001cfba7d114801039b52ad09b"
+  },
+  {
+    "path": "libxml2-MIT.txt",
+    "source": "https://raw.githubusercontent.com/GNOME/libxml2/v2.15.4/Copyright",
+    "sha256": "5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626"
+  },
+  {
+    "path": "fontconfig-MIT.txt",
+    "source": "https://raw.githubusercontent.com/fontconfig/fontconfig/2.18.3/COPYING",
+    "sha256": "51a51aa9823704fd90bccc616cdd17ebabb5b2b3e9cbde886ca02c7002288067"
+  },
+  {
+    "path": "libunibreak-license.txt",
+    "source": "https://raw.githubusercontent.com/adah1972/libunibreak/libunibreak_8_0/LICENCE",
+    "sha256": "0c57e2ec42ece17791a75d2f9b2f8e0663181be008667a507f765b3ef22522db"
+  }
+]
