@@ -24,6 +24,16 @@ class PlaybackController(private val context: Context, private val settings: Set
     private val starts = ConcurrentLinkedQueue<Long>()
     @Volatile private var eventGeneration = 0L
     private var destroyed = false
+    private var surfaceAttached = false
+    private var surfaceDimensions = ""
+    private val resizeOutput = Runnable {
+        if(!destroyed && surfaceAttached && state.active && video) {
+            // Recreate EGL after the Android buffer queue settles. A size property update alone
+            // can leave the old buffer geometry visible on a paused, resized SurfaceView.
+            MPVLib.setPropertyString("vo","null")
+            MPVLib.setPropertyString("vo","gpu")
+        }
+    }
     private var video = true
     private var durationMs = 0L
     private var metadata = JSONObject()
@@ -73,9 +83,14 @@ class PlaybackController(private val context: Context, private val settings: Set
             override fun onSeekTo(pos: Long) { dispatch("seekTo",JSONArray().put(pos)) }
         },main)
     }
-    fun attach(surface: Surface) { if (!destroyed) { MPVLib.attachSurface(surface); MPVLib.setPropertyString("vo","gpu"); MPVLib.setPropertyString("force-window","yes") } }
-    fun detach() { if (!destroyed) { MPVLib.setPropertyString("vo","null"); MPVLib.setPropertyString("force-window","no"); MPVLib.detachSurface() } }
-    fun surfaceSize(width: Int,height: Int) { if (!destroyed) MPVLib.setPropertyString("android-surface-size","${width}x$height") }
+    fun attach(surface: Surface) { if (!destroyed) { surfaceAttached = true; MPVLib.attachSurface(surface); MPVLib.setPropertyString("vo","gpu"); MPVLib.setPropertyString("force-window","yes") } }
+    fun detach() { surfaceAttached = false; main.removeCallbacks(resizeOutput); if (!destroyed) { MPVLib.setPropertyString("vo","null"); MPVLib.setPropertyString("force-window","no"); MPVLib.detachSurface() } }
+    fun surfaceSize(width: Int,height: Int) {
+        if(destroyed || width<=0 || height<=0) return
+        val next = "${width}x$height"; if(next == surfaceDimensions) return
+        surfaceDimensions = next; MPVLib.setPropertyString("android-surface-size",next)
+        main.removeCallbacks(resizeOutput); main.postDelayed(resizeOutput,180)
+    }
     fun positionSeconds(): Double = if (destroyed) 0.0 else MPVLib.getPropertyDouble("time-pos") ?: state.positionMs / 1000.0
     fun tracks(): JSONArray = runCatching { JSONArray(MPVLib.getPropertyString("track-list") ?: "[]") }.getOrDefault(JSONArray())
     fun isVideo() = video
@@ -131,6 +146,7 @@ class PlaybackController(private val context: Context, private val settings: Set
             "getCurrentWebPlaylistItemId" -> return currentId
             "setWebPlaylist" -> { queued = args.getJSONArray(0); currentId = args.optString(1); emit("webPlaylistChanged",queued,currentId) }
             "mpvDiagnostics" -> return JSONObject().put("version",MPVLib.getPropertyString("mpv-version")).put("renderBackend","Android Surface / OpenGL ES").put("configMode","embedded").put("configuredProfile","fast / Android MediaCodec").put("currentVo",MPVLib.getPropertyString("vo")).put("hwdec",MPVLib.getPropertyString("hwdec-current")).put("audioTrack",MPVLib.getPropertyInt("aid") ?: -1).put("subtitleTrack",MPVLib.getPropertyInt("sid") ?: -1).put("subtitleDelay",MPVLib.getPropertyDouble("sub-delay") ?: 0.0).put("tracks",tracks()).put("sourceWidth",MPVLib.getPropertyInt("video-params/w") ?: 0).put("sourceHeight",MPVLib.getPropertyInt("video-params/h") ?: 0)
+                .put("surfaceSize",MPVLib.getPropertyString("android-surface-size")).put("osdDimensions",MPVLib.getPropertyString("osd-dimensions"))
             "notifyMetadata" -> { val item = args.optJSONObject(0) ?: JSONObject(); mediaSession.setMetadata(MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_TITLE,item.optString("Name",item.optString("title"))).build()) }
             "notifyStreamingBitrateResult" -> main.post { message(if(args.optBoolean(1)) "画质已切换" else args.optString(2,"品质切换失败")) }
             else -> {
@@ -209,5 +225,5 @@ class PlaybackController(private val context: Context, private val settings: Set
     override fun eventProperty(property: String, value: String) {}
     override fun eventProperty(property: String) { if(property == "track-list") emit("onVideoRecangleChanged") }
     fun background() { if(state.active && !state.paused) dispatch("pause",JSONArray()) }
-    fun destroy() { if(destroyed) return; destroyed = true; context.unregisterReceiver(noisyReceiver); MPVLib.removeObserver(this); MPVLib.destroy(); mediaSession.release(); audioManager.abandonAudioFocusRequest(focus) }
+    fun destroy() { if(destroyed) return; destroyed = true; main.removeCallbacks(resizeOutput); context.unregisterReceiver(noisyReceiver); MPVLib.removeObserver(this); MPVLib.destroy(); mediaSession.release(); audioManager.abandonAudioFocusRequest(focus) }
 }

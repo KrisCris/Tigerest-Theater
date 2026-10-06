@@ -4,11 +4,38 @@
 
 ## 交付
 
-- 正式签名 APK：`android/dist/TigerestTheater-2.4.1-android.1.apk`，78,009,734 字节。
-- APK SHA-256：`50d8bf1f160d6971bb8ffee5976f0791eb6ef1c944e8a327e34d140805239444`。
+- 当前正式签名 APK：`android/dist/TigerestTheater-2.4.1-android.2.apk`，78,030,287 字节，versionCode 2040102。
+- APK SHA-256：`efada976914eb6151f00e8d41b98d803efac3ca489ab8624442e127bd79901ba`。
 - APK Signature Scheme v3 校验通过；签名证书 SHA-256：`d936433bfa928ea9cb67bed07a7e529edca4257cb2ff3e43f1804d495bcdc344`。
 - 构建与使用说明：`android/README.md`；原生来源锁定：`android/native-runtime.lock.json`；逐库／ZIP 验证文件位于 APK 同目录。
 - 本地发布密钥在依赖缓存的 `signing` 目录，受 ACL 保护，没有加入 Git。后续升级须保留并使用这份密钥。
+
+## android.2 播放器与挖孔修复
+
+用户反馈后的实机检查确认：窗口已经使用 `layoutInDisplayCutoutMode=always`，黑边来自根布局把系统栏与挖孔安全区同时扣在网页和视频上。现改为全窗口背景与视频，仅按钮、文字及网页交互区域避开遮挡；键盘和自由窗口标题栏仍按实际遮挡处理。
+
+- 移除安卓网页及原生播放器的桌面全屏／窗口按钮和对应设置项。视频自动沉浸，结束后恢复系统栏。
+- 重排播放控件：前后 10 秒／暂停一行，弹幕／倍速／更多一行；音轨、字幕、字幕偏移、画质、前后集和设置集中到“更多”。长标题单行省略，进度拖动时不再被轮询覆盖，菜单和拖动期间不自动隐藏。网页 MPV 设置入口的触控区域增大。
+- 修复 SurfaceView 尺寸改变后 EGL 缓冲区仍使用旧尺寸，导致暂停帧重复或错位的问题。180 ms 合并尺寸变化后重建视频输出，不重载媒体，不改变播放时间和暂停状态。默认仍使用 MediaCodec 硬件解码；直接模式和复制模式都做过四种面板／方向的目视检查。
+- 修复服务器选择页首次跨来源跳转漏注入安卓桥接和 CSS：取消已开始的导航，注册受信任来源脚本后在下一次 UI 调度中重新导航。回归测试先复现失败，再验证修复；没有扩大桥接可访问的来源范围。
+
+本版重新执行 `testDebugUnitTest,lintDebug,assembleDebug,assembleRelease` 成功。JVM 16/16；Node 18 项及网页外观检查通过；Lint 0 errors / 31 warnings（含中文文本格式化提示）。正式签名 v3 和 20 个原生库的 16 KB 静态对齐复验通过。
+
+| 本版实机复测 | 结果 |
+| --- | --- |
+| 首次跨来源导航 | 桥接与安卓 CSS 存在，桌面窗口按钮不存在。 |
+| 内外屏横竖屏 | 2224×2488、2488×2224、1080×2520、2520×1080；视频表面覆盖完整窗口，控件避开挖孔且至少 48 dp，暂停图像无重复／错位。 |
+| 拖动与菜单 | 长按拖动期间时间预览稳定，松手跳转生效；字幕偏移菜单可操作；播放约 3.5 秒后隐藏，轻触恢复，停止恢复系统栏。 |
+| 字幕与音乐 | 两个外置 SRT 实际下载／切换、1.5 秒偏移、音乐无视频覆盖层、停止事件与拒绝队列契约通过。 |
+| 真实自由窗口 | 410、683、273 CSS px 宽度保留路由及草稿；最窄窗口按钮无裁切，改变尺寸后实际播放时钟继续推进。 |
+| 键盘 | 网页高度从 850 降至 562 CSS px，草稿保留，发送按钮下沿 546，位于键盘上方。 |
+| 设置与播放 | 43 个设置行，保存／搜索／重启／重置通过；播放、暂停、精确拖动、1.5×、双音轨、自然 EOF、暂停启动通过。 |
+| 弹幕 | 自动季集、跨集策略、历史、过期请求丢弃通过；短时约 118 次绘制/秒，仅代表当前 120 Hz 设备的夹具采样。 |
+| 正式版更新 | `adb install --no-incremental -r` 返回 Success，系统报告 android.2 / 2040102；登录状态保留，内外屏真实首页目视核对无额外挖孔黑条和窗口按钮。 |
+
+八个设备脚本分别是 `test_navigation`、`test_shared_players`、`test_keyboard`、`test_freeform`、`test_settings`、`test_playback`、`test_player_layout`、`test_danmaku`。消息／评论的完整生产写入未执行，本版也未重新执行下文 android.1 的 4 项 Android instrumentation 测试。测试日志和截图保存在本地 `android/test-artifacts/ui-*`、`player-layout-*`、`release2-*`。
+
+安装确认：本轮多次调试包更新及最后正式包更新均直接成功，无人工点击；沿用稳定包名／签名及 `--no-incremental -r`。没有修改系统安装验证开关，不能据此保证系统今后永不询问。
 
 ## 功能对应
 
@@ -17,7 +44,7 @@
 | 原网页 UI / CSS | 构建时复制原 `native/`，DocumentStart 注入，保留深色金色风格，补充触屏与窄窗口 CSS。真实服务器的公开登录页已加载；修复共享窗口按钮的 MutationObserver 自循环。 |
 | 消息中心 | 原 `communityMessages.js` 和原服务信任／认证规则。Android WebView 夹具覆盖收件、已发送、回复、分页、未读、已读操作、锚点及认证切换，43 个请求断言通过。 |
 | 评论 | 原 `communityPlugin.js`，覆盖发送、回复、删除、草稿、409 冲突、失联重试及账户取消，38 个请求断言通过。 |
-| 客户端设置 | 共用网页设置组件，显示安卓可用项，过滤 NVIDIA/RIFE/uosc 等桌面项；44 个弹幕设置行、搜索、保存、重启持久化、重置与不支持项拒绝通过。 |
+| 客户端设置 | 共用网页设置组件，显示安卓可用项，过滤 NVIDIA/RIFE/uosc 等桌面项；android.2 去除桌面全屏设置后共 43 行，搜索、保存、重启持久化、重置与不支持项拒绝通过。 |
 | 内置 mpv | APK 自带 JNI/libmpv/FFmpeg，实际渲染 H.264 720p/24fps，MediaCodec 硬件解码；播放、暂停、拖动、倍速、音轨、自然 EOF、取消与暂停启动通过。 |
 | 字幕 | 原生菜单显示 Emby 的全部字幕流，选择通过原网页播放器契约执行；默认关闭时，从两个尚未加载的外置 SRT 中先选第二个、再选第一个，真实下载并显示；菜单设置 1.5 秒偏移通过。 |
 | 音乐 | 真实共享音频插件的 `music` / `#1` / 空字幕参数通过，无视频覆盖层；原生停止触发恰好一次网页 stopped 事件并清理会话。 |
@@ -25,7 +52,7 @@
 | 可变窗口 | 查询当前 WindowMetrics、密度、系统栏/IME/折痕；真实内外屏、旋转、自由窗口缩放保持路由／草稿／进程，视频持续推进。另做手机和平板尺寸模拟。 |
 | 触屏播放器 | 控制栏轻触切换、约 3.5 秒自动收起，48 dp 最小触控高度；密度变化重新计算尺寸。后台暂停、MediaSession、音频焦点与输出断开暂停接收器已接入。 |
 
-## 最终执行结果
+## android.1 基线执行结果
 
 `android/build.ps1 -Tasks testDebugUnitTest,lintDebug,assembleDebug,assembleDebugAndroidTest,assembleRelease`：成功。
 
@@ -80,4 +107,4 @@ USB 设备：24072PX77C，Android 16 / API 36，arm64-v8a，4 KB 页，WebView 1
 
 测试期间的旋转、尺寸和设备状态覆盖已恢复；未修改任一面板的密度设置。临时 USB 常亮和每 8 分钟唤醒辅助程序在测试结束后恢复／停止。
 
-最终安装：2026-10-06 用户要求重试后，正式签名包通过 `adb install --no-incremental -r` 安装到折叠屏设备，返回 `Success`。随后启动指令成功，Activity 状态记录为 `top.tigerest.theater/.MainActivity`。本次重试仅确认安装及 Activity 启动，不新增生产服务验收结论。
+android.1 安装记录：2026-10-06 用户要求重试后，正式签名包通过 `adb install --no-incremental -r` 安装到折叠屏设备，返回 `Success`。随后启动指令成功，Activity 状态记录为 `top.tigerest.theater/.MainActivity`。该次重试仅确认安装及 Activity 启动；当前 android.2 更新结果见上文。

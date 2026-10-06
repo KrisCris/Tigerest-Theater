@@ -14,7 +14,7 @@ const features = [
     "displaymode",
     "screensaver",
     "fileinput"
-].filter(feature => !window.tigerestAndroidApi || feature !== 'filedownload');
+].filter(feature => !window.tigerestAndroidApi || !['filedownload', 'fullscreenchange'].includes(feature));
 
 const getPlugins = () => {
     const basePlugins = [
@@ -1421,6 +1421,7 @@ function installMpvSettingsEntry() {
 }
 
 function installWindowModeEntry() {
+    if (window.tigerestAndroidApi) return;
     if (!document.head || !document.documentElement) {
         setTimeout(installWindowModeEntry, 50);
         return;

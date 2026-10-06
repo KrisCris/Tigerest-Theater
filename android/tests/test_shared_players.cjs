@@ -8,10 +8,9 @@ require('./media_fixture.cjs')(async({c,url,wait,tap,shot,requests})=>{
  await wait('videoPlayer.currentTime()>1000');assert.equal((await c.evaluate('api.player.getSubtitleStreams()')).length,2);
  await c.evaluate('api.player.pause()');await delay(500);
  // Recover the controls by tapping the center, then use the actual native menus.
- await show();await tap('字幕');await tap('外置字幕二');await wait('api.player.mpvDiagnostics().then(d=>d.subtitleTrack>0)');assert.ok(requests.includes('/two.srt'));assert.ok(!requests.includes('/one.srt'));
- await show();await tap('字幕');await tap('外置字幕一');await wait('api.player.mpvDiagnostics().then(d=>d.tracks.some(t=>t["external-filename"]?.endsWith("one.srt")))');assert.ok(requests.includes('/one.srt'));
- // Offset menu is farther along the horizontal action strip; make it visible.
- await show();run('shell','input','swipe','1870','2340','550','2340','300');await tap('字幕偏移');await tap('0.0');run('shell','input','keycombination','113','29');run('shell','input','text','1.5');await tap('保存');assert.equal((await c.evaluate('api.player.mpvDiagnostics()')).subtitleDelay,1.5);
+ await show();await tap('更多');await tap('字幕');await tap('外置字幕二');await wait('api.player.mpvDiagnostics().then(d=>d.subtitleTrack>0)');assert.ok(requests.includes('/two.srt'));assert.ok(!requests.includes('/one.srt'));
+ await show();await tap('更多');await tap('字幕');await tap('外置字幕一');await wait('api.player.mpvDiagnostics().then(d=>d.tracks.some(t=>t["external-filename"]?.endsWith("one.srt")))');assert.ok(requests.includes('/one.srt'));
+ await show();await tap('更多');await tap('字幕偏移');await tap('0.0');run('shell','input','keycombination','113','29');run('shell','input','text','1.5');await tap('保存');assert.equal((await c.evaluate('api.player.mpvDiagnostics()')).subtitleDelay,1.5);
  await c.evaluate('api.player.play()');await delay(4200);assert.equal(await c.evaluate('api.system.debugInformation().then(d=>d.controlsVisible)'),false);shot('external-subtitles-controls-hidden');
  run('shell','input','tap','1112','1000');assert.equal(await c.evaluate('api.system.debugInformation().then(d=>d.controlsVisible)'),true);
  const before=await c.evaluate('api.player.getPosition()');await assert.rejects(c.evaluate(`api.player.queueMedia('${url}/media.mp4',{}, {})`),/Emby/);assert.ok(await c.evaluate('api.player.getPosition()')>=before);

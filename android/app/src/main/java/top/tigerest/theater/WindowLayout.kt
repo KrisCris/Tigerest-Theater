@@ -1,6 +1,10 @@
 package top.tigerest.theater
 data class Pane(val left: Int,val top: Int,val right: Int,val bottom: Int)
+data class EdgeInsets(val left: Int=0,val top: Int=0,val right: Int=0,val bottom: Int=0)
 object WindowLayout {
+ fun safeContent(pane: Pane,width: Int,height: Int,insets: EdgeInsets): Pane = Pane(
+  maxOf(pane.left,insets.left).coerceAtMost(pane.right),maxOf(pane.top,insets.top).coerceAtMost(pane.bottom),
+  minOf(pane.right,width-insets.right).coerceAtLeast(pane.left),minOf(pane.bottom,height-insets.bottom).coerceAtLeast(pane.top))
  fun pane(width: Int,height: Int,hinge: Pane?): Pane {
   val whole = Pane(0,0,width.coerceAtLeast(0),height.coerceAtLeast(0))
   if(hinge == null || width <= 0 || height <= 0) return whole

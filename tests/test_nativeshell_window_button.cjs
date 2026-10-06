@@ -11,5 +11,10 @@ vm.runInNewContext(source.slice(start,end)+'\ninstallWindowModeEntry();',{docume
  const before=mutations;observer();observer();
  assert.equal(mutations,before,'unchanged button must not create child-list mutations in its own observer');
  fullscreen=true;await change();assert.equal(button.textContent,'窗口');
+ button=undefined;observer=undefined;window.tigerestAndroidApi={};
+ vm.runInNewContext(source.slice(start,end)+'\ninstallWindowModeEntry();',{document,window,MutationObserver:class{constructor(fn){observer=fn;}observe(){}},console});
+ await new Promise(r=>setImmediate(r));
+ assert.equal(button,undefined,'Android must not mount a desktop window-mode control');
+ assert.equal(observer,undefined,'Android should not watch the DOM for a desktop-only control');
  console.log('window button: observer terminates and fullscreen label updates');
 })().catch(e=>{console.error(e);process.exitCode=1;});

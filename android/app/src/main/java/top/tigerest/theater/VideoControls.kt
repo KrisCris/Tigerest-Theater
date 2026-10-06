@@ -2,36 +2,57 @@ package top.tigerest.theater
 
 import android.app.AlertDialog
 import android.graphics.Color
+import android.graphics.Rect
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.content.res.ColorStateList
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.MotionEvent
 import android.widget.*
 import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.concurrent.thread
 
 class VideoControls(private val activity: MainActivity,private val player: PlaybackController,private val repository: DanmakuRepository) : FrameLayout(activity) {
-    private val title = TextView(activity).apply { setTextColor(Color.WHITE); textSize = 17f; maxLines = 1 }
+    private val title = TextView(activity).apply { setTextColor(Color.WHITE); textSize = 16f; maxLines = 1; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER_VERTICAL }
     private val time = TextView(activity).apply { setTextColor(Color.WHITE); textSize = 13f }
     private val pause = button("暂停") { player.dispatch(if(player.state.paused) "play" else "pause",JSONArray()) }
-    private val seek = SeekBar(activity)
+    private val seek = SeekBar(activity).apply { contentDescription = "播放进度"; minimumHeight = dp(48) }
     private var dragging = false
-    private val controls = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12),dp(8),dp(12),dp(12)); setBackgroundColor(0xc0181818.toInt()) }
+    private val controls = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(0x10101010,0xe0101010.toInt())) }
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private lateinit var header: LinearLayout
     private var lastPaused = true
-    private val hide = Runnable { if(!dragging && !player.state.paused) setControlsVisible(false) }
+    private var touching = false
+    private var safeInsets = EdgeInsets()
+    private var menuOpen = false
+    private val hide = Runnable { if(!dragging && !touching && !menuOpen && hasWindowFocus() && !player.state.paused) setControlsVisible(false) }
     private fun setControlsVisible(shown: Boolean) { header.visibility = if(shown) View.VISIBLE else View.GONE; controls.visibility = header.visibility }
-    fun showControls() { setControlsVisible(true); handler.removeCallbacks(hide); if(!player.state.paused) handler.postDelayed(hide,3500) }
+    private fun scheduleHide() { handler.removeCallbacks(hide); if(!player.state.paused && !dragging && !touching && !menuOpen) handler.postDelayed(hide,3500) }
+    fun showControls() { setControlsVisible(true); scheduleHide() }
     fun controlsVisible() = controls.visibility == View.VISIBLE
     fun refreshMetrics() {
-        header.layoutParams = (header.layoutParams as LayoutParams).apply { height = dp(64) }
-        header.setPadding(dp(8),dp(8),dp(16),dp(8)); controls.setPadding(dp(12),dp(8),dp(12),dp(12))
-        fun visit(view: View) { if(view is Button) { view.minWidth = dp(64); view.minHeight = dp(48) }; if(view is android.view.ViewGroup) for(index in 0 until view.childCount) visit(view.getChildAt(index)) }
+        applySafeInsets(safeInsets)
+        seek.minimumHeight = dp(48)
+        seek.layoutParams = seek.layoutParams.apply { height = dp(48) }
+        title.textSize = 16f; time.textSize = 13f
+        pause.layoutParams = (pause.layoutParams as LinearLayout.LayoutParams).apply { width = dp(96); height = dp(48); leftMargin = dp(12); rightMargin = dp(12) }
+        fun visit(view: View) { if(view is Button) { view.textSize = 14f; view.minWidth = dp(64); view.minimumWidth = dp(64); view.minHeight = dp(48); view.minimumHeight = dp(48); view.setPadding(dp(10),0,dp(10),0); view.layoutParams?.takeIf { it.height>0 }?.let { view.layoutParams = it.apply { height = dp(48) } } }; if(view is android.view.ViewGroup) for(index in 0 until view.childCount) visit(view.getChildAt(index)) }
         visit(this)
     }
+    fun applySafeInsets(value: EdgeInsets) {
+        safeInsets = value
+        header.layoutParams = (header.layoutParams as LayoutParams).apply { height = dp(64)+value.top }
+        header.setPadding(value.left+dp(8),value.top+dp(8),value.right+dp(8),dp(8))
+        controls.setPadding(value.left+dp(12),dp(8),value.right+dp(12),value.bottom+dp(8))
+    }
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if(event.action == MotionEvent.ACTION_DOWN) { handler.removeCallbacks(hide); if(controls.visibility == View.VISIBLE) handler.postDelayed(hide,3500) }
-        return super.dispatchTouchEvent(event)
+        if(event.actionMasked == MotionEvent.ACTION_DOWN) { touching = true; handler.removeCallbacks(hide) }
+        val handled = super.dispatchTouchEvent(event)
+        if(event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) { touching = false; scheduleHide() }
+        return handled
     }
     private val update = object: Runnable { override fun run() {
         if(!isAttachedToWindow) return
@@ -39,37 +60,57 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         val duration = player.dispatch("getDuration",JSONArray()) as Long
         val position = player.state.positionMs
         if(!dragging) { seek.max = (duration/1000).toInt().coerceAtLeast(1); seek.progress = (position/1000).toInt() }
-        time.text = "${format(position)} / ${format(duration)}   ${player.state.speed}×"; pause.text = if(player.state.paused) "继续" else "暂停"
+        if(!dragging) time.text = "${format(position)} / ${format(duration)}   ${player.state.speed}×"
+        pause.text = if(player.state.paused) "播放" else "暂停"
         handler.postDelayed(this,400)
     } }
     init {
         isClickable = true
         setOnClickListener { if(controls.visibility == View.VISIBLE) { handler.removeCallbacks(hide); setControlsVisible(false) } else showControls() }
-        header = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8),dp(8),dp(16),dp(8)); setBackgroundColor(0x90101010.toInt()) }
+        header = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL; background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(0xd0101010.toInt(),0x10101010)) }
         header.addView(button("返回") { player.dispatch("stop",JSONArray()); activity.endPlaybackSession() })
-        header.addView(title,LinearLayout.LayoutParams(0,dp(48),1f))
-        header.addView(button("全屏") { activity.setFullscreen(!activity.fullscreen) })
+        header.addView(title,LinearLayout.LayoutParams(0,LayoutParams.MATCH_PARENT,1f))
         addView(header,LayoutParams(LayoutParams.MATCH_PARENT,dp(64),Gravity.TOP))
-        controls.addView(time); controls.addView(seek)
+        controls.addView(time); controls.addView(seek,LinearLayout.LayoutParams(-1,dp(48)))
         seek.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
-            override fun onStartTrackingTouch(bar: SeekBar) { dragging = true }
-            override fun onStopTrackingTouch(bar: SeekBar) { dragging = false; player.dispatch("seekTo",JSONArray().put(bar.progress*1000L)) }
-            override fun onProgressChanged(bar: SeekBar,progress: Int,fromUser: Boolean) { if(fromUser) time.text = format(progress*1000L) }
+            override fun onStartTrackingTouch(bar: SeekBar) { dragging = true; handler.removeCallbacks(hide) }
+            override fun onStopTrackingTouch(bar: SeekBar) { dragging = false; player.dispatch("seekTo",JSONArray().put(bar.progress*1000L)); scheduleHide() }
+            override fun onProgressChanged(bar: SeekBar,progress: Int,fromUser: Boolean) { if(fromUser) time.text = "${format(progress*1000L)} / ${format(bar.max*1000L)}" }
         })
-        val scroll = HorizontalScrollView(activity).apply { isHorizontalScrollBarEnabled = false }
+        val transport = LinearLayout(activity).apply { gravity = Gravity.CENTER }
+        transport.addView(button("−10 秒") { skip(-10000) })
+        transport.addView(pause,LinearLayout.LayoutParams(dp(96),dp(48)).apply { leftMargin = dp(12); rightMargin = dp(12) })
+        transport.addView(button("+10 秒") { skip(10000) })
+        controls.addView(transport)
         val actions = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
-        actions.addView(pause)
-        actions.addView(button("前一集") { activity.input("previous") })
-        actions.addView(button("下一集") { activity.input("next") })
-        actions.addView(button("倍速") { val values = doubleArrayOf(.5,.75,1.0,1.25,1.5,1.75,2.0,2.5,3.0,4.0); AlertDialog.Builder(activity).setTitle("播放速度").setItems(values.map { "$it×" }.toTypedArray()) { _,index -> player.dispatch("setPlaybackRate",JSONArray().put(values[index]*1000)) }.show() })
-        actions.addView(button("音轨") { tracks("audio") }); actions.addView(button("字幕") { tracks("sub") })
-        actions.addView(button("字幕偏移") { subtitleOffset() })
-        actions.addView(button("画质") { val rates = longArrayOf(0,4000000,8000000,15000000,25000000,40000000); AlertDialog.Builder(activity).setTitle("播放画质").setItems(arrayOf("自动","4 Mbps","8 Mbps","15 Mbps","25 Mbps","40 Mbps")) { _,index -> activity.bitrate(rates[index]) }.show() })
-        actions.addView(button("弹幕") { danmakuMenu() }); actions.addView(button("设置") { player.dispatch("pause",JSONArray()); activity.showWebSettings() })
-        scroll.addView(actions); controls.addView(scroll); addView(controls,LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.WRAP_CONTENT,Gravity.BOTTOM))
+        for(action in listOf(button("弹幕") { danmakuMenu() },button("倍速") { speedMenu() },button("更多") { moreMenu() })) actions.addView(action,LinearLayout.LayoutParams(0,dp(48),1f))
+        controls.addView(actions); addView(controls,LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.WRAP_CONTENT,Gravity.BOTTOM))
+        applySafeInsets(safeInsets)
+    }
+    private fun skip(delta: Long) { val duration = player.dispatch("getDuration",JSONArray()) as Long; player.dispatch("seekTo",JSONArray().put((player.state.positionMs+delta).coerceIn(0,duration.coerceAtLeast(0)))) }
+    private fun speedMenu() { val values = doubleArrayOf(.5,.75,1.0,1.25,1.5,1.75,2.0,2.5,3.0,4.0); AlertDialog.Builder(activity).setTitle("播放速度").setSingleChoiceItems(values.map { "$it×" }.toTypedArray(),values.indexOfFirst { kotlin.math.abs(it-player.state.speed)<.01 }) { dialog,index -> player.dispatch("setPlaybackRate",JSONArray().put(values[index]*1000)); dialog.dismiss() }.show() }
+    private fun moreMenu() {
+        AlertDialog.Builder(activity).setTitle("播放选项").setItems(arrayOf("音轨","字幕","字幕偏移","画质","前一集","下一集","播放器设置")) { _,index -> when(index) {
+            0 -> tracks("audio"); 1 -> tracks("sub"); 2 -> subtitleOffset()
+            3 -> { val rates = longArrayOf(0,4000000,8000000,15000000,25000000,40000000); AlertDialog.Builder(activity).setTitle("播放画质").setItems(arrayOf("自动","4 Mbps","8 Mbps","15 Mbps","25 Mbps","40 Mbps")) { _,choice -> activity.bitrate(rates[choice]) }.show() }
+            4 -> activity.input("previous"); 5 -> activity.input("next")
+            6 -> { player.dispatch("pause",JSONArray()); activity.showWebSettings() }
+        } }.show()
     }
     private fun dp(value: Int) = (value*resources.displayMetrics.density).toInt()
-    private fun button(label: String,action: () -> Unit) = Button(activity).apply { text = label; textSize = 14f; setTextColor(Color.rgb(255,190,56)); setBackgroundColor(Color.TRANSPARENT); minWidth = dp(64); minHeight = dp(48); setOnClickListener { runCatching(action).onFailure { activity.notify(it.message ?: "操作失败") } } }
+    private fun button(label: String,action: () -> Unit) = Button(activity).apply {
+        text = label; textSize = 14f; isAllCaps = false; setSingleLine(); setTextColor(Color.rgb(255,190,56)); minWidth = dp(64); minimumWidth = dp(64); minHeight = dp(48); minimumHeight = dp(48); setPadding(dp(10),0,dp(10),0)
+        val shape = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(0x18181818) }
+        background = RippleDrawable(ColorStateList.valueOf(0x40ffbe38),shape,null)
+        setOnClickListener { runCatching(action).onFailure { activity.notify(it.message ?: "操作失败") } }
+    }
+    fun diagnostics(x: Int,y: Int): JSONObject {
+        fun rect(view: View): JSONObject { val r = Rect(); view.getDrawingRect(r); offsetDescendantRectToMyCoords(view,r); r.offset(x,y); return JSONObject().put("left",r.left).put("top",r.top).put("right",r.right).put("bottom",r.bottom).put("width",r.width()).put("height",r.height()) }
+        val buttons = JSONArray()
+        fun visit(view: View) { if(view is Button && view.isShown) buttons.put(rect(view).put("label",view.text)); if(view is android.view.ViewGroup) for(i in 0 until view.childCount) visit(view.getChildAt(i)) }
+        visit(this)
+        return JSONObject().put("header",rect(header)).put("bottom",rect(controls)).put("seek",rect(seek)).put("buttons",buttons).put("dragging",dragging).put("time",time.text)
+    }
     fun setTitle(value: String) { title.text = value }
     private fun tracks(type: String) {
         if(type == "sub") {
@@ -130,6 +171,7 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
     }
     private fun network(action: () -> Unit) { thread { runCatching(action).onFailure { activity.runOnUiThread { activity.notify(it.message ?: "弹幕服务暂不可用") } } } }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); handler.post(update) }
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) { super.onWindowFocusChanged(hasWindowFocus); menuOpen = !hasWindowFocus; if(hasWindowFocus && visibility == View.VISIBLE) showControls() else handler.removeCallbacks(hide) }
     override fun onDetachedFromWindow() { handler.removeCallbacks(update); handler.removeCallbacks(hide); super.onDetachedFromWindow() }
     private fun format(ms: Long): String { val seconds = ms/1000; return "%d:%02d".format(seconds/60,seconds%60) }
 }

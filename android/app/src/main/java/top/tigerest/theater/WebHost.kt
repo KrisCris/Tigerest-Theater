@@ -33,7 +33,12 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
                 val origin = runCatching { ServerAddress.origin(address.substringBefore('?').substringBefore('#')) }.getOrNull() ?: return true
                 val saved = settings.string("main","userWebClient")
                 val allowed = origin == ASSET_ORIGIN || (saved.isNotBlank() && runCatching { ServerAddress.origin(saved) }.getOrNull() == origin)
-                if(allowed) { configure(origin); return false }
+                if(allowed) {
+                    // A document-start script registered during this callback misses the already
+                    // starting navigation. Restart it after registration when switching servers.
+                    if(configured != origin) { configure(origin); view.post { view.loadUrl(address) }; return true }
+                    return false
+                }
                 if(request.url.scheme in listOf("http","https")) activity.openExternal(address)
                 return true
             }
@@ -67,6 +72,7 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
             if(BuildConfig.DEBUG) injected.append("\nconsole.info('TGS phase done $file');")
         }
         injected.append("\ndocument.addEventListener('DOMContentLoaded',()=>{const style=document.createElement('style');style.textContent=").append(JSONObject.quote(asset("androidResponsive.css"))).append(";document.head.appendChild(style);});")
+        injected.append("\n").append(asset("androidResponsive.js"))
         injected.append("\n})();")
         script = WebViewCompat.addDocumentStartJavaScript(view,injected.toString(),allowed)
         configured = origin
