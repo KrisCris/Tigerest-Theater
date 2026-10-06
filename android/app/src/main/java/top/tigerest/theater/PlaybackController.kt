@@ -26,6 +26,9 @@ class PlaybackController(private val context: Context, private val settings: Set
     private var destroyed = false
     private var surfaceAttached = false
     private var surfaceDimensions = ""
+    private val danmakuClock = DanmakuClock()
+    @Volatile private var clockEpoch = 0L
+    @Volatile var pauseIntent = 0L; private set
     private val resizeOutput = Runnable {
         if(!destroyed && surfaceAttached && state.active && video) {
             // Recreate EGL after the Android buffer queue settles. A size property update alone
@@ -52,6 +55,7 @@ class PlaybackController(private val context: Context, private val settings: Set
     private val noisyReceiver = object: BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if(intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY && state.active) {
+                pauseIntent++
                 pausedByFocus = false
                 MPVLib.setPropertyBoolean("pause",true)
             }
@@ -60,7 +64,7 @@ class PlaybackController(private val context: Context, private val settings: Set
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
         .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build())
         .setOnAudioFocusChangeListener({ change ->
-            if (change < 0 && state.active && !state.paused) { pausedByFocus = true; MPVLib.setPropertyBoolean("pause",true) }
+            if (change < 0 && state.active) { pauseIntent++; if(!isPaused()) { pausedByFocus = true; MPVLib.setPropertyBoolean("pause",true) } }
             else if (change == AudioManager.AUDIOFOCUS_GAIN && pausedByFocus) { pausedByFocus = false; MPVLib.setPropertyBoolean("pause",false) }
         },main).build()
     init {
@@ -92,6 +96,11 @@ class PlaybackController(private val context: Context, private val settings: Set
         main.removeCallbacks(resizeOutput); main.postDelayed(resizeOutput,180)
     }
     fun positionSeconds(): Double = if (destroyed) 0.0 else MPVLib.getPropertyDouble("time-pos") ?: state.positionMs / 1000.0
+    fun isPaused(): Boolean = destroyed || MPVLib.getPropertyBoolean("pause") != false
+    fun pauseForTutorial() { pausedByFocus=false;MPVLib.setPropertyBoolean("pause",true) }
+    fun danmakuPosition(nanos: Long): Double = danmakuClock.position(positionSeconds(),nanos,
+        !destroyed && state.active && MPVLib.getPropertyBoolean("core-idle") == false,
+        state.speed,clockEpoch)
     fun tracks(): JSONArray = runCatching { JSONArray(MPVLib.getPropertyString("track-list") ?: "[]") }.getOrDefault(JSONArray())
     fun isVideo() = video
     private fun emit(name: String,vararg args: Any?) { val array = JSONArray(); args.forEach { array.put(it ?: JSONObject.NULL) }; main.post { signal(name,array) } }
@@ -108,7 +117,7 @@ class PlaybackController(private val context: Context, private val settings: Set
                 val options = args.optJSONObject(1) ?: JSONObject(); metadata = args.optJSONObject(2) ?: JSONObject()
                 video = PlaybackContract.isVideo(metadata.optString("type","video"))
                 audio = args.opt(3) ?: 1; subtitle = args.opt(4) ?: -1; startMs = options.optDouble("startMilliseconds",0.0)
-                val generation = state.begin(url); starts.add(generation); durationMs = 0
+                val generation = state.begin(url); starts.add(generation); durationMs = 0; clockEpoch++
                 currentId = metadata.optJSONObject("metadata")?.optString("Id") ?: ""
                 val headers = metadata.optJSONObject("headers") ?: JSONObject()
                 val fields = headers.keys().asSequence().map { key -> require(key == "User-Agent" || key == "Referer") { "不支持的媒体请求头" }; val value = headers.getString(key); require(!value.contains('\n') && !value.contains('\r')); "$key: $value" }.toList()
@@ -121,9 +130,9 @@ class PlaybackController(private val context: Context, private val settings: Set
                 return true
             }
             "stop" -> { val active = state.end(state.generation); MPVLib.command(arrayOf("stop")); audioManager.abandonAudioFocusRequest(focus); mediaSession.isActive = false; main.post { visible(false) }; emit("windowVisible",false); if(active){emit("canceled");emit("stopped")}; return true }
-            "pause" -> MPVLib.setPropertyBoolean("pause",true)
+            "pause" -> { pauseIntent++;pausedByFocus=false;MPVLib.setPropertyBoolean("pause",true) }
             "play" -> MPVLib.setPropertyBoolean("pause",false)
-            "seekTo" -> MPVLib.command(arrayOf("seek",(args.getDouble(0)/1000.0).coerceAtLeast(0.0).toString(),"absolute+exact"))
+            "seekTo" -> { clockEpoch++; MPVLib.command(arrayOf("seek",(args.getDouble(0)/1000.0).coerceAtLeast(0.0).toString(),"absolute+exact")) }
             "setPlaybackRate" -> { val rate = args.getDouble(0)/1000.0; require(rate in 0.25..4.0); MPVLib.setPropertyDouble("speed",rate) }
             "setVolume" -> MPVLib.setPropertyDouble("volume",args.getDouble(0).coerceIn(0.0,100.0))
             "setMuted" -> MPVLib.setPropertyBoolean("mute",args.getBoolean(0))
@@ -212,7 +221,7 @@ class PlaybackController(private val context: Context, private val settings: Set
             "time-pos" -> { state.update(state.generation,value,MPVLib.getPropertyBoolean("pause") == true,MPVLib.getPropertyDouble("speed") ?: 1.0); emit("positionUpdate",state.positionMs); updateMediaSession() }
             "duration" -> { durationMs = (value*1000).toLong(); emit("updateDuration",durationMs) }
             "cache-buffering-state" -> emit("buffering",value.toInt())
-            "speed" -> emit("playbackRateChanged",value)
+            "speed" -> { state.update(state.generation,positionSeconds(),isPaused(),value); emit("playbackRateChanged",value) }
         }
     } }
     override fun eventProperty(property: String, value: Boolean) { val generation = eventGeneration; main.post {

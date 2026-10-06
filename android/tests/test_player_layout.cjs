@@ -32,7 +32,7 @@ require('./media_fixture.cjs')(async({c,url,wait,tap,shot})=>{
    assert.ok(!/showing=true/.test(run('shell','dumpsys','window','policy')),'unlock the cover continuation screen before UI verification');
    run('shell','wm','user-rotation','lock',String(rotate));await delay(600);
    const info=await c.evaluate('api.system.debugInformation()');
-   if(!info.controlsVisible){run('shell','input','tap',String(Math.round(info.width/2)),String(Math.round(info.height/2)));await delay(100);}
+   if(!info.controlsVisible){run('shell','input','tap',String(Math.round(info.width/2)),String(Math.round(info.height/2)));await wait('api.system.debugInformation().then(d=>d.controlsVisible)');}
    const d=await c.evaluate('api.system.debugInformation()');snapshots.push({name,...d});fs.writeFileSync(path.resolve(__dirname,'../test-artifacts/player-layout-results.json'),JSON.stringify({passed:false,snapshots},null,2));shot('player-layout-'+name);
    assert.deepEqual(d.videoBounds,d.pane,'video surface fills the complete pane');assert.ok(d.controls.buttons.length>=6,'controls are actually visible');
    assert.equal(d.width>d.height,rotate===1,'the physical panel has actually rotated');
@@ -54,7 +54,7 @@ require('./media_fixture.cjs')(async({c,url,wait,tap,shot})=>{
   run('shell','input','motionevent','UP',String(x),String(y));await delay(400);
   assert.ok(await c.evaluate('api.player.getPosition()')>45000,'scrub commits the selected position');
   await c.evaluate('api.player.play()');await delay(4300);assert.equal(await c.evaluate('api.system.debugInformation().then(d=>d.controlsVisible)'),false);
-  run('shell','input','tap',String(Math.round(d.width/2)),String(Math.round(d.height/2)));await delay(100);
+  run('shell','input','tap',String(Math.round(d.width/2)),String(Math.round(d.height/2)));await wait('api.system.debugInformation().then(d=>d.controlsVisible)');
   assert.equal(await c.evaluate('api.system.debugInformation().then(d=>d.controlsVisible)'),true);
   await c.evaluate('api.player.stop()');await delay(500);assert.equal(await c.evaluate('api.window.isFullScreen()'),false,'browsing restores system bars');
   fs.writeFileSync(path.resolve(__dirname,'../test-artifacts/player-layout-results.json'),JSON.stringify({passed:true,snapshots},null,2));

@@ -14,7 +14,10 @@ class DanmakuOverlay(context: Context,private val settings: SettingsStore,privat
     private var size = 0f
     private var rowHeight = 0f
     private var duration = 15.0
+    private var frameTime = 0L
     var drawnFrames = 0L; private set
+    var motionFrames = 0L; private set
+    var renderedPosition = 0.0; private set
     fun rebuild() {
         size = (settings.number("danmaku","fontsize") * resources.displayMetrics.density * 0.52).toFloat().coerceIn(12f,120f)
         duration = settings.number("danmaku","scrolltime").coerceIn(2.0,40.0)
@@ -37,10 +40,10 @@ class DanmakuOverlay(context: Context,private val settings: SettingsStore,privat
     override fun onSizeChanged(w: Int,h: Int,oldw: Int,oldh: Int) { rebuild() }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); Choreographer.getInstance().postFrameCallback(this) }
     override fun onDetachedFromWindow() { Choreographer.getInstance().removeFrameCallback(this); super.onDetachedFromWindow() }
-    override fun doFrame(frameTimeNanos: Long) { if(isAttachedToWindow){ if(player.state.active && settings.bool("mpv","enableDanmaku")) invalidate(); Choreographer.getInstance().postFrameCallback(this) } }
+    override fun doFrame(frameTimeNanos: Long) { if(isAttachedToWindow){ frameTime = frameTimeNanos; if(isShown && player.state.active && settings.bool("mpv","enableDanmaku")) invalidate(); Choreographer.getInstance().postFrameCallback(this) } }
     override fun onDraw(canvas: Canvas) {
         if(!settings.bool("mpv","enableDanmaku")) return
-        val position = player.positionSeconds(); var count = 0
+        val position = player.danmakuPosition(if(frameTime>0) frameTime else System.nanoTime()); var count = 0; var scrolling = false
         paint.alpha = (settings.number("danmaku","opacity")*255).toInt().coerceIn(0,255)
         var lo = 0; var hi = glyphs.size
         val oldest = position-maxOf(duration,5.0)
@@ -51,6 +54,7 @@ class DanmakuOverlay(context: Context,private val settings: SettingsStore,privat
             val lifetime = if(comment.mode == 4 || comment.mode == 5) 5.0 else duration
             if(elapsed < 0 || elapsed >= lifetime) continue
             if(count++ >= 180) break
+            if(comment.mode != 4 && comment.mode != 5) scrolling = true
             val x = if(comment.mode == 4 || comment.mode == 5) (width-glyph.width)/2 else (width-(width+glyph.width)*elapsed/duration).toFloat()
             val y = if(comment.mode == 4) height-(glyph.lane+1)*rowHeight-136*resources.displayMetrics.density else (glyph.lane+1)*rowHeight+64*resources.displayMetrics.density
             paint.style = Paint.Style.STROKE; paint.strokeWidth = (settings.number("danmaku","outline")*resources.displayMetrics.density).toFloat(); paint.color = android.graphics.Color.BLACK
@@ -58,6 +62,7 @@ class DanmakuOverlay(context: Context,private val settings: SettingsStore,privat
             val shadow = settings.number("danmaku","shadow").toFloat(); if(shadow > 0) paint.setShadowLayer(shadow,1f,1f,android.graphics.Color.BLACK) else paint.clearShadowLayer()
             canvas.drawText(comment.text,x,y,paint); paint.style = Paint.Style.FILL; paint.color = comment.color or (0xff shl 24); paint.alpha = opacity; canvas.drawText(comment.text,x,y,paint)
         }
-        drawnFrames++
+        if(scrolling && kotlin.math.abs(position-renderedPosition)>.00001) motionFrames++
+        renderedPosition = position; drawnFrames++
     }
 }

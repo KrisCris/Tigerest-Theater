@@ -1,20 +1,23 @@
 # Tigerest Theater / EMBY 大河版
 
-面向 Windows 和 Apple Silicon Mac 的 Emby 桌面播放器：MPV 播放、弹幕、RIFE AI 补帧、画质预设、离线下载，以及作品和单集评论区。
+面向 Windows、Apple Silicon Mac 和 Android 的 Emby 客户端：内置 MPV、弹幕，以及作品和单集评论区。桌面端另有 RIFE AI 补帧、画质预设及离线下载。
 
 媒体库来自你连接的 Emby Server，账号和内容权限由服务器提供。本项目提供客户端，不包含影视资源，也不会自动开通服务器访问权限。
 
 ## V2.4.1
 
-V2.4 增加消息中心、跨作品评论与回复汇总、持久化已读及评论精确跳转。V2.4.1 将补帧性能回退改为提示，恢复用户选择的显示同步，提供高刷弹幕与中文统计帮助。保留 Windows NVIDIA 与 Mac RIFE 补帧、MPV 播放设置和独立扩展。版本变化见 [CHANGELOG](CHANGELOG.md)，验证边界见 [2.4.1 报告](docs/reports/2026-10-05-danmaku-rife-control.md)。下表为已公开的 V2.3.3 下载；新版本的 Windows 安装版与便携包由本次构建生成，发布后可在 [GitHub Releases](https://github.com/Tigerest/Tigerest-Theater/releases) 获取。
+V2.4 增加消息中心、跨作品评论与回复汇总、持久化已读及评论精确跳转。V2.4.1 将桌面补帧性能回退改为提示，恢复用户选择的显示同步，提供高刷弹幕与中文统计帮助。Android 正式版加入同一版本，保留深色金色网页 UI、消息、评论和基础设置，适配手机、折叠屏及平板窗口，新增独立高刷弹幕和播放手势。版本变化见 [CHANGELOG](CHANGELOG.md)，验证边界见 [桌面报告](docs/reports/2026-10-05-danmaku-rife-control.md)及 [Android 报告](docs/reports/2026-10-06-android-stable.md)。Windows 和 Android 当前为 V2.4.1，Mac 下载仍为 V2.3.3。
 
 | 平台 | 下载 | 安装 |
 | --- | --- | --- |
-| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/TigerestTheater-2.3.3-x64.exe) | 按向导安装，可覆盖更新 |
-| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/TigerestTheater-2.3.3-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
+| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.1/TigerestTheater-2.4.1-x64.exe) | 按向导安装，可覆盖更新 |
+| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.1/TigerestTheater-2.4.1-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
+| Android 15+，arm64 / x86_64 | [APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.1/TigerestTheater-2.4.1-android.apk) | 可覆盖 Android 预览版；详见 [安卓说明](android/README.md) |
 | macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/TigerestTheater-2.3.3-arm64.dmg) | 将应用拖入「应用程序」 |
 
 基础包已包含 MPV 和所需运行库。Windows RIFE 的大型 AI 组件使用独立扩展，在客户端设置中下载或离线导入。下载文件可用发布页的 SHA-256 清单核验。
+
+Android 首次播放会展示手势教程：双击播放／暂停，左右滑动快进／快退，左侧上下调整本次播放亮度，右侧上下调整媒体音量；可从播放器“更多 → 手势教程”重看。Android 暂不提供桌面 RIFE、离线下载、后台持续播放或画中画。
 
 ## 连接服务器
 

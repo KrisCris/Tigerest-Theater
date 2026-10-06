@@ -11,7 +11,7 @@ async function test(){
  });
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;let c;
  try{
-  run('reverse','tcp:'+port,'tcp:'+port);run('shell','am','force-stop','top.tigerest.theater.debug');run('shell','am','start','-n','top.tigerest.theater.debug/top.tigerest.theater.MainActivity','--es','url','http://127.0.0.1:'+port);
+  run('reverse','tcp:'+port,'tcp:'+port);run('shell','am','force-stop','top.tigerest.theater.debug');require('./tutorial_fixture.cjs')();run('shell','am','start','-n','top.tigerest.theater.debug/top.tigerest.theater.MainActivity','--es','url','http://127.0.0.1:'+port);
   c=await connect();for(let i=0;i<120;i++){if(await c.evaluate('!!window.api'))break;await delay(100);}
   await c.evaluate(`(()=>{window.playEvents=[];for(const n of ['playing','paused','finished','stopped','error','positionUpdate','updateDuration'])api.player[n].connect((...args)=>playEvents.push({name:n,args}));return api.player.load('http://127.0.0.1:${port}/media.mp4',{autoplay:true,startMilliseconds:5000},{type:'video',metadata:{Id:'fixture',Name:'双音轨测试'},headers:{}},1,-1)})()`);
   for(let i=0;i<150;i++){if(await c.evaluate('playEvents.some(e=>e.name==="positionUpdate"&&e.args[0]>6000)'))break;await delay(100);}

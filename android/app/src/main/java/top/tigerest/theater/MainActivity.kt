@@ -74,12 +74,14 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
                 video.visibility = if(shown) View.VISIBLE else View.GONE
                 setPlaybackScreenAwake(shown); setFullscreen(shown)
                 if(shown) controls.showControls()
+                if(!shown) controls.playbackHidden()
                 if(!shown && !model.player.state.active) { danmaku.clear(); beforePlaybackFullscreen = null }
             }
             model.player.itemChanged = { item ->
                 val episode = if(item.has("IndexNumber")) "S${item.optInt("ParentIndexNumber",1)} E${item.optInt("IndexNumber")}" else ""
                 controls.setTitle(listOf(item.optString("SeriesName"),episode,item.optString("Name")).filter { it.isNotBlank() }.joinToString(" · "))
                 controls.showControls(); danmaku.autoMatch(item)
+                controls.playbackStarted()
             }
             model.settings.changed = { section,values -> bridge.emit("settings","sectionValueUpdate",JSONArray().put(section).put(values)); runOnUiThread { model.player.applySettings(); overlay.rebuild(); if(section == "main") webHost.applySettings() } }
             danmaku.changed = { runOnUiThread { overlay.rebuild(); bridge.emit("danmaku","sourcesChanged",JSONArray().put(danmaku.sourceSnapshot())) } }
@@ -110,6 +112,8 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     fun subtitle(index: Int) { bridge.emit("player","subtitleStreamRequested",JSONArray().put(index)) }
     private fun bounds(value: Pane) = JSONObject().put("left",value.left).put("top",value.top).put("right",value.right).put("bottom",value.bottom)
     fun diagnostics(): JSONObject = JSONObject().put("platform","Android").put("version",android.os.Build.VERSION.RELEASE).put("sdk",android.os.Build.VERSION.SDK_INT).put("width",root.width).put("height",root.height).put("density",resources.displayMetrics.density).put("paused",model.player.state.paused).put("active",model.player.state.active).put("videoVisible",video.visibility == View.VISIBLE).put("controlsVisible",controls.controlsVisible()).put("danmakuFrames",overlay.drawnFrames).put("refreshRate",display?.refreshRate ?: 60f)
+        .put("danmakuMotionFrames",overlay.motionFrames).put("danmakuPosition",overlay.renderedPosition)
+        .put("windowBrightness",controls.windowBrightness()).put("effectiveBrightness",controls.effectiveBrightness()).put("mediaVolume",controls.mediaVolume())
         .put("fullscreen",fullscreen).put("pane",bounds(currentPane)).put("safeContent",bounds(safeContent)).put("videoBounds",bounds(Pane(video.left,video.top,video.right,video.bottom))).put("controls",controls.diagnostics(video.left,video.top))
     fun loading(active: Boolean) { if(::progress.isInitialized) progress.visibility = if(active) View.VISIBLE else View.GONE }
     fun webError(message: String) { loading(false); notify(message) }
@@ -120,6 +124,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     fun toggleDanmaku() { model.settings.set("mpv","enableDanmaku",!model.settings.bool("mpv","enableDanmaku")); overlay.rebuild() }
     fun showWebSettings(section: String = "video") {
         video.visibility = View.GONE
+        controls.playbackHidden()
         setFullscreen(false)
         // The same settings component is available before and after Emby login.
         webHost.view.evaluateJavascript("(async()=>{const panel=await window.tigerestMountSettings?.(null,${JSONObject.quote(section)});if(!panel)return;const observer=new MutationObserver(()=>{if(!document.getElementById('tigerest-settings-overlay')){observer.disconnect();window.tigerestAndroidApi.player.setVideoOnlyMode(true)}});observer.observe(document.body,{childList:true});})()",null)
@@ -165,7 +170,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     override fun onDisplayAdded(displayId: Int) { updateWindowMetrics() }
     override fun onDisplayRemoved(displayId: Int) { updateWindowMetrics() }
     override fun onDisplayChanged(displayId: Int) { updateWindowMetrics() }
-    override fun onStop() { super.onStop(); if(::webHost.isInitialized) model.player.background() }
+    override fun onStop() { super.onStop(); if(::webHost.isInitialized) { controls.playbackHidden();model.player.background() } }
     override fun onSaveInstanceState(outState: Bundle) { if(::webHost.isInitialized) webHost.view.saveState(outState); super.onSaveInstanceState(outState) }
     override fun onDestroy() { getSystemService(DisplayManager::class.java).unregisterDisplayListener(this); webFileCallback?.onReceiveValue(null); if(::bridge.isInitialized) bridge.close(); if(::webHost.isInitialized) webHost.close(); super.onDestroy() }
 }
