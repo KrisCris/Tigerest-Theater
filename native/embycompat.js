@@ -121,15 +121,17 @@
                 constructor() { this.id = 'tigerest-native-settings'; }
                 getRoutes() {
                     window.tigerestInstallSettingsMenu?.();
-                    const base = {type: 'settings', settingsType: 'app',
-                        contentPath: 'none', templateType: 'settings', settingsTheme: true,
+                    const base = {contentPath: 'none', templateType: 'settings', settingsTheme: true,
                         icon: '&#xe8b8;'};
+                    // Keep old links routable, but only category routes belong
+                    // to Emby's shared settings drawer/overview menu filter.
                     return [{...base, path: 'settings.html', order: 25,
                         title: window.tigerestAndroidApi ? '客户端设置' : 'MPV 播放设置',
                         controller: 'tigerest/settings-view.js'},
                         ...(window.tigerestSettingsCategories?.() || []).map((section, index) => ({
-                            ...base, path: `settings/${section.key}.html`, title: section.title,
-                            icon: '&#xe5cc;', order: 25 + (index + 1) / 100,
+                            ...base, type: 'settings', settingsType: 'app',
+                            path: `settings/${section.key}.html`, title: section.title, icon: section.icon,
+                            order: 25 + (index + 1) / 100,
                             tigerestSettingsSection: section.key,
                             controller: `tigerest/settings-${section.key}-view.js`
                         }))];

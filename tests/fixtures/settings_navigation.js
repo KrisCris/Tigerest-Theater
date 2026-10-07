@@ -24,18 +24,31 @@ window.settingsRouter = {
 window.renderSettingsDrawer = () => {
     const container = document.querySelector('.navDrawerItemsContainer');
     container.replaceChildren();
-    container.items = settingsRoutes.map(route => ({Name: route.title, href: route.path, Icon: route.icon}));
+    // This is the shared filter in Emby's getAppSettingsMenuItems(), also used
+    // by getSettingsDrawerHtml() for the full settings overview.
+    container.items = [{Name: 'General', href: '/settings/general', Icon: '&#xe8b8;'},
+        ...settingsRoutes.filter(route => route.type === 'settings' && route.settingsType !== 'user')
+            .map(route => ({Name: route.title, href: route.path, Icon: route.icon}))];
     container.getItem = index => container.items[index];
     container.items.forEach((item, index) => {
         const button = document.createElement('button');
         button.className = 'navMenuOption navDrawerListItem listItem';
         button.dataset.index = index;
         const content = document.createElement('div');
-        content.className = 'navMenuOption-listItem-content';
+        content.className = 'navMenuOption-listItem-content listItem-content';
+        const image = document.createElement('div');
+        image.className = 'navDrawerListItemImageContainer listItemImageContainer';
+        const icon = document.createElement('i');
+        icon.className = 'md-icon navDrawerListItemIcon';
+        icon.innerHTML = item.Icon;
+        image.append(icon);
         const label = document.createElement('div');
         label.className = 'listItemBody navDrawerListItemBody';
-        label.textContent = item.Name;
-        content.append(label); button.append(content); container.append(button);
+        const text = document.createElement('span');
+        text.className = 'listItemBodyText';
+        text.textContent = item.Name;
+        label.append(text);
+        content.append(image, label); button.append(content); container.append(button);
         button.addEventListener('click', () => settingsRouter.show(item.href));
     });
 };

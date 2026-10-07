@@ -6,15 +6,22 @@ const renderer=shell.slice(shell.indexOf('function createRifeExtensionPanel('),s
 const catalog=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../resources/settings/settings_description.json'),'utf8'));
 const sections=catalog.filter(s=>!s.hidden && s.order && s.values);
 const descriptions={},defaults={};
+// Optional local copy of Emby's own font, for screenshots without a live server.
+const iconFont=process.env.TIGEREST_SETTINGS_ICON_FONT;
 for(const section of sections){
  const values=section.values.filter(v=>!v.hidden && (!v.platforms || v.platforms.includes('windows')) && !v.platforms_excluded?.includes('windows'));
  descriptions[section.section]=values.map(v=>({key:v.value,displayName:v.display_name||v.value,help:v.help||'',inputType:v.input_type,options:v.possible_values?.map(o=>({value:o[0],title:String(o[1])}))}));
  defaults[section.section]=Object.fromEntries(values.map(v=>[v.value,v.default]));
 }
 withBrowser({
+ ...(iconFont?{'/emby-material-icons.woff2':{type:'font/woff2',path:path.resolve(iconFont)}}:{}),
  '/':{type:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
  body{margin:0;background:#141414;color:#eee;font:16px system-ui}#origin{margin:20px}#host{margin:30px auto;max-width:1100px}.view{margin-left:260px}
- .mainDrawer{position:fixed;inset:0 auto 0 0;width:260px;overflow:auto;background:#202020}.navMenuOption{display:block;width:100%;padding:0;border:0;color:inherit;background:none;text-align:left;font:inherit;cursor:pointer}.navMenuOption-listItem-content{display:flex;align-items:center;gap:12px;padding:14px 20px}.navMenuOption-selected{color:#ffbe38;background:#ffffff09}
+ .mainDrawer{position:fixed;inset:0 auto 0 0;width:260px;overflow:auto;background:#202020}.navMenuOption{display:block;width:100%;padding:0;border:0;color:inherit;background:none;text-align:left;font:inherit;cursor:pointer}.listItem-content{display:flex;align-items:center;padding:14px 20px}.navMenuOption-selected{color:#ffbe38;background:#ffffff09}
+ /* Emby 4.10.0.40 modules/navdrawer/navdrawer.css: preserve the actual cascade. */
+ .navMenuOption-listItem-content{-webkit-padding-start:.6em!important;padding-inline-start:.6em!important}.navMenuOption-listItem-content-reduceleftpadding{-webkit-padding-start:.25em!important;padding-inline-start:.25em!important}.navDrawerListItemImageContainer{width:1.8em!important;height:1.8em!important;flex-shrink:0}.navDrawerListItemBody{padding:.19em .5em!important}
+ ${iconFont?'@font-face{font-family:"Material Symbols Rounded";font-style:normal;font-weight:400;src:url(/emby-material-icons.woff2) format("woff2")}':''}
+ .md-icon{font-family:'Material Symbols Rounded'!important;font-weight:400;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;overflow-wrap:normal;-webkit-font-smoothing:antialiased;text-rendering:optimizelegibility;font-feature-settings:'liga';font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24;overflow:hidden;vertical-align:middle}
  @media(max-width:760px){.mainDrawer{display:none;z-index:1000;box-shadow:0 0 0 100vmax #0008}.mainDrawer.drawer-open{display:block}.view{margin-left:0}}
  </style><body><aside class="mainDrawer"><div class="mainDrawerScrollSlider"><div class="navDrawerItemsContainer itemsContainer" data-listindex="0"></div></div></aside><div class="view"><button id="origin">设置</button><div id="host" class="readOnlyContent"></div></div><script>
  // The injected Qt shell must finish wiring native settings before this fixture replaces its boundary.
@@ -29,16 +36,37 @@ withBrowser({
  </script><script src="/settings.js"></script></body>`},
  '/settings.js':{body:renderer}
 },async({evaluate,call})=>{
+ const assertDrawerAlignment = async layout => {
+  const positions=await evaluate(`(()=>{const position=row=>({icon:row.querySelector('.navDrawerListItemIcon').getBoundingClientRect().left,text:row.querySelector('.listItemBodyText').getBoundingClientRect().left});return {native:position(document.querySelector('.mainDrawer .navMenuOption')),categories:[...document.querySelectorAll('.mainDrawer [data-settings-category]')].map(row=>({category:row.dataset.settingsCategory,...position(row)}))}})()`);
+  assert.equal(positions.categories.length,7);
+  for(const category of positions.categories){
+   assert.ok(Math.abs(category.icon-positions.native.icon)<1,`${layout}: ${category.category} icon must align with native General (${JSON.stringify(positions)})`);
+   assert.ok(Math.abs(category.text-positions.native.text)<1,`${layout}: ${category.category} text must align with native General (${JSON.stringify(positions)})`);
+  }
+ };
+ await call('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  await evaluate('window.fixtureReady');
  await evaluate(`window.NativeShell={AppHost:{}};window.settingsModules=new Map();window.define=(id,deps,factory)=>settingsModules.set(id,{deps,factory});window.tigerestMountSettings=mountTigerestSettings;window.tigerestSettingsCategories=getTigerestSettingsCategories;window.tigerestInstallSettingsMenu=installTigerestSettingsMenu;`);
  await evaluate(fs.readFileSync(path.resolve(__dirname,'../native/embycompat.js'),'utf8'));
  await evaluate(fs.readFileSync(path.resolve(__dirname,'fixtures/settings_navigation.js'),'utf8'));
+ if(iconFont){
+  await evaluate('document.fonts.ready');
+  assert.equal(await evaluate('document.fonts.check(\'16px "Material Symbols Rounded"\')'),true,'local native icon font loaded');
+ }
  await evaluate('openSettingsCategory("audio")');
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-inline .tgs-tabs, #tigerest-settings-inline [role=tablist]").length'),0,
   'content has no duplicate category navigation');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category]")].map(row=>row.dataset.settingsCategory)'),
   ['main','audio','video','subtitles','mpv','danmaku','other'],'all supported categories are in Emby left navigation');
  assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'audio');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .listItemBodyText")].map(node=>node.textContent)'),
+  ['General','客户端','音频','视频','字幕','MPV 画质与插件','弹幕样式','高级'],'native menu has categories without a redundant parent entry');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category] .md-icon")].map(node=>node.textContent.codePointAt(0))'),
+  [0xe30c,0xe050,0xe04b,0xe01c,0xe024,0xe0b7,0xe429],'native rows render each semantic category icon instead of arrows');
+ await assertDrawerAlignment('desktop');
+ await evaluate(`document.querySelectorAll('.mainDrawer .listItem-content').forEach(node=>node.classList.replace('navMenuOption-listItem-content','navMenuOption-listItem-content-reduceleftpadding'))`);
+ await assertDrawerAlignment('TV wrapper');
+ await evaluate(`document.querySelectorAll('.mainDrawer .listItem-content').forEach(node=>node.classList.replace('navMenuOption-listItem-content-reduceleftpadding','navMenuOption-listItem-content'))`);
  assert.ok(await evaluate('document.querySelectorAll(".tgs-setting").length>70'),'all supported setting definitions render');
  assert.equal(await evaluate('[...document.querySelectorAll(".tgs-setting input,.tgs-setting select,.tgs-setting textarea")].every(input=>input.labels?.length===1)'),true,'every input is associated with its visible form label');
  await evaluate(`(()=>{const search=document.querySelector('.tgs-search');search.value='透明度';search.dispatchEvent(new Event('input'))})()`);
@@ -56,13 +84,14 @@ withBrowser({
  await evaluate('renderSettingsDrawer();new Promise(resolve=>setTimeout(resolve,20))');
  assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),7,'rerender does not duplicate native menu entries');
  assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'danmaku','reset/rerender preserve selected category');
- await evaluate(`(()=>{const container=document.querySelector('.navDrawerItemsContainer');const rowItems=new Map([...container.children].map((row,index)=>[row,container.items[index]]));container.getItemFromElement=row=>rowItems.get(row);container.items=null;container.getItem=()=>null;for(const row of container.children){delete row.dataset.index;row.querySelector('.listItemBody').textContent=rowItems.get(row).Name;}window.virtualRowItems=rowItems;})()`);
+ await evaluate(`(()=>{const container=document.querySelector('.navDrawerItemsContainer');const rowItems=new Map([...container.children].map((row,index)=>[row,container.items[index]]));container.getItemFromElement=row=>rowItems.get(row);container.items=null;container.getItem=()=>null;for(const row of container.children){delete row.dataset.index;row.querySelector('.listItemBodyText').textContent=rowItems.get(row).Name;}window.virtualRowItems=rowItems;})()`);
  assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),7,'virtualized native rows resolve through getItemFromElement');
  await call('Emulation.setDeviceMetricsOverride',{width:360,height:740,deviceScaleFactor:1,mobile:true});
  await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true,'phone has no document overflow');
  assert.equal(await evaluate('document.querySelectorAll(".tgs-tabs").length'),0,'phone has no horizontal category strip');
  await evaluate('document.querySelector(".mainDrawer").classList.add("drawer-open");document.querySelector("[data-settings-category=video]").focus()');
+ await assertDrawerAlignment('phone drawer');
  assert.equal(await evaluate('document.activeElement.dataset.settingsCategory'),'video','native category accepts focus');
  await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13,text:'\r'});
  await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
@@ -89,6 +118,6 @@ withBrowser({
  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
  assert.equal(await evaluate('!!document.querySelector("#tigerest-settings-overlay")'),false);
  assert.equal(await evaluate('document.activeElement.id'),'origin','fallback closes and restores focus');
- console.log('settings UI: native category routes, single pane, search/reset/persistence, drawer rerender, keyboard activation, phone layout, cached route resume and fallback cleanup passed');
+ console.log('settings UI: native category routes without redundant parent, desktop/TV/phone native alignment, single pane, search/reset/persistence, drawer rerender, keyboard activation, phone layout, cached route resume and fallback cleanup passed');
 // Qt does not tick animation frames when launched with windowsHide, even while document.hidden is false.
 },{visible:true}).catch(error=>{console.error(error);process.exitCode=1});

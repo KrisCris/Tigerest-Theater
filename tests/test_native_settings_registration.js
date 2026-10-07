@@ -21,13 +21,16 @@ function modules() {
     return {context,registrations};
 }
 
-test('MPV settings register a client settings route rendered within Emby', () => {
+// Both Emby's drawer and settings overview use this route filter.
+const menuRoutes = routes => routes.filter(route=>route.type==='settings' && route.settingsType!=='user');
+
+test('legacy settings URL remains routable without adding a menu entry', () => {
     const {context,registrations}=modules();
     assert.ok(context.appStartInfo.plugins.includes('tigerest/settings.js'));
     const plugin = new (registrations.get('tigerest/settings.js').factory())();
-    const [route] = plugin.getRoutes();
-    assert.equal(route.type,'settings');
-    assert.notEqual(route.settingsType,'user');
+    const route = plugin.getRoutes().find(route=>route.path==='settings.html');
+    assert.ok(route);
+    assert.equal(menuRoutes([route]).length,0,'legacy parent must be absent from both native settings menus');
     assert.equal(route.contentPath,'none');
     assert.equal(route.templateType,'settings');
     assert.equal(route.settingsTheme,true,'the integrated page retains the Emby settings drawer');
@@ -35,24 +38,62 @@ test('MPV settings register a client settings route rendered within Emby', () =>
     assert.ok(registrations.has(route.controller));
 });
 
-test('supported categories register immediately after the parent as native Emby routes', () => {
+test('only supported categories appear once in native settings menus', () => {
     const {context,registrations}=modules();
     const plugin=new (registrations.get('tigerest/settings.js').factory())();
-    const routes=plugin.getRoutes();
-    assert.deepEqual(Array.from(routes.slice(1),route=>route.tigerestSettingsSection),
+    const routes=menuRoutes(plugin.getRoutes());
+    assert.deepEqual(Array.from(routes,route=>route.tigerestSettingsSection),
         ['main','audio','video','subtitles','mpv','danmaku','other']);
-    for(const route of routes.slice(1)){
+    for(const route of routes){
         assert.equal(route.type,'settings');
         assert.equal(route.settingsTheme,true);
-        assert.ok(route.order>routes[0].order && route.order<routes[0].order+1);
+        assert.ok(route.order>=25 && route.order<26);
         assert.ok(registrations.has(route.controller));
     }
     context.tigerestAndroidApi={};
     context.jmpInfo.sections=context.jmpInfo.sections.filter(section=>section.key!=='other');
-    assert.equal(plugin.getRoutes()[0].title,'客户端设置');
+    const androidRoutes=menuRoutes(plugin.getRoutes());
+    assert.equal(androidRoutes.some(route=>route.title==='客户端设置'),false);
+    assert.equal(androidRoutes.filter(route=>route.title==='客户端').length,1);
     assert.equal(plugin.getRoutes().some(route=>route.tigerestSettingsSection==='other'),false,
         'unsupported categories are not exposed');
     assert.equal(plugin.getRoutes().find(route=>route.tigerestSettingsSection==='mpv').title,'播放器');
+});
+
+test('category routes use semantic Emby material icons from shared category metadata', () => {
+    const {context,registrations}=modules();
+    const plugin=new (registrations.get('tigerest/settings.js').factory())();
+    // Verified against Emby 4.10's mi_2024_05 font cmap: desktop_windows,
+    // volume_up, videocam, closed_caption, high_quality, chat and tune.
+    const icons={main:'&#xe30c;',audio:'&#xe050;',video:'&#xe04b;',subtitles:'&#xe01c;',
+        mpv:'&#xe024;',danmaku:'&#xe0b7;',other:'&#xe429;'};
+    for(const android of [false,true]){
+        context.tigerestAndroidApi=android?{}:null;
+        const categories=context.tigerestSettingsCategories();
+        for(const route of menuRoutes(plugin.getRoutes())){
+            assert.equal(route.icon,icons[route.tigerestSettingsSection]);
+            assert.equal(route.icon,categories.find(section=>section.key===route.tigerestSettingsSection).icon,
+                'the category metadata supplies the native route icon on every platform');
+            assert.notEqual(route.icon,'&#xe5cc;','category icons are not hierarchy arrows');
+        }
+    }
+});
+
+test('default MPV shortcut selects its category while legacy deep links remain supported', async () => {
+    const {context,registrations}=modules();
+    const routes=new (registrations.get('tigerest/settings.js').factory())().getRoutes();
+    for(const route of routes)route.path='/plugins/tigerest-native-settings/'+route.path;
+    const shown=[];
+    const router={getRoutes:()=>routes,show:path=>shown.push(path)};
+    context.Emby={importModule:async()=>router};
+    const shell=fs.readFileSync(__dirname+'/../native/nativeshell.js','utf8');
+    vm.runInNewContext(shell.slice(shell.indexOf('async function openTigerestSettings('),shell.indexOf('window.tigerestMountSettings =')),context);
+    await context.openTigerestSettings();
+    await context.openTigerestSettings('main');
+    assert.deepEqual(shown,['/plugins/tigerest-native-settings/settings/mpv.html','/plugins/tigerest-native-settings/settings/main.html']);
+    router.getRoutes=()=>routes.filter(route=>route.path.endsWith('/settings.html'));
+    await context.openTigerestSettings('subtitles');
+    assert.equal(shown.at(-1),'/plugins/tigerest-native-settings/settings.html?section=subtitles');
 });
 
 test('native category controllers keep the selected category through pause and resume', async () => {

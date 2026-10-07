@@ -713,37 +713,45 @@ function getTigerestSettingsCategories() {
     const sectionMeta = {
         main: {
             title: '客户端',
+            icon: '&#xe30c;', // desktop_windows
             subtitle: '窗口、启动与系统集成'
         },
         audio: {
             title: '音频',
+            icon: '&#xe050;', // volume_up
             subtitle: '输出设备、声道与直通'
         },
         video: {
             title: '视频',
+            icon: '&#xe04b;', // videocam
             subtitle: '硬件解码、同步与转码策略'
         },
         subtitles: {
             title: '字幕',
+            icon: '&#xe01c;', // closed_caption
             subtitle: '字体、样式、位置与 ASS 行为'
         },
         mpv: {
             title: 'MPV 画质与插件',
+            icon: '&#xe024;', // high_quality
             subtitle: '渲染、HDR、缓存、uosc 与弹幕'
         },
         danmaku: {
             title: '弹幕样式',
+            icon: '&#xe0b7;', // chat
             subtitle: '内置 uosc_danmaku 的长期默认外观'
         },
         other: {
             title: '高级',
+            icon: '&#xe429;', // tune
             subtitle: '直接传入 mpv.conf 选项'
         }
     };
     if (window.tigerestAndroidApi) {
         sectionMeta.main.subtitle = '服务器、窗口与网页浏览';
         sectionMeta.audio.subtitle = '声道与音量均衡';
-        sectionMeta.mpv = {title: '播放器', subtitle: '音轨偏好、HDR、缓存与弹幕'};
+        sectionMeta.mpv.title = '播放器';
+        sectionMeta.mpv.subtitle = '音轨偏好、HDR、缓存与弹幕';
         sectionMeta.danmaku.subtitle = '字号、描边、速度、透明度与显示范围';
     }
     return [...jmpInfo.sections].sort((a, b) => a.order - b.order)
@@ -756,10 +764,6 @@ function installTigerestSettingsMenu() {
         installTigerestSettingsMenu.refresh();
         return;
     }
-    const style = document.createElement('style');
-    style.id = 'tigerest-settings-menu-style';
-    style.textContent = '.mainDrawer .tigerest-settings-child .navMenuOption-listItem-content { padding-inline-start: 2.5em; }';
-    (document.head || document.documentElement).appendChild(style);
     const refresh = () => {
         const active = document.querySelector('#tigerest-settings-inline .tgs-section.active')?.dataset.section;
         for (const row of document.querySelectorAll('.mainDrawer .navMenuOption')) {
@@ -771,19 +775,15 @@ function installTigerestSettingsMenu() {
             const href = item?.href || row.getAttribute('href') || '';
             const match = href.match(/\/plugins\/tigerest-native-settings\/settings\/([a-z]+)\.html(?:[?#]|$)/);
             if (match) {
-                row.classList.add('tigerest-settings-child');
                 row.dataset.settingsCategory = match[1];
                 if (active) row.classList.toggle('navMenuOption-selected', match[1] === active);
                 if (active === match[1]) row.setAttribute('aria-current', 'page');
                 else row.removeAttribute('aria-current');
-            } else if (row.classList.contains('tigerest-settings-child')) {
+            } else if (row.hasAttribute('data-settings-category')) {
                 // Virtualized native rows may be reused for an unrelated item.
-                row.classList.remove('tigerest-settings-child');
                 delete row.dataset.settingsCategory;
                 row.removeAttribute('aria-current');
             }
-            if (active && /\/plugins\/tigerest-native-settings\/settings\.html(?:[?#]|$)/.test(href))
-                row.classList.remove('navMenuOption-selected');
         }
     };
     installTigerestSettingsMenu.refresh = refresh;
