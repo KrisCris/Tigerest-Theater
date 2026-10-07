@@ -89,8 +89,14 @@ void TestMpvSvp::embeddedConfigExposesSvpIpc()
   });
   QCOMPARE(endpoint, QStringLiteral("/tmp/mpvsocket"));
   QLocalSocket socket;
-  socket.connectToServer(endpoint);
-  QVERIFY2(socket.waitForConnected(3000), qPrintable(socket.errorString()));
+  // mpv initializes its IPC listener on a worker thread. ConnectionRefused
+  // ends a connection attempt immediately, so a single wait is not a readiness wait.
+  QTRY_VERIFY2_WITH_TIMEOUT(([&] {
+    if (socket.state() == QLocalSocket::ConnectedState) return true;
+    socket.abort();
+    socket.connectToServer(endpoint);
+    return socket.waitForConnected(50);
+  })(), qPrintable(socket.errorString()), 3000);
   socket.write("{\"command\":[\"get_property\",\"mpv-version\"],\"request_id\":42}\n");
   socket.flush();
   QJsonObject response;
