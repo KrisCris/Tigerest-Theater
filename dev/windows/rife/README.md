@@ -72,7 +72,10 @@ python dev/windows/rife/benchmark_player.py --host build/tests/rife_player_bench
 ```
 
 模型可选 `rife-4.25-lite`、`rife-4.25`、`rife-4.25-heavy`；目标 60/120/240
-沿用整数倍策略。后端为 `gpu-next` 或 `libmpv`，Shader 预设为
+按 0.5 倍一档选择最接近目标的 1.5–15 倍倍率（距离相同取较低档）。例如
+24→60 使用 2.5×，24000/1001→目标 60 输出 60000/1001；目标 0 保留 2×。
+半整数倍率直接按输出时间点推理，最后一帧必要时缩短，保持原片总时长。
+后端为 `gpu-next` 或 `libmpv`，Shader 预设为
 `default`、`liveaction`、`aggressive`。媒体长度须覆盖预热、截图和完整采样。
 `--baseline` 提供同配置原帧对照；引擎须已准备，否则此次保持原帧而不作为性能测量。
 

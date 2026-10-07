@@ -119,7 +119,7 @@ RuntimePaths RifeRuntimeManager::pathsFor(const SourceInfo& source)const{
     RuntimePaths paths;paths.backend=Backend::TensorRT;paths.available=available;paths.runtime=root;paths.model=modelId;
     paths.plugin=monitor;paths.script=script;paths.trtPlugin=privateFile(root,manifest["entrypoints"].toObject()["plugin"].toString());
     paths.alignment=model()["alignment"].toInt(1);paths.implementation=model()["implementation"].toInt(2);paths.numStreams=2;
-    paths.factor=targetFps?integerMultiplier({source.fpsNum,source.fpsDen},targetFps):2;
+    paths.factor=targetFps?interpolationMultiplier({source.fpsNum,source.fpsDen},targetFps):2;
     paths.engine=cachedEngine(source);return paths;
 }
 void RifeRuntimeManager::prepare(const SourceInfo& source,quint64 itemGeneration){

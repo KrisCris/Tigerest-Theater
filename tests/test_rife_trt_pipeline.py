@@ -171,9 +171,141 @@ class FrameGraphTests(unittest.TestCase):
             self.assertEqual(f.props['_TigerestRifeSynthesized'], 0)
 
     def test_invalid_multipliers_cannot_overflow_mpv_virtual_frame_count(self):
-        for factor in (1, 16, 0, -2, 2.5, '2', True):
-            with self.assertRaisesRegex(ValueError, 'integer factor'):
+        for factor in (1, 16, 0, -2, 1.25, 2.25, 14.75, float('nan'),
+                       float('inf'), -float('inf'), '2', True, None):
+            with self.assertRaisesRegex(ValueError, 'half-step factor'):
                 self.build(self.source(), dict(self.options, factor=factor))
+
+    def test_half_steps_use_the_exact_intermediate_timepoints(self):
+        # Compare actual GPU pixels with independently indexed integer graphs:
+        # 1.5x samples 0, 2/3, 4/3, 2, 8/3, and likewise for the other rates.
+        cases = ((1.5, 3, [0, 2, 4, 6, 8]),
+                 (2.5, 5, [0, 2, 4, 6, 8, 10, 12, 14]),
+                 (3.5, 7, list(range(0, 21, 2))),
+                 (7.5, 15, list(range(0, 45, 2))))
+        def pixel_distance(first, second):
+            return max(abs(a - b) for plane in range(3)
+                for a, b in zip(array('f', bytes(first[plane])), array('f', bytes(second[plane]))))
+        source = self.source()
+        for factor, integer_factor, indices in cases:
+            with self.subTest(factor=factor):
+                output = self.build(source, dict(self.options, factor=factor))
+                reference = self.build(source, dict(self.options, factor=integer_factor))
+                self.assertEqual(Fraction(output.fps_num, output.fps_den), 24 * Fraction(factor))
+                frames = list(output.frames())
+                self.assertEqual(len(frames), len(indices))
+                for frame, reference_index in zip(frames, indices):
+                    expected = reference.get_frame(reference_index)
+                    if expected.props['_TigerestRifeSynthesized']:
+                        # Independent native FP16 contexts can differ by a few
+                        # ULPs even for identical integer graphs. This is below
+                        # one 8-bit step; an adjacent timestep is much farther.
+                        self.assertLessEqual(pixel_distance(frame, expected), 1 / 2048)
+                    else:
+                        self.assertEqual(self.bytes(frame), self.bytes(expected))
+                    self.assertEqual(frame.props['_TigerestRifeSynthesized'],
+                                     expected.props['_TigerestRifeSynthesized'])
+                self.assertGreater(pixel_distance(frames[1], reference.get_frame(1)), .05)
+
+    def test_half_step_eof_keeps_exact_duration_for_one_two_and_three_frames(self):
+        rate = Fraction(24000, 1001)
+        for factor in (1.5, 2.5, 3.5, 14.5, 15.0):
+            for count in (1, 2, 3):
+                with self.subTest(factor=factor, count=count):
+                    source = self.source(rate, count)
+                    output = self.build(source, dict(self.options, fps_num=rate.numerator,
+                        fps_den=rate.denominator, factor=factor))
+                    frames = list(output.frames())
+                    full_slots = int(count * factor)
+                    expected_count = full_slots + int(count * factor != full_slots)
+                    self.assertEqual(len(frames), expected_count)
+                    duration = 1 / (rate * Fraction(factor))
+                    durations = [Fraction(f.props['_DurationNum'], f.props['_DurationDen']) for f in frames]
+                    self.assertEqual(durations[:-1], [duration] * (expected_count - 1))
+                    self.assertEqual(durations[-1], count / rate - duration * (expected_count - 1))
+                    self.assertEqual(sum(durations), count / rate)
+                    self.assertEqual(self.bytes(frames[-1]), self.bytes(source.get_frame(count - 1)))
+                    self.assertEqual(frames[-1].props['_TigerestRifeSynthesized'], 0)
+
+    def test_half_step_streaming_eof_shortens_tail_without_fetching_a_neighbour(self):
+        rate = Fraction(24000, 1001)
+        for count in (1, 2, 3):
+            for factor, expected_count in ((1.5, (2, 3, 5)[count - 1]),
+                                            (2.5, (3, 5, 8)[count - 1]),
+                                            (3.5, (4, 7, 11)[count - 1])):
+                with self.subTest(count=count, factor=factor):
+                    source = self.source(rate, count).std.Loop(times=4)
+                    def truncate(n, f):
+                        if n >= count:
+                            raise RuntimeError('Requested a nonexistent streaming neighbour')
+                        output = f.copy()
+                        output.props['_TigerestLastFrame'] = int(n == count - 1)
+                        return output
+                    source = self.core.std.ModifyFrame(source, clips=source, selector=truncate)
+                    output = self.build(source, dict(self.options, fps_num=rate.numerator,
+                        fps_den=rate.denominator, streaming=True, factor=factor))
+                    frames = [output.get_frame(n) for n in range(expected_count)]
+                    self.assertEqual(sum(Fraction(f.props['_DurationNum'], f.props['_DurationDen'])
+                        for f in frames), count / rate)
+                    self.assertEqual(self.bytes(frames[-1]), self.bytes(source.get_frame(count - 1)))
+                    self.assertEqual(frames[-1].props['_TigerestRifeReason'], 'eof')
+
+    def test_high_half_step_accepts_mpv_virtual_length_without_integer_overflow(self):
+        source = self.core.std.BlankClip(self.source(count=1), length=(2**31 - 1) // 16)
+        for factor, expected_count in ((14.5, 1946157042), (15, 2013265905)):
+            output = self.build(source, dict(self.options, factor=factor))
+            self.assertEqual(output.num_frames, expected_count)
+
+    def test_missing_streaming_eof_marker_does_not_probe_a_fractional_neighbour(self):
+        source = self.source(count=1).std.Loop(times=4)
+        def unavailable_neighbour(n, f):
+            if n:
+                raise RuntimeError('Missing EOF metadata must keep lookahead disabled')
+            return f
+        source = self.core.std.ModifyFrame(source, clips=source, selector=unavailable_neighbour)
+        output = self.build(source, dict(self.options, streaming=True, factor=1.5))
+        for n in (0, 1):
+            frame = output.get_frame(n)
+            self.assertEqual(frame.props['_TigerestRifeReason'], 'runtime-eof-missing')
+            self.assertEqual(frame.props['_TigerestRifeSynthesized'], 0)
+            self.assertEqual(self.bytes(frame), self.bytes(source.get_frame(0)))
+            self.assertEqual(Fraction(frame.props['_DurationNum'], frame.props['_DurationDen']), Fraction(1, 36))
+
+    def test_half_step_vfr_bypass_preserves_source_timing_across_boundaries(self):
+        source = self.source()
+        def variable_duration(n, f):
+            output = f.copy()
+            output.props['_DurationNum'] = 1
+            output.props['_DurationDen'] = (20, 40, 10)[n]
+            return output
+        source = self.core.std.ModifyFrame(source, clips=source, selector=variable_duration)
+        output = self.build(source, dict(self.options, factor=1.5))
+        frames = list(output.frames())
+        self.assertEqual([Fraction(f.props['_DurationNum'], f.props['_DurationDen']) for f in frames],
+                         [Fraction(1, 30), Fraction(1, 40), Fraction(1, 60), Fraction(1, 15), Fraction(1, 30)])
+        for frame, source_index in zip(frames, (0, 0, 1, 2, 2)):
+            self.assertEqual(self.bytes(frame), self.bytes(source.get_frame(source_index)))
+            self.assertEqual(frame.props['_TigerestRifeReason'], 'vfr')
+            self.assertEqual(frame.props['_TigerestRifeSynthesized'], 0)
+
+    def test_half_step_metadata_and_cut_bypass_use_target_slots(self):
+        for props, reason in (({'_Transfer': 16}, 'hdr'), ({'_TigerestColorKnown': 0}, 'unknown-color'),
+                              ({'_FieldBased': 1}, 'interlaced')):
+            source = self.core.std.SetFrameProps(self.source(), **props)
+            frames = list(self.build(source, dict(self.options, factor=1.5)).frames())
+            self.assertEqual(sum(Fraction(f.props['_DurationNum'], f.props['_DurationDen']) for f in frames),
+                             Fraction(1, 8))
+            for frame, source_index in zip(frames, (0, 0, 1, 2, 2)):
+                self.assertEqual(self.bytes(frame), self.bytes(source.get_frame(source_index)))
+                self.assertEqual(frame.props['_TigerestRifeReason'], reason)
+                self.assertEqual(frame.props['_TigerestRifeSynthesized'], 0)
+        black = self.core.std.BlankClip(self.source(count=1), color=[0., 0., 0.])
+        white = self.core.std.BlankClip(black, color=[1., 1., 1.])
+        source = self.core.std.SetFrameProps(black + white + black, _Matrix=0, _Primaries=1, _Transfer=1,
+            _Range=1, _FieldBased=0, _DurationNum=1, _DurationDen=24)
+        frames = list(self.build(source, dict(self.options, factor=1.5)).frames())
+        self.assertEqual([f.props['_TigerestRifeReason'] for f in frames], ['', 'cut', 'cut', '', 'eof'])
+        self.assertTrue(all(f.props['_TigerestRifeSynthesized'] == 0 for f in frames))
 
     def test_cut_and_single_frame_do_not_claim_inference(self):
         first = self.core.std.BlankClip(width=256, height=128, format=self.vs.RGBS, length=1, color=[0.,0.,0.])

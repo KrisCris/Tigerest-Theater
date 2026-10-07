@@ -1,5 +1,6 @@
 #include "RifeVsMonitor.h"
 #include "RifeSessionMetrics.h"
+#include "InterpolationPolicy.h"
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -9,7 +10,7 @@ int64_t integer(const VSAPI* api,const VSMap* props,const char* name,int64_t fal
     int error=0;const auto value=api->mapGetInt(props,name,0,&error);
     return error?fallback:value;
 }
-struct Monitor {VSNode* input=nullptr;uint64_t session=0,epoch=0;int factor=2;};
+struct Monitor {VSNode* input=nullptr;uint64_t session=0,epoch=0;double factor=2;};
 const VSFrame* VS_CC monitorFrame(int n,int activation,void* instance,void**,VSFrameContext* context,VSCore*,const VSAPI* api) {
     auto* monitor=static_cast<Monitor*>(instance);
     if(activation==arInitial)api->requestFrameFilter(n,monitor->input,context);
@@ -34,8 +35,10 @@ void VS_CC monitorCreate(const VSMap* in,VSMap* out,void*,VSCore* core,const VSA
         monitor->input=api->mapGetNode(in,"clip",0,nullptr);
         if(!monitor->input)throw std::runtime_error("Monitor requires a clip");
         const auto factor=integer(api,in,"factor",2);
-        if(factor<2||factor>15)throw std::runtime_error("Monitor factor must be from 2 to 15");
-        monitor->factor=int(factor);
+        const auto denominator=integer(api,in,"factor_den",1);
+        if((denominator!=1&&denominator!=2)||!rife::validInterpolationMultiplier(double(factor)/denominator))
+            throw std::runtime_error("Monitor factor must be a half step from 1.5 to 15 with denominator 1 or 2");
+        monitor->factor=double(factor)/denominator;
         monitor->session=uint64_t(integer(api,in,"session",0));
         monitor->epoch=rife::beginInstance(monitor->session);
         VSFilterDependency dependency{monitor->input,rpGeneral};
@@ -50,6 +53,6 @@ void VS_CC monitorCreate(const VSMap* in,VSMap* out,void*,VSCore* core,const VSA
 }
 namespace rife {
 void registerMonitor(VSPlugin* plugin,const VSPLUGINAPI* api) {
-    api->registerFunction("Monitor","clip:vnode;session:int;factor:int:opt;","clip:vnode;",monitorCreate,nullptr,plugin);
+    api->registerFunction("Monitor","clip:vnode;session:int;factor:int:opt;factor_den:int:opt;","clip:vnode;",monitorCreate,nullptr,plugin);
 }
 }

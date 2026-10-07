@@ -59,8 +59,9 @@ withBrowser({
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category]")].map(row=>row.dataset.settingsCategory)'),
   ['main','audio','video','subtitles','mpv','danmaku','other'],'all supported categories are in Emby left navigation');
  assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'audio');
+ const playbackCategoryTitle=await evaluate('window.tigerestAndroidApi ? "播放器" : "MPV 画质与插件"');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .listItemBodyText")].map(node=>node.textContent)'),
-  ['General','客户端','音频','视频','字幕','MPV 画质与插件','弹幕样式','高级'],'native menu has categories without a redundant parent entry');
+  ['General','客户端','音频','视频','字幕',playbackCategoryTitle,'弹幕样式','高级'],'native menu has categories without a redundant parent entry');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category] .md-icon")].map(node=>node.textContent.codePointAt(0))'),
   [0xe30c,0xe050,0xe04b,0xe01c,0xe024,0xe0b7,0xe429],'native rows render each semantic category icon instead of arrows');
  await assertDrawerAlignment('desktop');

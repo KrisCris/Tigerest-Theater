@@ -23,6 +23,6 @@ RIFE_API uint64_t openSession();
 RIFE_API void closeSession(uint64_t session);
 RIFE_API uint64_t beginInstance(uint64_t session);
 RIFE_API void recordFrame(uint64_t session,uint64_t epoch,int index,bool synthesized,double ms,
-                          const std::string& reason,int factor=2,bool timingAvailable=true);
+                          const std::string& reason,double factor=2,bool timingAvailable=true);
 RIFE_API Metrics readMetrics(uint64_t session);
 }

@@ -1,6 +1,7 @@
 """Prepared TensorRT RIFE graph. Playback never compiles or downloads an engine."""
 from array import array
 from fractions import Fraction
+from math import isfinite
 from pathlib import Path
 from threading import RLock
 import vapoursynth as vs
@@ -92,8 +93,11 @@ def build_rife_filter(source, options):
     if not 0 < fps <= Fraction(60001, 1000):
         raise ValueError('Unsupported RIFE frame rate')
     factor = options.get('factor', 2)
-    if type(factor) is not int or not 2 <= factor <= 15:
-        raise ValueError('RIFE requires an integer factor from 2 to 15')
+    if (type(factor) not in (int, float) or not 1.5 <= factor <= 15
+            or not isfinite(factor) or factor * 2 != int(factor * 2)):
+        raise ValueError('RIFE requires a finite half-step factor from 1.5 to 15')
+    factor = Fraction(factor)
+    factor_num, factor_den = factor.numerator, factor.denominator
     implementation = options.get('implementation', 1)
     if type(implementation) is not int or implementation not in (1, 2):
         raise ValueError('Unsupported RIFE model implementation')
@@ -108,11 +112,26 @@ def build_rife_filter(source, options):
         raise ValueError('A complete prepared RIFE engine is required')
     streaming = bool(options.get('streaming', True))
     timing = CfrTiming(fps)
-    original = core.std.Interleave([source] * factor, modify_duration=True)
+    frame_count = (source.num_frames * factor_num + factor_den - 1) // factor_den
+
+    def sample(clip):
+        # Interleaving by the numerator first would exceed VS's signed frame
+        # limit for mpv's virtual input at factors above 8x. Sample a block of
+        # one/two source frames directly, before constructing any inference.
+        if factor_den == 1:
+            return core.std.Interleave([clip] * factor_num, modify_duration=False)
+        paired = clip + clip[-1:] if clip.num_frames % 2 else clip
+        phases = [core.std.SelectEvery(paired, cycle=2, offsets=i, modify_duration=False)
+                  for i in range(2)]
+        return core.std.Interleave([phases[i * factor_den // factor_num]
+            for i in range(factor_num)], modify_duration=False)[:frame_count]
+
+    original = sample(source)
+    output_fps = fps * factor
     template = core.std.BlankClip(source, length=original.num_frames,
-                                  fpsnum=fps.numerator * factor, fpsden=fps.denominator, keep=True)
+                                  fpsnum=output_fps.numerator, fpsden=output_fps.denominator, keep=True)
     neighbour = source[1:] + source[-1:] if source.num_frames > 1 else source
-    next_props = core.std.Interleave([neighbour] * factor, modify_duration=True)
+    next_props = sample(neighbour)
     disabled = None
     bypasses = {}
     generated = None
@@ -120,13 +139,54 @@ def build_rife_filter(source, options):
     conversions = {}
     graph_lock = RLock()
 
+    def is_last(n, props):
+        return (props.get('_TigerestLastFrame') == 1 if streaming
+                else n * factor_den // factor_num == source.num_frames - 1)
+
     def stamp(clip, synthesized, reason=''):
         clip = core.std.RemoveFrameProps(clip, props=['_TigerestRifeTimeMs'])
-        if reason in ('', 'cut', 'eof'):
-            duration = 1 / (fps * factor)
-            clip = core.std.SetFrameProps(clip, _DurationNum=duration.numerator, _DurationDen=duration.denominator)
-        return core.std.SetFrameProps(clip, _TigerestRifeSynthesized=synthesized,
-                                      _TigerestRifeTimingAvailable=0, _TigerestRifeReason=reason)
+        clip = core.std.SetFrameProps(clip, _TigerestRifeSynthesized=synthesized,
+                                     _TigerestRifeTimingAvailable=0, _TigerestRifeReason=reason)
+        normalize = reason in ('', 'cut', 'eof')
+
+        def duration(n, f):
+            output = f[0].copy()
+            props = f[1].props
+            phase = n * factor_den % factor_num
+            span = min(factor_den, factor_num - phase)
+            if not is_last(n, props) and len(f) == 2:
+                span = factor_den
+            if normalize:
+                value = Fraction(span, factor_num) / fps
+            else:
+                num, den = props.get('_DurationNum', 0), props.get('_DurationDen', 0)
+                if num <= 0 or den <= 0:
+                    return output
+                value = Fraction(num * span, den * factor_num)
+                if len(f) == 3:
+                    num, den = f[2].props.get('_DurationNum', 0), f[2].props.get('_DurationDen', 0)
+                    if num <= 0 or den <= 0:
+                        return output
+                    value += Fraction(num * (factor_den - span), den * factor_num)
+            output.props['_DurationNum'] = value.numerator
+            output.props['_DurationDen'] = value.denominator
+            return output
+
+        current = core.std.ModifyFrame(template, clips=[clip, original], selector=duration)
+        if normalize or factor_den == 1:
+            return current
+        crossing = core.std.ModifyFrame(template, clips=[clip, original, next_props], selector=duration)
+
+        def choose_duration(n, f):
+            # A fractional slot can span two source durations during bypass.
+            # Keep this lookahead lazy, especially for a streaming EOF frame.
+            can_look_ahead = (f.props.get('_TigerestLastFrame') == 0 if streaming
+                              else not is_last(n, f.props))
+            if n * factor_den % factor_num + factor_den > factor_num and can_look_ahead:
+                return crossing
+            return current
+
+        return core.std.FrameEval(template, eval=choose_duration, prop_src=original)
 
     def bypass(reason=''):
         if reason not in bypasses:
@@ -147,7 +207,7 @@ def build_rife_filter(source, options):
         if props.get('_FieldBased', -1) != 0:
             return 'interlaced'
         num, den = props.get('_DurationNum', 0), props.get('_DurationDen', 0)
-        if num <= 0 or den <= 0 or not timing.accept(index, factor * Fraction(num, den)):
+        if num <= 0 or den <= 0 or not timing.accept(index, Fraction(num, den)):
             return 'vfr'
         if streaming and props.get('_TigerestLastFrame', -1) not in (0, 1):
             return 'runtime-eof-missing'
@@ -166,7 +226,7 @@ def build_rife_filter(source, options):
     def scene_stats():
         nonlocal statistics
         if statistics is None:
-            statistics = [core.std.Interleave([stat] * factor) for stat in
+            statistics = [sample(stat) for stat in
                           (core.std.PlaneStats(rgb, right_rgb, plane=p) for p in range(3))]
         return statistics
 
@@ -186,13 +246,15 @@ def build_rife_filter(source, options):
                 padded = core.std.AddBorders(rgb, right=width-source.width, bottom=height-source.height,
                                               color=[0., 0., 0.])
             next_padded = padded[1:] + padded[-1:] if source.num_frames > 1 else padded
-            left = core.std.Interleave([padded] * factor)
-            right = core.std.Interleave([next_padded] * factor)
+            left = sample(padded)
+            right = sample(next_padded)
             # One inference context covers all timepoints. Original slots and
             # EOF slots are never requested from this node by FrameEval.
             timepoints = core.std.Interleave([core.std.BlankClip(padded, length=1,
-                format=vs.GRAYH if implementation == 2 else vs.GRAYS, color=i/factor, keep=True) for i in range(factor)])
-            timepoints = core.std.Loop(timepoints, times=source.num_frames)
+                format=vs.GRAYH if implementation == 2 else vs.GRAYS,
+                color=(i * factor_den % factor_num) / factor_num, keep=True) for i in range(factor_num)])
+            timepoints = core.std.Loop(timepoints,
+                times=(source.num_frames + factor_den - 1) // factor_den)[:frame_count]
             inputs = [left, right, timepoints]
             if implementation == 1:
                 inputs += rife_inputs(left)
@@ -212,19 +274,19 @@ def build_rife_filter(source, options):
         if disabled:
             return bypass(disabled)
         props = f.props
-        reason = eligibility(n // factor, props)
+        index, phase = divmod(n * factor_den, factor_num)
+        reason = eligibility(index, props)
         if reason:
             return disable(reason)
-        if n % factor == 0:
+        if phase == 0:
             return bypass()
-        last = props.get('_TigerestLastFrame') == 1 if streaming else n // factor == source.num_frames - 1
-        if last:
+        if is_last(n, props):
             return bypass('eof')
         matrix, color_range = props['_Matrix'], pixel_range(props)
         chroma = props.get('_ChromaLocation', 0)
 
         def check_neighbour(n, f):
-            reason = eligibility(n // factor + 1, f.props)
+            reason = eligibility(n * factor_den // factor_num + 1, f.props)
             if reason:
                 return disable(reason)
 
@@ -241,5 +303,6 @@ def build_rife_filter(source, options):
     if options.get('monitor', True):
         if not hasattr(core, 'tigerest'):
             core.std.LoadPlugin(path=options['plugin_path'])
-        output = core.tigerest.Monitor(output, session=int(options.get('session', 0)), factor=factor)
+        output = core.tigerest.Monitor(output, session=int(options.get('session', 0)),
+                                      factor=factor_num, factor_den=factor_den)
     return output

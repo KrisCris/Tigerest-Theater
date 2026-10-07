@@ -2,6 +2,7 @@
 #include "FrameTiming.h"
 #include <string>
 #include <limits>
+#include <cmath>
 namespace rife {
 struct SourceInfo {
     int width=0,height=0;
@@ -12,7 +13,10 @@ struct Eligibility {bool enabled;std::string reason;};
 struct SourceLimits {int width=1920,height=1080;double fps=30.001;};
 Eligibility qualify(const SourceInfo& source,SourceLimits limits={});
 Rational rationalFrameRate(double fps);
-int integerMultiplier(Rational source,int targetFps);
+double interpolationMultiplier(Rational source,int targetFps);
+inline bool validInterpolationMultiplier(double factor){
+    return std::isfinite(factor)&&factor>=1.5&&factor<=15.&&std::floor(factor*2)==factor*2;
+}
 // Holds the initial audio/video clock while models load. User pause intent is
 // independent of the temporary pause used for preparation.
 class StartupGate {
@@ -46,7 +50,7 @@ public:
     explicit PerformanceGuard(GuardParameters parameters={}):parameters(parameters){}
     void reset();
     bool update(int64_t nowMs,uint64_t predictions,uint64_t pairs,double p95Ms,
-                uint64_t drops,double fps,bool suspended,int factor=2,bool timingAvailable=true,
+                uint64_t drops,double fps,bool suspended,double factor=2,bool timingAvailable=true,
                 double avsync=std::numeric_limits<double>::quiet_NaN(),uint64_t decoderDrops=0,
                 double displayFps=std::numeric_limits<double>::quiet_NaN());
 private:

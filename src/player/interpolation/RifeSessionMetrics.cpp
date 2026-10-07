@@ -1,4 +1,5 @@
 #include "RifeSessionMetrics.h"
+#include "InterpolationPolicy.h"
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -20,12 +21,16 @@ uint64_t beginInstance(uint64_t session){
     metrics={};metrics.epoch=++serial;timings.clear();lastFrame=-1;return metrics.epoch;
 }
 void recordFrame(uint64_t session,uint64_t epoch,int index,bool synthesized,double ms,
-                 const std::string& reason,int factor,bool timingAvailable){
+                 const std::string& reason,double factor,bool timingAvailable){
     std::lock_guard<std::mutex> g(lock);
-    if(!session||session!=active||!epoch||epoch!=metrics.epoch||index<=lastFrame||factor<2||factor>15)return;
+    if(!session||session!=active||!epoch||epoch!=metrics.epoch||index<=lastFrame||!validInterpolationMultiplier(factor))return;
     lastFrame=index;
     if(!reason.empty()&&reason!="cut"&&reason!="eof")metrics.error=reason;
-    if(index%factor==factor-1){++metrics.pairs;if(reason=="cut")++metrics.cuts;}
+    // An output frame completes an interval when its end crosses a source
+    // boundary. Half steps alternate their output counts per interval; this
+    // also counts the shortened last frame of an odd-length source correctly.
+    const int64_t numerator=std::llround(factor*2),position=int64_t(index)*2;
+    if((position+2)/numerator>position/numerator){++metrics.pairs;if(reason=="cut")++metrics.cuts;}
     if(!timingAvailable){metrics.timingAvailable=false;timings.clear();}
     if(synthesized){
         ++metrics.predictions;

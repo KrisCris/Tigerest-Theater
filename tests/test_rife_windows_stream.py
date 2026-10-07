@@ -1,5 +1,6 @@
 """Actual patched Windows libmpv EOF and tiny TensorRT streaming, not rendering."""
 from fractions import Fraction
+from math import ceil
 import json
 import os
 from pathlib import Path
@@ -110,7 +111,9 @@ class WindowsStreamTests(unittest.TestCase):
         self.assertEqual(read_cache(engine.parent.parent, identity), engine)
         bridge = ROOT / 'resources/mpv/rife/interpolate_trt.vpy'
         plugin = Path(os.environ['RIFE_TEST_MONITOR_PLUGIN']).resolve()
-        for count, factor in ((1, 2), (2, 5), (3, 10)):
+        cases = [(1, 2), (2, 5), (3, 10)]
+        cases += [(count, factor) for factor in (1.5, 2.5, 3.5) for count in (1, 2, 3)]
+        for count, factor in cases:
             with self.subTest(count=count, factor=factor), tempfile.TemporaryDirectory(prefix='RIFE 补帧尾帧 ') as temp:
                 root = Path(temp)
                 frames = root / 'frames.jsonl'
@@ -127,13 +130,20 @@ class WindowsStreamTests(unittest.TestCase):
                 code += 'report=Path(' + json.dumps(str(frames)) + ')\n' + callback
                 report = self.run_clip(root, self.video(root, count, '24000/1001'), code, options, True)
                 rows = [json.loads(line) for line in frames.read_text(encoding='utf-8').splitlines()]
-                self.assertEqual(sorted(r['n'] for r in rows), list(range(count*factor)), rows)
-                self.assertEqual(sum(Fraction(r['dn'], r['dd']) for r in rows), Fraction(count*1001,24000))
-                self.assertTrue(all(Fraction(r['dn'], r['dd']) == Fraction(1001,24000*factor) for r in rows), rows)
+                ratio = Fraction(factor)
+                output_count = ceil(count * ratio)
+                frame_duration = Fraction(1001, 24000) / ratio
+                total_duration = Fraction(count * 1001, 24000)
+                self.assertEqual(sorted(r['n'] for r in rows), list(range(output_count)), rows)
+                self.assertEqual(sum(Fraction(r['dn'], r['dd']) for r in rows), total_duration)
+                self.assertTrue(all(Fraction(r['dn'], r['dd']) == min(frame_duration,
+                    total_duration - r['n'] * frame_duration) for r in rows), rows)
+                expected = [(n, int((n / ratio).denominator != 1 and n // ratio < count - 1))
+                            for n in range(output_count)]
                 self.assertEqual(sorted((r['n'], r['synthesized']) for r in rows),
-                    [(n, int(n%factor != 0 and n//factor < count-1)) for n in range(count*factor)], rows)
+                    expected, rows)
                 generated = sum(r['synthesized'] for r in rows)
-                self.assertEqual(generated, (count-1)*(factor-1), rows)
+                self.assertEqual(generated, sum(synthesized for _, synthesized in expected), rows)
                 self.assertEqual(report['generated'], generated, report)
                 self.assertEqual(report['pairs'], count, report)
                 self.assertGreater(report['epoch'], 0, report)

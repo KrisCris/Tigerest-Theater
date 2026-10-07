@@ -21,23 +21,23 @@ Rational rationalFrameRate(double fps) {
     const auto n=int64_t(std::llround(fps*10000)),d=int64_t(10000),g=std::gcd(n,d);
     return {n/g,d/g};
 }
-int integerMultiplier(Rational source,int target){
+double interpolationMultiplier(Rational source,int target){
     if(source.num<=0||source.den<=0||target<=0)return 0;
     // NTSC rates belong to their nominal 24/30/60 fps preset. In particular,
-    // 23.976p must not select 3x where 24p selects 2x at the 60 fps midpoint.
+    // 23.976p must select the same half step as 24p at a preset midpoint.
     const double nominal=source.den==1001&&source.num%1000==0?double(source.num)/1000:
         double(source.num)/source.den;
     const double desired=double(target)/nominal;
     if(!std::isfinite(desired))return 0;
-    // Ties use the lower integer, avoiding unnecessary extra inference.
-    return int(std::clamp(std::ceil(desired-.5),2.,15.));
+    // Ties use the lower half step, avoiding unnecessary extra inference.
+    return std::clamp(std::ceil(desired*2-.5)/2,1.5,15.);
 }
 void PerformanceGuard::reset(){start=avSince=previousPoll=-1;firstPairs=firstDrops=firstDecoderDrops=0;windowDisplayFps=0;slowWindows=0;warming=true;}
 bool PerformanceGuard::update(int64_t now,uint64_t predictions,uint64_t pairs,double p95,
-                               uint64_t drops,double fps,bool suspended,int factor,bool timingAvailable,
+                               uint64_t drops,double fps,bool suspended,double factor,bool timingAvailable,
                                double avsync,uint64_t decoderDrops,double displayFps) {
     if(parameters.windowsBackend){
-        if(suspended||!pairs||!std::isfinite(fps)||fps<=0||factor<2||factor>15){reset();return false;}
+        if(suspended||!pairs||!std::isfinite(fps)||fps<=0||!validInterpolationMultiplier(factor)){reset();return false;}
         const double refresh=std::isfinite(displayFps)&&displayFps>0?displayFps:0.;
         if(start<0||now<start||pairs<firstPairs||drops<firstDrops||decoderDrops<firstDecoderDrops){
             reset();start=now;firstPairs=pairs;firstDrops=drops;firstDecoderDrops=decoderDrops;windowDisplayFps=refresh;return false;

@@ -38,7 +38,7 @@ FrameInterpolationController::~FrameInterpolationController(){closeSession(sessi
 bool FrameInterpolationController::setRuntimePaths(RuntimePaths replacement){
     if(filterOwned)return false;
     if(replacement.backend==Backend::TensorRT&&
-       (replacement.factor<2||replacement.factor>15||replacement.numStreams<1||replacement.numStreams>4||
+       (!validInterpolationMultiplier(replacement.factor)||replacement.numStreams<1||replacement.numStreams>4||
         !((replacement.implementation==1&&(replacement.alignment==32||replacement.alignment==64||replacement.alignment==128))||
           (replacement.implementation==2&&replacement.alignment==1))))return false;
     paths=std::move(replacement);

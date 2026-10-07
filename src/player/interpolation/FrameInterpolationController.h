@@ -11,7 +11,8 @@ struct RuntimePaths {
     QString model,plugin,script;bool available=false;QString pipeline="split-coarse-metal",compute="cpu-ane";
     Backend backend=Backend::CoreMLMetal;
     QString engine,runtime,trtPlugin;
-    int factor=2,alignment=128,implementation=1,numStreams=1,deviceId=0;
+    double factor=2;
+    int alignment=128,implementation=1,numStreams=1,deviceId=0;
 };
 struct MpvAccess {
     std::function<QVariant(const QString&)> read;

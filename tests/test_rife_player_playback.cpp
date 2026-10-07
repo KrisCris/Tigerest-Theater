@@ -413,8 +413,8 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(),75000);
         QVERIFY2(ready.first()[0].toBool(),qPrintable(ready.first()[1].toString()));
         QVERIFY(!player.selectWindowsRifeModel("missing-model",60));
-        QVERIFY(!player.selectWindowsRifeModel("rife-4.25-lite",75));
-        QVERIFY(player.selectWindowsRifeModel("rife-4.25-lite",60));
+        QVERIFY(!player.selectWindowsRifeModel("rife-4.25-lite",23));
+        QVERIFY(player.selectWindowsRifeModel("rife-4.25-lite",75));
         // Match MpvAbstractItem's real worker-thread ownership and teardown.
         QThread worker;auto* controller=new MpvController;
         controller->moveToThread(&worker);
@@ -440,6 +440,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(playback()["generatedFrames"].toULongLong()>0,10000);
         QVERIFY(player.windowsRifeStatus()["engineCacheHitForItem"].toBool());
         QCOMPARE(playback()["state"].toInt(),2); // Active, observed by the real Player timer.
+        QCOMPARE(playback()["factor"].toDouble(),2.5);
         QVERIFY(!player.selectWindowsRifeModel("rife-4.25-heavy",240));
         QVERIFY(playback()["processedPairs"].toULongLong()>0);
         QVERIFY(!playback()["timingAvailable"].toBool());QVERIFY(playback()["p95Ms"].isNull());

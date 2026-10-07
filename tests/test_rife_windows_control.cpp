@@ -16,14 +16,23 @@ int main(int argc,char**argv){
     auto bad=source;bad.width=4096;assert(!qualify(bad,windows).enabled);
     bad=source;bad.fpsNum=120000;assert(!qualify(bad,windows).enabled);
     assert(rationalFrameRate(59.94005994).num==60000);
-    assert(integerMultiplier({24000,1001},120)==5);
-    assert(integerMultiplier({24000,1001},240)==10);
-    assert(integerMultiplier({30,1},240)==8);
-    assert(integerMultiplier({60000,1001},120)==2);
-    assert(integerMultiplier({24,1},60)==2); // Equal distances: use the lower integer.
-    assert(integerMultiplier({24000,1001},60)==2); // NTSC 24p follows the same nominal preset.
-    assert(integerMultiplier({0,1},240)==0);
-    assert(integerMultiplier({24,1},0)==0);
+    assert(interpolationMultiplier({24000,1001},120)==5);
+    assert(interpolationMultiplier({24000,1001},240)==10);
+    assert(interpolationMultiplier({30,1},240)==8);
+    assert(interpolationMultiplier({60000,1001},120)==2);
+    assert(interpolationMultiplier({24,1},60)==2.5);
+    assert(interpolationMultiplier({24000,1001},60)==2.5); // NTSC follows the same nominal preset.
+    assert(interpolationMultiplier({24,1},36)==1.5);
+    assert(interpolationMultiplier({24,1},84)==3.5);
+    assert(interpolationMultiplier({24,1},54)==2.); // Half-step midpoint ties choose the lower step.
+    assert(interpolationMultiplier({24000,1001},54)==2.);
+    assert(interpolationMultiplier({24,1},55)==2.5);
+    assert(interpolationMultiplier({24,1},24)==1.5);
+    assert(interpolationMultiplier({24,1},1000)==15.);
+    assert(interpolationMultiplier({0,1},240)==0);
+    assert(interpolationMultiplier({24,1},0)==0);
+    assert(interpolationMultiplier({24,0},60)==0);
+    assert(interpolationMultiplier({-24,1},60)==0);
     PerformanceGuard guard(GuardParameters::windows());
     assert(!guard.update(0,90,10,0,0,24,false,10,false,0.));
     assert(!guard.update(5000,1170,130,0,0,24,false,10,false,0.));
@@ -48,6 +57,26 @@ int main(int argc,char**argv){
         const bool shouldDisable=(double(counts.first)+double(counts.second)*10)/(2400+double(counts.second)*10)>.05;
         assert(guard.update(15000,3330,370,0,counts.first,24,false,10,false,0.,counts.second)==shouldDisable);
     }
+    // Exact half-step output opportunities keep the five-percent threshold
+    // consistent for the smallest factor and for fractional decoder losses.
+    for(double factor:{1.5,2.5,3.5}){
+        guard.reset();
+        assert(!guard.update(0,0,10,0,0,24,false,factor,false,0.));
+        assert(!guard.update(5000,0,130,0,0,24,false,factor,false,0.));
+        assert(!guard.update(15000,0,370,0,uint64_t(12*factor),24,false,factor,false,0.));
+        assert(guard.update(25000,0,610,0,uint64_t(24*factor)+1,24,false,factor,false,0.));
+        guard.reset();
+        assert(!guard.update(0,0,10,0,0,24,false,factor,false,0.,0));
+        assert(!guard.update(5000,0,130,0,0,24,false,factor,false,0.,0));
+        assert(guard.update(15000,0,370,0,0,24,false,factor,false,0.,13));
+    }
+    for(double invalid:{0.,1.,1.25,2.25,15.5,double(NAN),double(INFINITY)}){
+        guard.reset();
+        assert(!guard.update(0,0,10,0,0,24,false,2.5,false,0.));
+        assert(!guard.update(5000,0,130,0,0,24,false,2.5,false,0.));
+        assert(!guard.update(15000,0,370,0,300,24,false,invalid,false,0.));
+        assert(!guard.update(25000,0,610,0,600,24,false,2.5,false,0.)); // Invalid factor resets the window.
+    }
     QVariantMap properties{{"vf",QVariantList{}},{"hwdec","auto"}};
     QString lastFilter;
     int adds=0;
@@ -62,9 +91,18 @@ int main(int argc,char**argv){
         [&](const QString&k,const QVariant&v){properties[k]=v;return true;},command,
         [&](const QString&k,const QVariant&v){properties[k]=v;return true;},command};
     RuntimePaths paths{"rife-4.25-lite","C:/插件/tigerest-rife-vs.dll","C:/脚本/interpolate_trt.vpy",true};
-    paths.backend=Backend::TensorRT;paths.factor=2;paths.alignment=1;paths.implementation=2;
+    paths.backend=Backend::TensorRT;paths.factor=2.5;paths.alignment=1;paths.implementation=2;
     paths.engine="C:/缓存/model.engine";paths.runtime="C:/私有 运行库";paths.trtPlugin="C:/私有 运行库/plugins/vstrt.dll";
     FrameInterpolationController controller(access,paths);
+    for(double invalid:{0.,1.,1.25,2.25,15.5,double(NAN),double(INFINITY)}){
+        auto invalidPaths=paths;invalidPaths.factor=invalid;
+        assert(!controller.setRuntimePaths(invalidPaths));
+    }
+    for(double factor:{1.5,2.5,3.5,15.}){
+        auto validPaths=paths;validPaths.factor=factor;
+        assert(controller.setRuntimePaths(validPaths));
+    }
+    assert(controller.setRuntimePaths(paths));
     controller.beginItem(true,false);controller.onFormatChanged(source);
     assert(!controller.diagnostics()["p95Ms"].isValid()); // No epoch is not zero-cost GPU timing.
     Metrics starting;starting.epoch=1; // Monitor is registered, but no frame has arrived.
@@ -72,15 +110,18 @@ int main(int argc,char**argv){
     assert(!controller.diagnostics()["timingAvailable"].toBool());
     assert(!controller.diagnostics()["p95Ms"].isValid());
     assert(adds==1&&lastFilter.contains("engine_path")&&lastFilter.contains("runtime_path"));
+    const auto options=QJsonDocument::fromJson(lastFilter.mid(lastFilter.indexOf('{')).toUtf8()).toVariant().toMap();
+    assert(options["factor"].toDouble()==2.5); // JSON forwards the full factor into the real graph.
     assert(!controller.setRuntimePaths(paths)); // Loaded graph owns its current runtime.
     Metrics metrics;metrics.epoch=1;metrics.pairs=40;metrics.predictions=40;metrics.timingAvailable=false;
     controller.onMetrics(controller.generation(),metrics,0,false,0);
     assert(controller.state()==State::Active);
-    assert(controller.status().contains("119.88"));
+    assert(controller.status().contains("149.85"));
     const auto diagnostic=controller.diagnostics();
     assert(!diagnostic["timingAvailable"].toBool());
     assert(!diagnostic["p95Ms"].isValid());
     assert(diagnostic["pipeline"].toString()=="TensorRT");
+    assert(diagnostic["factor"].toDouble()==2.5);
     bad=source;bad.width=1920;bad.height=1080;
     controller.onFormatChanged(bad);
     assert(controller.state()==State::Bypassed&&adds==1); // Do not rebuild a changing-format item.
