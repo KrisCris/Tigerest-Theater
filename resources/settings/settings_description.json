@@ -124,8 +124,8 @@
       },
       {
         "value": "checkForUpdates",
-        "display_name": "检查客户端更新",
-        "help": "允许客户端更新脚本检查新版本。",
+        "display_name": "启动时检查更新",
+        "help": "启动时后台检查当前平台的新正式版。有更新时提示；也可手动检查客户端更新。",
         "default": true
       },
       {

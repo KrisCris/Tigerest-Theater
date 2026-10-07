@@ -1189,6 +1189,11 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
 
         if (section === 'main') {
             const actions = element('div', 'tgs-actions');
+            if (window.TigerestUpdate) {
+                const checkUpdate = element('button', 'tgs-action', '检查客户端更新');
+                checkUpdate.addEventListener('click', () => window.TigerestUpdate.check().catch(() => {}));
+                actions.appendChild(checkUpdate);
+            }
             if (jmpInfo.settings.main.userWebClient) {
                 const resetServer = element('button', 'tgs-action', '重置已保存的服务器地址');
                 resetServer.addEventListener('click', () => {

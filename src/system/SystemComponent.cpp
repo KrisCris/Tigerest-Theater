@@ -31,6 +31,7 @@
 
 #include "input/InputComponent.h"
 #include "SystemComponent.h"
+#include "AppUpdater.h"
 #include "Version.h"
 #include "settings/SettingsComponent.h"
 #include "player/MpvConfigManager.h"
@@ -40,6 +41,12 @@
 #include "Names.h"
 #include "utils/Utils.h"
 #include "utils/Log.h"
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <shellapi.h>
+#undef interface
+#endif
 
 
 #define KONVERGO_PRODUCTID_DEFAULT  3
@@ -111,6 +118,43 @@ bool SystemComponent::componentInitialize()
 
   QDir().mkpath(downloadsDirectory() + "/files");
   loadDownloadIndex();
+
+  using AppUpdatePolicy::Package;
+  Package package = Package::Unsupported;
+#if defined(Q_OS_WIN) && defined(Q_PROCESSOR_X86_64)
+  package = Paths::isPortableMode() ? Package::WindowsPortable : Package::WindowsInstaller;
+#elif defined(Q_OS_MAC) && defined(Q_PROCESSOR_ARM_64)
+  package = Package::MacArm64;
+#endif
+  if (!m_appUpdater)
+  {
+    // Keep TLS policy isolated from media servers' optional self-signed SSL support.
+    auto* network = new QNetworkAccessManager(this);
+    m_appUpdater = new AppUpdater(Version::GetVersionString(), package,
+      ProfileManager::activeProfile().cacheDir("updates"),
+      ProfileManager::activeProfile().dataDir("app-update-preferences.json"), network,
+      [](const QString& path, Package kind) {
+#ifdef Q_OS_WIN
+        if (kind == Package::WindowsInstaller)
+        {
+          const QString nativePath = QDir::toNativeSeparators(path);
+          SHELLEXECUTEINFOW launch = {};
+          launch.cbSize = sizeof(launch);
+          launch.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+          launch.lpVerb = L"open"; // Respect the installer's elevation manifest.
+          launch.lpFile = reinterpret_cast<LPCWSTR>(nativePath.utf16());
+          launch.nShow = SW_SHOWNORMAL;
+          const bool success = ShellExecuteExW(&launch);
+          if (launch.hProcess) CloseHandle(launch.hProcess);
+          return success;
+        }
+#else
+        Q_UNUSED(kind);
+#endif
+        return QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+      }, this);
+    connect(m_appUpdater, &AppUpdater::changed, this, &SystemComponent::appUpdateChanged);
+  }
 
   return true;
 }
@@ -1060,38 +1104,22 @@ void SystemComponent::fetchPageForCSPWorkaround(QString url)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-void SystemComponent::checkForUpdates()
+void SystemComponent::checkForUpdates(bool manual)
 {
-#ifndef DISABLE_UPDATE_CHECK
-  if (SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "checkForUpdates").toBool()) {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_MAC)
-    QNetworkAccessManager *manager = new QNetworkAccessManager(this);
-    QString checkUrl = "https://github.com/jellyfin/jellyfin-desktop/releases/latest";
-    QUrl qCheckUrl = QUrl(checkUrl);
-    qDebug() << QString("Checking URL for updates: %1").arg(checkUrl);
-    QNetworkRequest req(qCheckUrl);
-    req.setHeader(QNetworkRequest::UserAgentHeader, getUserAgent());
-
-    connect(manager, &QNetworkAccessManager::finished, this, &SystemComponent::updateInfoHandler);
-    manager->get(req);
-#else
-    emit updateInfoEmitted("SSL_UNAVAILABLE");
+  if (!m_appUpdater) return;
+  bool enabled = SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "checkForUpdates").toBool();
+#ifdef DISABLE_UPDATE_CHECK
+  enabled = false;
 #endif
-  }
-#endif
+  m_appUpdater->check(manual, enabled);
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-void SystemComponent::updateInfoHandler(QNetworkReply* reply)
-{
-  if (reply->error() == QNetworkReply::NoError) {
-    int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    if(statusCode == 302) {
-      QUrl redirectUrl = reply->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl();
-      emit updateInfoEmitted(redirectUrl.toString());
-    }
-  }
-}
+QVariantMap SystemComponent::appUpdateState() const { return m_appUpdater ? m_appUpdater->state() : QVariantMap(); }
+void SystemComponent::downloadAppUpdate() { if (m_appUpdater) m_appUpdater->download(); }
+void SystemComponent::installAppUpdate(bool automatic) { if (m_appUpdater) m_appUpdater->install(automatic); }
+void SystemComponent::cancelAppUpdate() { if (m_appUpdater) m_appUpdater->cancel(); }
+void SystemComponent::skipAppUpdate() { if (m_appUpdater) m_appUpdater->skip(); }
+void SystemComponent::deferAppUpdate() { if (m_appUpdater) m_appUpdater->defer(); }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 #define BASESTR "protocols=shoutcast,http-video;videoDecoders=h264{profile:high&resolution:2160&level:52};audioDecoders=mp3,aac,dts{bitrate:800000&channels:%1},ac3{bitrate:800000&channels:%2}"

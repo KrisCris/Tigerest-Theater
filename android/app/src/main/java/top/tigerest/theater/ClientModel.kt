@@ -5,5 +5,6 @@ class ClientModel(application: Application): AndroidViewModel(application) {
     val settings = SettingsStore(application)
     val player = PlaybackController(application,settings)
     val danmaku = DanmakuRepository(application,settings)
-    override fun onCleared() { danmaku.close(); player.destroy() }
+    val updates = AppUpdateController(application,settings)
+    override fun onCleared() { updates.close(); danmaku.close(); player.destroy() }
 }

@@ -21,6 +21,8 @@
 constexpr int NETWORK_REQUEST_TIMEOUT_MS = 30000;
 constexpr int CONNECTIVITY_REQUEST_TIMEOUT_MS = 5000;
 
+class AppUpdater;
+
 class SystemComponent : public ComponentBase
 {
   Q_OBJECT
@@ -80,7 +82,14 @@ public:
   Q_INVOKABLE void fetchPageForCSPWorkaround(QString url);
   Q_SIGNAL void pageContentReady(QString html, QString finalUrl, bool hadCSP);
 
-  Q_INVOKABLE void checkForUpdates();
+  Q_INVOKABLE void checkForUpdates(bool manual = false);
+  Q_INVOKABLE QVariantMap appUpdateState() const;
+  Q_INVOKABLE void downloadAppUpdate();
+  Q_INVOKABLE void installAppUpdate(bool automatic = false);
+  Q_INVOKABLE void cancelAppUpdate();
+  Q_INVOKABLE void skipAppUpdate();
+  Q_INVOKABLE void deferAppUpdate();
+  Q_SIGNAL void appUpdateChanged(const QVariantMap& state);
 
   // called by the web-client when everything is properly inited
   Q_INVOKABLE void hello(const QString& version);
@@ -128,9 +137,6 @@ public:
 
   QSslConfiguration getSSLConfiguration();
 
-private Q_SLOTS:
-  void updateInfoHandler(QNetworkReply* reply);
-
 signals:
   void hostMessage(const QString& message);
   void settingsMessage(const QString& setting, const QString& value);
@@ -162,6 +168,7 @@ private:
   };
 
   QNetworkAccessManager* m_networkManager;
+  AppUpdater* m_appUpdater = nullptr;
   PlatformType m_platformType;
   PlatformArch m_platformArch;
   bool m_doLogMessages;

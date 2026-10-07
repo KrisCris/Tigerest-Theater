@@ -1,7 +1,7 @@
 param(
     [string]$DependencyDirectory = 'D:\CodexDeps\TigerestTheater\android',
     [string]$SigningDirectory = 'D:\CodexDeps\TigerestTheater\android\signing',
-    [string]$Output = (Join-Path $PSScriptRoot '..\dist\TigerestTheater-2.4.1-android.apk')
+    [string]$Output = (Join-Path $PSScriptRoot '..\dist\TigerestTheater-2.4.2-android.apk')
 )
 $ErrorActionPreference = 'Stop'
 $java = Get-ChildItem -LiteralPath (Join-Path $DependencyDirectory 'java') -Directory | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'bin\java.exe') } | Select-Object -First 1

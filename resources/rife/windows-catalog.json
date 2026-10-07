@@ -17,7 +17,8 @@
         "2.3.2",
         "2.3.3",
         "2.4.0",
-        "2.4.1"
+        "2.4.1",
+        "2.4.2"
       ],
       "downloadSize": 2146337426,
       "unpackedSize": 2672981155,
@@ -45,7 +46,8 @@
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm75-1.0.0.zip",
       "compatibleAppVersions": [
         "2.4.0",
-        "2.4.1"
+        "2.4.1",
+        "2.4.2"
       ]
     },
     {
@@ -67,7 +69,8 @@
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm80-1.0.0.zip",
       "compatibleAppVersions": [
         "2.4.0",
-        "2.4.1"
+        "2.4.1",
+        "2.4.2"
       ]
     },
     {
@@ -89,7 +92,8 @@
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm86-1.0.0.zip",
       "compatibleAppVersions": [
         "2.4.0",
-        "2.4.1"
+        "2.4.1",
+        "2.4.2"
       ]
     },
     {
@@ -111,7 +115,8 @@
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm89-1.0.0.zip",
       "compatibleAppVersions": [
         "2.4.0",
-        "2.4.1"
+        "2.4.1",
+        "2.4.2"
       ]
     },
     {
@@ -133,7 +138,8 @@
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm90-1.0.0.zip",
       "compatibleAppVersions": [
         "2.4.0",
-        "2.4.1"
+        "2.4.1",
+        "2.4.2"
       ]
     },
     {
@@ -155,7 +161,8 @@
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm100-1.0.0.zip",
       "compatibleAppVersions": [
         "2.4.0",
-        "2.4.1"
+        "2.4.1",
+        "2.4.2"
       ]
     },
     {
@@ -177,7 +184,8 @@
       "url": "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/Tigerest-RIFE-NVIDIA-sm120-1.0.0.zip",
       "compatibleAppVersions": [
         "2.4.0",
-        "2.4.1"
+        "2.4.1",
+        "2.4.2"
       ]
     }
   ]

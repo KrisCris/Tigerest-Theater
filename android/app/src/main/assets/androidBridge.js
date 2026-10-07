@@ -21,13 +21,13 @@
   const operations={
    player:'load queueMedia clearQueue seekTo stop streamSwitch pause play setVolume volume setMuted muted getAudioDeviceList setAudioDevice setAudioStream setSubtitleStream getSubtitleStreams setAudioDelay setSubtitleDelay setVideoOnlyMode setVideoRectangle setPlaybackRate getPosition getDuration mpvDiagnostics getWebPlaylist getCurrentWebPlaylistItemId setWebPlaylist notifyShuffleChange notifyRepeatChange notifyFullscreenChange notifyRateChange notifyQueueChange notifyPlaybackStop notifyDurationChange notifyPlaybackState notifyPosition notifySeek notifyMetadata notifyVolumeChange notifyStreamingBitrateResult',
    settings:'setValue resetToDefault value',
-   system:'exit restart hello isAddressOnLocalSubnet checkServerConnectivity cancelServerConnectivity openExternalUrl systemInformation getUserAgent debugInformation',
+   system:'exit restart hello isAddressOnLocalSubnet checkServerConnectivity cancelServerConnectivity openExternalUrl systemInformation getUserAgent debugInformation checkForUpdates appUpdateState downloadAppUpdate installAppUpdate cancelAppUpdate skipAppUpdate deferAppUpdate',
    window:'setFullScreen isFullScreen beginPlaybackSession endPlaybackSession requestPlaybackFullScreen setCursorVisibility',
    danmaku:'search episodes match load loadUrl importFile setSource sources setEnabled',
   };
   const notifications={
    player:'playing paused finished canceled stopped error stateChanged videoPlaybackActive windowVisible updateDuration playbackRateChanged positionUpdate onVideoRecangleChanged onMetaData bufferedRangesUpdated buffering streamingBitrateRequested subtitleStreamRequested webPlaylistChanged',
-   settings:'sectionValueUpdate groupUpdate',system:'serverConnectivityResult',window:'fullScreenSwitched',input:'hostInput volumeChanged rateChanged positionSeek',danmaku:'status sourcesChanged',
+   settings:'sectionValueUpdate groupUpdate',system:'serverConnectivityResult appUpdateChanged',window:'fullScreenSwitched',input:'hostInput volumeChanged rateChanged positionSeek',danmaku:'status sourcesChanged',
   };
   const api={};
   for(const [component,names]of Object.entries(operations)){api[component]={};for(const name of names.split(' '))api[component][name]=method(component,name);}

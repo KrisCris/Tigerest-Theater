@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict');const {run,delay}=require('./cdp.cjs');
 require('./media_fixture.cjs')(async({c,url,wait,tap,shot,requests})=>{
- const show=async()=>{if(!await c.evaluate('api.system.debugInformation().then(d=>d.controlsVisible)')){run('shell','input','tap','1112','1000');await wait('api.system.debugInformation().then(d=>d.controlsVisible)');}};
+ const show=async()=>{const d=await c.evaluate('api.system.debugInformation()');if(!d.controlsVisible){run('shell','input','tap',String(Math.round((d.pane.left+d.pane.right)/2)),String(Math.round((d.pane.top+d.pane.bottom)/2)));await wait('api.system.debugInformation().then(d=>d.controlsVisible)');}};
  await c.evaluate(`(()=>{window.playerEvents=[];const events={trigger:(sender,name,args=[])=>playerEvents.push({kind:sender.id,name,args})};window.audio=new _mpvAudioPlayer({events,appSettings:{get:()=>1,set(){}},appHost:{},toast:()=>{}});return audio.play({url:'${url}/media.mp4',item:{Id:'audio-fixture',Name:'音乐测试'},playerStartPositionTicks:50000000});})()`);
  await wait('audio.currentTime()>5500');let audioInfo=await c.evaluate('api.player.mpvDiagnostics()');assert.equal(audioInfo.audioTrack,1);assert.equal(audioInfo.subtitleTrack,-1);assert.equal(await c.evaluate('api.system.debugInformation().then(v=>v.videoVisible)'),false);
  await c.evaluate('api.player.stop()');await delay(200);assert.equal(await c.evaluate('playerEvents.filter(e=>e.kind==="mpvaudioplayer"&&e.name==="stopped").length'),1);assert.equal(await c.evaluate('audio.currentSrc()'),null);assert.equal(await c.evaluate('playerEvents.find(e=>e.name==="stopped").args[0].playNext'),false);await c.evaluate('audio.destroy()');
@@ -12,7 +12,7 @@ require('./media_fixture.cjs')(async({c,url,wait,tap,shot,requests})=>{
  await show();await tap('更多');await tap('字幕');await tap('外置字幕一');await wait('api.player.mpvDiagnostics().then(d=>d.tracks.some(t=>t["external-filename"]?.endsWith("one.srt")))');assert.ok(requests.includes('/one.srt'));
  await show();await tap('更多');await tap('字幕偏移');await tap('0.0');run('shell','input','keycombination','113','29');run('shell','input','text','1.5');await tap('保存');assert.equal((await c.evaluate('api.player.mpvDiagnostics()')).subtitleDelay,1.5);
  await c.evaluate('api.player.play()');await delay(4200);assert.equal(await c.evaluate('api.system.debugInformation().then(d=>d.controlsVisible)'),false);shot('external-subtitles-controls-hidden');
- run('shell','input','tap','1112','1000');await wait('api.system.debugInformation().then(d=>d.controlsVisible)');
+ await show();
  const before=await c.evaluate('api.player.getPosition()');await assert.rejects(c.evaluate(`api.player.queueMedia('${url}/media.mp4',{}, {})`),/Emby/);assert.ok(await c.evaluate('api.player.getPosition()')>=before);
  await c.evaluate('videoPlayer.stop(true)');await delay(200);assert.equal(await c.evaluate('playerEvents.filter(e=>e.kind==="mpvvideoplayer"&&e.name==="stopped").length'),1);
  console.log(JSON.stringify({passed:true,sharedMusic:audioInfo,subtitleRequests:requests.filter(r=>r.endsWith('.srt')),stoppedReports:await c.evaluate('playerEvents.filter(e=>e.name==="stopped")')}));

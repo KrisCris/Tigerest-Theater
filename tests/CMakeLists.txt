@@ -2,6 +2,16 @@ cmake_minimum_required(VERSION 3.10...3.31)
 
 set(CMAKE_AUTOMOC ON)
 
+add_executable(test_appupdate_policy test_appupdate_policy.cpp ../src/system/AppUpdatePolicy.cpp)
+target_include_directories(test_appupdate_policy PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_appupdate_policy PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_appupdate_policy COMMAND test_appupdate_policy)
+
+add_executable(test_appupdater test_appupdater.cpp ../src/system/AppUpdater.cpp ../src/system/AppUpdatePolicy.cpp)
+target_include_directories(test_appupdater PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_appupdater PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+add_test(NAME test_appupdater COMMAND test_appupdater)
+
 find_package(Qt6 ${REQUIRED_QT_VERSION} REQUIRED COMPONENTS Test)
 
 if(WIN32)
@@ -416,6 +426,10 @@ if(Node_EXECUTABLE)
   execute_process(COMMAND ${Node_EXECUTABLE} -p "typeof WebSocket === 'function' && typeof fetch === 'function'"
                   OUTPUT_VARIABLE NODE_HAS_WEBENGINE_TEST_APIS OUTPUT_STRIP_TRAILING_WHITESPACE)
   if(WIN32 AND NODE_HAS_WEBENGINE_TEST_APIS STREQUAL "true")
+    add_test(NAME test_update_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_update_ui.cjs
+                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_update_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
     if(Python3_Interpreter_FOUND)
       add_test(NAME test_windows_web_controls
                COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_windows_web_controls.cjs

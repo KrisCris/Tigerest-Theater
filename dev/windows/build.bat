@@ -70,7 +70,7 @@ cmake -GNinja ^
     -DVCRUNTIME_DIR="%DEPS_CMAKE%/vcruntime" ^
     -DVCREDIST_EXE="%DEPS_CMAKE%/vc_redist.x64.exe" ^
     -DTIGEREST_MPV_RUNTIME_DIR="%TIGEREST_MPV_RUNTIME_DIR%" ^
-    -DCHECK_FOR_UPDATES=OFF ^
+    -DCHECK_FOR_UPDATES=ON ^
     -DUSE_STATIC_MPVQT=ON ^
     "%PROJECT_ROOT%"
 if errorlevel 1 (

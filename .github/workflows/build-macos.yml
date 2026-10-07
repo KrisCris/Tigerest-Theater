@@ -65,7 +65,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0 \
           -DCMAKE_INSTALL_PREFIX=build/output \
-          -DCHECK_FOR_UPDATES=OFF \
+          -DCHECK_FOR_UPDATES=ON \
           -DUSE_STATIC_MPVQT=ON \
           -DMPV_LIBRARY_mpv="$PWD/build/rife/playback/mpv-build/libmpv.dylib" \
           -DTIGEREST_RIFE_MODEL_DIR="${TIGEREST_RIFE_MODEL_DIR:-}" \

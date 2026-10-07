@@ -29,6 +29,8 @@ import kotlin.concurrent.thread
 class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     private val model: ClientModel by viewModels()
     val danmaku get() = model.danmaku
+    val updates get() = model.updates
+    private var updateListener: ((JSONObject) -> Unit)? = null
     lateinit var webHost: WebHost; private set
     private lateinit var bridge: BridgeDispatcher
     private lateinit var root: FrameLayout
@@ -59,6 +61,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
         window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS }
         window.isNavigationBarContrastEnforced = false
         try {
+            if(BuildConfig.DEBUG && intent.hasExtra("updateFixture")) updates.debugFixture(intent.getStringExtra("updateFixture")!!)
             root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }; setContentView(root)
             val web = WebView(this); root.addView(web,FrameLayout.LayoutParams(-1,-1))
             video = FrameLayout(this).apply { setBackgroundColor(Color.BLACK); visibility = View.GONE }
@@ -67,6 +70,8 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
             controls = VideoControls(this,model.player,danmaku); video.addView(controls,FrameLayout.LayoutParams(-1,-1)); root.addView(video,FrameLayout.LayoutParams(-1,-1))
             progress = ProgressBar(this).apply { visibility = View.GONE }; root.addView(progress,FrameLayout.LayoutParams(64,64,Gravity.CENTER))
             bridge = BridgeDispatcher(this,model.settings,model.player); webHost = WebHost(this,web,model.settings,bridge); webHost.applySettings()
+            updateListener = { state -> bridge.emit("system","appUpdateChanged",JSONArray().put(state)) }
+            updates.engine.changed = updateListener!!
             setFullscreen(false)
             model.player.signal = { name,args -> bridge.emit("player",name,args) }
             model.player.message = { text -> notify(text) }
@@ -170,7 +175,9 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     override fun onDisplayAdded(displayId: Int) { updateWindowMetrics() }
     override fun onDisplayRemoved(displayId: Int) { updateWindowMetrics() }
     override fun onDisplayChanged(displayId: Int) { updateWindowMetrics() }
+    override fun onResume() { super.onResume(); updates.resumed(this) }
+    override fun onPause() { updates.paused(this); super.onPause() }
     override fun onStop() { super.onStop(); if(::webHost.isInitialized) { controls.playbackHidden();model.player.background() } }
     override fun onSaveInstanceState(outState: Bundle) { if(::webHost.isInitialized) webHost.view.saveState(outState); super.onSaveInstanceState(outState) }
-    override fun onDestroy() { getSystemService(DisplayManager::class.java).unregisterDisplayListener(this); webFileCallback?.onReceiveValue(null); if(::bridge.isInitialized) bridge.close(); if(::webHost.isInitialized) webHost.close(); super.onDestroy() }
+    override fun onDestroy() { if(updates.engine.changed === updateListener) updates.engine.changed = {}; updates.paused(this); getSystemService(DisplayManager::class.java).unregisterDisplayListener(this); webFileCallback?.onReceiveValue(null); if(::bridge.isInitialized) bridge.close(); if(::webHost.isInitialized) webHost.close(); super.onDestroy() }
 }

@@ -61,7 +61,7 @@ cmake -G Ninja \
     -DCMAKE_INSTALL_PREFIX=output \
     -DQTROOT="${QTROOT}" \
     -DCMAKE_PREFIX_PATH="${QTROOT}" \
-    -DCHECK_FOR_UPDATES=OFF \
+    -DCHECK_FOR_UPDATES=ON \
     -DUSE_STATIC_MPVQT=ON \
     -DMPV_LIBRARY_mpv="${RIFE_BUILD}/playback/mpv-build/libmpv.dylib" \
     -DTIGEREST_RIFE_MODEL_DIR="${RIFE_MODEL}" \
