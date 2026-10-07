@@ -168,26 +168,26 @@ int main(int argc,char**argv){
         // Overload remains visible after the refresh transition.
         assert(guard.update(35000,1080,1080,0,oldDrops+windowDrops+2*expected+60,30,false,2,false,0.,0,rates.second));
     }
-    // TensorRT uses display-vdrop for the default resampling clock while its
-    // graph is attached. Keep refresh-driven presentation and restore preference.
+    // TensorRT temporarily uses audio for the default resampling clock in every
+    // presentation mode, and restores the configured preference when detached.
     properties["vf"]=QVariantList{};properties["video-sync"]="display-resample";
     FrameInterpolationController sync(access,paths);
     sync.beginItem(true,false);sync.onFormatChanged(source);
-    assert(properties["video-sync"]=="display-vdrop");
+    assert(properties["video-sync"]=="audio");
     assert(sync.diagnostics()["ownsVideoSync"].toBool());
     assert(sync.diagnostics()["savedSync"]=="display-resample");
     sync.onVideoSyncChanged("display-resample"); // Queued before the policy write.
     assert(sync.diagnostics()["ownsVideoSync"].toBool());
-    assert(sync.diagnostics()["effectiveSync"]=="display-vdrop");
-    sync.onVideoSyncChanged("display-vdrop");
-    sync.onSeek();assert(properties["video-sync"]=="display-vdrop");
+    assert(sync.diagnostics()["effectiveSync"]=="audio");
+    sync.onVideoSyncChanged("audio");
+    sync.onSeek();assert(properties["video-sync"]=="audio");
     sync.configureVideoSync("display-resample");
     sync.configureVideoSync("display-resample"); // Routine settings refresh must not save the override.
-    assert(properties["video-sync"]=="display-vdrop");
+    assert(properties["video-sync"]=="audio");
     assert(sync.diagnostics()["savedSync"]=="display-resample");
     sync.stop();assert(properties["video-sync"]=="display-resample");
     sync.beginItem(true,false);sync.onFormatChanged(source);
-    assert(properties["video-sync"]=="display-vdrop");
+    assert(properties["video-sync"]=="audio");
     sync.configureVideoSync("display-resample-vdrop");
     assert(properties["video-sync"]=="display-resample-vdrop");
     assert(sync.diagnostics()["savedSync"]=="display-resample-vdrop");
@@ -195,17 +195,17 @@ int main(int argc,char**argv){
     sync.stopOnEndFile();assert(properties["video-sync"]=="display-resample-vdrop");
     sync.configureVideoSync("display-resample");
     sync.beginItem(true,false);sync.onFormatChanged(source);
-    sync.configureVideoSync("display-vdrop"); // Explicitly selecting the current effective mode releases ownership.
+    sync.configureVideoSync("audio"); // Explicitly selecting the current effective mode releases ownership.
     assert(!sync.diagnostics()["ownsVideoSync"].toBool());
-    sync.stopOnEndFile();assert(properties["video-sync"]=="display-vdrop");
+    sync.stopOnEndFile();assert(properties["video-sync"]=="audio");
     sync.configureVideoSync("display-resample");
-    sync.beginItem(true,false);sync.onFormatChanged(source);assert(properties["video-sync"]=="display-vdrop");
+    sync.beginItem(true,false);sync.onFormatChanged(source);assert(properties["video-sync"]=="audio");
     sync.onPlaybackSpeed(2.);assert(properties["video-sync"]=="display-resample");
-    sync.beginItem(true,false);sync.onFormatChanged(source);assert(properties["video-sync"]=="display-vdrop");
+    sync.beginItem(true,false);sync.onFormatChanged(source);assert(properties["video-sync"]=="audio");
     Metrics failed;failed.error="filter-error";
     sync.onMetrics(sync.generation(),failed,0,false,0);
     assert(properties["video-sync"]=="display-resample");
-    sync.beginItem(true,false);sync.onFormatChanged(source);assert(properties["video-sync"]=="display-vdrop");
+    sync.beginItem(true,false);sync.onFormatChanged(source);assert(properties["video-sync"]=="audio");
     sync.beginItem(false,false);sync.onFormatChanged(source);
     assert(properties["video-sync"]=="display-resample");
     sync.beginItem(true,true);sync.onFormatChanged(source);
@@ -225,15 +225,15 @@ int main(int argc,char**argv){
     }
     properties["video-sync"]="display-resample";
     sync.beginItem(true,false);sync.onFormatChanged(source);
-    properties["video-sync"]="audio"; // An external script or user supersedes the override.
-    sync.onVideoSyncChanged("audio");
+    properties["video-sync"]="display-vdrop"; // An external script or user supersedes the override.
+    sync.onVideoSyncChanged("display-vdrop");
     assert(!sync.diagnostics()["ownsVideoSync"].toBool());
-    sync.onVideoSyncChanged("display-vdrop"); // A late own notification cannot reclaim ownership.
-    sync.stopOnEndFile();assert(properties["video-sync"]=="audio");
+    sync.onVideoSyncChanged("audio"); // A late own notification cannot reclaim ownership.
+    sync.stopOnEndFile();assert(properties["video-sync"]=="display-vdrop");
     properties["video-sync"]="display-resample";
     sync.beginItem(true,false);sync.onFormatChanged(source);
-    properties["video-sync"]="audio"; // Stop rechecks even without a property notification.
-    sync.stop();assert(properties["video-sync"]=="audio");
+    properties["video-sync"]="display-vdrop"; // Stop rechecks even without a property notification.
+    sync.stop();assert(properties["video-sync"]=="display-vdrop");
     properties["video-sync"]="display-resample";
     auto macPaths=paths;macPaths.backend=Backend::CoreMLMetal;
     FrameInterpolationController mac(access,macPaths);

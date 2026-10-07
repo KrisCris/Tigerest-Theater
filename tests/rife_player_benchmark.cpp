@@ -64,9 +64,13 @@ int main(int argc,char** argv)
     QQuickWindow::setGraphicsApi(renderApi?QSGRendererInterface::OpenGL:QSGRendererInterface::Direct3D11);
     QApplication app(argc,argv);
     QCommandLineParser parser;parser.addHelpOption();
-    for(const auto& key:{"runtime","cache","monitor","script","media","output","model","target","seconds","warmup","backend","preset","run-id","sync"})
+    for(const auto& key:{"runtime","cache","monitor","script","media","output","model","target","seconds","warmup","backend","preset","run-id","sync","start"})
         parser.addOption(QCommandLineOption(key,key,key));
     parser.addOption(QCommandLineOption("baseline","Original-frame comparison"));
+    parser.addOption(QCommandLineOption("danmaku","Load matching local XML with the production danmaku renderer"));
+    parser.addOption(QCommandLineOption("composed-fullscreen","Force Qt's legacy composition border for an A/B comparison"));
+    parser.addOption(QCommandLineOption("fullscreen","Use fullscreen without the composition border"));
+    parser.addOption(QCommandLineOption("inset-viewport","Inset the video viewport for fullscreen composition comparisons"));
     parser.addOption(QCommandLineOption("controls","Exercise pause and seek during measurement"));parser.process(app);
     const auto value=[&](const char* key,const QString& fallback=QString()){
         return parser.isSet(key)?parser.value(key):fallback;
@@ -77,6 +81,7 @@ int main(int argc,char** argv)
     QJsonObject report{{"schemaVersion",1},{"runId",value("run-id")},{"completed",false},
         {"scope","Player+MpvVideoItem+4K renderer+managed shaders+audio; no WebEngine overlay"},
         {"baseline",parser.isSet("baseline")},{"model",value("model","rife-4.25-lite")},
+        {"danmakuRequested",parser.isSet("danmaku")},
         {"targetFps",value("target","60").toInt()},{"backend",value("backend","gpu-next")},
         {"preset",value("preset","default")},{"requestedSeconds",value("seconds","600").toInt()}};
     QJsonArray samples;
@@ -93,11 +98,17 @@ int main(int argc,char** argv)
     settings.setValue(SETTINGS_SECTION_MPV,"configMode","embedded");
     settings.setValue(SETTINGS_SECTION_MPV,"renderBackend",report["backend"].toString());
     settings.setValue(SETTINGS_SECTION_MPV,"shaderPreset",report["preset"].toString());
+    settings.setValue(SETTINGS_SECTION_MPV,"enableDanmaku",parser.isSet("danmaku"));
     settings.setValue(SETTINGS_SECTION_VIDEO,"aiRife",!parser.isSet("baseline"));
     settings.setValue(SETTINGS_SECTION_VIDEO,"hardwareDecoding","safe");
     settings.setValue(SETTINGS_SECTION_VIDEO,"refreshrate.auto_switch",false);
     if(parser.isSet("sync"))settings.setValue(SETTINGS_SECTION_VIDEO,"sync_mode",value("sync"));
     if(!MpvConfigManager::prepare())return fail("Managed mpv configuration preparation failed");
+    if(parser.isSet("danmaku")){
+        QFile options(MpvConfigManager::activeConfigDir()+"/script-opts/uosc_danmaku.conf");
+        if(!options.open(QIODevice::Append)||options.write("\nautoload_local_danmaku=yes\n")<0)
+            return fail("Cannot configure isolated local danmaku");
+    }
     wchar_t module[32768]{};GetModuleFileNameW(GetModuleHandleW(L"libmpv-2.dll"),module,DWORD(std::size(module)));
     const auto loaded=QFileInfo(QString::fromWCharArray(module)).canonicalFilePath();
     report["loadedMpv"]=loaded;
@@ -120,19 +131,27 @@ int main(int argc,char** argv)
     report["screen"]=QJsonObject{{"name",screen->name()},{"refreshHz",screen->refreshRate()},{"devicePixelRatio",screen->devicePixelRatio()}};
     QQuickWindow window;window.setScreen(screen);window.setTitle("Tigerest RIFE 4K acceptance");
     window.setFlags(Qt::Window|Qt::FramelessWindowHint);
+    if(parser.isSet("composed-fullscreen"))window.setProperty("_q_has_border_in_fullscreen",true);
     window.setGeometry(QRect(screen->geometry().topLeft(),QSize(qRound(3840/screen->devicePixelRatio()),qRound(2160/screen->devicePixelRatio()))));
     auto* video=new BenchmarkVideo(window.contentItem());video->setObjectName("video");
     video->setWidth(window.width());video->setHeight(window.height());
     bool renderReady=!renderApi;
     QObject::connect(video,&MpvAbstractItem::ready,&app,[&]{renderReady=true;});
-    player.setWindow(&window);window.show();
+    player.setWindow(&window);
+    if(parser.isSet("composed-fullscreen")||parser.isSet("fullscreen"))window.showFullScreen();else window.show();
+    if(parser.isSet("inset-viewport")) {
+        video->setWidth(window.width()-2.0/window.devicePixelRatio());
+        video->setHeight(window.height()-2.0/window.devicePixelRatio());
+    }
+    report["windowStyle"]=double(GetWindowLongPtrW(reinterpret_cast<HWND>(window.winId()),GWL_STYLE));
+    report["composedFullscreen"]=parser.isSet("composed-fullscreen");
     QObject::connect(&window,&QWindow::visibleChanged,&app,[&](bool visible){if(!visible)playbackError="Benchmark window was closed or hidden";});
     auto* controller=video->mpvController();
     clock.restart();
     while(!renderReady&&clock.elapsed()<15000&&playbackError.isEmpty())pump();
     if(!renderReady)return fail("Render API context was not ready before media load");
     controller->setProperty("mute",true);controller->setProperty("msg-level","all=warn");
-    if(!player.load(QUrl::fromLocalFile(value("media")).toString(),{{"autoplay",true}},{},1))return fail("Real Player rejected media");
+    if(!player.load(QUrl::fromLocalFile(value("media")).toString(),{{"autoplay",true},{"startMilliseconds",qint64(value("start","0").toDouble()*1000)}},{},1))return fail("Real Player rejected media");
     const auto read=[&](const QString& key){const auto v=controller->getProperty(key);
         return v.metaType().id()==qMetaTypeId<ErrorReturn>()?QVariant():v;};
     const auto snapshot=[&]{return QJsonObject{{"rife",QJsonObject::fromVariantMap(player.windowsRifeStatus())},
@@ -146,6 +165,13 @@ int main(int argc,char** argv)
         {"coreIdle",QJsonValue::fromVariant(read("core-idle"))},
         {"audioOutput",QJsonValue::fromVariant(read("current-ao"))},
         {"videoSync",QJsonValue::fromVariant(read("video-sync"))},
+        {"estimatedDisplayFps",QJsonValue::fromVariant(read("estimated-display-fps"))},
+        {"displayNames",QJsonValue::fromVariant(read("display-names"))},
+        {"vsyncJitter",QJsonValue::fromVariant(read("vsync-jitter"))},
+        {"mistimedFrames",QJsonValue::fromVariant(read("mistimed-frame-count"))},
+        {"delayedFrames",QJsonValue::fromVariant(read("vo-delayed-frame-count"))},
+        {"danmakuCount",QJsonValue::fromVariant(read("user-data/uosc_danmaku/danmaku-count"))},
+        {"danmakuVisible",QJsonValue::fromVariant(read("user-data/uosc_danmaku/has-danmaku"))},
         {"audioParams",QJsonValue::fromVariant(read("audio-params"))},
         {"osdDimensions",QJsonValue::fromVariant(read("osd-dimensions"))},
         {"videoOutParams",QJsonValue::fromVariant(read("video-out-params"))},

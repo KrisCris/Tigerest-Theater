@@ -179,6 +179,40 @@ int main(int argc,char**argv){
     playback.onPlaybackSpeed(1.25);playback.onFormatChanged(d);
     assert(!playback.preparingEngine()&&controller.diagnostics()["reason"]=="playback-speed"&&adds==2);
     playback.endItem();
+    {
+        // Cold preparation still reports attachment synchronously while the
+        // independent clock marker waits for its real libmpv completion event.
+        QVariantMap asyncProperties{{"vf",QVariantList{}},{"hwdec","auto"},{"video-sync","display-resample"}};
+        int asyncAdds=0,markerRequest=0;
+        auto asyncCommand=[&](const QStringList& args){
+            if(args[0]=="vf"&&args[1]=="add"){
+                ++asyncAdds;asyncProperties["vf"]=QVariantList{QVariantMap{{"label","tigerest-rife"},{"name","vapoursynth"}}};
+            }else if(args[0]=="vf"&&args[1]=="remove")asyncProperties["vf"]=QVariantList{};
+            return true;
+        };
+        MpvAccess asyncAccess{
+            [&](const QString& key){return asyncProperties.value(key);},
+            [&](const QString& key,const QVariant& value){asyncProperties[key]=value;return true;},asyncCommand,
+            [&](const QString& key,const QVariant& value){asyncProperties[key]=value;return true;},asyncCommand,
+            [&](const QString& key,const QVariant& value,int id){
+                assert(key=="user-data/tigerest/rife-clock-owned"&&value.toBool());markerRequest=id;return true;},
+            [](const QString&,int){assert(false);return false;},true};
+        FrameInterpolationController asyncController(asyncAccess,manager.pathsFor({}));
+        RifePlaybackCoordinator coldPlayback(manager,asyncController,[](const RuntimePaths&,QString*){return true;});
+        bool prepared=false;
+        QObject::connect(&coldPlayback,&RifePlaybackCoordinator::enginePrepared,[&](quint64,bool ok,const QString& error){
+            assert(ok&&error.isEmpty());prepared=true;
+        });
+        const SourceInfo asyncSource{176,80,24,1,true,true,false,true};
+        coldPlayback.beginItem(true,false,1.);coldPlayback.onFormatChanged(asyncSource);
+        assert(coldPlayback.preparingEngine()&&markerRequest==0);
+        assert(until([&]{coldPlayback.onFormatChanged(asyncSource);return prepared;}));
+        assert(markerRequest!=0&&asyncAdds==1&&asyncController.ownsFilter());
+        assert(coldPlayback.activationError().isEmpty());
+        asyncController.onClockSetReply(markerRequest,-1); // A later real failure still removes the graph.
+        assert(!asyncController.ownsFilter()&&asyncController.state()==State::DisabledForCurrentItem);
+        coldPlayback.endItem();
+    }
     json(root+"/fixture.json",{{"probe",QJsonObject{{"ok",true},{"privateLibrariesOnly",true},{"gpu",gpu}}},
         {"delay",1},{"compileError","Controlled compiler failure"}});
     engineReady=true;

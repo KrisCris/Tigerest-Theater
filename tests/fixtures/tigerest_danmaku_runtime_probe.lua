@@ -157,6 +157,32 @@ local function sandbox(integration)
 end
 
 local cases = {}
+function cases.rife_clock_owner_survives_comment_and_window_transitions()
+    local s = sandbox()
+    s.props['video-sync'] = 'audio'
+    s.props['display-fps'] = 240
+    s.props['estimated-vf-fps'] = 60
+    s.props['user-data/tigerest/rife-clock-owned'] = true
+    s.start_render()
+    assert(s.props['video-sync'] == 'audio', 'RIFE audio clock must not be overwritten by danmaku')
+    local before = s.overlays[1].updates
+    s.advance(1)
+    assert(s.overlays[1].updates - before <= 61, 'Do not submit 240 OSD updates when audio presentation consumes 60')
+    assert(s.overlays[1].updates - before >= 58, 'RIFE comments must keep moving')
+    s.set('video-sync', 'display-vdrop') -- An explicit display-clock owner is respected too.
+    before = s.overlays[1].updates
+    s.advance(1)
+    assert(s.overlays[1].updates - before >= 238, 'Fullscreen retains high refresh animation')
+    s.set('video-sync', 'audio')
+    s.env.hide_danmaku_func(); s.env.show_danmaku_func()
+    assert(s.props['video-sync'] == 'audio', 'Comment toggles cannot take over the RIFE clock')
+    s.set('video-sync', 'display-resample') -- Restore before releasing ownership.
+    s.set('user-data/tigerest/rife-clock-owned', false)
+    assert(s.props['video-sync'] == 'display-resample', 'RIFE original preference must survive release')
+    s.set('video-sync', 'audio')
+    assert(s.props['video-sync'] == 'display-vdrop', 'Ordinary audio playback still gets independent comment cadence')
+end
+
 function cases.fresh_profile_autoloads_through_comment_rendering()
     local s = sandbox(true)
     s.emit('file-loaded')

@@ -457,7 +457,9 @@ void PlayerComponent::initializeMpv()
     },
     [this](const QString& key,const QVariant& value){return m_mpv->setPropertyAsync(key,value)>=0;},
     [this](const QStringList& arguments){return m_mpv->commandAsync(arguments)>=0;},
-    [this](const QString& key,const QVariant& value,int id){return m_mpv->setPropertyAsync(key,value,id)>=0;}
+    [this](const QString& key,const QVariant& value,int id){return m_mpv->setPropertyAsync(key,value,id)>=0;},
+    [this](const QString& key,int id){return mpv_get_property_async(m_mpv->mpv(),uint64_t(id),key.toUtf8().constData(),MPV_FORMAT_NODE)>=0;},
+    true
   });
 #ifdef Q_OS_WIN
   m_rife=std::make_unique<rife::FrameInterpolationController>(
@@ -1003,11 +1005,26 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
   {
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
     case MPV_EVENT_SET_PROPERTY_REPLY:
+      if(m_rifeAccess)m_rifeAccess->completeTaggedSet(int(event->reply_userdata),event->error);
+      if(m_rife&&m_rifeAccess){
+        auto polling=m_rifeAccess->enterPolling();
+        m_rife->onClockSetReply(event->reply_userdata,event->error);
+      }
       if(m_rifeResumeRequest&&event->reply_userdata==uint64_t(m_rifeResumeRequest)&&
           m_rifeStartup.waiting()&&m_rifeResumeGeneration==m_rifeStartup.generation()){
         if(event->error<0){failInterpolationResume();break;}
         m_rifeResumeRequest=0;
         m_rifeStartup.finish();publishInterpolationPause();
+      }
+      break;
+    case MPV_EVENT_GET_PROPERTY_REPLY:
+      if(m_rife&&m_rifeAccess){
+        auto *property=static_cast<mpv_event_property*>(event->data);
+        QVariant value;
+        if(event->error>=0&&property&&property->format==MPV_FORMAT_NODE&&property->data)
+          value=mpv::qt::node_to_variant(static_cast<mpv_node*>(property->data));
+        auto polling=m_rifeAccess->enterPolling();
+        m_rife->onClockReadReply(event->reply_userdata,event->error,value);
       }
       break;
 #endif
@@ -1147,8 +1164,10 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
           default:break;
           }
           m_rifeAccess->observe(QString::fromUtf8(prop->name),value);
-          if(m_rife&&strcmp(prop->name,"video-sync")==0)
+          if(m_rife&&strcmp(prop->name,"video-sync")==0) {
+            auto polling=m_rifeAccess->enterPolling();
             m_rife->onVideoSyncChanged(value.toString());
+          }
         }
       }
 #endif
@@ -1573,6 +1592,7 @@ void PlayerComponent::beginInterpolationItem()
 }
 void PlayerComponent::pollInterpolation()
 {
+  if(m_rife)m_rife->serviceClock();
   checkInterpolationResume(m_rifeClock.isValid()?m_rifeClock.elapsed():0);
 #ifdef Q_OS_WIN
   m_rifeStartup.setEnginePreparing(m_windowsRifePlayback&&m_windowsRifePlayback->preparingEngine(),m_rifeClock.elapsed());

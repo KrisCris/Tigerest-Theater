@@ -301,8 +301,14 @@ void WindowManager::prepareFullscreenComposition()
       QGuiApplication::platformName() != QStringLiteral("windows"))
     return;
 
-  // The Qt/Emby surface uses OpenGL while embedded mpv uses its own native
-  // swapchain. Borderless OpenGL fullscreen can bypass DWM and present the
+  // Native GPU-Next now uses a D3D11 Qt scene. Forcing that scene through the
+  // OpenGL border workaround breaks fullscreen presentation pacing on NVIDIA
+  // (including with a single display and no WebEngine surface).
+  if (m_window->rendererInterface()->graphicsApi() != QSGRendererInterface::OpenGL)
+    return;
+
+  // An OpenGL Qt/Emby surface and embedded mpv use separate native
+  // swapchains. Borderless OpenGL fullscreen can bypass DWM and present the
   // browser over the video after an NVIDIA display-mode transition. Qt's
   // Windows workaround keeps WS_BORDER (one physical pixel) in fullscreen.
   // Set Qt's own flag before entering fullscreen so it also accounts for the

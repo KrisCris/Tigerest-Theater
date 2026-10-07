@@ -326,12 +326,17 @@ void TestWindowManager::testNativeFullscreenKeepsWindowsComposition()
   const HWND hwnd = reinterpret_cast<HWND>(window.winId());
   const LONG_PTR frameMask = WS_BORDER | WS_CAPTION | WS_THICKFRAME;
   const LONG_PTR normalFrame = GetWindowLongPtr(hwnd, GWL_STYLE) & frameMask;
+  QTRY_VERIFY(window.isExposed());
+  const bool openGlScene = window.rendererInterface()->graphicsApi() == QSGRendererInterface::OpenGL;
+  // The one-pixel DWM workaround is for an OpenGL scene. Applying it to the
+  // D3D11 scene prevents normal fullscreen presentation pacing on NVIDIA.
+  const bool needsCompositionBorder = nativeVideo && openGlScene;
 
   for (int cycle = 0; cycle < 3; ++cycle) {
     manager.beginPlaybackSession();
     manager.setFullScreen(true);
     QTRY_COMPARE(window.visibility(), QWindow::FullScreen);
-    QCOMPARE(bool(GetWindowLongPtr(hwnd, GWL_STYLE) & WS_BORDER), nativeVideo);
+    QCOMPARE(bool(GetWindowLongPtr(hwnd, GWL_STYLE) & WS_BORDER), needsCompositionBorder);
     QCOMPARE(window.winId(), reinterpret_cast<WId>(hwnd));
     manager.endPlaybackSession();
     QTRY_COMPARE(window.visibility(), initial);

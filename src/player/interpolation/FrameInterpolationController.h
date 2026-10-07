@@ -21,6 +21,8 @@ struct MpvAccess {
     std::function<bool(const QString&,const QVariant&)> setAsync;
     std::function<bool(const QStringList&)> commandAsync;
     std::function<bool(const QString&,const QVariant&,int)> setAsyncTagged;
+    std::function<bool(const QString&,int)> getAsyncTagged;
+    bool asyncPropertyReplies=false;
 };
 class FrameInterpolationController {
 public:
@@ -37,6 +39,9 @@ public:
     void configureHardwareDecoding(const QString& mode);
     void configureVideoSync(const QString& mode);
     void onVideoSyncChanged(const QString& mode);
+    void onClockSetReply(uint64_t requestId,int error);
+    void onClockReadReply(uint64_t requestId,int error,const QVariant& value);
+    void serviceClock();
     void poll(int64_t nowMs,bool suspended);
     void onMetrics(uint64_t generation,const Metrics& metrics,int64_t nowMs,bool suspended,uint64_t drops,
                    double avsync=std::numeric_limits<double>::quiet_NaN(),uint64_t decoderDrops=0);
@@ -50,6 +55,11 @@ private:
     bool conflict()const;
     bool hasFilter(bool requireEnabled=true)const;
     bool applyVideoSync(const QString& mode,bool interpolating);
+    enum class ClockStep {Idle,Acquire,Read,Write,Restore,Release};
+    bool asynchronousClock()const;
+    void advanceClock();
+    void requestClock(ClockStep step,const QString& value={});
+    void failClock();
     void restoreVideoSync(bool asynchronous=false);
     void detach();
     void disable(const QString& reason,bool bypass=false);
@@ -61,6 +71,13 @@ private:
     bool requested=false,filterOwned=false,hwdecOwned=false,notified=false;
     bool performanceWarning=false;
     bool videoSyncOwned=false,videoSyncPending=false;
+    QString previousVideoSync;
+    ClockStep clockStep=ClockStep::Idle;
+    int clockRequest=0,clockSequence=0;
+    bool clockWanted=false,clockMarker=false,clockRestore=false,clockExplicit=false,clockReleaseOnly=false;
+    bool clockCleanupFailed=false,clockTakenOver=false,clockReleasing=false;
+    uint64_t clockItem=0,itemSequence=0,clockIntent=0,clockReleaseIntent=0;
+    QString clockWritten,clockWriteValue;
     QString oldHwdec,reason;
     QString oldVideoSync,effectiveVideoSync;
     Metrics latest;

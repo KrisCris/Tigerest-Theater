@@ -35,6 +35,11 @@ def main():
     parser.add_argument('--preset', choices=('default','liveaction','aggressive'), default='default')
     parser.add_argument('--baseline', action='store_true')
     parser.add_argument('--controls', action='store_true')
+    parser.add_argument('--danmaku', action='store_true')
+    parser.add_argument('--composed-fullscreen', action='store_true')
+    parser.add_argument('--fullscreen', action='store_true')
+    parser.add_argument('--inset-viewport', action='store_true')
+    parser.add_argument('--start', type=float, default=0)
     parser.add_argument('--sync', choices=('audio','display-resample','display-vdrop'))
     args = parser.parse_args()
     if not 5 <= args.seconds <= 3600 or not 5 <= args.warmup <= 120:
@@ -59,6 +64,15 @@ def main():
             command.append('--baseline')
         if args.controls:
             command.append('--controls')
+        if args.danmaku:
+            command.append('--danmaku')
+        if args.composed_fullscreen:
+            command.append('--composed-fullscreen')
+        if args.fullscreen:
+            command.append('--fullscreen')
+        if args.inset_viewport:
+            command.append('--inset-viewport')
+        command += ['--start', str(args.start)]
         if args.sync:
             command += ['--sync', args.sync]
         environment = dict(os.environ, RIFE_BENCH_EXPECTED_MPV=str(stage/'libmpv-2.dll'),

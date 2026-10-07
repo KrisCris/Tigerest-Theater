@@ -72,6 +72,11 @@ target_link_libraries(test_windowmanager jmp_core Qt6::Test)
 target_include_directories(test_windowmanager PRIVATE ${TEST_INCLUDE_DIRS})
 target_compile_definitions(test_windowmanager PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_windowmanager COMMAND test_windowmanager)
+if(WIN32)
+  add_test(NAME test_windowmanager_opengl COMMAND test_windowmanager
+    testNativeFullscreenKeepsWindowsComposition)
+  set_tests_properties(test_windowmanager_opengl PROPERTIES ENVIRONMENT "QSG_RHI_BACKEND=opengl")
+endif()
 if(APPLE)
   # Native macOS maximize/fullscreen transitions are asynchronous and can be
   # rejected for an inactive test process. Exercise WindowManager's state

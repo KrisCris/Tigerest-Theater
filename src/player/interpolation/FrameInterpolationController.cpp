@@ -83,37 +83,163 @@ void FrameInterpolationController::configureHardwareDecoding(const QString& mode
 void FrameInterpolationController::configureVideoSync(const QString& mode){
     if(!applyVideoSync(mode,filterOwned)&&filterOwned)disable("video-sync-error");
 }
+bool FrameInterpolationController::asynchronousClock()const{
+    return paths.backend==Backend::TensorRT&&mpv.asyncPropertyReplies&&mpv.setAsyncTagged&&mpv.getAsyncTagged;
+}
+void FrameInterpolationController::requestClock(ClockStep step,const QString& value){
+    clockStep=step;clockWriteValue=value;
+    if(step==ClockStep::Release&&!clockReleasing){clockReleaseIntent=clockIntent;clockReleasing=true;}
+    clockRequest=0x53000000+(++clockSequence&0x00ffffff);
+    const int id=clockRequest;
+    const bool accepted=step==ClockStep::Read?mpv.getAsyncTagged("video-sync",id):
+        mpv.setAsyncTagged(step==ClockStep::Acquire||step==ClockStep::Release?
+            QStringLiteral("user-data/tigerest/rife-clock-owned"):QStringLiteral("video-sync"),
+            step==ClockStep::Acquire?QVariant(true):step==ClockStep::Release?QVariant(false):QVariant(value),id);
+    if(!accepted){
+        if(step==ClockStep::Read)onClockReadReply(id,-1,{});
+        else onClockSetReply(id,-1);
+    }
+}
+void FrameInterpolationController::advanceClock(){
+    if(!asynchronousClock()||clockRequest||clockCleanupFailed)return;
+    if(clockMarker){
+        if(clockReleaseOnly||(!clockWanted&&!clockRestore))requestClock(ClockStep::Release);
+        else requestClock(ClockStep::Read);
+    }else if(clockWanted||(clockRestore&&clockExplicit))requestClock(ClockStep::Acquire);
+}
+void FrameInterpolationController::serviceClock(){
+    // Includes cleanup after END_FILE, when the ordinary media poll no longer runs.
+    if(asynchronousClock()&&clockCleanupFailed){clockCleanupFailed=false;advanceClock();}
+}
+void FrameInterpolationController::failClock(){
+    clockWanted=false;clockExplicit=false;
+    if(current==State::Preparing||current==State::Active)disable("video-sync-error");
+    else advanceClock();
+}
+void FrameInterpolationController::onClockSetReply(uint64_t id,int error){
+    if(!clockRequest||id!=uint64_t(clockRequest)||clockStep==ClockStep::Read)return;
+    const auto step=clockStep;const auto value=clockWriteValue;const auto intent=clockReleaseIntent;
+    clockRequest=0;clockStep=ClockStep::Idle;
+    if(error<0){
+        if(step==ClockStep::Release){
+            // Do not pretend Lua has been released. Retry from the next timer tick.
+            clockCleanupFailed=true;clockReleaseOnly=true;videoSyncOwned=false;return;
+        }
+        if(step==ClockStep::Acquire){clockMarker=false;clockRestore=false;}
+        if(step==ClockStep::Restore){
+            // The user's preference has not taken effect. Keep Lua excluded and
+            // retry from a fresh ownership read on the next timer tick.
+            clockWanted=false;clockRestore=true;clockExplicit=false;clockCleanupFailed=true;
+            if(current==State::Preparing||current==State::Active)disable("video-sync-error");
+            return;
+        }
+        failClock();return;
+    }
+    if(step==ClockStep::Acquire)clockMarker=true;
+    else if(step==ClockStep::Release){
+        const bool newerPreference=!clockWanted&&clockIntent!=intent;
+        clockReleasing=false;
+        clockMarker=false;videoSyncOwned=false;clockWritten.clear();
+        clockRestore=newerPreference;clockExplicit=newerPreference;
+        clockReleaseOnly=false;clockCleanupFailed=false;
+    }else{
+        clockWritten=value;effectiveVideoSync=value;
+        if(step==ClockStep::Restore&&!clockWanted&&oldVideoSync==value){clockRestore=false;clockExplicit=false;}
+    }
+    advanceClock();
+}
+void FrameInterpolationController::onClockReadReply(uint64_t id,int error,const QVariant& value){
+    if(!clockRequest||id!=uint64_t(clockRequest)||clockStep!=ClockStep::Read)return;
+    clockRequest=0;clockStep=ClockStep::Idle;
+    const auto actual=optionText(value);
+    if(error<0||actual.isEmpty()){
+        if(!clockWritten.isEmpty()||clockRestore){
+            clockWanted=false;clockRestore=true;clockExplicit=false;clockCleanupFailed=true;
+            if(current==State::Preparing||current==State::Active)disable("video-sync-error");
+            return;
+        }
+        clockRestore=false;clockReleaseOnly=true;failClock();return;
+    }
+    effectiveVideoSync=actual;
+    const auto expected=clockWritten.isEmpty()?oldVideoSync:clockWritten;
+    if(!clockExplicit&&actual!=expected){
+        // A read made after SET_PROPERTY_REPLY distinguishes a stale observer
+        // notification from an external writer, even if no new event was emitted.
+        oldVideoSync=actual;clockWanted=false;clockRestore=false;clockReleaseOnly=true;
+        if(clockItem==itemSequence)clockTakenOver=true;
+        videoSyncOwned=false;advanceClock();return;
+    }
+    if(!clockWanted&&!clockRestore){advanceClock();return;}
+    const auto target=clockWanted?QStringLiteral("audio"):oldVideoSync;
+    if(actual!=target){requestClock(clockWanted?ClockStep::Write:ClockStep::Restore,target);return;}
+    if(clockWanted){videoSyncOwned=true;return;}
+    clockRestore=false;clockExplicit=false;advanceClock();
+}
 bool FrameInterpolationController::applyVideoSync(const QString& mode,bool interpolating){
-    oldVideoSync=mode;
     const bool override=paths.backend==Backend::TensorRT&&interpolating&&mode=="display-resample";
-    const auto effective=override?QStringLiteral("display-vdrop"):mode;
+    if(asynchronousClock()&&(override||clockMarker||clockRequest)){
+        ++clockIntent;oldVideoSync=mode;clockWanted=override;clockRestore=!override;clockExplicit=!override;
+        if(override){clockReleaseOnly=false;clockTakenOver=false;clockItem=itemSequence;}
+        advanceClock();return true;
+    }
+    const auto effective=override?QStringLiteral("audio"):mode;
+    if(override&&videoSyncOwned&&(videoSyncPending||effectiveVideoSync==effective)){oldVideoSync=mode;return true;}
+    if(override&&!videoSyncOwned){
+        // Lua must relinquish its clock before it observes our windowed audio mode.
+        if(!mpv.set("user-data/tigerest/rife-clock-owned",true))return false;
+        videoSyncOwned=true;
+    }
+    if(override)oldVideoSync=mode;
     if(!effective.isEmpty()&&!mpv.set("video-sync",effective))return false;
-    videoSyncOwned=override;videoSyncPending=override;
+    oldVideoSync=mode;
+    if(override){
+        previousVideoSync=effectiveVideoSync;
+        videoSyncPending=effectiveVideoSync!=effective;
+    }else{
+        // Keep Lua excluded until the user's preference has been restored.
+        if(videoSyncOwned)mpv.set("user-data/tigerest/rife-clock-owned",false);
+        videoSyncOwned=false;videoSyncPending=false;previousVideoSync.clear();
+    }
     if(!effective.isEmpty())effectiveVideoSync=effective;
     return true;
 }
 void FrameInterpolationController::onVideoSyncChanged(const QString& mode){
     if(mode.isEmpty())return;
-    // A notification queued before our write is not an external takeover.
-    // Once the override is observed, later changes relinquish ownership.
-    if(videoSyncOwned&&videoSyncPending&&mode==oldVideoSync)return;
-    effectiveVideoSync=mode;
-    if(videoSyncOwned){
-        videoSyncPending=false;
-        if(mode!="display-vdrop"){
-            videoSyncOwned=false;
-            oldVideoSync=mode;
-        }
+    if(asynchronousClock()){
+        if(clockMarker||clockRequest)advanceClock();
+        else effectiveVideoSync=mode;
+        return;
     }
+    if(videoSyncOwned){
+        // The synchronous adapter can still receive an observer notification
+        // queued before its write. Acknowledge the current override first.
+        if(mode==effectiveVideoSync){
+            videoSyncPending=false;
+            if(filterOwned&&!applyVideoSync(oldVideoSync,true))disable("video-sync-error");
+            return;
+        }
+        if(videoSyncPending&&mode==previousVideoSync)return;
+        videoSyncOwned=false;videoSyncPending=false;previousVideoSync.clear();
+        oldVideoSync=mode;
+        // Property callbacks must not block mpv's VO teardown.
+        mpv.setAsync("user-data/tigerest/rife-clock-owned",false);
+    }
+    effectiveVideoSync=mode;
 }
 void FrameInterpolationController::restoreVideoSync(bool asynchronous){
+    if(asynchronousClock()){
+        if(clockMarker||clockRequest){clockWanted=false;clockRestore=!clockReleaseOnly;clockExplicit=false;advanceClock();}
+        return;
+    }
     if(!videoSyncOwned)return;
     const auto mode=asynchronous?effectiveVideoSync:optionText(mpv.read("video-sync"));
-    if(mode=="display-vdrop"||(videoSyncPending&&mode==oldVideoSync)){
+    if(mode==effectiveVideoSync||(videoSyncPending&&mode==previousVideoSync)){
         const bool restored=asynchronous?mpv.setAsync("video-sync",oldVideoSync):mpv.set("video-sync",oldVideoSync);
         if(restored)effectiveVideoSync=oldVideoSync;
     }else effectiveVideoSync=mode;
-    videoSyncOwned=false;videoSyncPending=false;
+    if(asynchronous)mpv.setAsync("user-data/tigerest/rife-clock-owned",false);
+    else mpv.set("user-data/tigerest/rife-clock-owned",false);
+    videoSyncOwned=false;videoSyncPending=false;previousVideoSync.clear();
 }
 void FrameInterpolationController::stop(){++serial;detach();current=State::Off;reason.clear();source={};latest={};lastFailure.clear();performanceWarning=false;}
 void FrameInterpolationController::stopOnEndFile(){
@@ -130,7 +256,7 @@ void FrameInterpolationController::stopOnEndFile(){
     current=State::Off;reason.clear();source={};latest={};
 }
 void FrameInterpolationController::beginItem(bool enabled,bool systemConfig){
-    stop();requested=enabled;notified=false;
+    stop();++itemSequence;clockTakenOver=false;requested=enabled;notified=false;
     if(!enabled)return;
     if(systemConfig){disable("system-config",true);return;}
     if(!paths.available){disable("runtime-missing",true);return;}
@@ -152,6 +278,8 @@ void FrameInterpolationController::onFormatChanged(const SourceInfo& info){
     if(current==State::Bypassed)return; // re-evaluate only on the next item
     if(filterOwned&&same(info,source))return;
     if(filterOwned&&paths.backend==Backend::TensorRT){disable("dynamic-format",true);return;}
+    // A new item must wait for the previous marker/clock transaction to finish.
+    if(asynchronousClock()&&!clockWanted&&(clockMarker||clockRequest))return;
     source=info;
     const auto eligibility=qualify(source,paths.backend==Backend::TensorRT?SourceLimits{3840,2160,60.001}:SourceLimits{});
     if(!eligibility.enabled){disable(QString::fromStdString(eligibility.reason),true);return;}
@@ -162,17 +290,20 @@ void FrameInterpolationController::onFormatChanged(const SourceInfo& info){
         current=State::Preparing;
     }
     if(conflict()){disable("external-filter",true);return;}
-    effectiveVideoSync=optionText(mpv.read("video-sync"));
+    if(!asynchronousClock()||!clockWanted)effectiveVideoSync=optionText(mpv.read("video-sync"));
     if(paths.backend==Backend::TensorRT&&paths.engine.isEmpty()){
         reason="engine-preparing";current=State::Preparing;return;
     }
     if(paths.backend==Backend::TensorRT){
-        oldVideoSync=effectiveVideoSync;
-        // Resampling can stall GPU-next presentation behind the VS graph.
-        // vdrop keeps the display clock and refresh-driven danmaku animation.
-        if(effectiveVideoSync=="display-resample"&&!applyVideoSync(effectiveVideoSync,true)){
+        if(!asynchronousClock()||!clockWanted)oldVideoSync=effectiveVideoSync;
+        // Audio pacing avoids the display-clock stalls observed with GPU-next
+        // and the VS graph in both windowed and fullscreen presentation.
+        if((!asynchronousClock()||(!clockWanted&&!clockTakenOver))&&effectiveVideoSync=="display-resample"&&!applyVideoSync(effectiveVideoSync,true)){
             disable("video-sync-error");return;
         }
+        // Keep the coordinator's synchronous attach contract. Clock requests
+        // remain serialized; any later failure detaches this graph via disable().
+        if(current==State::DisabledForCurrentItem)return;
     }
     reason.clear();
     session=openSession();
@@ -258,6 +389,7 @@ QVariantMap FrameInterpolationController::diagnostics()const{
     return {
     {"requestedForItem",requested},{"runtimeAvailable",paths.available},{"state",int(current)},{"status",status()},{"reason",reason},
     {"effectiveSync",effectiveVideoSync},{"savedSync",oldVideoSync},{"ownsVideoSync",videoSyncOwned},
+    {"clockRequest",clockRequest},{"clockMarkerOwned",clockMarker},{"clockCleanupFailed",clockCleanupFailed},
     {"generation",qulonglong(serial)},{"epoch",qulonglong(latest.epoch)},
     {"generatedFrames",qulonglong(latest.predictions)},{"cutBypasses",qulonglong(latest.cuts)},
     {"processedPairs",qulonglong(latest.pairs)},
