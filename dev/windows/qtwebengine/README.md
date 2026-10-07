@@ -40,6 +40,8 @@ cmake --build build
 
 Windows 打包在 `windeployqt` 完成后覆盖 WebEngine DLL、辅助进程、资源和 QML 模块，防止打包时恢复为上游 DLL。补丁和本文随包保存于 `licenses/qtwebengine-tigerest`。无需把 Qt 完整源码或编译中间文件放入客户端安装目录。
 
+修复运行库是 Windows 构建和打包的必需依赖。`build.bat` 自动查找依赖目录下的 `qtwebengine-sync/6.9.3`，也可显式设置 `TIGEREST_WEBENGINE_RUNTIME`。配置和安装阶段均校验版本、完整文件、源码补丁及核心 DLL 的 SHA256；路径为空或验证失败时停止，不能退回原版 QtWebEngine。安装后再次校验实际部署的核心 DLL，避免旧缓存或文件时间戳使修复失效。
+
 ## 回归证据
 
 2026-09-13，Windows 11 23H2 / RTX 4090 / 驱动 616.64：相同 DLL 关闭等待可重复捕获缺块，开启有界等待后十轮、每轮约十二秒的鼠标悬停测试未捕获加载完成后的固定内容区异常。模拟超时触发恢复后继续产生有效画面并响应鼠标。此前无限等待诊断的开关对照及用户手动反馈也支持此同步措施有效。

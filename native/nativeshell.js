@@ -709,23 +709,7 @@ function createRifeTargetControl({element, value, save, notify}) {
     return input;
 }
 
-async function mountTigerestSettings(host = null, initialSection = null, onReturn = null, signal = null) {
-    await initCompleted;
-    if (signal?.aborted) return;
-
-    let mpvDiagnostics = {};
-    try {
-        mpvDiagnostics = await window.api.player.mpvDiagnostics();
-    } catch (error) {
-        console.warn('Unable to read MPV diagnostics', error);
-    }
-
-    if (signal?.aborted) return;
-    const previous = host ? host.querySelector('#tigerest-settings-inline') : document.getElementById('tigerest-settings-overlay');
-    if (previous) return;
-    const returnFocus = document.activeElement;
-    const priorBodyOverflow = document.body.style.overflow;
-
+function getTigerestSettingsCategories() {
     const sectionMeta = {
         main: {
             title: '客户端',
@@ -762,6 +746,75 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         sectionMeta.mpv = {title: '播放器', subtitle: '音轨偏好、HDR、缓存与弹幕'};
         sectionMeta.danmaku.subtitle = '字号、描边、速度、透明度与显示范围';
     }
+    return [...jmpInfo.sections].sort((a, b) => a.order - b.order)
+        .filter(entry => sectionMeta[entry.key] && jmpInfo.settingsDescriptions[entry.key])
+        .map(entry => ({...entry, ...sectionMeta[entry.key]}));
+}
+
+function installTigerestSettingsMenu() {
+    if (installTigerestSettingsMenu.refresh) {
+        installTigerestSettingsMenu.refresh();
+        return;
+    }
+    const style = document.createElement('style');
+    style.id = 'tigerest-settings-menu-style';
+    style.textContent = '.mainDrawer .tigerest-settings-child .navMenuOption-listItem-content { padding-inline-start: 2.5em; }';
+    (document.head || document.documentElement).appendChild(style);
+    const refresh = () => {
+        const active = document.querySelector('#tigerest-settings-inline .tgs-section.active')?.dataset.section;
+        for (const row of document.querySelectorAll('.mainDrawer .navMenuOption')) {
+            // Emby's custom-action list rows resolve their route via the native
+            // items container, rather than an href on the rendered element.
+            const container = row.closest('.itemsContainer');
+            const item = container?.getItemFromElement?.(row)
+                || container?.getItem?.(Number(row.dataset.index)) || container?.items?.[Number(row.dataset.index)];
+            const href = item?.href || row.getAttribute('href') || '';
+            const match = href.match(/\/plugins\/tigerest-native-settings\/settings\/([a-z]+)\.html(?:[?#]|$)/);
+            if (match) {
+                row.classList.add('tigerest-settings-child');
+                row.dataset.settingsCategory = match[1];
+                if (active) row.classList.toggle('navMenuOption-selected', match[1] === active);
+                if (active === match[1]) row.setAttribute('aria-current', 'page');
+                else row.removeAttribute('aria-current');
+            } else if (row.classList.contains('tigerest-settings-child')) {
+                // Virtualized native rows may be reused for an unrelated item.
+                row.classList.remove('tigerest-settings-child');
+                delete row.dataset.settingsCategory;
+                row.removeAttribute('aria-current');
+            }
+            if (active && /\/plugins\/tigerest-native-settings\/settings\.html(?:[?#]|$)/.test(href))
+                row.classList.remove('navMenuOption-selected');
+        }
+    };
+    installTigerestSettingsMenu.refresh = refresh;
+    // Drawer content is lazy on mobile and rebuilt when Emby changes context.
+    // Observe insertions only; native focus and selected-class updates remain Emby's.
+    const observer = new MutationObserver(mutations => {
+        if (mutations.some(mutation => mutation.target.closest?.('.mainDrawer')
+            || [...mutation.addedNodes].some(node => node.nodeType === 1
+                && (node.matches('.mainDrawer') || node.querySelector('.mainDrawer'))))) refresh();
+    });
+    observer.observe(document.documentElement, {childList: true, subtree: true});
+    refresh();
+}
+
+async function mountTigerestSettings(host = null, initialSection = null, onReturn = null, signal = null) {
+    await initCompleted;
+    if (signal?.aborted) return;
+
+    let mpvDiagnostics = {};
+    try {
+        mpvDiagnostics = await window.api.player.mpvDiagnostics();
+    } catch (error) {
+        console.warn('Unable to read MPV diagnostics', error);
+    }
+
+    if (signal?.aborted) return;
+    const previous = host ? host.querySelector('#tigerest-settings-inline') : document.getElementById('tigerest-settings-overlay');
+    if (previous) return;
+    const returnFocus = document.activeElement;
+    const priorBodyOverflow = document.body.style.overflow;
+    const orderedSections = getTigerestSettingsCategories();
     const restartSettings = new Set([
         'main.enableMPV',
         'mpv.configMode',
@@ -837,16 +890,8 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             border-radius: 3px; outline: none; font: inherit; font-size: 14px;
         }
         .tgs-search:focus { border-color: #ffbe38; }
-        .tgs-body { min-height: 0; min-width: 0; display: grid; grid-template-columns: 230px minmax(0, 1fr); }
-        .tgs-tabs { padding: 24px 0; overflow-y: auto; border-right: 1px solid rgba(255,255,255,.08); }
-        .tgs-tab {
-            box-sizing: border-box; width: 100%; min-height: 48px; margin: 0; padding: 14px 24px; color: #ccc;
-            text-align: left; font: inherit; font-size: 15px; background: transparent; border: 0;
-            border-left: 3px solid transparent; border-radius: 0; cursor: pointer;
-        }
-        .tgs-tab:hover { background: #ffffff08; }
-        .tgs-tab.active { color: #ffbe38; border-color: #ffbe38; background: #ffffff07; }
-        .tgs-tab small { display: block; margin-top: 5px; color: #999; font-size: 11px; line-height: 1.5; font-weight: 400; }
+        .tgs-body { min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+        .tgs-category-select { max-width: 240px; }
         .tgs-content { min-width: 0; overflow-y: auto; padding: 30px clamp(20px, 4vw, 56px) 48px; scrollbar-gutter: stable; }
         .tgs-section { display: none; max-width: 760px; margin: 0 auto 32px; }
         .tgs-section.active { display: block; }
@@ -900,10 +945,6 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             .tgs-title { font-size: 22px; }
             .tgs-subtitle { font-size: 12px; }
             .tgs-search { width: 100%; margin: 0; font-size: 16px; }
-            .tgs-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-            .tgs-tabs { display: flex; padding: 0 12px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.08); scrollbar-width: thin; }
-            .tgs-tab { flex: 0 0 auto; width: auto; padding: 12px 16px; white-space: nowrap; text-align: center; border-left: 0; border-bottom: 2px solid transparent; }
-            .tgs-tab small { display: none; }
             .tgs-content { padding: 24px 20px 32px; }
             .tgs-control { font-size: 16px; }
             .tgs-section-head { gap: 8px; }
@@ -918,12 +959,9 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         }
         #tigerest-settings-inline .tgs-body { overflow: visible; }
         #tigerest-settings-inline .tgs-content { overflow: visible; min-width: 0; }
-        #tigerest-settings-inline .tgs-tabs { align-self: start; position: sticky; top: 100px; }
         #tigerest-settings-inline .tgs-search { min-width: 0; }
         @media (max-width: 760px) {
             #tigerest-settings-inline .tgs-dialog { min-height: 0; }
-            #tigerest-settings-inline .tgs-body { grid-template-rows: auto auto; }
-            #tigerest-settings-inline .tgs-tabs { position: static; }
             #tigerest-settings-inline .tgs-header { flex-wrap: wrap; }
             #tigerest-settings-inline .tgs-search { width: 100%; }
         }
@@ -954,18 +992,29 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     header.appendChild(heading);
     const search = element('input', 'tgs-search');
     search.type = 'search';
-    search.placeholder = '搜索设置，例如 HDR、字幕、缓存…';
-    search.setAttribute('aria-label', '搜索客户端设置');
+    search.placeholder = '搜索当前分类的设置…';
+    search.setAttribute('aria-label', '搜索当前分类的设置');
     header.appendChild(search);
     dialog.appendChild(header);
 
     const body = element('div', 'tgs-body');
-    const tabs = element('nav', 'tgs-tabs');
-    tabs.setAttribute('role', 'tablist');
-    tabs.setAttribute('aria-label', '设置分类');
     const content = element('main', 'tgs-content');
-    body.append(tabs, content);
+    body.appendChild(content);
     dialog.appendChild(body);
+
+    // Before the server UI exists there is no Emby drawer. Keep a compact
+    // selector in that standalone dialog only; integrated pages use native routes.
+    const categorySelect = host ? null : element('select', 'tgs-control tgs-category-select');
+    if (categorySelect) {
+        categorySelect.setAttribute('aria-label', '设置分类');
+        for (const entry of orderedSections) {
+            const option = element('option', '', entry.title);
+            option.value = entry.key;
+            categorySelect.appendChild(option);
+        }
+        header.insertBefore(categorySelect, search);
+        categorySelect.addEventListener('change', () => { search.value = ''; activate(categorySelect.value); applySearch(); });
+    }
 
     const footer = element('div', 'tgs-footer');
     const status = element('div', 'tgs-status', '设置保存在当前客户端配置中，不会包含 Emby 密码或令牌。');
@@ -974,10 +1023,6 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     footer.append(status, closeButton);
     dialog.appendChild(footer);
 
-    const orderedSections = [...jmpInfo.sections]
-        .sort((a, b) => a.order - b.order)
-        .filter(entry => sectionMeta[entry.key] && jmpInfo.settingsDescriptions[entry.key]);
-    const tabButtons = new Map();
     const groups = new Map();
     let activeSection = initialSection || sessionStorage.getItem('tigerestSettingsTab') || 'mpv';
     if (!orderedSections.some(entry => entry.key === activeSection)) {
@@ -1027,28 +1072,17 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         }
     };
 
-    const revealActiveTab = () => {
-        tabs.setAttribute('aria-orientation', matchMedia('(max-width: 760px)').matches ? 'horizontal' : 'vertical');
-        const selected = tabButtons.get(activeSection);
-        if (!selected || tabs.scrollWidth <= tabs.clientWidth) return;
-        const buttonBounds = selected.getBoundingClientRect(), tabBounds = tabs.getBoundingClientRect();
-        if (buttonBounds.left < tabBounds.left) tabs.scrollLeft += Math.floor(buttonBounds.left - tabBounds.left) - 12;
-        else if (buttonBounds.right > tabBounds.right) tabs.scrollLeft += Math.ceil(buttonBounds.right - tabBounds.right) + 12;
-    };
     const activate = section => {
+        if (!groups.has(section)) return;
         activeSection = section;
         sessionStorage.setItem('tigerestSettingsTab', section);
-        for (const [key, button] of tabButtons) {
-            button.classList.toggle('active', key === section);
-            button.setAttribute('aria-selected', String(key === section));
-            button.tabIndex = key === section ? 0 : -1;
-        }
+        if (categorySelect) categorySelect.value = section;
         for (const [key, group] of groups) {
             group.classList.toggle('active', key === section);
             group.setAttribute('aria-hidden', String(key !== section));
         }
         content.scrollTop = 0;
-        revealActiveTab();
+        if (host) installTigerestSettingsMenu();
     };
 
     const makeControl = (section, setting, currentValue) => {
@@ -1107,40 +1141,17 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
 
     for (const entry of orderedSections) {
         const section = entry.key;
-        const meta = sectionMeta[section];
-        const tab = element('button', 'tgs-tab');
-        tab.type = 'button';
-        tab.dataset.sectionTab = section;
-        tab.id = `tgs-tab-${section}`;
-        tab.setAttribute('role', 'tab');
-        tab.setAttribute('aria-controls', `tgs-section-${section}`);
-        tab.append(element('span', '', meta.title), element('small', '', meta.subtitle));
-        tab.addEventListener('click', () => {
-            search.value = '';
-            activate(section);
-            applySearch();
-        });
-        tab.addEventListener('keydown', event => {
-            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-            event.preventDefault();
-            const buttons = [...tabButtons.values()], index = buttons.indexOf(tab);
-            const target = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
-                : (index + (event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length;
-            buttons[target].click();
-            buttons[target].focus({preventScroll: true});
-            buttons[target].scrollIntoView({block: 'nearest', inline: 'nearest'});
-        });
-        tabs.appendChild(tab);
-        tabButtons.set(section, tab);
+        const meta = entry;
 
         const group = element('section', 'tgs-section');
         group.dataset.section = section;
         group.id = `tgs-section-${section}`;
-        group.setAttribute('role', 'tabpanel');
-        group.setAttribute('aria-labelledby', tab.id);
+        group.setAttribute('aria-labelledby', `tgs-section-title-${section}`);
         const groupHead = element('div', 'tgs-section-head');
         const groupTitle = element('div');
-        groupTitle.append(element('h2', '', meta.title), element('p', '', meta.subtitle));
+        const title = element('h2', '', meta.title);
+        title.id = `tgs-section-title-${section}`;
+        groupTitle.append(title, element('p', '', meta.subtitle));
         const reset = element('button', 'tgs-reset', '恢复本页默认值');
         reset.type = 'button';
         reset.addEventListener('click', async () => {
@@ -1287,22 +1298,16 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             return;
         }
         let matchCount = 0;
-        for (const group of groups.values()) {
+        for (const [section, group] of groups) {
             let matches = 0;
             for (const row of group.querySelectorAll('.tgs-setting')) {
-                const visible = row.dataset.search.includes(query);
+                const visible = section === activeSection && row.dataset.search.includes(query);
                 row.style.display = visible ? '' : 'none';
                 if (visible) matches += 1;
             }
-            group.classList.toggle('active', matches > 0);
-            group.setAttribute('aria-hidden', String(matches === 0));
             matchCount += matches;
         }
         empty.hidden = matchCount > 0;
-        for (const button of tabButtons.values()) {
-            button.classList.remove('active');
-            button.setAttribute('aria-selected', 'false');
-        }
         status.textContent = `已找到 ${matchCount} 项设置。`;
     };
     search.addEventListener('input', applySearch);
@@ -1314,7 +1319,6 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         clearTimeout(showSaved.timer);
         rifeExtensionPanel?.dispose();
         document.removeEventListener('keydown', onKeyDown);
-        window.removeEventListener('resize', revealActiveTab);
         if (!host) document.body.style.overflow = priorBodyOverflow;
         overlay.remove();
         css.remove();
@@ -1343,7 +1347,6 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         document.addEventListener('keydown', onKeyDown);
     }
     (host || document.body).appendChild(overlay);
-    window.addEventListener('resize', revealActiveTab);
     if (!host) document.body.style.overflow = 'hidden';
     signal?.addEventListener('abort', close, {once: true});
     if (signal?.aborted) { close(); return; }
@@ -1357,7 +1360,10 @@ async function openTigerestSettings(section = 'mpv') {
         try {
             const module = await Emby.importModule('./modules/approuter.js');
             const router = module.default || module;
-            const route = router.getRoutes().find(route => route.controller === 'tigerest/settings-view.js');
+            const routes = router.getRoutes();
+            const category = routes.find(route => route.tigerestSettingsSection === section);
+            if (category) return router.show(category.path);
+            const route = routes.find(route => route.controller === 'tigerest/settings-view.js');
             if (route) return router.show(route.path + '?section=' + encodeURIComponent(section));
         } catch (error) { console.warn('Unable to open the Emby settings route'); }
     }
@@ -1365,6 +1371,8 @@ async function openTigerestSettings(section = 'mpv') {
     return mountTigerestSettings(null, section);
 }
 window.tigerestMountSettings = mountTigerestSettings;
+window.tigerestSettingsCategories = getTigerestSettingsCategories;
+window.tigerestInstallSettingsMenu = installTigerestSettingsMenu;
 window.tigerestOpenMpvSettings = openTigerestSettings;
 
 // Emby shelves support touch/trackpad horizontal scrolling, but Chromium

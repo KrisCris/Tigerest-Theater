@@ -408,6 +408,8 @@ if(Python3_Interpreter_FOUND)
   endif()
   add_test(NAME test_mpv_runtime_deployment
            COMMAND ${Python3_EXECUTABLE} -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_mpv_runtime_deployment.py")
+  add_test(NAME test_webengine_runtime_deployment
+           COMMAND ${Python3_EXECUTABLE} -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_webengine_runtime_deployment.py")
   add_test(NAME test_bundle_integrity
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_bundle_integrity.py)
 endif()

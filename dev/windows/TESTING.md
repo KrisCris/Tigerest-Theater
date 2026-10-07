@@ -35,3 +35,5 @@ node tests/test_community_messages_ui.cjs 'build/output/Tigerest Theater.exe' --
 播放测试使用独立配置目录，不复制真实认证凭据到 fixture，也不向生产评论服务写入测试评论或已读状态。屏幕刷新率如临时改变，结束时必须恢复。此前的两个启动错误分别来自遗漏 MPV DLL 路径和遗漏 Qt 平台插件路径；都属于测试环境，不代表播放器需要重装。
 
 不要额外把 QTWEBENGINEPROCESS_PATH／RESOURCES_PATH／LOCALES_PATH 指向未经部署的 QtWebEngine 构建目录。集成测试使用应用自身的部署资源；混用目录会令页面执行超时，即使旧安装版也会复现。独立发行包冒烟测试应移除工具链 PATH 和 Qt 环境覆盖，确认只靠包内运行库启动。
+
+`test_webengine_runtime_deployment` 检查缺少同步补丁运行库、版本或 SHA256 不匹配时配置必须失败。`test_webengine_startup` 除软件渲染参数检查外，还使用独立临时配置启动正常硬件加速窗口，确认 D3D11 合成启用且日志实际出现 `D3D11 producer wait: completed=1, reset=0`。该测试不能代替媒体库悬停、滚动时的实际画面检查；不能因软件渲染测试通过就宣称花屏已修复。

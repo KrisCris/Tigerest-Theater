@@ -42,7 +42,7 @@ async function systemInfo(url) {
     }
 }
 
-async function run(executable, allowBrowserZoom) {
+async function run(executable, allowBrowserZoom, accelerated = false) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tigerest-webengine-test-'));
     const id = randomUUID().replaceAll('-', '');
     const profile = path.join(root, 'profiles', id);
@@ -56,12 +56,16 @@ async function run(executable, allowBrowserZoom) {
         },
     }));
     const port = await freePort();
+    const environment = { ...process.env, QTWEBENGINE_CHROMIUM_FLAGS: accelerated ? '' : '--disable-gpu-vsync' };
+    // Exercise the shipped default, independent of earlier diagnostic runs.
+    delete environment.TIGEREST_D3D11_PRODUCER_WAIT;
+    delete environment.TIGEREST_DIAG_PRODUCER_FAIL_ONCE;
     const child = spawn(executable, [
-        '--config-dir', root, '--profile', `GpuTest-${id}`, '--disable-gpu',
+        '--config-dir', root, '--profile', `GpuTest-${id}`, ...(accelerated ? [] : ['--disable-gpu']),
         '--remote-debugging-port', `127.0.0.1:${port}`,
     ], {
-        windowsHide: true,
-        env: { ...process.env, QTWEBENGINE_CHROMIUM_FLAGS: '--disable-gpu-vsync' },
+        windowsHide: !accelerated,
+        env: environment,
         stdio: ['ignore', 'pipe', 'pipe'],
     });
     let diagnostics = '';
@@ -79,6 +83,23 @@ async function run(executable, allowBrowserZoom) {
         }
         assert.ok(version, `DevTools startup timed out: ${diagnostics}`);
         const info = await systemInfo(version.webSocketDebuggerUrl);
+        if (accelerated) {
+            assert.doesNotMatch(info.commandLine, /(?:^|\s)--disable-gpu(?:\s|$)/);
+            assert.match(info.gpu.featureStatus.gpu_compositing, /^enabled/);
+            assert.match(info.gpu.auxAttributes.glRenderer, /Direct3D11/);
+            const logFile = path.join(profile, 'logs', 'Tigerest Theater.log');
+            let runtimeLog = '';
+            for (let attempt = 0; attempt < 60; attempt++) {
+                runtimeLog = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : '';
+                if (/D3D11 producer wait: completed=1, reset=0/.test(runtimeLog)) break;
+                await delay(100);
+            }
+            assert.match(runtimeLog, /D3D11 producer wait: completed=1, reset=0/,
+                'normal hardware-accelerated startup must execute the compositor synchronization fix');
+            assert.doesNotMatch(runtimeLog, /D3D11 producer wait failed/);
+            console.log(`PASS: hardware compositor=${info.gpu.featureStatus.gpu_compositing}; D3D11 producer sync executed`);
+            return;
+        }
         assert.match(info.commandLine, /(?:^|\s)--disable-gpu(?:\s|$)/,
             `--disable-gpu never reached Chromium (allowBrowserZoom=${allowBrowserZoom})`);
         assert.match(info.commandLine, /--disable-gpu-vsync(?:\s|$)/,
@@ -102,4 +123,5 @@ async function run(executable, allowBrowserZoom) {
     assert.ok(process.argv[2], 'Pass the built application executable');
     await run(path.resolve(process.argv[2]), true);
     await run(path.resolve(process.argv[2]), false);
+    await run(path.resolve(process.argv[2]), true, true);
 })().catch(error => { console.error(error); process.exitCode = 1; });

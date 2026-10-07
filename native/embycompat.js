@@ -120,30 +120,40 @@
             return class TigerestSettingsPlugin {
                 constructor() { this.id = 'tigerest-native-settings'; }
                 getRoutes() {
-                    return [{path: 'settings.html', type: 'settings', settingsType: 'app',
-                        title: 'MPV 播放设置', icon: '&#xe8b8;', order: 25,
+                    window.tigerestInstallSettingsMenu?.();
+                    const base = {type: 'settings', settingsType: 'app',
                         contentPath: 'none', templateType: 'settings', settingsTheme: true,
-                        controller: 'tigerest/settings-view.js'}];
+                        icon: '&#xe8b8;'};
+                    return [{...base, path: 'settings.html', order: 25,
+                        title: window.tigerestAndroidApi ? '客户端设置' : 'MPV 播放设置',
+                        controller: 'tigerest/settings-view.js'},
+                        ...(window.tigerestSettingsCategories?.() || []).map((section, index) => ({
+                            ...base, path: `settings/${section.key}.html`, title: section.title,
+                            icon: '&#xe5cc;', order: 25 + (index + 1) / 100,
+                            tigerestSettingsSection: section.key,
+                            controller: `tigerest/settings-${section.key}-view.js`
+                        }))];
                 }
             };
         });
 
-        defineModule('tigerest/settings-view.js', [
+        const settingsViewDependencies = [
             'modules/viewmanager/baseview.js', 'appRouter'
-        ], function (baseView, appRouter) {
+        ];
+        const createSettingsView = section => function (baseView, appRouter) {
             const BaseView = moduleValue(baseView), router = moduleValue(appRouter);
             function SettingsView(view, params) {
                 BaseView.apply(this, arguments);
                 this.settingsHost = view.querySelector('.readOnlyContent');
                 this.settingsHost?.classList.add('tigerest-settings-host');
-                this.settingsSection = params?.section;
+                this.settingsSection = section || params?.section;
                 this.mountGeneration = 0;
             }
             Object.assign(SettingsView.prototype, BaseView.prototype);
             SettingsView.prototype.onResume = function () {
                 BaseView.prototype.onResume.apply(this, arguments);
                 const generation = ++this.mountGeneration;
-                router.setTitle?.('MPV 播放设置');
+                router.setTitle?.(window.tigerestAndroidApi ? '客户端设置' : 'MPV 播放设置');
                 this.settingsMount?.dispose();
                 this.mountAbort?.abort();
                 this.mountAbort = new AbortController();
@@ -165,7 +175,10 @@
                 BaseView.prototype.onPause.apply(this, arguments);
             };
             return SettingsView;
-        });
+        };
+        defineModule('tigerest/settings-view.js', settingsViewDependencies, createSettingsView());
+        for (const section of ['main', 'audio', 'video', 'subtitles', 'mpv', 'danmaku', 'other'])
+            defineModule(`tigerest/settings-${section}-view.js`, settingsViewDependencies, createSettingsView(section));
 
         defineModule('tigerest/mpv-video.js', [
             'events', 'loading', 'appRouter', 'globalize', 'apphost', 'appSettings', 'confirm'

@@ -24,6 +24,11 @@ if not exist "%QTROOT_WIN%" (
     exit /b 1
 )
 echo Using Qt: %QTROOT%
+if not defined TIGEREST_WEBENGINE_RUNTIME (
+    echo ERROR: Set TIGEREST_WEBENGINE_RUNTIME to the verified patched QtWebEngine runtime.
+    echo See dev/windows/qtwebengine/README.md. Stock WebEngine cannot be packaged.
+    exit /b 1
+)
 
 REM === Check Visual Studio ===
 if not defined VCVARS (
@@ -70,6 +75,7 @@ cmake -GNinja ^
     -DVCRUNTIME_DIR="%DEPS_CMAKE%/vcruntime" ^
     -DVCREDIST_EXE="%DEPS_CMAKE%/vc_redist.x64.exe" ^
     -DTIGEREST_MPV_RUNTIME_DIR="%TIGEREST_MPV_RUNTIME_DIR%" ^
+    -DTIGEREST_WEBENGINE_RUNTIME="%TIGEREST_WEBENGINE_RUNTIME%" ^
     -DCHECK_FOR_UPDATES=ON ^
     -DUSE_STATIC_MPVQT=ON ^
     "%PROJECT_ROOT%"

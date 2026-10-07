@@ -9,6 +9,7 @@ set SCRIPT_DIR=%~dp0
 for %%i in ("%SCRIPT_DIR%\..\..") do set "PROJECT_ROOT=%%~fi"
 set DEPS_DIR=%SCRIPT_DIR%deps
 if defined TIGEREST_DEPS_DIR set "DEPS_DIR=%TIGEREST_DEPS_DIR%"
+if not defined TIGEREST_WEBENGINE_RUNTIME if exist "%DEPS_DIR%\qtwebengine-sync\%QT_VERSION%\tigerest-webengine.json" set "TIGEREST_WEBENGINE_RUNTIME=%DEPS_DIR%\qtwebengine-sync\%QT_VERSION%"
 set BUILD_DIR=%PROJECT_ROOT%\build
 set EXE_NAME=Tigerest Theater.exe
 

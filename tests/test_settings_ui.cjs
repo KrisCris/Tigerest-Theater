@@ -1,4 +1,4 @@
-// Real settings renderer in an isolated Chromium fixture; native persistence is a boundary double.
+// Real settings renderer/controllers; Emby navigation and native persistence are boundary doubles.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const withBrowser=require('./community_browser.cjs');
 const shell=fs.readFileSync(path.resolve(__dirname,'../native/nativeshell.js'),'utf8');
@@ -12,7 +12,11 @@ for(const section of sections){
  defaults[section.section]=Object.fromEntries(values.map(v=>[v.value,v.default]));
 }
 withBrowser({
- '/':{type:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#141414;color:#eee;font:16px system-ui}#origin{margin:20px}#host{margin:30px auto;max-width:1100px}</style><body><button id="origin">设置</button><div id="host"></div><script>
+ '/':{type:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+ body{margin:0;background:#141414;color:#eee;font:16px system-ui}#origin{margin:20px}#host{margin:30px auto;max-width:1100px}.view{margin-left:260px}
+ .mainDrawer{position:fixed;inset:0 auto 0 0;width:260px;overflow:auto;background:#202020}.navMenuOption{display:block;width:100%;padding:0;border:0;color:inherit;background:none;text-align:left;font:inherit;cursor:pointer}.navMenuOption-listItem-content{display:flex;align-items:center;gap:12px;padding:14px 20px}.navMenuOption-selected{color:#ffbe38;background:#ffffff09}
+ @media(max-width:760px){.mainDrawer{display:none;z-index:1000;box-shadow:0 0 0 100vmax #0008}.mainDrawer.drawer-open{display:block}.view{margin-left:0}}
+ </style><body><aside class="mainDrawer"><div class="mainDrawerScrollSlider"><div class="navDrawerItemsContainer itemsContainer" data-listindex="0"></div></div></aside><div class="view"><button id="origin">设置</button><div id="host" class="readOnlyContent"></div></div><script>
  // The injected Qt shell must finish wiring native settings before this fixture replaces its boundary.
  window.fixtureReady=Promise.resolve(window.initCompleted).then(()=>{
  window.saves=[];window.resets=[];window.confirm=()=>true;window.initCompleted=Promise.resolve();
@@ -26,42 +30,65 @@ withBrowser({
  '/settings.js':{body:renderer}
 },async({evaluate,call})=>{
  await evaluate('window.fixtureReady');
- await evaluate('document.querySelector("#origin").focus();mountTigerestSettings(null,"audio").then(value=>window.mount=value)');
+ await evaluate(`window.NativeShell={AppHost:{}};window.settingsModules=new Map();window.define=(id,deps,factory)=>settingsModules.set(id,{deps,factory});window.tigerestMountSettings=mountTigerestSettings;window.tigerestSettingsCategories=getTigerestSettingsCategories;window.tigerestInstallSettingsMenu=installTigerestSettingsMenu;`);
+ await evaluate(fs.readFileSync(path.resolve(__dirname,'../native/embycompat.js'),'utf8'));
+ await evaluate(fs.readFileSync(path.resolve(__dirname,'fixtures/settings_navigation.js'),'utf8'));
+ await evaluate('openSettingsCategory("audio")');
+ assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-inline .tgs-tabs, #tigerest-settings-inline [role=tablist]").length'),0,
+  'content has no duplicate category navigation');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category]")].map(row=>row.dataset.settingsCategory)'),
+  ['main','audio','video','subtitles','mpv','danmaku','other'],'all supported categories are in Emby left navigation');
+ assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'audio');
  assert.ok(await evaluate('document.querySelectorAll(".tgs-setting").length>70'),'all supported setting definitions render');
- assert.equal(await evaluate('document.querySelector("#tigerest-settings-overlay [role=dialog]")?.getAttribute("aria-modal")'),'true','overlay is keyboard accessible');
  assert.equal(await evaluate('[...document.querySelectorAll(".tgs-setting input,.tgs-setting select,.tgs-setting textarea")].every(input=>input.labels?.length===1)'),true,'every input is associated with its visible form label');
  await evaluate(`(()=>{const search=document.querySelector('.tgs-search');search.value='透明度';search.dispatchEvent(new Event('input'))})()`);
- assert.ok(await evaluate('document.querySelector("[data-setting=\\"danmaku.opacity\\"]").offsetHeight>0'));
- await evaluate(`document.querySelector('[data-section-tab="audio"]').click()`);
- assert.equal(await evaluate('[...document.querySelectorAll("[data-section=audio] .tgs-setting")].every(row=>row.offsetHeight>0)'),true,'category change clears prior search filtering');
- await evaluate(`(()=>{const tab=document.querySelector('[data-section-tab="audio"]');tab.focus();tab.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))})()`);
- assert.equal(await evaluate('document.activeElement.dataset.sectionTab'),'video','keyboard moves between categories');
- await evaluate(`document.querySelector('[data-section-tab="danmaku"]').click();const opacity=document.querySelector('[data-setting="danmaku.opacity"] select');opacity.value=String(jmpInfo.settingsDescriptions.danmaku.find(s=>s.key==='opacity').options.findIndex(o=>o.value===0.5));opacity.dispatchEvent(new Event('change'))`);
+ assert.equal(await evaluate('document.querySelector("[data-setting=\\"danmaku.opacity\\"]").offsetHeight'),0,'search only filters the selected category');
+ assert.equal(await evaluate('document.querySelector(".tgs-empty").hidden'),false);
+ await evaluate('openSettingsCategory("danmaku")');
+ assert.equal(await evaluate('document.querySelector(".tgs-search").value'),'','category change clears search');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".tgs-section")].filter(group=>group.offsetHeight>0).map(group=>group.dataset.section)'),['danmaku']);
+ await evaluate(`const opacity=document.querySelector('[data-setting="danmaku.opacity"] select');opacity.value=String(jmpInfo.settingsDescriptions.danmaku.find(s=>s.key==='opacity').options.findIndex(o=>o.value===0.5));opacity.dispatchEvent(new Event('change'))`);
  assert.deepEqual(await evaluate('saves.at(-1)'),['danmaku','opacity',0.5],'selected values reach persistence immediately');
  await evaluate(`document.querySelector('[data-section="danmaku"] .tgs-reset').click();new Promise(resolve=>setTimeout(resolve,50))`);
  assert.deepEqual(await evaluate('resets'),['danmaku']);
  assert.equal(await evaluate('jmpInfo.settings.danmaku.opacity'),0.7,'reset restores defaults');
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-style").length'),1,'reset releases prior style and controls');
+ await evaluate('renderSettingsDrawer();new Promise(resolve=>setTimeout(resolve,20))');
+ assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),7,'rerender does not duplicate native menu entries');
+ assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'danmaku','reset/rerender preserve selected category');
+ await evaluate(`(()=>{const container=document.querySelector('.navDrawerItemsContainer');const rowItems=new Map([...container.children].map((row,index)=>[row,container.items[index]]));container.getItemFromElement=row=>rowItems.get(row);container.items=null;container.getItem=()=>null;for(const row of container.children){delete row.dataset.index;row.querySelector('.listItemBody').textContent=rowItems.get(row).Name;}window.virtualRowItems=rowItems;})()`);
+ assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),7,'virtualized native rows resolve through getItemFromElement');
  await call('Emulation.setDeviceMetricsOverride',{width:360,height:740,deviceScaleFactor:1,mobile:true});
  await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true,'phone has no document overflow');
- assert.ok(await evaluate('document.querySelector(".tgs-content").getBoundingClientRect().height>250'),'category strip leaves usable form area on phone');
- assert.equal(await evaluate('(()=>{const tab=document.querySelector(".tgs-tab.active").getBoundingClientRect();const nav=document.querySelector(".tgs-tabs").getBoundingClientRect();return tab.left>=nav.left && tab.right<=nav.right})()'),true,'current category remains visible when switching to a phone viewport');
+ assert.equal(await evaluate('document.querySelectorAll(".tgs-tabs").length'),0,'phone has no horizontal category strip');
+ await evaluate('document.querySelector(".mainDrawer").classList.add("drawer-open");document.querySelector("[data-settings-category=video]").focus()');
+ assert.equal(await evaluate('document.activeElement.dataset.settingsCategory'),'video','native category accepts focus');
+ await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13,text:'\r'});
+ await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+ await evaluate('new Promise(resolve=>setTimeout(resolve,60))');
+ assert.equal(await evaluate('document.querySelector(".tgs-section.active").dataset.section'),'video','native menu remains keyboard activatable');
+ assert.equal(await evaluate('document.querySelector(".mainDrawer").classList.contains("drawer-open")'),false,'native navigation action can close the mobile drawer');
+ await evaluate('settingsController.onPause({});settingsController.onResume({});new Promise(resolve=>setTimeout(resolve,50))');
+ assert.equal(await evaluate('document.querySelector(".tgs-section.active").dataset.section'),'video','cached route resumes the same category');
  if(process.env.TIGEREST_SETTINGS_SCREENSHOTS){
   fs.mkdirSync(process.env.TIGEREST_SETTINGS_SCREENSHOTS,{recursive:true});
   fs.writeFileSync(path.join(process.env.TIGEREST_SETTINGS_SCREENSHOTS,'settings-phone.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await evaluate('document.querySelector(".mainDrawer").classList.add("drawer-open")');
+  fs.writeFileSync(path.join(process.env.TIGEREST_SETTINGS_SCREENSHOTS,'settings-phone-drawer.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
   await call('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
-  await evaluate(`document.querySelector('[data-section-tab="video"]').click()`);
   fs.writeFileSync(path.join(process.env.TIGEREST_SETTINGS_SCREENSHOTS,'settings-desktop.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
  }
- await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
- assert.equal(await evaluate('!!document.querySelector("#tigerest-settings-overlay")'),false);
- assert.equal(await evaluate('document.activeElement.id'),'origin','close restores focus after reset too');
- await evaluate('mountTigerestSettings(document.querySelector("#host"),"main",()=>window.returned=true).then(value=>window.mount=value)');
- assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-inline").length'),1);
  await evaluate('document.querySelector(".tgs-close").click()');
  assert.equal(await evaluate('window.returned'),true,'inline return leaves Emby route in control');
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-style").length'),0);
- console.log('settings UI: form labels, category keyboard, search reset, immediate persistence, defaults, focus return, inline cleanup and phone layout passed');
+ await evaluate('document.querySelector("#origin").focus();mountTigerestSettings(null,"audio").then(value=>window.mount=value)');
+ assert.equal(await evaluate('document.querySelector("#tigerest-settings-overlay [role=dialog]")?.getAttribute("aria-modal")'),'true');
+ await evaluate(`(()=>{const select=document.querySelector('.tgs-category-select');select.value='danmaku';select.dispatchEvent(new Event('change'))})()`);
+ assert.equal(await evaluate('document.querySelector(".tgs-section.active").dataset.section'),'danmaku','standalone fallback can still select a category');
+ await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+ assert.equal(await evaluate('!!document.querySelector("#tigerest-settings-overlay")'),false);
+ assert.equal(await evaluate('document.activeElement.id'),'origin','fallback closes and restores focus');
+ console.log('settings UI: native category routes, single pane, search/reset/persistence, drawer rerender, keyboard activation, phone layout, cached route resume and fallback cleanup passed');
 // Qt does not tick animation frames when launched with windowsHide, even while document.hidden is false.
 },{visible:true}).catch(error=>{console.error(error);process.exitCode=1});
