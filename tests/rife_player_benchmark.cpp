@@ -64,7 +64,7 @@ int main(int argc,char** argv)
     QQuickWindow::setGraphicsApi(renderApi?QSGRendererInterface::OpenGL:QSGRendererInterface::Direct3D11);
     QApplication app(argc,argv);
     QCommandLineParser parser;parser.addHelpOption();
-    for(const auto& key:{"runtime","cache","monitor","script","media","output","model","target","seconds","warmup","backend","preset","run-id"})
+    for(const auto& key:{"runtime","cache","monitor","script","media","output","model","target","seconds","warmup","backend","preset","run-id","sync"})
         parser.addOption(QCommandLineOption(key,key,key));
     parser.addOption(QCommandLineOption("baseline","Original-frame comparison"));
     parser.addOption(QCommandLineOption("controls","Exercise pause and seek during measurement"));parser.process(app);
@@ -96,6 +96,7 @@ int main(int argc,char** argv)
     settings.setValue(SETTINGS_SECTION_VIDEO,"aiRife",!parser.isSet("baseline"));
     settings.setValue(SETTINGS_SECTION_VIDEO,"hardwareDecoding","safe");
     settings.setValue(SETTINGS_SECTION_VIDEO,"refreshrate.auto_switch",false);
+    if(parser.isSet("sync"))settings.setValue(SETTINGS_SECTION_VIDEO,"sync_mode",value("sync"));
     if(!MpvConfigManager::prepare())return fail("Managed mpv configuration preparation failed");
     wchar_t module[32768]{};GetModuleFileNameW(GetModuleHandleW(L"libmpv-2.dll"),module,DWORD(std::size(module)));
     const auto loaded=QFileInfo(QString::fromWCharArray(module)).canonicalFilePath();
@@ -144,6 +145,7 @@ int main(int argc,char** argv)
         {"cacheBuffering",QJsonValue::fromVariant(read("cache-buffering-state"))},
         {"coreIdle",QJsonValue::fromVariant(read("core-idle"))},
         {"audioOutput",QJsonValue::fromVariant(read("current-ao"))},
+        {"videoSync",QJsonValue::fromVariant(read("video-sync"))},
         {"audioParams",QJsonValue::fromVariant(read("audio-params"))},
         {"osdDimensions",QJsonValue::fromVariant(read("osd-dimensions"))},
         {"videoOutParams",QJsonValue::fromVariant(read("video-out-params"))},

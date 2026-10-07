@@ -182,6 +182,26 @@ function mountTigerestAppearanceStyles() {
                 background: rgba(13, 16, 22, .44) !important;
             }
 
+            @media (pointer: fine) {
+                /* Emby reserves 1.08em for an embedded scrollbar. Match our 9px
+                   bar and paint through its lane without covering its hit area. */
+                body.tigerest-appearance-ready .skinHeader.adjustHeaderForEmbeddedScroll {
+                    right: 9px;
+                    inset-inline-end: 9px;
+                    --tgs-header-edge: 9px;
+                    --tgs-header-edge-color: rgba(13, 16, 22, .52);
+                    box-shadow: var(--tgs-header-edge) 0 0 var(--tgs-header-edge-color),
+                        0 8px 28px rgba(0, 0, 0, .16) !important;
+                }
+                body.tigerest-appearance-ready .skinHeader.adjustHeaderForEmbeddedScroll.semiTransparent {
+                    --tgs-header-edge-color: rgba(13, 16, 22, .44);
+                }
+                [dir="rtl"] body.tigerest-appearance-ready .skinHeader.adjustHeaderForEmbeddedScroll {
+                    right: 0;
+                    --tgs-header-edge: -9px;
+                }
+            }
+
             .headerTabs,
             .emby-tabs-slider {
                 background: transparent !important;

@@ -4,14 +4,14 @@ local original_mp = mp
 local fixture = debug.getinfo(1, 'S').source:sub(2):match('^(.*)[/\\]')
 local root = fixture .. '/../../resources/mpv/plugins/uosc_danmaku/'
 
-local function sandbox()
+local function sandbox(integration)
     local env = setmetatable({}, {__index = _G})
     env._G = env
     local props = {pause = false, ['time-pos'] = 10, ['display-fps'] = 120,
         ['osd-width'] = 1920, ['osd-height'] = 1080, vf = {}, speed = 1,
         path = 'https://example.test/video.mkv', ['filename/no-ext'] = 'video',
         ['current-tracks/video'] = {}, duration = 1200, ['container-fps'] = 24}
-    local events, observers, messages, timers, overlays, requests = {}, {}, {}, {}, {}, {}
+    local events, observers, messages, timers, overlays, requests, request_args = {}, {}, {}, {}, {}, {}, {}
     local now, visible = 0, true
     local api = {msg = original_mp.msg}
     local function load_script(name)
@@ -35,8 +35,9 @@ local function sandbox()
     function api.get_script_name() return 'uosc_danmaku' end
     function api.commandv() end
     function api.command_native(args) return args[2] end
-    function api.command_native_async(_, callback)
+    function api.command_native_async(args, callback)
         requests[#requests + 1] = callback
+        request_args[#requests] = args.args
         return #requests
     end
     function api.abort_async_command() end
@@ -79,21 +80,27 @@ local function sandbox()
         if name == 'mp.msg' then return original_mp.msg end
         if name == 'mp.utils' then return require('mp.utils') end
         if name == 'mp.options' then return {read_options = function() end} end
-        if name == 'modules/utils' or name == 'modules/options' then return load_script(name .. '.lua') end
+        if name == 'modules/utils' or name == 'modules/options'
+            or (integration and (name == 'modules/parse' or name == 'modules/guess'
+                or name == 'modules/render' or name == 'apis/dandanplay')) then
+            return load_script(name .. '.lua')
+        end
         return {}
     end
     load_script('main.lua')
-    env.get_danmaku_visibility = function() return visible end
-    env.set_danmaku_visibility = function(value) visible = value end
+    if not integration then
+        env.get_danmaku_visibility = function() return visible end
+        env.set_danmaku_visibility = function(value) visible = value end
+    end
     env.toggle_danmaku_switch = function() end
     local restore_sources = env.read_danmaku_source_record
     env.read_danmaku_source_record = function() end
     env.show_message = function() end
-    env.show_loaded = function() end
+    if not integration then env.show_loaded = function() end end
     env.file_exists = function() return false end
     env.save_danmaku = function() end
     local state = {env = env, props = props, overlays = overlays, requests = requests,
-        messages = messages, restore_sources = restore_sources}
+        messages = messages, restore_sources = restore_sources, request_args = request_args}
     function state.emit(name)
         for _, fn in ipairs(events[name] or {}) do fn({}) end
     end
@@ -129,10 +136,171 @@ local function sandbox()
         env.show_danmaku_func()
         state.set('time-pos', 10)
     end
+    function state.respond(index, data)
+        assert(requests[index], 'Expected HTTP request ' .. index)
+        requests[index](true, {status = 0, stdout = require('mp.utils').format_json(data)})
+        state.advance(0.1)
+    end
+    if integration then
+        local history
+        env.read_file = function() return history end
+        env.write_json_file = function(_, value) history = require('mp.utils').format_json(value) end
+        function state.set_history(value) history = value and require('mp.utils').format_json(value) end
+        function state.history() return history and require('mp.utils').parse_json(history) end
+        props['user-data/tigerest/emby/valid'] = true
+        props['user-data/tigerest/emby/series-name'] = 'Fixture series'
+        props['user-data/tigerest/emby/season-number'] = 1
+        props['user-data/tigerest/emby/episode-number'] = 3
+        props['media-title'] = 'Fixture series S01E03'
+    end
     return state
 end
 
 local cases = {}
+function cases.fresh_profile_autoloads_through_comment_rendering()
+    local s = sandbox(true)
+    s.emit('file-loaded')
+    assert(#s.requests == 1, 'A fresh profile must start matching on file-loaded without a manual toggle')
+    assert(s.request_args[1][#s.request_args[1]]:find('/search/anime?', 1, true), 'Expected anime search')
+    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+    s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = 'Episode three', episodeId = 420003}}}})
+    assert(s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true), 'Must fetch the identified episode')
+    s.respond(3, {count = 1, comments = {{p = '10,1,16777215', m = 'Fixture comment'}}})
+    s.set('time-pos', 10); s.advance(0.05)
+    assert(s.props['user-data/uosc_danmaku/has-danmaku'], 'Automatically fetched comments must become visible')
+    assert(s.props['user-data/uosc_danmaku/danmaku-count'] == 1, 'Count must reach the player controls')
+    assert(s.env.COMMENTS and #s.env.COMMENTS == 1, 'Response must pass through the actual comment parser')
+    assert(s.history().show_danmaku == true, 'Fresh profile must retain its enabled preference')
+end
+function cases.explicit_off_is_preserved()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = false})
+    s.emit('file-loaded'); s.advance(1)
+    assert(#s.requests == 0 and not s.env.ENABLED, 'Explicitly disabled danmaku must not issue requests')
+    assert(s.history().show_danmaku == false, 'Explicitly disabled preference must survive loading')
+end
+function cases.premiere_date_resolves_remake_and_split_episode_numbers()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/series-name'] = '乱马½'
+    s.props['user-data/tigerest/emby/episode-number'] = 25
+    s.props['user-data/tigerest/emby/episode-name'] = '修行与大餐'
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-10-04T00:00:00.0000000Z'
+    s.emit('file-loaded')
+    s.respond(1, {animes = {
+        {type = 'tvseries', animeTitle = '乱马1/2', bangumiId = '4576'},
+        {type = 'tvseries', animeTitle = '乱马1/2 第三季', bangumiId = '19972'},
+    }})
+    s.respond(2, {bangumi = {episodes = {
+        {episodeNumber = '1', episodeTitle = '第1话 从中国来的那个家伙', episodeId = 45760001, airDate = '1989-04-15T00:00:00'},
+    }}})
+    assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/bangumi/19972', 1, true),
+        'A title candidate without the matching broadcast date must not end matching')
+    s.respond(3, {bangumi = {episodes = {
+        {episodeNumber = '1', episodeTitle = '第1话 修行DEディナー', episodeId = 199720001, airDate = '2026-10-04T00:00:00'},
+    }}})
+    assert(s.request_args[4] and s.request_args[4][#s.request_args[4]]:find('/comment/199720001?', 1, true),
+        'The episode air date must resolve cumulative Emby E25 to the matching release E1')
+    s.respond(4, {count = 1, comments = {{p = '10,1,16777215', m = 'Correct release'}}})
+    assert(s.props['user-data/uosc_danmaku/has-danmaku'], 'Resolved release must automatically render')
+end
+function cases.unmatched_episode_is_visible_and_does_not_load_wrong_remake()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-10-04T00:00:00Z'
+    local notice
+    s.env.show_message = function(message) notice = message end
+    s.emit('file-loaded')
+    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+    s.respond(2, {bangumi = {episodes = {
+        {episodeNumber = '3', episodeTitle = 'Wrong release', episodeId = 420003, airDate = '1989-04-15T00:00:00'},
+    }}})
+    s.advance(1)
+    assert(#s.requests == 2, 'A conflicting air date must not fetch the same-numbered wrong episode')
+    assert(notice and notice ~= '', 'Unmatched episodes must report a visible result instead of silently stopping')
+end
+function cases.batch_release_uses_episode_number_when_titles_are_translated()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-10-04T00:00:00Z'
+    s.props['user-data/tigerest/emby/episode-name'] = '第三集中文译名'
+    s.emit('file-loaded')
+    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+    s.respond(2, {bangumi = {episodes = {
+        {episodeNumber = '1', episodeTitle = '第1话 First episode', episodeId = 420001, airDate = '2026-10-04T00:00:00'},
+        {episodeNumber = '3', episodeTitle = '第3话 A translated title', episodeId = 420003, airDate = '2026-10-04T00:00:00'},
+    }}})
+    assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
+        'Several episodes sharing an air date must resolve to Emby E3, not the first episode returned')
+end
+function cases.batch_release_prefers_exact_episode_title_for_remapped_number()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-10-04T00:00:00Z'
+    s.props['user-data/tigerest/emby/episode-name'] = '修行与大餐'
+    s.emit('file-loaded')
+    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+    s.respond(2, {bangumi = {episodes = {
+        {episodeNumber = '3', episodeTitle = '第3话 另一集', episodeId = 420003, airDate = '2026-10-04T00:00:00'},
+        {episodeNumber = '1', episodeTitle = '第1话 修行与大餐', episodeId = 420001, airDate = '2026-10-04T00:00:00'},
+    }}})
+    assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420001?', 1, true),
+        'An exact normalized episode title must identify a remapped episode before relying on its number')
+end
+function cases.batch_release_without_title_or_number_confirmation_declines()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-10-04T00:00:00Z'
+    s.props['user-data/tigerest/emby/episode-number'] = 25
+    s.props['user-data/tigerest/emby/episode-name'] = '不能确认的译名'
+    local notice
+    s.env.show_message = function(message) notice = message end
+    s.emit('file-loaded')
+    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+    s.respond(2, {bangumi = {episodes = {
+        {episodeNumber = '1', episodeTitle = 'First episode', episodeId = 420001, airDate = '2026-10-04T00:00:00'},
+        {episodeNumber = '2', episodeTitle = 'Second episode', episodeId = 420002, airDate = '2026-10-04T00:00:00'},
+    }}})
+    s.advance(1)
+    assert(#s.requests == 2, 'A shared premiere date alone must not guess a cumulative episode mapping')
+    assert(notice and notice ~= '', 'An ambiguous batch release must show a manual matching hint')
+end
+function cases.missing_episode_continues_to_supported_candidate()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/episode-name'] = 'A supported episode'
+    s.emit('file-loaded')
+    s.respond(1, {animes = {
+        {type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'},
+        {type = 'tvseries', animeTitle = 'Fixture series (2024)', bangumiId = '43'},
+    }})
+    s.respond(2, {bangumi = {episodes = {{episodeNumber = '1', episodeTitle = 'Other episode', episodeId = 420001}}}})
+    assert(s.requests[3], 'Missing numbered episode must continue searching candidates')
+    s.respond(3, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 A supported episode', episodeId = 430003}}}})
+    assert(s.request_args[4] and s.request_args[4][#s.request_args[4]]:find('/comment/430003?', 1, true),
+        'Candidate with corroborated episode title must reach comment loading')
+end
+function cases.dated_episode_does_not_offset_ids_across_release_seasons()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true, ['Fixture series Season1'] = {
+        animeTitle = 'Fixture series Third season', episodeTitle = '第1话 A later episode',
+        episodeNumber = 25, episodeId = 199720001, fname = 'Fixture series S01E25',
+    }})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2024-10-20T00:00:00Z'
+    s.emit('file-loaded')
+    assert(s.request_args[1] and s.request_args[1][#s.request_args[1]]:find('/search/anime?', 1, true),
+        'A new dated episode must resolve its release instead of adding an offset to a prior season ID')
+end
+function cases.dated_stream_without_hash_does_not_trust_filename_match()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.env.MD5 = {sum = function() end}
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-10-04T00:00:00Z'
+    s.emit('file-loaded')
+    s.respond(1, {}) -- The stream range request did not produce a hashable file.
+    assert(s.request_args[2] and s.request_args[2][#s.request_args[2]]:find('/search/anime?', 1, true),
+        'A dated stream without a real content hash must validate release dates instead of trusting ambiguous filenames')
+end
 function cases.relay_history_keeps_source_preferences()
     local s = sandbox()
     local remote = 'http://nas.tigerest.top:18443'

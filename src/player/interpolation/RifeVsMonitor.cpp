@@ -42,8 +42,10 @@ void VS_CC monitorCreate(const VSMap* in,VSMap* out,void*,VSCore* core,const VSA
         monitor->session=uint64_t(integer(api,in,"session",0));
         monitor->epoch=rife::beginInstance(monitor->session);
         VSFilterDependency dependency{monitor->input,rpGeneral};
+        // Instance fields are immutable after creation; recordFrame protects
+        // the shared counters. Serializing here also serializes upstream RIFE.
         api->createVideoFilter(out,"TigerestRIFEMonitor",api->getVideoInfo(monitor->input),monitorFrame,monitorFree,
-            fmFrameState,&dependency,1,monitor.get(),core);
+            fmParallel,&dependency,1,monitor.get(),core);
         monitor.release();
     } catch(const std::exception& error) {
         if(monitor->input)api->freeNode(monitor->input);

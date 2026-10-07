@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <iterator>
+#include <map>
 #include <mutex>
+#include <utility>
 #include <vector>
 namespace rife {
 namespace {
@@ -11,20 +14,44 @@ std::mutex lock;
 uint64_t serial=0,active=0;
 Metrics metrics;
 std::deque<double> timings;
-int lastFrame=-1;
+// Parallel VS requests can complete out of order. Keep disjoint inclusive
+// ranges so duplicate frames stay excluded even after a seek, while a normal
+// contiguous stream occupies one range rather than one entry per frame.
+std::map<int64_t,int64_t> completedFrames;
+bool firstCompletion(int index) {
+    const int64_t frame=index;
+    auto next=completedFrames.upper_bound(frame);
+    if(next!=completedFrames.begin()){
+        auto previous=std::prev(next);
+        if(frame<=previous->second)return false;
+        if(frame==previous->second+1){
+            previous->second=frame;
+            if(next!=completedFrames.end()&&next->first==frame+1){
+                previous->second=next->second;
+                completedFrames.erase(next);
+            }
+            return true;
+        }
+    }
+    if(next!=completedFrames.end()&&next->first==frame+1){
+        auto range=completedFrames.extract(next);
+        range.key()=frame;
+        completedFrames.insert(std::move(range));
+    } else completedFrames.emplace(frame,frame);
+    return true;
 }
-uint64_t openSession(){std::lock_guard<std::mutex> g(lock);active=++serial;metrics={};timings.clear();lastFrame=-1;return active;}
-void closeSession(uint64_t session){std::lock_guard<std::mutex> g(lock);if(session==active){active=0;metrics={};timings.clear();}}
+}
+uint64_t openSession(){std::lock_guard<std::mutex> g(lock);active=++serial;metrics={};timings.clear();completedFrames.clear();return active;}
+void closeSession(uint64_t session){std::lock_guard<std::mutex> g(lock);if(session==active){active=0;metrics={};timings.clear();completedFrames.clear();}}
 uint64_t beginInstance(uint64_t session){
     std::lock_guard<std::mutex> g(lock);
     if(!session||session!=active)return 0;
-    metrics={};metrics.epoch=++serial;timings.clear();lastFrame=-1;return metrics.epoch;
+    metrics={};metrics.epoch=++serial;timings.clear();completedFrames.clear();return metrics.epoch;
 }
 void recordFrame(uint64_t session,uint64_t epoch,int index,bool synthesized,double ms,
                  const std::string& reason,double factor,bool timingAvailable){
     std::lock_guard<std::mutex> g(lock);
-    if(!session||session!=active||!epoch||epoch!=metrics.epoch||index<=lastFrame||!validInterpolationMultiplier(factor))return;
-    lastFrame=index;
+    if(!session||session!=active||!epoch||epoch!=metrics.epoch||index<0||!validInterpolationMultiplier(factor)||!firstCompletion(index))return;
     if(!reason.empty()&&reason!="cut"&&reason!="eof")metrics.error=reason;
     // An output frame completes an interval when its end crosses a source
     // boundary. Half steps alternate their output counts per interval; this

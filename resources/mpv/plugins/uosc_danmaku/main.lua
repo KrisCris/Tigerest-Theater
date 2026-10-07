@@ -78,17 +78,17 @@ function get_danmaku_visibility()
         history = utils.parse_json(history_json) or {}
         local flag = history["show_danmaku"]
         if flag == nil then
-            history["show_danmaku"] = false
+            history["show_danmaku"] = true
             write_json_file(HISTORY_PATH, history)
         else
             return flag
         end
     else
         history = {}
-        history["show_danmaku"] = false
+        history["show_danmaku"] = true
         write_json_file(HISTORY_PATH, history)
     end
-    return false
+    return true
 end
 
 function set_danmaku_visibility(flag)
@@ -619,6 +619,17 @@ function auto_load_danmaku(path, dir, filename, number)
                 local history_extra = history_dir.extra
                 local history_api_server = resolve_api_server(history_dir.api_server)
                 local playing_number = nil
+
+                -- A continuous Emby season may span several independent anime
+                -- releases. Reuse a manual match for the same file, but resolve
+                -- another dated episode instead of assuming contiguous IDs.
+                if filename ~= history_fname and history_id
+                    and mp.get_property_bool('user-data/tigerest/emby/valid', false)
+                    and tostring(mp.get_property_native('user-data/tigerest/emby/premiere-date', ''))
+                        :match('^%d%d%d%d%-%d%d%-%d%d') then
+                    get_danmaku_with_hash(filename, path)
+                    return
+                end
 
                 if history_fname then
                     if filename ~= history_fname then

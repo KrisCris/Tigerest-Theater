@@ -46,7 +46,7 @@ require('./media_fixture.cjs')(async ({c, url, wait, shot}) => {
     await delay(400);
     touch('DOWN', x, y);
     await wait(`api.system.debugInformation().then(d=>d.controls.temporarySpeed&&d.controls.speed===${expected})`, 'long press enters temporary speed');
-    assert.ok((await info()).controls.gesture.includes('松手恢复'), 'hold hint remains visible');
+    assert.equal((await info()).controls.gesture, '', 'temporary speed does not obscure the picture with a gesture hint');
   };
   try {
     await rate(1.25);

@@ -41,9 +41,9 @@ class PlayerGestures(private val activity: MainActivity,private val player: Play
         }
         override fun onLongPress(event: MotionEvent) {
             if(!eligible || doubleTap || axis!=Axis.NONE || tutorial?.isShowing==true || player.state.generation!=gestureGeneration) return
-            val speed = player.beginTemporarySpeed() ?: return
+            player.beginTemporarySpeed() ?: return
             axis = Axis.SPEED
-            feedback("${speed.toString().removeSuffix(".0")}× 倍速播放\n松手恢复")
+            feedback("")
         }
     })
     fun volume() = audio.getStreamVolume(AudioManager.STREAM_MUSIC)

@@ -224,36 +224,75 @@ local function normalize_danmaku_response(d)
 end
 
 -- 尝试通过解析文件名匹配剧集
-local function match_episode(animeTitle, bangumiId, episode_num, api_server)
+local function broadcast_date(value)
+    return type(value) == 'string' and value:match('^(%d%d%d%d%-%d%d%-%d%d)') or nil
+end
+
+local function episode_title(value)
+    return tostring(value or ''):gsub('^第%s*%d+%s*话%s*', ''):gsub('^第%s*%d+%s*集%s*', '')
+        :gsub('[%s%p]', '')
+end
+
+local function match_episode(anime, episode_num, premiere_date, expected_title, fallback, api_server, callback)
+    local bangumiId = anime.bangumiId
     local url = api_server .. "/api/v2/bangumi/" .. bangumiId
     local args = make_danmaku_request_args("GET", url)
 
     if args == nil then
+        callback(nil)
         return
     end
 
     call_cmd_async(args, function(error, json)
         if error then
-            show_message("HTTP 请求失败，打开控制台查看详情", 5)
             msg.error(error)
+            callback(nil)
             return
         end
 
         local data = utils.parse_json(json)
         if not data or not data.bangumi or not data.bangumi.episodes then
             msg.info("无结果")
+            callback(nil)
             return
         end
 
+        local dated_episodes, titled_episodes = {}, {}
         for _, episode in ipairs(data.bangumi.episodes) do
             local ep_num = tonumber(episode.episodeNumber)
-            if ep_num and ep_num == tonumber(episode_num) then
-                DANMAKU.anime = animeTitle
-                DANMAKU.episode = episode.episodeTitle
-                set_episode_id(episode.episodeId, nil, api_server)
-                break
+            local date_matches = premiere_date and broadcast_date(episode.airDate) == premiere_date
+            local number_matches = not premiere_date and ep_num == tonumber(episode_num)
+            -- When trying a lower-ranked title without dates, require corroborating
+            -- episode text if Emby supplied it (e.g. an original and its remake).
+            local title_matches = not fallback or expected_title == ''
+                or jaro_winkler(expected_title, episode_title(episode.episodeTitle)) >= 0.85
+            if ep_num and episode.episodeId then
+                if date_matches then
+                    dated_episodes[#dated_episodes + 1] = episode
+                    if expected_title ~= '' and episode_title(episode.episodeTitle) == expected_title then
+                        titled_episodes[#titled_episodes + 1] = episode
+                    end
+                elseif number_matches and title_matches then
+                    callback(episode)
+                    return
+                end
             end
         end
+
+        -- Streaming services may release several episodes on the same day.
+        -- Resolve exact titles before episode numbers; a date alone may remap
+        -- continuous Emby numbering only when it identifies one unique episode.
+        if #titled_episodes == 1 then callback(titled_episodes[1]); return end
+        local candidates = #titled_episodes > 0 and titled_episodes or dated_episodes
+        local numbered_episode, numbered_count = nil, 0
+        for _, episode in ipairs(candidates) do
+            if tonumber(episode.episodeNumber) == tonumber(episode_num) then
+                numbered_episode, numbered_count = episode, numbered_count + 1
+            end
+        end
+        if numbered_count == 1 then callback(numbered_episode); return end
+        if #dated_episodes == 1 then callback(dated_episodes[1]); return end
+        callback(nil)
     end)
 end
 
@@ -275,6 +314,33 @@ local function match_anime()
 
     local matched = false
     local cancel_fn = nil
+    local searches_finished = false
+    local pending_candidates = 0
+    local premiere_date, expected_title = nil, ''
+    if mp.get_property_bool('user-data/tigerest/emby/valid', false) then
+        premiere_date = broadcast_date(mp.get_property_native('user-data/tigerest/emby/premiere-date'))
+        expected_title = episode_title(mp.get_property_native('user-data/tigerest/emby/episode-name'))
+    end
+
+    local function finish_unmatched()
+        if searches_finished and pending_candidates == 0 and not matched then
+            msg.info('没有找到对应剧集的弹幕')
+            show_message('未找到对应剧集的弹幕，可在弹幕菜单中手动匹配', 5)
+        end
+    end
+
+    local function title_score(anime_title)
+        local target_title = title:gsub('½', '1/2')
+        if tonumber(season_num) and tonumber(season_num) > 1 then
+            target_title = target_title .. ' 第' .. number_to_chinese(season_num) .. '季'
+        end
+        anime_title = tostring(anime_title or ''):gsub('½', '1/2')
+            :gsub('^%s*(.-)%s*$', '%1'):gsub('%s*%(.-%)%s*$', ''):gsub('%s*【.-】.*$', '')
+        if anime_title:match('第一[季部]') and tonumber(season_num) == 1 then
+            target_title = target_title .. ' 第一季'
+        end
+        return jaro_winkler(target_title, anime_title)
+    end
 
     local function build_args(server)
         local url = server .. "/api/v2/search/anime"
@@ -294,53 +360,42 @@ local function match_anime()
         end
         local local_candidates = {}
         for _, anime in ipairs(data.animes) do
-            if anime.type == anime_type then
+            if anime.type == anime_type and title_score(anime.animeTitle) >= 0.75 then
                 table.insert(local_candidates, anime)
             end
         end
-        if #local_candidates == 1 then
-            matched = true
-            local a = local_candidates[1]
-            match_episode(a.animeTitle, a.bangumiId, episode_num, server)
-            if cancel_fn then pcall(cancel_fn) end
-            return
-        end
-        if #local_candidates > 1 and season_num then
-            local best_match, best_score = nil, -1
-            local target_title = title
-            if tonumber(season_num) > 1 then
-                target_title = title .. " 第" .. number_to_chinese(season_num) .. "季"
-            end
-            for _, anime in ipairs(local_candidates) do
-                local animeTitle = tostring(anime.animeTitle or "")
-                animeTitle = animeTitle:gsub("^%s*(.-)%s*$", "%1")
-                            :gsub("%s*%(.-%)%s*$", "")
-                            :gsub("%s*【.-】.*$", "")
-                if animeTitle:match("第一[季部]") and tonumber(season_num) == 1 then
-                    target_title = title .. " 第一季"
-                end
-                local score = jaro_winkler(target_title, animeTitle)
-                msg.debug(("候选: %s -> 相似度 %.3f"):format(animeTitle, score))
-                if score > best_score then
-                    best_score = score
-                    best_match = anime
-                end
-            end
-            if best_match and best_score >= 0.75 then
-                matched = true
-                msg.info(("模糊匹配选中: %s (score=%.2f)"):format(best_match.animeTitle, best_score))
-                match_episode(best_match.animeTitle, best_match.bangumiId, episode_num, server)
-                if cancel_fn then pcall(cancel_fn) end
+        table.sort(local_candidates, function(a, b)
+            return title_score(a.animeTitle) > title_score(b.animeTitle)
+        end)
+        if #local_candidates == 0 then return end
+        pending_candidates = pending_candidates + 1
+        local function try_candidate(index)
+            local anime = local_candidates[index]
+            if matched or not anime then
+                pending_candidates = pending_candidates - 1
+                finish_unmatched()
                 return
             end
+            match_episode(anime, episode_num, premiere_date, expected_title, index > 1, server, function(episode)
+                if episode and not matched then
+                    matched = true
+                    pending_candidates = pending_candidates - 1
+                    DANMAKU.anime = anime.animeTitle
+                    DANMAKU.episode = episode.episodeTitle
+                    msg.info('匹配剧集: ' .. anime.animeTitle .. ' - ' .. episode.episodeTitle)
+                    set_episode_id(episode.episodeId, nil, server)
+                    if cancel_fn then pcall(cancel_fn) end
+                    return
+                end
+                try_candidate(index + 1)
+            end)
         end
-        -- 未找到可接受匹配，继续等待其他服务器的返回
+        try_candidate(1)
     end
 
     local function final_cb()
-        if not matched then
-            msg.info("没有找到合适的匹配结果")
-        end
+        searches_finished = true
+        finish_unmatched()
     end
 
     cancel_fn = parallel_requests(servers, build_args, per_response, final_cb, { concurrency = 5, per_request_timeout = 15 })
@@ -368,6 +423,14 @@ local function match_file(file_path, file_name, callback)
     end
 
     if hash then msg.info('hash:', hash) end
+
+    -- A synthetic hash leaves the service matching only the ambiguous series
+    -- name/number. Prefer the episode's known broadcast date in that case.
+    if not hash and mp.get_property_bool('user-data/tigerest/emby/valid', false)
+        and broadcast_date(mp.get_property_native('user-data/tigerest/emby/premiere-date')) then
+        match_anime()
+        return
+    end
 
     local title, season_num, episode_num = parse_title()
     if title and episode_num then

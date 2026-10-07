@@ -726,6 +726,8 @@ bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
                                       playbackIdentity.seriesName) && identityReady;
   identityReady = setIdentityProperty(identityRoot + QStringLiteral("episode-name"),
                                       playbackIdentity.episodeName) && identityReady;
+  identityReady = setIdentityProperty(identityRoot + QStringLiteral("premiere-date"),
+                                      jellyfinMetadata.value(QStringLiteral("PremiereDate")).toString()) && identityReady;
   identityReady = setIdentityProperty(identityRoot + QStringLiteral("season-number"),
                                       playbackIdentity.seasonNumber) && identityReady;
   identityReady = setIdentityProperty(identityRoot + QStringLiteral("episode-number"),
