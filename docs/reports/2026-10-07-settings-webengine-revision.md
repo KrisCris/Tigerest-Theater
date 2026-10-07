@@ -47,3 +47,11 @@ Windows 目标帧率选择改为 1.5–15 倍、每 0.5 倍一档，距离相同
 新路径检查覆盖“旧扩展脚本存在、应用桥接逐项缺失”和实际配置路径。真实 Player 测试改走应用目录选择逻辑，启动、生命周期、运行库管理和2.5×真实播放4/4通过（15.55秒）。`cmake --install` 后三份文件分别与编译产物/源码比较SHA256一致；独立审查通过。原安装扩展只读复制到试用配置，原安装版及设置未修改。
 
 Windows 新试用进程已确认加载正确 QtWebEngine DLL并打印同步补丁日志；窗口截图工具两次报告“foreground window did not report a process id”，因此最终菜单外观以界面fixture结果及用户实测为准，不将截图失败计作通过。
+
+## 最终候选交付
+
+- Windows 候选构建自 `a249640`，包含客户端随包 RIFE 桥接；独立配置试用进程已打开且响应正常。
+- Android 与 Mac 候选构建自 `1f09a816c4434a190f081f3ff5f1a9ddf28c6734`。后续 `a249640` 仅修正 Windows 桥接交付，不影响这两端。
+- 最终签名 Android APK 已通过 ADB 覆盖安装；随后启动应用并截图的命令被自动审批拒绝，返回原因只有“blocked by policy”。未换用其他路径重试，手机端须由用户从桌面打开“大河影院”；不能将最终版本的自动打开或截图记录为成功。
+- Mac Apple Silicon 候选的 [GitHub Actions 构建](https://github.com/Tigerest/Tigerest-Theater/actions/runs/37611648573) 成功：34/34 测试通过（11.10 秒），便携运行库、RIFE 模型与依赖闭合检查通过，ad-hoc 签名及严格验证通过，DMG 已生成。没有执行 Apple 公证，也没有 Mac 实机启动验收。
+- 候选目录内 `BUILD-INFO.json` 与 `SHA256SUMS.txt` 记录各端构建与文件摘要。没有创建新正式标签或 Release，等待用户统一验收。

@@ -41,4 +41,4 @@
 **Files:** tests/test_rife_windows_stream.py, settings_description.json, dev/windows/rife/README.md, revision report.
 - [x] Extend native libmpv + tiny TensorRT stream cases for fractional factors, asserting indices, synthesis timepoints, exact durations and metrics.
 - [x] Verify full native suite and actual renderer/playback integration; correct issues revealed by streaming.
-- [ ] Update help, build trial artifacts with patched QtWebEngine, launch isolated Windows trial and preserve Android trial. Record actual checks and limitations; no release.
+- [x] Update help, build trial artifacts with patched QtWebEngine, launch isolated Windows trial and preserve Android trial. Record actual checks and limitations; no release.
