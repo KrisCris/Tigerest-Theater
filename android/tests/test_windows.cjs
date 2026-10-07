@@ -4,6 +4,7 @@ require('./media_fixture.cjs')(async({c,url,wait,shot})=>{
  const size=run('shell','wm','size');const originalSize=/Override size: (\d+x\d+)/.exec(size)?.[1];const snapshots=[];const originalPid=run('shell','pidof','top.tigerest.theater.debug');
  const snapshot=async name=>{const v=await c.evaluate('({route:location.hash,draft:document.getElementById("draft").value,width:innerWidth,height:innerHeight,dpr:devicePixelRatio,metrics:tigerestWindowMetrics})');assert.equal(v.route,'#comments/fixture');assert.equal(v.draft,'折叠与旋转后保留的评论草稿');assert.equal(run('shell','pidof','top.tigerest.theater.debug'),originalPid);assert.ok(v.width>0&&v.metrics.width>0);snapshots.push({name,...v});shot('window-'+name);};
  try{
+  run('shell','settings','put','system','accelerometer_rotation','0');run('shell','settings','put','system','user_rotation','0');await delay(1200);
   await c.evaluate('location.hash="comments/fixture";document.getElementById("draft").value="折叠与旋转后保留的评论草稿"');
   run('shell','cmd','device_state','state','3');await delay(1600);await snapshot('inner');
   run('shell','cmd','device_state','state','0');run('shell','input','keyevent','224');await wait('api.system.debugInformation().then(d=>d.width===1080)','outer display resolution');await snapshot('outer');assert.equal(snapshots.at(-1).metrics.boundsWidth,1080);

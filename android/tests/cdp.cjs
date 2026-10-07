@@ -14,9 +14,10 @@ async function connect(){
  }
  if(!page)throw Error('WebView debugging target unavailable');
  const socket=new WebSocket(page.webSocketDebuggerUrl);await new Promise((r,j)=>{socket.addEventListener('open',r,{once:true});socket.addEventListener('error',j,{once:true});});
- let next=0;const pending=new Map(),listeners=new Set();
+ let next=0,closed=false;const pending=new Map(),listeners=new Set();
+ socket.addEventListener('close',()=>{closed=true;for(const entry of pending.values())entry.reject(Error('Android WebView debugging connection closed'));pending.clear();});
  socket.addEventListener('message',e=>{const m=JSON.parse(e.data),p=pending.get(m.id);if(p){pending.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result);}else for(const listener of listeners)listener(m);});
- const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++next,timer=setTimeout(()=>{pending.delete(id);reject(Error(method+' timeout'));},45000);pending.set(id,{resolve:v=>{clearTimeout(timer);resolve(v);},reject:e=>{clearTimeout(timer);reject(e);}});socket.send(JSON.stringify({id,method,params}));});
+ const call=(method,params={})=>new Promise((resolve,reject)=>{if(closed){reject(Error('Android WebView debugging connection closed'));return;}const id=++next,timer=setTimeout(()=>{pending.delete(id);reject(Error(method+' timeout'));},45000);pending.set(id,{resolve:v=>{clearTimeout(timer);resolve(v);},reject:e=>{clearTimeout(timer);reject(e);}});socket.send(JSON.stringify({id,method,params}));});
  const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
  return {call,evaluate,onEvent:listener=>listeners.add(listener),close:()=>socket.close(),page};
 }

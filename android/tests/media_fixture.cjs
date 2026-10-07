@@ -28,7 +28,7 @@ module.exports=async function(work,handler=()=>false,{tutorial=false}={}){
    }
    throw Error('UI text absent: '+text);
   };
-  const shot=name=>{run('shell','screencap','-p','/sdcard/tigerest-proof.png');run('pull','/sdcard/tigerest-proof.png',path.resolve(__dirname,'../test-artifacts/'+name+'.png'));};
+  const shot=name=>{const displays=run('shell','dumpsys','display');const display=/DisplayViewport\{[^}]*displayId=0,\s*uniqueId='local:(\d+)'/.exec(displays)?.[1];if(!display)throw Error('Active physical display not found for screenshot');run('shell','screencap','-p','-d',display,'/sdcard/tigerest-proof.png');run('pull','/sdcard/tigerest-proof.png',path.resolve(__dirname,'../test-artifacts/'+name+'.png'));};
   await work({c,url:'http://127.0.0.1:'+port,wait,tap,shot,requests,server});
  }finally{
   c?.close();

@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit
 
 class BridgeDispatcher(private val activity: MainActivity, private val settings: SettingsStore, private val player: PlaybackController) {
     private val worker = Executors.newSingleThreadExecutor()
+    private val ui = android.os.Handler(android.os.Looper.getMainLooper())
     private val network = Executors.newCachedThreadPool()
     private val http = OkHttpClient.Builder().connectTimeout(8,TimeUnit.SECONDS).readTimeout(12,TimeUnit.SECONDS).followRedirects(false).build()
     private var proxy: JavaScriptReplyProxy? = null
@@ -27,15 +28,25 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
         if(text.length > 1024*1024) return
         proxy = reply; val generation = epoch
         val request = runCatching { JSONObject(text) }.getOrNull() ?: return
-        val executor = if(request.optString("component") == "danmaku" && request.optString("method") in setOf("search","episodes","load","loadUrl")) network else worker
-        executor.execute {
-            if(generation != epoch) return@execute
-            val id = request.optLong("id"); if(id <= 0) return@execute
+        val component = request.optString("component")
+        val method = request.optString("method")
+        val executor = if(component == "danmaku" && method in setOf("search","episodes","load","loadUrl")) network else worker
+        val operation = Runnable {
+            if(generation != epoch) return@Runnable
+            val id = request.optLong("id"); if(id <= 0) return@Runnable
             val response = JSONObject().put("id",id)
             try { response.put("result",call(request.getString("component"),request.getString("method"),request.optJSONArray("args") ?: JSONArray()) ?: JSONObject.NULL) }
             catch(error: Exception) { response.put("error",if(error is IllegalArgumentException || error is IllegalStateException) error.message?.take(180) ?: "操作无效" else "客户端操作失败，请重试") }
-            activity.runOnUiThread { if(generation == epoch) reply.postMessage(response.toString()) }
+            // Preserve signal-before-reply ordering even when the operation ran
+            // on main; callers may start a new session immediately after stop.
+            ui.post { if(generation == epoch) reply.postMessage(response.toString()) }
         }
+        // Playback commands share the owner thread with Surface callbacks, MPV
+        // event processing and gestures. A worker load must not interleave an old
+        // file's finish/stop, and diagnostics must never read Views off-thread.
+        val onUi = component in setOf("player","settings","window") ||
+            component == "system" && method in setOf("systemInformation","debugInformation")
+        if(onUi) activity.runOnUiThread(operation) else executor.execute(operation)
     }
     private fun call(component: String, method: String, args: JSONArray): Any? = when(component) {
         "player" -> player.dispatch(method,args)

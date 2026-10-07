@@ -3,21 +3,30 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const withBrowser = require('./community_browser.cjs');
 
+// Match Emby's detail template: page padding lives on section headings/scrollers,
+// and complete cast/media sections are siblings inside details-additionalContent.
+const detailSections = '<section class="overviewSection padded-left padded-left-page padded-right"><h2>简介</h2></section><div class="details-additionalContent"><section class="verticalSection peopleSection"><h2 class="sectionTitle sectionTitle-cards padded-left padded-left-page padded-right">演职人员</h2><div class="emby-scroller scroller padded-left padded-left-page padded-right"><span>演员</span></div></section><section class="verticalSection mediaInfoSection"><h2 class="sectionTitle sectionTitle-cards padded-left padded-left-page padded-right">媒体信息</h2></section></div>';
 const routes = {
-    '/': {type:'text/html', body:'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#151923;color:white;font:16px sans-serif}.itemMainScrollSlider{display:flex;flex-direction:column;width:100%}.detailSection{padding:24px 5%}.itemMainScrollSlider h2{margin:0}.scroller{display:flex;overflow:auto;height:140px}</style><div class="itemView"><div class="itemMainScrollSlider"></div></div><script src="/client.js"></script><script src="/plugin.js"></script>'},
+    '/': {type:'text/html', body:'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#151923;color:white;font:16px sans-serif}.itemMainScrollSlider{display:flex;flex-direction:column;width:100%}.detailSection{padding:24px 5%}h2{margin:0}.padded-left,.padded-left-page{padding-inline-start:3.4%}.padded-right{padding-inline-end:3.4%}.sectionTitle-cards{margin-inline:11px}.scroller{display:flex;overflow:auto;height:140px}</style><div class="itemView"><div class="itemMainScrollSlider"></div></div><script src="/client.js"></script><script src="/plugin.js"></script>'},
     '/client.js': {path:path.join(__dirname,'../native/communityClient.js')},
     '/plugin.js': {path:path.join(__dirname,'../native/communityPlugin.js')}
 };
+// Reproduce bundled WebView CSS on a desktop browser without needing a device.
+if(process.argv.includes('--android-css')){
+    routes['/android-responsive.css']={type:'text/css',path:path.join(__dirname,'../android/app/src/main/assets/androidResponsive.css')};
+    routes['/'].body+='<link rel="stylesheet" href="/android-responsive.css">';
+}
 withBrowser(routes, async ({evaluate,call}) => {
     await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
     await evaluate(`(() => {
         window.fixtureFailures=[];
         window.check=(value,message)=>{if(!value)throw Error(message);};
+        window.textLeft=el=>{const range=document.createRange();range.selectNodeContents(el);return range.getBoundingClientRect().left;};
         window.tick=()=>new Promise(r=>setTimeout(r,40));
         window.author={id:'author',name:'测试用户',avatarPath:null};
         window.root=(scope,n)=>({id:scope+'-'+n,topicId:scope+'-topic',rootId:null,state:'visible',body:'第 '+n+' 条主评论',createdAt:'2026-10-01T02:00:00Z',author,
             permissions:{canReply:true,canDelete:true},replyCount:1,replies:[{id:scope+'-'+n+'-reply',rootId:scope+'-'+n,state:'visible',body:'随主评论显示的回复',author,permissions:{canReply:true}}],repliesNextCursor:null});
-        window.setup=async (sections='<section class="detailSection overviewSection"><h2>简介</h2></section><section class="detailSection peopleSection"><h2>演职人员</h2><div class="scroller"><span>演员</span></div></section><section class="detailSection mediaInfoSection"><h2>媒体信息</h2></section>')=>{
+        window.setup=async (sections=${JSON.stringify(detailSections)})=>{
             window.plugin?.destroy();
             const view=document.querySelector('.itemView');view.querySelector('.itemMainScrollSlider').innerHTML=sections;
             window.requests=[];window.hold=null;window.pending=null;window.failNext=false;window.missing=false;window.token='fixture-token';
@@ -52,7 +61,7 @@ withBrowser(routes, async ({evaluate,call}) => {
     })()`);
     const cases = {
         'Emby detail hierarchy inherits page padding': `await setup('<div class="details-additionalContent"><div class="verticalSection peopleSection"><h2 class="sectionTitle sectionTitle-cards padded-left padded-left-page padded-right">演职人员</h2><div class="emby-scroller"><div class="scrollSlider peopleItemsContainer">演员卡片</div></div></div><div class="verticalSection chaptersSection"><h2>章节</h2></div></div>');const style=document.createElement('style');style.textContent='.padded-left-page{padding-inline-start:3.4%}.padded-right{padding-inline-end:3.4%}.sectionTitle-cards{margin-inline:11px!important}';document.head.appendChild(style);await tick();const textLeft=el=>{const r=document.createRange();r.selectNodeContents(el);return r.getBoundingClientRect().left;};check(Math.abs(textLeft(plugin.state.panel.querySelector('h2'))-textLeft(document.querySelector('.peopleSection h2')))<2,'Emby padded heading text aligns');check(plugin.state.panel.parentElement.classList.contains('details-additionalContent'),'panel is cast section sibling');style.remove();`,
-        'position and page-content alignment': `await setup();const p=plugin.state.panel,c=document.querySelector('.peopleSection');check(p.nextElementSibling===c,'comments must precede the whole cast section');check(!p.closest('.scroller'),'comments cannot be inside cast scroller');check(Math.abs(p.querySelector('h2').getBoundingClientRect().left-c.querySelector('h2').getBoundingClientRect().left)<2,'comment and cast headings share left edge');`,
+        'position and page-content alignment': `await setup();const p=plugin.state.panel,c=document.querySelector('.peopleSection');check(p.nextElementSibling===c,'comments must precede the whole cast section');check(!p.closest('.scroller'),'comments cannot be inside cast scroller');check(Math.abs(textLeft(p.querySelector('h2'))-textLeft(c.querySelector('h2')))<2,'comment and cast heading text share left edge');`,
         'fallback placement and late cast insertion': `await setup('<section class="detailSection overviewSection"><h2>简介</h2></section><section class="detailSection chaptersSection"><h2>章节</h2></section><section class="detailSection mediaInfoSection"><h2>媒体信息</h2></section>');check(plugin.state.panel.nextElementSibling.classList.contains('chaptersSection'),'no cast: comments before chapters');const cast=document.createElement('section');cast.className='detailSection peopleSection';cast.innerHTML='<h2>演职人员</h2><div class="scroller"></div>';document.querySelector('.overviewSection').after(cast);await tick();check(plugin.state.panel.nextElementSibling===cast,'late cast render repositions panel');`,
         'ten root pages replace previous roots and retain attached replies': `await setup();check(ids().length===10,'first page must contain exactly 10 roots');check(ids()[0]==='episode-1'&&ids()[9]==='episode-10','first page range');check(plugin.state.list.querySelectorAll('.tc-replies [data-comment-id]').length===10,'replies remain attached');click('下一页');await tick();check(ids().length===10&&ids()[0]==='episode-11'&&ids()[9]==='episode-20','second page replaces roots');click('下一页');await tick();check(ids().length===5&&ids()[0]==='episode-21','last page remainder');check(Array.from(plugin.state.panel.querySelectorAll('button')).find(b=>b.textContent==='下一页').disabled,'last page disables next');click('上一页');await tick();check(ids()[0]==='episode-11'&&ids().length===10,'previous page works');check(requests.filter(r=>r.path.endsWith('/comments')).every(r=>new URLSearchParams(r.query).get('limit')==='10'),'all root requests bounded to 10');`,
         'scope histories remain independent and refresh returns to newest': `await setup();click('下一页');await tick();click('作品评论');await tick();check(ids()[0]==='work-1','work starts on own first page');click('下一页');await tick();check(ids()[0]==='work-11','work own second page');click('本集评论');await tick();check(ids()[0]==='episode-11','episode restores own page');click('刷新评论');await tick();check(ids()[0]==='episode-1','refresh returns to newest');click('作品评论');await tick();check(ids()[0]==='work-11','refresh does not change other scope');`,
@@ -72,8 +81,8 @@ withBrowser(routes, async ({evaluate,call}) => {
         console.log((error?'FAIL ':'PASS ')+name+(error?' — '+error:''));
     }
     await call('Emulation.setDeviceMetricsOverride',{width:412,height:915,deviceScaleFactor:1,mobile:true});
-    const mobile=await evaluate(`(async()=>{await setup();const p=plugin.state.panel,c=document.querySelector('.peopleSection');const result={left:p.querySelector('h2').getBoundingClientRect().left,castLeft:c.querySelector('h2').getBoundingClientRect().left,width:document.documentElement.scrollWidth,viewport:innerWidth};plugin.destroy();return result;})()`);
-    assert.ok(Math.abs(mobile.left-mobile.castLeft)<2,'phone headings align');
+    const mobile=await evaluate(`(async()=>{await setup();const p=plugin.state.panel,c=document.querySelector('.peopleSection');const result={left:textLeft(p.querySelector('h2')),castLeft:textLeft(c.querySelector('h2')),width:document.documentElement.scrollWidth,viewport:innerWidth};plugin.destroy();return result;})()`);
+    assert.ok(Math.abs(mobile.left-mobile.castLeft)<2,'phone heading text aligns: '+JSON.stringify(mobile));
     assert.ok(mobile.width<=mobile.viewport,'phone comments do not overflow horizontally');
     assert.deepEqual(failures,[],'shared comment pagination regressions');
     console.log('PASS mobile alignment and overflow');

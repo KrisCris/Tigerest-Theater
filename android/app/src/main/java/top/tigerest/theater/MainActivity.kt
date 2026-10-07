@@ -176,7 +176,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     override fun onDisplayRemoved(displayId: Int) { updateWindowMetrics() }
     override fun onDisplayChanged(displayId: Int) { updateWindowMetrics() }
     override fun onResume() { super.onResume(); updates.resumed(this) }
-    override fun onPause() { updates.paused(this); super.onPause() }
+    override fun onPause() { if(::controls.isInitialized) controls.cancelGesture(); updates.paused(this); super.onPause() }
     override fun onStop() { super.onStop(); if(::webHost.isInitialized) { controls.playbackHidden();model.player.background() } }
     override fun onSaveInstanceState(outState: Bundle) { if(::webHost.isInitialized) webHost.view.saveState(outState); super.onSaveInstanceState(outState) }
     override fun onDestroy() { if(updates.engine.changed === updateListener) updates.engine.changed = {}; updates.paused(this); getSystemService(DisplayManager::class.java).unregisterDisplayListener(this); webFileCallback?.onReceiveValue(null); if(::bridge.isInitialized) bridge.close(); if(::webHost.isInitialized) webHost.close(); super.onDestroy() }

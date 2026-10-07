@@ -28,6 +28,20 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
     private var touching = false
     private var safeInsets = EdgeInsets()
     private var menuOpen = false
+    private val loadingLabel = TextView(activity).apply {
+        setTextColor(Color.WHITE); textSize = 14f; gravity = Gravity.CENTER
+    }
+    private val loadingIndicator = LinearLayout(activity).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+        setPadding(dp(24),dp(20),dp(24),dp(18))
+        background = GradientDrawable().apply { setColor(0xc0101010.toInt()); cornerRadius = dp(16).toFloat() }
+        visibility = View.GONE; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        addView(ProgressBar(activity).apply {
+            isIndeterminate = true; indeterminateTintList = ColorStateList.valueOf(Color.rgb(255,190,56))
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        },LinearLayout.LayoutParams(dp(44),dp(44)))
+        addView(loadingLabel,LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+    }
     private val gestureFeedback = TextView(activity).apply {
         setTextColor(Color.WHITE); textSize=20f; gravity=Gravity.CENTER; setPadding(dp(20),dp(14),dp(20),dp(14))
         background=GradientDrawable().apply { setColor(0xdc101010.toInt());cornerRadius=dp(14).toFloat() };visibility=View.GONE
@@ -41,10 +55,19 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
     private val hide = Runnable { if(!dragging && !touching && !menuOpen && hasWindowFocus() && !player.state.paused) setControlsVisible(false) }
     private fun setControlsVisible(shown: Boolean) { header.visibility = if(shown) View.VISIBLE else View.GONE; controls.visibility = header.visibility }
     private fun scheduleHide() { handler.removeCallbacks(hide); if(!player.state.paused && !dragging && !touching && !menuOpen) handler.postDelayed(hide,3500) }
-    fun showControls() { setControlsVisible(true); scheduleHide() }
+    fun showControls() { setControlsVisible(true); updateLoadingIndicator(); scheduleHide() }
     fun controlsVisible() = controls.visibility == View.VISIBLE
     fun playbackStarted() { post { if(player.state.active && player.isVideo()) gestures.playbackStarted() } }
-    fun playbackHidden() { gestures.suspend();gestureFeedback.visibility=View.GONE }
+    fun cancelGesture() { touching = false; gestures.cancelTouch() }
+    fun playbackHidden() { touching = false; gestures.suspend();gestureFeedback.visibility=View.GONE;loadingIndicator.visibility=View.GONE }
+    private fun updateLoadingIndicator() {
+        val shown = player.isVideo() && player.state.loading
+        loadingIndicator.visibility = if(shown) View.VISIBLE else View.GONE
+        if(shown) {
+            val label = if(player.state.opening) "正在加载视频…" else "正在缓冲…"
+            loadingLabel.text = label; loadingIndicator.contentDescription = label
+        }
+    }
     fun windowBrightness() = gestures.brightness()
     fun effectiveBrightness() = gestures.effectiveBrightness()
     fun mediaVolume() = gestures.volume()
@@ -79,6 +102,8 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
     override fun performClick(): Boolean { super.performClick();return true }
     private val update = object: Runnable { override fun run() {
         if(!isAttachedToWindow) return
+        updateLoadingIndicator()
+        gestures.refreshPlayback()
         if(lastPaused != player.state.paused) { lastPaused = player.state.paused; showControls() }
         val duration = player.dispatch("getDuration",JSONArray()) as Long
         val position = player.state.positionMs
@@ -96,7 +121,7 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         addView(header,LayoutParams(LayoutParams.MATCH_PARENT,dp(64),Gravity.TOP))
         controls.addView(time); controls.addView(seek,LinearLayout.LayoutParams(-1,dp(48)))
         seek.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
-            override fun onStartTrackingTouch(bar: SeekBar) { dragging = true; handler.removeCallbacks(hide) }
+            override fun onStartTrackingTouch(bar: SeekBar) { gestures.cancelTouch(); dragging = true; handler.removeCallbacks(hide) }
             override fun onStopTrackingTouch(bar: SeekBar) { dragging = false; player.dispatch("seekTo",JSONArray().put(bar.progress*1000L)); scheduleHide() }
             override fun onProgressChanged(bar: SeekBar,progress: Int,fromUser: Boolean) { if(fromUser) time.text = "${format(progress*1000L)} / ${format(bar.max*1000L)}" }
         })
@@ -108,6 +133,7 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         val actions = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
         for(action in listOf(button("弹幕") { danmakuMenu() },button("倍速") { speedMenu() },button("更多") { moreMenu() })) actions.addView(action,LinearLayout.LayoutParams(0,dp(48),1f))
         controls.addView(actions); addView(controls,LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.WRAP_CONTENT,Gravity.BOTTOM))
+        addView(loadingIndicator,LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT,Gravity.CENTER))
         addView(gestureFeedback,LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT,Gravity.CENTER))
         applySafeInsets(safeInsets)
     }
@@ -135,6 +161,7 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         fun visit(view: View) { if(view is Button && view.isShown) buttons.put(rect(view).put("label",view.text)); if(view is android.view.ViewGroup) for(i in 0 until view.childCount) visit(view.getChildAt(i)) }
         visit(this)
         return JSONObject().put("header",rect(header)).put("bottom",rect(controls)).put("seek",rect(seek)).put("buttons",buttons).put("dragging",dragging).put("time",time.text).put("gesture",if(gestureFeedback.isShown) gestureFeedback.text else "")
+            .put("loading",loadingIndicator.isShown).put("opening",player.state.opening).put("speed",player.state.speed).put("temporarySpeed",player.temporarySpeedActive)
     }
     fun setTitle(value: String) { title.text = value }
     private fun tracks(type: String) {
@@ -196,7 +223,7 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
     }
     private fun network(action: () -> Unit) { thread { runCatching(action).onFailure { activity.runOnUiThread { activity.notify(it.message ?: "弹幕服务暂不可用") } } } }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); handler.post(update) }
-    override fun onWindowFocusChanged(hasWindowFocus: Boolean) { super.onWindowFocusChanged(hasWindowFocus); menuOpen = !hasWindowFocus; if(hasWindowFocus && visibility == View.VISIBLE) showControls() else handler.removeCallbacks(hide) }
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) { super.onWindowFocusChanged(hasWindowFocus); menuOpen = !hasWindowFocus; if(hasWindowFocus && visibility == View.VISIBLE) showControls() else { cancelGesture(); handler.removeCallbacks(hide) } }
     override fun onDetachedFromWindow() { handler.removeCallbacks(update); handler.removeCallbacks(hide);handler.removeCallbacks(hideFeedback);gestures.suspend(); super.onDetachedFromWindow() }
     private fun format(ms: Long): String { val seconds = ms/1000; return "%d:%02d".format(seconds/60,seconds%60) }
 }
