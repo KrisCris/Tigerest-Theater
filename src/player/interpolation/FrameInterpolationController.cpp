@@ -67,6 +67,7 @@ void FrameInterpolationController::detach(){
     if(filterOwned&&hasFilter(false))mpv.command({"vf","remove","@tigerest-rife"});
     filterOwned=false;
     if(hwdecOwned&&optionText(mpv.read("hwdec"))=="auto-copy")mpv.set("hwdec",oldHwdec);
+    restoreVideoSync();
     hwdecOwned=false;guard.reset();preparingSince=-1;
 }
 void FrameInterpolationController::configureHardwareDecoding(const QString& mode){
@@ -80,12 +81,39 @@ void FrameInterpolationController::configureHardwareDecoding(const QString& mode
         disable("decode-error");
 }
 void FrameInterpolationController::configureVideoSync(const QString& mode){
+    if(!applyVideoSync(mode,filterOwned)&&filterOwned)disable("video-sync-error");
+}
+bool FrameInterpolationController::applyVideoSync(const QString& mode,bool interpolating){
     oldVideoSync=mode;
-    // Inference does not own the presentation clock. In particular, do not
-    // trade away refresh-driven OSD animation when activating TensorRT.
-    if(!mode.isEmpty()){
-        if(mpv.set("video-sync",mode))effectiveVideoSync=mode;
+    const bool override=paths.backend==Backend::TensorRT&&interpolating&&mode=="display-resample";
+    const auto effective=override?QStringLiteral("display-vdrop"):mode;
+    if(!effective.isEmpty()&&!mpv.set("video-sync",effective))return false;
+    videoSyncOwned=override;videoSyncPending=override;
+    if(!effective.isEmpty())effectiveVideoSync=effective;
+    return true;
+}
+void FrameInterpolationController::onVideoSyncChanged(const QString& mode){
+    if(mode.isEmpty())return;
+    // A notification queued before our write is not an external takeover.
+    // Once the override is observed, later changes relinquish ownership.
+    if(videoSyncOwned&&videoSyncPending&&mode==oldVideoSync)return;
+    effectiveVideoSync=mode;
+    if(videoSyncOwned){
+        videoSyncPending=false;
+        if(mode!="display-vdrop"){
+            videoSyncOwned=false;
+            oldVideoSync=mode;
+        }
     }
+}
+void FrameInterpolationController::restoreVideoSync(bool asynchronous){
+    if(!videoSyncOwned)return;
+    const auto mode=asynchronous?effectiveVideoSync:optionText(mpv.read("video-sync"));
+    if(mode=="display-vdrop"||(videoSyncPending&&mode==oldVideoSync)){
+        const bool restored=asynchronous?mpv.setAsync("video-sync",oldVideoSync):mpv.set("video-sync",oldVideoSync);
+        if(restored)effectiveVideoSync=oldVideoSync;
+    }else effectiveVideoSync=mode;
+    videoSyncOwned=false;videoSyncPending=false;
 }
 void FrameInterpolationController::stop(){++serial;detach();current=State::Off;reason.clear();source={};latest={};lastFailure.clear();performanceWarning=false;}
 void FrameInterpolationController::stopOnEndFile(){
@@ -97,6 +125,7 @@ void FrameInterpolationController::stopOnEndFile(){
     if(filterOwned)mpv.commandAsync({"vf","remove","@tigerest-rife"});
     filterOwned=false;
     if(hwdecOwned)mpv.setAsync("hwdec",oldHwdec);
+    restoreVideoSync(true);
     hwdecOwned=false;guard.reset();preparingSince=-1;
     current=State::Off;reason.clear();source={};latest={};
 }
@@ -136,6 +165,14 @@ void FrameInterpolationController::onFormatChanged(const SourceInfo& info){
     effectiveVideoSync=optionText(mpv.read("video-sync"));
     if(paths.backend==Backend::TensorRT&&paths.engine.isEmpty()){
         reason="engine-preparing";current=State::Preparing;return;
+    }
+    if(paths.backend==Backend::TensorRT){
+        oldVideoSync=effectiveVideoSync;
+        // Resampling can stall GPU-next presentation behind the VS graph.
+        // vdrop keeps the display clock and refresh-driven danmaku animation.
+        if(effectiveVideoSync=="display-resample"&&!applyVideoSync(effectiveVideoSync,true)){
+            disable("video-sync-error");return;
+        }
     }
     reason.clear();
     session=openSession();
@@ -220,7 +257,7 @@ QVariantMap FrameInterpolationController::diagnostics()const{
                                latest.predictions>30&&latest.timingAvailable;
     return {
     {"requestedForItem",requested},{"runtimeAvailable",paths.available},{"state",int(current)},{"status",status()},{"reason",reason},
-    {"effectiveSync",effectiveVideoSync},{"savedSync",oldVideoSync},{"ownsVideoSync",false},
+    {"effectiveSync",effectiveVideoSync},{"savedSync",oldVideoSync},{"ownsVideoSync",videoSyncOwned},
     {"generation",qulonglong(serial)},{"epoch",qulonglong(latest.epoch)},
     {"generatedFrames",qulonglong(latest.predictions)},{"cutBypasses",qulonglong(latest.cuts)},
     {"processedPairs",qulonglong(latest.pairs)},

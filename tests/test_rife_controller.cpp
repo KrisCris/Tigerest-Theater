@@ -9,6 +9,7 @@
 using namespace rife;
 struct Fake {
     QVariantMap props{{"hwdec","auto-safe"},{"vf",QVariantList{QVariantMap{{"name","crop"},{"label","user"}}}}};
+    QString rejectedSync;
     QStringList removed; int adds=0,notices=0,forbiddenSyncCalls=0; bool failAdd=false,forbidSync=false;
     bool execute(const QStringList& args) {
         if(args[0]=="show-text"){++notices;return true;}
@@ -19,7 +20,7 @@ struct Fake {
     }
     MpvAccess access() {return {
       [this](const QString& key){if(forbidSync){++forbiddenSyncCalls;return QVariant();}return props.value(key);},
-      [this](const QString& key,const QVariant& value){if(forbidSync){++forbiddenSyncCalls;return false;}props[key]=value;return true;},
+      [this](const QString& key,const QVariant& value){if(forbidSync){++forbiddenSyncCalls;return false;}if(key=="video-sync"&&value.toString()==rejectedSync)return false;props[key]=value;return true;},
       [this](const QStringList& args){if(forbidSync){++forbiddenSyncCalls;return false;}return execute(args);},
       [this](const QString& key,const QVariant& value){props[key]=value;return true;},
       [this](const QStringList& args){return execute(args);}};}
@@ -116,6 +117,51 @@ int main(int argc,char**argv) {
     ending.forbidSync=false;
     endingController.beginItem(true,false);endingController.onFormatChanged(source);
     assert(endingController.state()==State::Preparing&&ending.adds==2);
+    auto windowsPaths=paths;windowsPaths.backend=Backend::TensorRT;windowsPaths.engine="prepared.engine";
+    Fake windowsEnding;windowsEnding.props["video-sync"]="display-resample";
+    FrameInterpolationController windowsController(windowsEnding.access(),windowsPaths);
+    windowsController.beginItem(true,false);windowsController.onFormatChanged(source);
+    assert(windowsEnding.props["video-sync"]=="display-vdrop");
+    windowsController.onVideoSyncChanged("display-resample"); // Stale notification before override acknowledgment.
+    windowsEnding.forbidSync=true;
+    windowsController.stopOnEndFile();
+    assert(windowsEnding.forbiddenSyncCalls==0&&windowsEnding.props["video-sync"]=="display-resample");
+    assert(!windowsController.diagnostics()["ownsVideoSync"].toBool());
+    windowsEnding.props["video-sync"]="audio";
+    windowsController.stopOnEndFile();assert(windowsEnding.props["video-sync"]=="audio");
+    windowsEnding.forbidSync=false;
+    windowsController.configureVideoSync("display-resample");
+    windowsController.beginItem(true,false);windowsController.onFormatChanged(source);
+    assert(windowsEnding.props["video-sync"]=="display-vdrop");
+    windowsController.stop();assert(windowsEnding.props["video-sync"]=="display-resample");
+    Fake windowsFail;windowsFail.props["video-sync"]="display-resample";windowsFail.failAdd=true;
+    FrameInterpolationController failedWindowsController(windowsFail.access(),windowsPaths);
+    failedWindowsController.beginItem(true,false);failedWindowsController.onFormatChanged(source);
+    assert(failedWindowsController.state()==State::DisabledForCurrentItem);
+    assert(windowsFail.props["video-sync"]=="display-resample");
+    assert(!failedWindowsController.diagnostics()["ownsVideoSync"].toBool());
+    Fake rejected;rejected.props["video-sync"]="display-resample";rejected.rejectedSync="display-vdrop";
+    FrameInterpolationController rejectedController(rejected.access(),windowsPaths);
+    rejectedController.beginItem(true,false);rejectedController.onFormatChanged(source);
+    assert(rejectedController.state()==State::DisabledForCurrentItem&&rejected.adds==0);
+    assert(rejected.props["video-sync"]=="display-resample"&&!rejectedController.diagnostics()["ownsVideoSync"].toBool());
+    Fake windowsPolling;windowsPolling.props["video-sync"]="display-resample";
+    MpvPollAccess windowsPollingAccess(windowsPolling.access());
+    FrameInterpolationController polledWindowsController(windowsPollingAccess.interface(),windowsPaths);
+    polledWindowsController.beginItem(true,false);
+    windowsPollingAccess.observe("vf",windowsPolling.props["vf"]);
+    windowsPollingAccess.observe("hwdec",windowsPolling.props["hwdec"]);
+    windowsPollingAccess.observe("video-sync",windowsPolling.props["video-sync"]);
+    windowsPolling.forbidSync=true;
+    {
+        auto poll=windowsPollingAccess.enterPolling();
+        polledWindowsController.onFormatChanged(source);
+        assert(windowsPolling.props["video-sync"]=="display-vdrop");
+        windowsPollingAccess.observe("video-sync","display-resample");
+        polledWindowsController.onVideoSyncChanged("display-resample");
+        polledWindowsController.bypassCurrentItem("playback-speed");
+    }
+    assert(windowsPolling.forbiddenSyncCalls==0&&windowsPolling.props["video-sync"]=="display-resample");
     Fake timed;
     MpvPollAccess timedAccess(timed.access());
     FrameInterpolationController timedController(timedAccess.interface(),paths);
