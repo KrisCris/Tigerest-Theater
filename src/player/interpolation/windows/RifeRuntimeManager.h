@@ -8,6 +8,9 @@
 #include <functional>
 
 namespace rife {
+// The lightweight playback graph and monitor track the app's native ABI. The
+// separately verified extension supplies only the heavyweight GPU runtime.
+RuntimePaths bundledWindowsRifePaths(const QString& applicationDirectory,QString* error=nullptr);
 class RifeRuntimeManager : public QObject {
     Q_OBJECT
 public:

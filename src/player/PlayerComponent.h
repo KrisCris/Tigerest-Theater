@@ -51,6 +51,8 @@ public:
   // Native-only: caller supplies a catalog-approved root and must wait for
   // windowsRifeReady before constructing any QML MpvVideoItem/mpv handle.
   bool prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script,bool extensionVerified=false);
+  // Production startup always uses the playback bridge shipped with this app.
+  bool prepareBundledWindowsRife(const QString& runtime,const QString& cache,bool extensionVerified=false);
   QVariantMap windowsRifeStatus() const;
   bool selectWindowsRifeModel(const QString& model,int targetFps);
   // Both arguments originate in native startup code, never WebChannel.

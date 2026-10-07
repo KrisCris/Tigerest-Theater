@@ -28,6 +28,13 @@ class PlayerPlaybackTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(dll.read_bytes()).digest(),
                              hashlib.sha256(Path(os.environ['RIFE_TEST_EOF_MPV_DLL']).read_bytes()).digest())
             shutil.copyfile(os.environ['RIFE_TEST_PLAYER_STATS'], stage / 'tigerest-rife.dll')
+            # Stage the same app-owned bridge as the Windows installer. The
+            # installed extension supplies heavy libraries/models only.
+            playback = stage / 'rife'
+            playback.mkdir()
+            shutil.copyfile(os.environ['RIFE_TEST_PLAYER_MONITOR'], playback / 'tigerest-rife-vs.dll')
+            for name in ('interpolate_trt.vpy', 'trt_pipeline.py'):
+                shutil.copyfile(ROOT / 'resources/mpv/rife' / name, playback / name)
             environment = dict(os.environ, RIFE_TEST_PLAYER_EXPECTED_DLL=str(dll),
                                RIFE_TEST_PLAYER_CACHE=str(Path(prepared['enginePath']).parent.parent))
             qt_log = stage / 'qt-test.txt'

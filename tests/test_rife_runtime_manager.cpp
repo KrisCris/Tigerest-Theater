@@ -26,6 +26,23 @@ int main(int argc,char**argv){
     const auto root=temp.path()+"/中文 私有运行库";const auto cache=temp.path()+"/引擎 缓存";
     QDir().mkpath(root+"/python");QDir().mkpath(root+"/scripts");QDir().mkpath(root+"/plugins");
     write(root+"/monitor.dll","host monitor fixture");write(root+"/interpolate.vpy","host script fixture");
+    const auto appDirectory=temp.path()+"/app";
+    QDir().mkpath(root+"/playback");QDir().mkpath(appDirectory+"/rife");
+    for(const QString name:{"tigerest-rife-vs.dll","interpolate_trt.vpy","trt_pipeline.py"})
+        write(root+"/playback/"+name,"old catalog-verified playback payload");
+    QString bundledError;
+    // The old extension remains installed, but can never fill a missing app
+    // bridge: its native metrics ABI and Python graph belong to another build.
+    for(const QString name:{"tigerest-rife-vs.dll","interpolate_trt.vpy","trt_pipeline.py"}){
+        const auto missing=bundledWindowsRifePaths(appDirectory,&bundledError);
+        assert(!missing.available&&missing.plugin.isEmpty()&&missing.script.isEmpty());
+        assert(bundledError.contains(name));
+        write(appDirectory+"/rife/"+name,"current app playback fixture");
+    }
+    const auto bundled=bundledWindowsRifePaths(appDirectory,&bundledError);
+    assert(bundled.available&&bundledError.isEmpty());
+    assert(bundled.plugin==QFileInfo(appDirectory+"/rife/tigerest-rife-vs.dll").canonicalFilePath());
+    assert(bundled.script==QFileInfo(appDirectory+"/rife/interpolate_trt.vpy").canonicalFilePath());
     QJsonArray files;
     for(const QString path:{"python/python.exe","scripts/probe_runtime.py","scripts/prepare_engine.py","plugins/model.onnx","plugins/vstrt.dll","scripts/native_probe.py"}){
         const QByteArray bytes="Qt lifecycle fixture";write(root+"/"+path,bytes);
@@ -51,8 +68,10 @@ int main(int argc,char**argv){
     RifeRuntimeManager manager(nullptr,launch);
     // An extension verified by the native installer must not rehash its whole
     // payload in the public wrapper. It still probes private DLLs and the GPU.
-    assert(manager.configure(root,cache,root+"/monitor.dll",root+"/interpolate.vpy",true));
+    assert(manager.configure(root,cache,bundled.plugin,bundled.script,true));
     assert(until([&]{return manager.diagnostics()["runtimeReady"].toBool();}));
+    assert(manager.pathsFor({}).plugin==bundled.plugin);
+    assert(manager.pathsFor({}).script==bundled.script);
     assert(lastWorker.endsWith("scripts/native_probe.py"));
     // User-selected targets need not belong to a small preset list. The graph
     // uses half-step source multiples, preserving source duration.

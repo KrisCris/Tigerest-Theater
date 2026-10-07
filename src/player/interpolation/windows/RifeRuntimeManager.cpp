@@ -43,6 +43,21 @@ bool verifiedEntry(const QString& root,const QJsonObject& manifest,const QString
     return false;
 }
 }
+RuntimePaths bundledWindowsRifePaths(const QString& applicationDirectory,QString* error){
+    if(error)error->clear();
+    const QDir directory(QDir(applicationDirectory).filePath("rife"));
+    for(const QString name:{"tigerest-rife-vs.dll","interpolate_trt.vpy","trt_pipeline.py"}){
+        const QFileInfo file(directory.filePath(name));
+        if(!file.isFile()||!file.isReadable()){
+            if(error)*error=QStringLiteral("Missing bundled RIFE playback component: %1").arg(file.absoluteFilePath());
+            return {};
+        }
+    }
+    RuntimePaths paths;paths.backend=Backend::TensorRT;paths.available=true;
+    paths.plugin=QFileInfo(directory.filePath("tigerest-rife-vs.dll")).canonicalFilePath();
+    paths.script=QFileInfo(directory.filePath("interpolate_trt.vpy")).canonicalFilePath();
+    return paths;
+}
 RifeRuntimeManager::RifeRuntimeManager(QObject* parent,Launch launcher):QObject(parent),launch(std::move(launcher)){
     if(!launch)launch=[](QProcess* process,const QString& program,const QStringList& args,const QProcessEnvironment& env){
         process->setProgram(program);process->setArguments(args);process->setProcessEnvironment(env);process->start();

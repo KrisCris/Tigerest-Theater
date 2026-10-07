@@ -107,6 +107,13 @@ PlayerComponent::PlayerComponent(QObject* parent)
 }
 
 #ifdef Q_OS_WIN
+bool PlayerComponent::prepareBundledWindowsRife(const QString& runtime,const QString& cache,bool extensionVerified)
+{
+  if(m_mpv){m_windowsRifeError=QStringLiteral("RIFE runtime requires restart before mpv creation");return false;}
+  const auto playback=rife::bundledWindowsRifePaths(QCoreApplication::applicationDirPath(),&m_windowsRifeError);
+  if(!playback.available){m_windowsRifeActivated=false;return false;}
+  return prepareWindowsRife(runtime,cache,playback.plugin,playback.script,extensionVerified);
+}
 bool PlayerComponent::prepareWindowsRife(const QString& runtime,const QString& cache,const QString& monitor,const QString& script,bool extensionVerified)
 {
 #ifndef TIGEREST_MPVQT_HAS_EVENT_HANDOFF
@@ -155,8 +162,8 @@ void PlayerComponent::initializeWindowsRife(const QString& extensionRoot,const Q
   connect(m_rifeExtension.get(),&rife::RifeExtensionManager::operationFinished,this,[this](bool ok,const QString& error){
     if(!m_windowsRifeStartupPending)return;
     const auto paths=m_rifeExtension->runtimePaths();
-    if(ok&&!paths.isEmpty()&&prepareWindowsRife(paths["runtime"].toString(),
-        ProfileManager::activeProfile().cacheDir("rife/engines"),paths["monitor"].toString(),paths["script"].toString(),true)) {
+    if(ok&&!paths.isEmpty()&&prepareBundledWindowsRife(paths["runtime"].toString(),
+        ProfileManager::activeProfile().cacheDir("rife/engines"),true)) {
       // configure() may complete synchronously on a failed helper launch.
       if(m_windowsRifeStartupPending)m_windowsRifeRuntime->select(
           SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRifeModel").toString(),

@@ -407,9 +407,8 @@ private slots:
                  QFileInfo(qEnvironmentVariable("RIFE_TEST_PLAYER_EXPECTED_DLL")).canonicalFilePath());
         PlayerComponent player;
         QSignalSpy ready(&player,&PlayerComponent::windowsRifeReady);
-        QVERIFY(player.prepareWindowsRife(qEnvironmentVariable("RIFE_TEST_RUNTIME"),
-            qEnvironmentVariable("RIFE_TEST_PLAYER_CACHE"),qEnvironmentVariable("RIFE_TEST_PLAYER_MONITOR"),
-            QStringLiteral(SOURCE_ROOT "/resources/mpv/rife/interpolate_trt.vpy")));
+        QVERIFY(player.prepareBundledWindowsRife(qEnvironmentVariable("RIFE_TEST_RUNTIME"),
+            qEnvironmentVariable("RIFE_TEST_PLAYER_CACHE")));
         QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(),75000);
         QVERIFY2(ready.first()[0].toBool(),qPrintable(ready.first()[1].toString()));
         QVERIFY(!player.selectWindowsRifeModel("missing-model",60));

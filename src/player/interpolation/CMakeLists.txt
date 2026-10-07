@@ -51,4 +51,8 @@ install(TARGETS tigerest_rife tigerest_rife_vs LIBRARY DESTINATION "${MAIN_NAME}
 endif()
 if(WIN32)
   install(TARGETS tigerest_rife RUNTIME DESTINATION .)
+  install(TARGETS tigerest_rife_vs LIBRARY DESTINATION rife RUNTIME DESTINATION rife)
+  install(FILES "${CMAKE_SOURCE_DIR}/resources/mpv/rife/interpolate_trt.vpy"
+                "${CMAKE_SOURCE_DIR}/resources/mpv/rife/trt_pipeline.py"
+          DESTINATION rife)
 endif()
