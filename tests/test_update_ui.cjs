@@ -2,14 +2,18 @@
 const assert=require('node:assert/strict'),path=require('node:path');
 const withBrowser=require('./community_browser.cjs');
 withBrowser({
- '/':{type:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body><button id="origin">客户端设置</button><script>
+ '/':{type:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/emby-layout.css"><style>body{margin:0;background:#141414;color:#eee;font:15px system-ui}.skinHeader{background:#171717}.headerTop,.headerLeft,.headerRight{display:flex;align-items:center}.headerTop{padding:10px 20px}.headerLeft{flex:1}.headerRight{margin-left:auto}.headerButton{box-sizing:border-box;min-width:44px;height:44px;border:0;background:transparent;color:inherit;font:inherit;padding:8px;white-space:nowrap}#origin{margin:30px}</style><body><main class="padded-top-page"><button id="origin">客户端设置</button></main><script>
  window.TigerestUpdate?.destroy();delete window.TigerestUpdate;
  window.calls=[];window.listeners=[];window.state={status:'idle',currentVersion:'2.4.1'};
  const system={appUpdateChanged:{connect(fn){listeners.push(fn)},disconnect(fn){listeners=listeners.filter(f=>f!==fn)}},appUpdateState(cb){cb(state)}};
  for(const method of ['checkForUpdates','downloadAppUpdate','installAppUpdate','cancelAppUpdate','skipAppUpdate','deferAppUpdate'])system[method]=(...args)=>{const cb=args.pop();calls.push([method,...args]);cb?.()};
  window.apiPromise=Promise.resolve({system});window.emit=next=>{state={...state,...next};for(const fn of listeners)fn(state)};
  </script><script src="/update.js"></script></body>`},
- '/update.js':{path:path.resolve(__dirname,'../native/updatePlugin.js')}
+ '/update.js':{path:path.resolve(__dirname,'../native/updatePlugin.js')},
+ '/android.css':{type:'text/css',path:path.resolve(__dirname,'../android/app/src/main/assets/androidResponsive.css')},
+ '/android.js':{path:path.resolve(__dirname,'../android/app/src/main/assets/androidResponsive.js')},
+ // Emby 4.10's fixed header contract; an actual downloaded stylesheet may be supplied for release QA.
+ '/emby-layout.css':process.env.TIGEREST_EMBY_LAYOUT_CSS ? {type:'text/css',path:process.env.TIGEREST_EMBY_LAYOUT_CSS} : {type:'text/css',body:':root{--header-height:5.527em}.skinHeader{position:fixed;top:0;left:0;right:0;box-sizing:border-box;height:var(--header-height);contain:strict;flex-wrap:wrap}.padded-top-page{padding-top:var(--header-height)}'}
 },async({evaluate,call})=>{
  assert.equal(await evaluate('typeof window.TigerestUpdate'), 'object','startup prompt must exist before Emby login');
  await evaluate('TigerestUpdate.start()');await evaluate('TigerestUpdate.start()');
@@ -17,16 +21,32 @@ withBrowser({
  await evaluate(`emit({status:'current',manual:false});`);assert.equal(await evaluate('!!document.querySelector("#tigerest-update-dialog[open]")'),false,'silent when current');
  await evaluate(`emit({status:'error',error:'网络不可用',manual:false});`);assert.equal(await evaluate('!!document.querySelector("#tigerest-update-dialog[open]")'),false,'automatic network errors do not interrupt startup');
  await evaluate(`emit({status:'available',version:'2.5.0',size:1024,notes:'<img src=x onerror="window.unsafe=true">',error:'',manual:false,installLabel:'安装更新'});`);
- assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog").open'),true);
+ assert.equal(await evaluate('!!document.querySelector("#tigerest-update-dialog[open]")'),false,'startup update never interrupts browsing');
+ assert.equal(await evaluate('document.querySelectorAll("#tigerest-update-button").length'),1,'one pre-login update entry');
+ assert.equal(await evaluate('document.querySelector("[data-update-dot]").hidden'),false,'actionable update has a red dot');
+ assert.ok(await evaluate('document.querySelector("#tigerest-update-button").getAttribute("aria-label").includes("2.5.0")'));
+ await evaluate(`document.body.insertAdjacentHTML('afterbegin','<header class="skinHeader headerTop"><div class="headerLeft"><button class="headerButton">返回</button><button class="headerButton">首页</button><button class="headerButton">菜单</button></div><div class="headerRight"><button class="headerButton">消息</button><button class="headerButton">投屏</button><button class="headerButton">搜索</button><button class="headerButton" id="tigerest-window-mode-button">全屏</button><button class="headerButton" id="tigerest-mpv-settings-button">MPV</button><button class="headerButton headerUserButton">账户</button><button class="headerButton">设置</button></div></header>')`);
+ await evaluate('new Promise(resolve=>requestAnimationFrame(resolve))');
+ assert.equal(await evaluate('document.querySelector("#tigerest-update-button").parentElement.className'),'headerRight','entry moves into the Emby header');
+ await evaluate(`(()=>{const header=document.querySelector('.headerRight');const replacement=header.cloneNode(true);replacement.querySelector('#tigerest-update-button').remove();header.replaceWith(replacement)})()`);
+ await evaluate('new Promise(resolve=>requestAnimationFrame(resolve))');
+ assert.equal(await evaluate('document.querySelectorAll("#tigerest-update-button").length'),1,'header replacement restores one entry');
+ await evaluate('document.querySelector("#tigerest-update-button").click()');
+ assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog").open'),true,'entry opens the existing release without a second check');
+ assert.equal(await evaluate('calls.filter(c=>c[0]==="checkForUpdates").length'),1);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog img")'),null,'release notes rendered as text');
  await evaluate('document.querySelector("[data-update-action=close]").click()');
+ assert.equal(await evaluate('document.querySelector("#tigerest-update-button").getAttribute("aria-expanded")'),'false','closed details are announced correctly');
+ assert.equal(await evaluate('document.querySelector("[data-update-dot]").hidden'),false,'Later keeps the available update reachable');
  assert.deepEqual(await evaluate('calls.at(-1)'),['deferAppUpdate']);
  await evaluate(`emit({status:'available',deferred:true});`);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog").open'),false,'Later survives state replay without persisting skip');
  await evaluate(`emit({status:'available',deferred:false});`);
+ await evaluate('document.querySelector("#tigerest-update-button").click()');
  await evaluate('document.querySelector("[data-update-action=skip]").click()');
  assert.deepEqual(await evaluate('calls.at(-1)'),['skipAppUpdate']);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog").open'),false);
+ assert.equal(await evaluate('document.querySelector("[data-update-dot]").hidden'),true,'skip removes the actionable indicator immediately');
  await evaluate('TigerestUpdate.check()');assert.deepEqual(await evaluate('calls.at(-1)'),['checkForUpdates',true]);
  await evaluate(`emit({status:'available',manual:true});document.querySelector('[data-update-action=download]').click()`);
  assert.deepEqual(await evaluate('calls.at(-1)'),['downloadAppUpdate']);
@@ -45,19 +65,57 @@ withBrowser({
  await evaluate(`emit({status:'downloading',received:100});document.querySelector('[data-update-action=cancel]').click()`);
  assert.deepEqual(await evaluate('calls.at(-1)'),['cancelAppUpdate']);
  await evaluate(`emit({status:'ready'});`);assert.equal(await evaluate('calls.filter(c=>c[0]==="installAppUpdate").length'),2,'cancel prevents delayed auto-install');
+ await evaluate(`emit({status:'downloading',received:256});document.querySelector('[data-update-action=close]').click();emit({status:'downloading',received:512});`);
+ assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog").open'),false,'background progress stays closed');
+ await evaluate('document.querySelector("#tigerest-update-button").click()');
+ assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog progress").value'),50,'entry reopens live progress');
  await call('Emulation.setDeviceMetricsOverride',{width:360,height:740,deviceScaleFactor:1,mobile:true});
+ await evaluate(`new Promise(resolve=>{const css=document.createElement('link');css.rel='stylesheet';css.href='/android.css';css.onload=resolve;document.head.appendChild(css)})`);
+ await evaluate(`new Promise(resolve=>{const js=document.createElement('script');js.src='/android.js';js.onload=resolve;document.head.appendChild(js)})`);
+ await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true,'narrow phone fits');
+ await evaluate('TigerestUpdate.close()');
+ const headerGeometry=await evaluate(`(()=>{const left=document.querySelector('.headerLeft').getBoundingClientRect(),right=document.querySelector('.headerRight').getBoundingClientRect();return {width:document.documentElement.scrollWidth,overlap:left.right>right.left+1&&left.top<right.bottom&&left.bottom>right.top}})()`);
+ assert.ok(headerGeometry.width<=360,'full phone header fits the actual 360px viewport: '+JSON.stringify(headerGeometry));
+ assert.equal(headerGeometry.overlap,false,'navigation and action groups do not overlap');
+ const overlappingButtons=await evaluate(`(()=>{const buttons=[...document.querySelectorAll('.headerTop button')].filter(node=>node.getClientRects().length).map(node=>({label:node.id||node.textContent,rect:node.getBoundingClientRect()})),pairs=[];for(let i=0;i<buttons.length;i++)for(let j=i+1;j<buttons.length;j++){const a=buttons[i].rect,b=buttons[j].rect;if(a.left<b.right-1&&a.right>b.left+1&&a.top<b.bottom-1&&a.bottom>b.top+1)pairs.push([buttons[i].label,buttons[j].label])}return pairs})()`);
+ assert.deepEqual(overlappingButtons,[],'actual header buttons remain separately reachable');
+ assert.equal(await evaluate('document.querySelector("#origin").getBoundingClientRect().top>=document.querySelector(".skinHeader").getBoundingClientRect().bottom'),true,'page content clears the entire wrapped header');
+ assert.equal(await evaluate('[...document.querySelectorAll(".headerTop button")].filter(node=>node.getClientRects().length).every(node=>node.getBoundingClientRect().bottom<=document.querySelector(".skinHeader").getBoundingClientRect().bottom)'),true,'Emby strict containment does not clip the second row');
+ await evaluate(`document.querySelector('.skinHeader').insertAdjacentHTML('beforeend','<div class="headerTabs" style="height:42px;flex-basis:100%">主页　媒体库</div>')`);
+ await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+ assert.equal(await evaluate('document.querySelector("#origin").getBoundingClientRect().top>=document.querySelector(".skinHeader").getBoundingClientRect().bottom'),true,'new Emby tabs also propagate their header height to page padding');
  if(process.env.TIGEREST_UPDATE_SCREENSHOTS){
-  await evaluate(`emit({status:'available',deferred:false,version:'2.4.2',currentVersion:'2.4.1',size:78046671,error:'',notes:'启动时自动检查更新，支持应用内下载。\\n修复弹幕流畅度，增加播放器手势控制。'});`);
+  await evaluate(`emit({status:'available',deferred:false,version:'2.4.3',currentVersion:'2.4.2',size:78046671,error:'',notes:'设置页跟随 Emby 的分类与表单样式。\\n更新提醒收进右上角，点开后可下载并安装。'});`);
   const fs=require('node:fs');
   fs.mkdirSync(process.env.TIGEREST_UPDATE_SCREENSHOTS,{recursive:true});
+  fs.writeFileSync(path.join(process.env.TIGEREST_UPDATE_SCREENSHOTS,'updates-header-phone.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await evaluate('TigerestUpdate.open()');
   fs.writeFileSync(path.join(process.env.TIGEREST_UPDATE_SCREENSHOTS,'updates-phone.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
   await call('Emulation.setDeviceMetricsOverride',{width:1100,height:800,deviceScaleFactor:1,mobile:false});
   fs.writeFileSync(path.join(process.env.TIGEREST_UPDATE_SCREENSHOTS,'updates-desktop.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await evaluate('TigerestUpdate.close()');
+  fs.writeFileSync(path.join(process.env.TIGEREST_UPDATE_SCREENSHOTS,'updates-header-desktop.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
  }
+ await call('Emulation.setDeviceMetricsOverride',{width:1100,height:800,deviceScaleFactor:1,mobile:false});
+ await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+ assert.equal(await evaluate('document.documentElement.style.getPropertyValue("--header-height")'),'','expanded viewport restores Emby header sizing');
+ await call('Emulation.setDeviceMetricsOverride',{width:360,height:740,deviceScaleFactor:1,mobile:true});
+ await evaluate(`window.tigerestWindowMetrics={safeInsets:{top:28,right:0,bottom:20,left:0}};dispatchEvent(new Event('tigerest-window-changed'))`);
+ await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+ assert.equal(await evaluate('document.querySelector("#origin").getBoundingClientRect().top>=document.querySelector(".skinHeader").getBoundingClientRect().bottom'),true,'system top inset is included in content clearance');
+ await evaluate('document.querySelector(".skinHeader").remove()');
+ await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+ assert.equal(await evaluate('document.querySelectorAll("#tigerest-update-button").length'),1,'header removal returns to one onboarding entry');
+ assert.equal(await evaluate('document.querySelector("#tigerest-update-button").classList.contains("tg-update-fallback")'),true);
+ assert.equal(await evaluate('document.documentElement.style.getPropertyValue("--header-height")'),'','removed header releases its layout override');
  await evaluate(`apiPromise.then(api=>{api.system.checkForUpdates=(manual,callback)=>{const p=Promise.reject(new Error('桥接请求失败'));p.then(callback,()=>callback(false));return p;}});`);
  await evaluate('TigerestUpdate.check()');
  assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("桥接请求失败")'),'Android Promise rejection must reach the visible error instead of callback(false) hiding it');
+ await evaluate(`emit({status:'available',currentVersion:'2.5.0',version:'2.5.0'})`);
+ assert.equal(await evaluate('document.querySelector("[data-update-dot]").hidden'),true,'same version is not actionable');
  await evaluate('TigerestUpdate.destroy()');assert.equal(await evaluate('listeners.length'),0);
- console.log('update UI: startup, skip/manual, text safety, progress, install-once, retry/cancel and narrow layout passed');
-}).catch(e=>{console.error(e);process.exitCode=1});
+ assert.equal(await evaluate('document.querySelector("#tigerest-update-button")'),null);
+ console.log('update UI: nonblocking startup, red dot, header replacement, skip/manual, text safety, progress, install-once, retry/cancel and narrow layout passed');
+// Qt does not tick animation frames when launched with windowsHide, even while document.hidden is false.
+},{visible:true}).catch(e=>{console.error(e);process.exitCode=1});

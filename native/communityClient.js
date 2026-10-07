@@ -128,13 +128,13 @@
         }
         me() { return this.request('/me'); }
         resolve(scope) { return this.request('/topics/resolve', {method:'POST', body:{itemId:this.context?.itemId, scope}}); }
-        page(path, cursor, item = true, anchorId = null) {
+        page(path, cursor, item = true, anchorId = null, limit = 20) {
             if (cursor && anchorId) return Promise.reject(new Error('定位与分页不能同时使用。'));
-            return this.request(path + (path.includes('?') ? '&' : '?') + 'limit=20' +
+            return this.request(path + (path.includes('?') ? '&' : '?') + 'limit=' + limit +
                 (cursor ? '&cursor=' + encodeURIComponent(cursor) : '') +
                 (anchorId ? '&anchorId=' + encodeURIComponent(anchorId) : ''), {item});
         }
-        comments(topicId, cursor, anchorId) { return this.page('/topics/' + encodeURIComponent(topicId) + '/comments', cursor, true, anchorId); }
+        comments(topicId, cursor, anchorId) { return this.page('/topics/' + encodeURIComponent(topicId) + '/comments', cursor, true, anchorId, 10); }
         replies(rootId, cursor, anchorId) { return this.page('/comments/' + encodeURIComponent(rootId) + '/replies', cursor, true, anchorId); }
         async send(topicId, text, reply = null) {
             const body = text.trim();

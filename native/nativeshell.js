@@ -723,6 +723,8 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     if (signal?.aborted) return;
     const previous = host ? host.querySelector('#tigerest-settings-inline') : document.getElementById('tigerest-settings-overlay');
     if (previous) return;
+    const returnFocus = document.activeElement;
+    const priorBodyOverflow = document.body.style.overflow;
 
     const sectionMeta = {
         main: {
@@ -814,109 +816,113 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     css.textContent = `
         #tigerest-settings-overlay {
             position: fixed; inset: 0; z-index: 100000;
-            display: flex; align-items: center; justify-content: center;
-            padding: 3vh 3vw; background: rgba(0, 0, 0, .72);
-            backdrop-filter: blur(8px);
+            display: flex; background: #141414;
         }
         .tgs-dialog {
-            width: min(1120px, 94vw); height: min(820px, 92vh);
-            display: grid; grid-template-rows: auto 1fr auto;
-            color: #f5f5f5; background: #111214;
-            border: 1px solid rgba(255,255,255,.12); border-radius: 18px;
-            box-shadow: 0 24px 90px rgba(0,0,0,.65); overflow: hidden;
+            box-sizing: border-box; width: 100%; height: 100%; min-width: 0;
+            display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+            color: inherit; background: #141414; color-scheme: dark;
+            border: 0; border-radius: 0; overflow: hidden; font: inherit;
         }
+        #tigerest-settings-overlay .tgs-dialog { color: #eee; }
         .tgs-header {
-            display: flex; align-items: center; gap: 18px; padding: 20px 24px;
+            display: flex; align-items: center; gap: 24px; padding: 24px clamp(20px, 4vw, 56px);
             border-bottom: 1px solid rgba(255,255,255,.09);
-            background: linear-gradient(110deg, rgba(255,183,20,.13), transparent 52%);
         }
-        .tgs-brand { width: 5px; align-self: stretch; border-radius: 4px; background: #ffb714; }
-        .tgs-title { margin: 0; font-size: 25px; font-weight: 750; }
-        .tgs-subtitle { margin-top: 4px; color: #aeb0b5; font-size: 13px; }
+        .tgs-title { margin: 0; font-size: 26px; line-height: 1.3; font-weight: 500; }
+        .tgs-subtitle { margin-top: 8px; color: #aaa; font-size: 13px; line-height: 1.5; }
         .tgs-search {
-            margin-left: auto; width: min(310px, 31vw); padding: 10px 13px;
-            color: #fff; background: #202226; border: 1px solid #3b3d42;
-            border-radius: 9px; outline: none;
+            box-sizing: border-box; margin-left: auto; width: min(310px, 31vw); min-height: 44px; padding: 10px 12px;
+            color: inherit; background: #252525; border: 1px solid #555;
+            border-radius: 3px; outline: none; font: inherit; font-size: 14px;
         }
-        .tgs-search:focus { border-color: #ffb714; box-shadow: 0 0 0 2px rgba(255,183,20,.16); }
-        .tgs-body { min-height: 0; display: grid; grid-template-columns: 225px 1fr; }
-        .tgs-tabs { padding: 16px 12px; overflow-y: auto; background: #0d0e10; border-right: 1px solid rgba(255,255,255,.08); }
+        .tgs-search:focus { border-color: #ffbe38; }
+        .tgs-body { min-height: 0; min-width: 0; display: grid; grid-template-columns: 230px minmax(0, 1fr); }
+        .tgs-tabs { padding: 24px 0; overflow-y: auto; border-right: 1px solid rgba(255,255,255,.08); }
         .tgs-tab {
-            width: 100%; margin: 2px 0; padding: 12px 13px; color: #c8c9cd;
-            text-align: left; background: transparent; border: 0; border-radius: 9px; cursor: pointer;
+            box-sizing: border-box; width: 100%; min-height: 48px; margin: 0; padding: 14px 24px; color: #ccc;
+            text-align: left; font: inherit; font-size: 15px; background: transparent; border: 0;
+            border-left: 3px solid transparent; border-radius: 0; cursor: pointer;
         }
-        .tgs-tab:hover { background: #202124; }
-        .tgs-tab.active { color: #111; background: #ffb714; font-weight: 700; }
-        .tgs-tab small { display: block; margin-top: 3px; color: inherit; opacity: .72; font-size: 11px; font-weight: 400; }
-        .tgs-content { min-width: 0; overflow-y: auto; padding: 24px clamp(18px, 3vw, 38px) 40px; }
-        .tgs-section { display: none; max-width: 780px; margin: 0 auto; }
+        .tgs-tab:hover { background: #ffffff08; }
+        .tgs-tab.active { color: #ffbe38; border-color: #ffbe38; background: #ffffff07; }
+        .tgs-tab small { display: block; margin-top: 5px; color: #999; font-size: 11px; line-height: 1.5; font-weight: 400; }
+        .tgs-content { min-width: 0; overflow-y: auto; padding: 30px clamp(20px, 4vw, 56px) 48px; scrollbar-gutter: stable; }
+        .tgs-section { display: none; max-width: 760px; margin: 0 auto 32px; }
         .tgs-section.active { display: block; }
-        .tgs-section-head { display: flex; align-items: start; gap: 16px; margin-bottom: 20px; }
-        .tgs-section-head h2 { margin: 0; font-size: 24px; }
-        .tgs-section-head p { margin: 5px 0 0; color: #aeb0b5; }
+        .tgs-section-head { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 24px; }
+        .tgs-section-head h2 { margin: 0; font-size: 24px; font-weight: 400; }
+        .tgs-section-head p { margin: 8px 0 0; color: #aaa; font-size: 14px; line-height: 1.5; }
         .tgs-reset {
-            margin-left: auto; white-space: nowrap; padding: 8px 12px; color: #e6e6e6;
-            background: #27282c; border: 1px solid #414349; border-radius: 8px; cursor: pointer;
+            margin-left: auto; min-height: 44px; padding: 8px 12px; color: #ffbe38; font: inherit; font-size: 13px;
+            background: transparent; border: 0; border-radius: 3px; cursor: pointer;
         }
         .tgs-callout {
-            margin: 0 0 18px; padding: 14px 16px; color: #ddd;
-            background: rgba(255,183,20,.08); border: 1px solid rgba(255,183,20,.28); border-radius: 10px;
-            line-height: 1.55;
+            margin: 0 0 24px; padding: 0 0 0 14px; color: #bbb;
+            border: 0; border-left: 2px solid #6d582a; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere;
         }
         .tgs-setting {
-            display: grid; grid-template-columns: minmax(220px, 1fr) minmax(230px, 320px);
-            gap: 20px; align-items: center; padding: 16px 0;
-            border-bottom: 1px solid rgba(255,255,255,.075);
+            display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; padding: 0; margin-bottom: 28px;
         }
-        .tgs-setting-title { display: flex; align-items: center; gap: 8px; font-weight: 650; }
-        .tgs-help { margin-top: 5px; color: #a9abb0; font-size: 12px; line-height: 1.5; white-space: pre-line; }
+        .tgs-setting-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 15px; font-weight: 400; line-height: 1.5; }
+        .tgs-help { margin-top: 0; color: #aaa; font-size: 13px; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
         .tgs-restart {
-            display: inline-block; padding: 2px 6px; color: #ffcc58; font-size: 10px;
-            border: 1px solid rgba(255,190,45,.45); border-radius: 4px; font-weight: 500;
+            display: inline-block; color: #c7aa68; font-size: 11px; font-weight: 400;
         }
         .tgs-scope {
-            display: inline-block; padding: 2px 6px; color: #b9bdc6; font-size: 10px;
-            border: 1px solid rgba(185,189,198,.35); border-radius: 4px; font-weight: 500;
+            display: inline-block; color: #aaa; font-size: 11px; font-weight: 400;
         }
         .tgs-control {
-            box-sizing: border-box; width: 100%; min-height: 40px; padding: 9px 11px;
-            color: #fff; background: #202226; border: 1px solid #42444a; border-radius: 8px; outline: none;
+            box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px;
+            color: inherit; background: #252525; border: 1px solid #555; border-radius: 3px; outline: none; font: inherit; font-size: 15px;
         }
-        .tgs-control:focus { border-color: #ffb714; }
+        .tgs-control:focus { border-color: #ffbe38; }
         textarea.tgs-control { min-height: 150px; resize: vertical; font-family: Consolas, Menlo, monospace; }
-        .tgs-switch-wrap { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
-        .tgs-switch { width: 22px; height: 22px; accent-color: #ffb714; }
-        .tgs-switch-state { min-width: 32px; color: #bfc1c5; font-size: 12px; }
-        .tgs-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
-        .tgs-action { padding: 13px; color: #fff; background: #27282c; border: 1px solid #414349; border-radius: 9px; cursor: pointer; }
+        .tgs-setting-boolean { grid-template-columns: 28px minmax(0, 1fr); column-gap: 12px; }
+        .tgs-setting-boolean .tgs-setting-title { grid-column: 2; grid-row: 1; min-height: 32px; cursor: pointer; }
+        .tgs-setting-boolean .tgs-switch-wrap { grid-column: 1; grid-row: 1; }
+        .tgs-setting-boolean .tgs-help { grid-column: 2; }
+        .tgs-switch-wrap { display: flex; align-items: center; }
+        .tgs-switch { width: 22px; height: 22px; margin: 0; accent-color: #ffbe38; cursor: pointer; }
+        .tgs-switch-state { display: none; }
+        .tgs-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+        .tgs-action { min-height: 44px; padding: 10px 20px; color: #eee; background: #303030; border: 0; border-radius: 3px; cursor: pointer; font: inherit; font-size: 14px; }
+        .tgs-dialog button:focus-visible, .tgs-switch:focus-visible { outline: 2px solid #ffbe38; outline-offset: 2px; }
+        .tgs-empty { max-width: 760px; margin: 20px auto; color: #aaa; line-height: 1.6; }
         .tgs-footer {
-            display: flex; align-items: center; gap: 14px; padding: 14px 24px;
-            background: #0d0e10; border-top: 1px solid rgba(255,255,255,.08);
+            display: flex; align-items: center; gap: 14px; padding: 14px clamp(20px, 4vw, 56px);
+            border-top: 1px solid rgba(255,255,255,.08);
         }
-        .tgs-status { color: #9fa2a7; font-size: 12px; }
-        .tgs-close { margin-left: auto; min-width: 120px; padding: 10px 18px; color: #151515; background: #ffb714; border: 0; border-radius: 8px; font-weight: 700; cursor: pointer; }
+        .tgs-status { color: #aaa; font-size: 12px; line-height: 1.5; }
+        .tgs-close { margin-left: auto; min-width: 96px; min-height: 44px; padding: 10px 18px; color: #171717; background: #ffbe38; border: 0; border-radius: 3px; font: inherit; cursor: pointer; }
         @media (max-width: 760px) {
-            #tigerest-settings-overlay { padding: 0; }
-            .tgs-dialog { width: 100vw; height: 100vh; border-radius: 0; }
-            .tgs-body { grid-template-columns: 1fr; }
-            .tgs-tabs { display: flex; gap: 5px; overflow-x: auto; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.08); }
-            .tgs-tab { min-width: 126px; }
-            .tgs-setting { grid-template-columns: 1fr; gap: 9px; }
-            .tgs-search { width: 35vw; }
+            .tgs-header { flex-wrap: wrap; gap: 14px; padding: 18px 20px; }
+            .tgs-title { font-size: 22px; }
+            .tgs-subtitle { font-size: 12px; }
+            .tgs-search { width: 100%; margin: 0; font-size: 16px; }
+            .tgs-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+            .tgs-tabs { display: flex; padding: 0 12px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.08); scrollbar-width: thin; }
+            .tgs-tab { flex: 0 0 auto; width: auto; padding: 12px 16px; white-space: nowrap; text-align: center; border-left: 0; border-bottom: 2px solid transparent; }
+            .tgs-tab small { display: none; }
+            .tgs-content { padding: 24px 20px 32px; }
+            .tgs-control { font-size: 16px; }
+            .tgs-section-head { gap: 8px; }
+            .tgs-section-head h2 { font-size: 22px; }
+            .tgs-reset { margin-left: 0; padding-left: 0; }
+            .tgs-footer { padding: 12px 20px; }
         }
-        .tigerest-settings-host { width: 100%; max-width: 1120px; }
+        .tigerest-settings-host { width: 100%; max-width: 1200px; }
         #tigerest-settings-inline .tgs-dialog {
             width: 100%; height: auto; min-height: 520px;
-            background: var(--tgs-panel-strong, #11141b);
-            box-shadow: 0 12px 36px rgba(0,0,0,.2);
+            background: transparent;
         }
         #tigerest-settings-inline .tgs-body { overflow: visible; }
         #tigerest-settings-inline .tgs-content { overflow: visible; min-width: 0; }
         #tigerest-settings-inline .tgs-tabs { align-self: start; position: sticky; top: 100px; }
-        #tigerest-settings-inline .tgs-title { font-size: 22px; }
         #tigerest-settings-inline .tgs-search { min-width: 0; }
         @media (max-width: 760px) {
-            #tigerest-settings-inline .tgs-dialog { border-radius: 14px; min-height: 0; }
+            #tigerest-settings-inline .tgs-dialog { min-height: 0; }
+            #tigerest-settings-inline .tgs-body { grid-template-rows: auto auto; }
             #tigerest-settings-inline .tgs-tabs { position: static; }
             #tigerest-settings-inline .tgs-header { flex-wrap: wrap; }
             #tigerest-settings-inline .tgs-search { width: 100%; }
@@ -934,28 +940,36 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     const overlay = element('div');
     overlay.id = host ? 'tigerest-settings-inline' : 'tigerest-settings-overlay';
     const dialog = element('div', 'tgs-dialog');
+    dialog.setAttribute('role', host ? 'region' : 'dialog');
+    if (!host) dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'tgs-settings-title');
     overlay.appendChild(dialog);
 
     const header = element('div', 'tgs-header');
-    header.appendChild(element('div', 'tgs-brand'));
     const heading = element('div');
-    heading.appendChild(element('h2', 'tgs-title', window.tigerestAndroidApi ? '大河影院 / 客户端设置' : '大河影院 / MPV 设置'));
+    const headingTitle = element('h2', 'tgs-title', window.tigerestAndroidApi ? '客户端设置' : 'MPV 播放设置');
+    headingTitle.id = 'tgs-settings-title';
+    heading.appendChild(headingTitle);
     heading.appendChild(element('div', 'tgs-subtitle', '常规配置即时应用；带“需重启”标记的项目在下次启动生效'));
     header.appendChild(heading);
     const search = element('input', 'tgs-search');
     search.type = 'search';
     search.placeholder = '搜索设置，例如 HDR、字幕、缓存…';
+    search.setAttribute('aria-label', '搜索客户端设置');
     header.appendChild(search);
     dialog.appendChild(header);
 
     const body = element('div', 'tgs-body');
     const tabs = element('nav', 'tgs-tabs');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', '设置分类');
     const content = element('main', 'tgs-content');
     body.append(tabs, content);
     dialog.appendChild(body);
 
     const footer = element('div', 'tgs-footer');
     const status = element('div', 'tgs-status', '设置保存在当前客户端配置中，不会包含 Emby 密码或令牌。');
+    status.setAttribute('role', 'status');
     const closeButton = element('button', 'tgs-close', host ? '返回设置' : '完成');
     footer.append(status, closeButton);
     dialog.appendChild(footer);
@@ -1013,12 +1027,28 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         }
     };
 
+    const revealActiveTab = () => {
+        tabs.setAttribute('aria-orientation', matchMedia('(max-width: 760px)').matches ? 'horizontal' : 'vertical');
+        const selected = tabButtons.get(activeSection);
+        if (!selected || tabs.scrollWidth <= tabs.clientWidth) return;
+        const buttonBounds = selected.getBoundingClientRect(), tabBounds = tabs.getBoundingClientRect();
+        if (buttonBounds.left < tabBounds.left) tabs.scrollLeft += Math.floor(buttonBounds.left - tabBounds.left) - 12;
+        else if (buttonBounds.right > tabBounds.right) tabs.scrollLeft += Math.ceil(buttonBounds.right - tabBounds.right) + 12;
+    };
     const activate = section => {
         activeSection = section;
         sessionStorage.setItem('tigerestSettingsTab', section);
-        for (const [key, button] of tabButtons) button.classList.toggle('active', key === section);
-        for (const [key, group] of groups) group.classList.toggle('active', key === section);
+        for (const [key, button] of tabButtons) {
+            button.classList.toggle('active', key === section);
+            button.setAttribute('aria-selected', String(key === section));
+            button.tabIndex = key === section ? 0 : -1;
+        }
+        for (const [key, group] of groups) {
+            group.classList.toggle('active', key === section);
+            group.setAttribute('aria-hidden', String(key !== section));
+        }
         content.scrollTop = 0;
+        revealActiveTab();
     };
 
     const makeControl = (section, setting, currentValue) => {
@@ -1080,16 +1110,34 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         const meta = sectionMeta[section];
         const tab = element('button', 'tgs-tab');
         tab.type = 'button';
+        tab.dataset.sectionTab = section;
+        tab.id = `tgs-tab-${section}`;
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-controls', `tgs-section-${section}`);
         tab.append(element('span', '', meta.title), element('small', '', meta.subtitle));
         tab.addEventListener('click', () => {
             search.value = '';
             activate(section);
+            applySearch();
+        });
+        tab.addEventListener('keydown', event => {
+            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const buttons = [...tabButtons.values()], index = buttons.indexOf(tab);
+            const target = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+                : (index + (event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length;
+            buttons[target].click();
+            buttons[target].focus({preventScroll: true});
+            buttons[target].scrollIntoView({block: 'nearest', inline: 'nearest'});
         });
         tabs.appendChild(tab);
         tabButtons.set(section, tab);
 
         const group = element('section', 'tgs-section');
         group.dataset.section = section;
+        group.id = `tgs-section-${section}`;
+        group.setAttribute('role', 'tabpanel');
+        group.setAttribute('aria-labelledby', tab.id);
         const groupHead = element('div', 'tgs-section-head');
         const groupTitle = element('div');
         groupTitle.append(element('h2', '', meta.title), element('p', '', meta.subtitle));
@@ -1104,6 +1152,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             // QWebChannel updates the settings snapshot before rebuilding.
             const sectionToRestore = activeSection;
             cleanup();
+            if (!host && returnFocus?.isConnected) returnFocus.focus({preventScroll: true});
             const refreshed = await mountTigerestSettings(host, sectionToRestore, onReturn, resetAbort.signal);
             if (disposed || signal?.aborted) { refreshed?.dispose(); return; }
             replacementMount = refreshed;
@@ -1121,7 +1170,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
                 settings: jmpInfo.settings.video, save: (key, value) => saveSetting('video', key, value), notify: showSaved});
             if (rifeExtensionPanel) group.appendChild(rifeExtensionPanel.node);
         }
-        if (section === 'mpv') {
+        if (section === 'mpv' && !window.tigerestAndroidApi) {
             const activeMode = jmpInfo.mpvConfigMode === 'system' ? '系统用户配置' : '大河内置配置';
             const activeRoot = jmpInfo.mpvConfigDir || '尚未解析';
             const shaderFiles = Array.isArray(mpvDiagnostics.shaderFiles) ? mpvDiagnostics.shaderFiles : [];
@@ -1169,8 +1218,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             const row = element('div', 'tgs-setting');
             row.dataset.setting = `${section}.${setting.key}`;
             row.dataset.search = `${meta.title} ${setting.displayName || setting.key} ${setting.key} ${setting.help || ''}`.toLowerCase();
-            const label = element('div');
-            const labelTitle = element('div', 'tgs-setting-title');
+            const labelTitle = element('label', 'tgs-setting-title inputLabel');
             labelTitle.appendChild(element('span', '', setting.displayName || setting.key));
             if (restartSettings.has(`${section}.${setting.key}`)) {
                 labelTitle.appendChild(element('span', 'tgs-restart', '需重启'));
@@ -1178,12 +1226,20 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             if (section === 'mpv' && embeddedOnlyMpvSettings.has(setting.key)) {
                 labelTitle.appendChild(element('span', 'tgs-scope', '仅内置'));
             }
-            label.appendChild(labelTitle);
-            if (setting.help) label.appendChild(element('div', 'tgs-help', setting.help));
             const control = makeControl(section, setting, values[setting.key]);
             const input = control.matches('input,select,textarea') ? control : control.querySelector('input');
-            input?.setAttribute('aria-label', setting.displayName || setting.key);
-            row.append(label, control);
+            if (input) {
+                input.id = `tgs-input-${section}-${setting.key}`;
+                labelTitle.htmlFor = input.id;
+                if (input.type === 'checkbox') row.classList.add('tgs-setting-boolean');
+            }
+            row.append(labelTitle, control);
+            if (setting.help) {
+                const help = element('div', 'tgs-help fieldDescription', setting.help);
+                help.id = `tgs-help-${section}-${setting.key}`;
+                input?.setAttribute('aria-describedby', help.id);
+                row.appendChild(help);
+            }
             group.appendChild(row);
         }
 
@@ -1216,8 +1272,13 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         groups.set(section, group);
     }
 
+    const empty = element('div', 'tgs-empty', '没有找到匹配的设置，请尝试其他关键词。');
+    empty.hidden = true;
+    empty.setAttribute('role', 'status');
+    content.appendChild(empty);
     const applySearch = () => {
         const query = search.value.trim().toLowerCase();
+        empty.hidden = true;
         if (!query) {
             activate(activeSection);
             for (const group of groups.values()) {
@@ -1225,6 +1286,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             }
             return;
         }
+        let matchCount = 0;
         for (const group of groups.values()) {
             let matches = 0;
             for (const row of group.querySelectorAll('.tgs-setting')) {
@@ -1233,8 +1295,15 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
                 if (visible) matches += 1;
             }
             group.classList.toggle('active', matches > 0);
+            group.setAttribute('aria-hidden', String(matches === 0));
+            matchCount += matches;
         }
-        status.textContent = '正在显示所有分类中的匹配项。';
+        empty.hidden = matchCount > 0;
+        for (const button of tabButtons.values()) {
+            button.classList.remove('active');
+            button.setAttribute('aria-selected', 'false');
+        }
+        status.textContent = `已找到 ${matchCount} 项设置。`;
     };
     search.addEventListener('input', applySearch);
 
@@ -1245,6 +1314,8 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         clearTimeout(showSaved.timer);
         rifeExtensionPanel?.dispose();
         document.removeEventListener('keydown', onKeyDown);
+        window.removeEventListener('resize', revealActiveTab);
+        if (!host) document.body.style.overflow = priorBodyOverflow;
         overlay.remove();
         css.remove();
     };
@@ -1254,9 +1325,17 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         replacementMount?.dispose();
         signal?.removeEventListener('abort', close);
         cleanup();
+        if (!host && returnFocus?.isConnected) returnFocus.focus({preventScroll: true});
     };
     const onKeyDown = event => {
-        if (event.key === 'Escape') close();
+        if (event.key === 'Escape') { event.preventDefault(); close(); }
+        if (event.key === 'Tab' && !host) {
+            const focusable = [...dialog.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])')]
+                .filter(node => node.tabIndex >= 0 && node.getClientRects().length);
+            const first = focusable[0], last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        }
     };
     closeButton.addEventListener('click', () => { close(); if (host) onReturn?.(); });
     if (!host) {
@@ -1264,6 +1343,8 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         document.addEventListener('keydown', onKeyDown);
     }
     (host || document.body).appendChild(overlay);
+    window.addEventListener('resize', revealActiveTab);
+    if (!host) document.body.style.overflow = 'hidden';
     signal?.addEventListener('abort', close, {once: true});
     if (signal?.aborted) { close(); return; }
     activate(activeSection);

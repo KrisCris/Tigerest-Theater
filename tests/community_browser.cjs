@@ -64,6 +64,7 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
             socket.send(JSON.stringify({id:current,method,params}));
         });
         const evaluate=async expression=>{
+            if(process.env.TIGEREST_BROWSER_TRACE) console.log('fixture evaluate:',expression);
             const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});
             if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));
             return r.result.value;

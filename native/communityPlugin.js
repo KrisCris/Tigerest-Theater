@@ -23,9 +23,12 @@
         const style = node('style');
         style.id = styleId;
         style.textContent = `
-        #tigerest-community{padding:24px clamp(16px,4vw,48px);color:inherit;max-width:1200px;box-sizing:border-box;width:100%;align-self:center}
-        #tigerest-community h2{font-size:24px;margin:0 0 16px}#tigerest-community h3{font-size:18px;margin:12px 0}
+        #tigerest-community{padding-block:24px;color:inherit;box-sizing:border-box;width:100%;min-width:0;align-self:stretch;text-align:start}
+        #tigerest-community .tc-content{box-sizing:border-box;min-width:0}
+        #tigerest-community h2{font-size:24px;margin-block:0 16px}#tigerest-community h3{font-size:18px;margin:12px 0}
         #tigerest-community .tc-toolbar,#tigerest-community .tc-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
+        #tigerest-community .tc-pagination{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:20px 0}
+        #tigerest-community .tc-pagination[hidden]{display:none}
         #tigerest-community .tc-button{font:inherit;color:inherit;background:rgba(127,145,170,.15);border:1px solid rgba(127,145,170,.35);border-radius:8px;padding:8px 14px;cursor:pointer}
         #tigerest-community .tc-button:hover{background:rgba(77,155,235,.3)}#tigerest-community .tc-button:focus-visible,#tigerest-community textarea:focus-visible,#tigerest-community select:focus-visible{outline:2px solid #65b8ff;outline-offset:3px}
         #tigerest-community .tc-button[aria-pressed=true]{background:#24649d;color:white;border-color:#65b8ff}
@@ -40,7 +43,7 @@
         #tigerest-community .tc-replies{margin:12px 0 0 20px;padding-left:16px;border-left:2px solid rgba(127,145,170,.3)}
         #tigerest-community .tc-replies .tc-card{padding:12px 0}#tigerest-community .tc-dialog,#tigerest-community .tc-management{padding:16px;background:rgba(127,145,170,.1);border-radius:10px;margin:12px 0}
         #tigerest-community select{font:inherit;color:inherit;background:#243344;padding:8px;border:1px solid #678;border-radius:6px}
-        @media(max-width:600px){#tigerest-community{padding:20px 14px}#tigerest-community .tc-replies{margin-left:8px;padding-left:10px}}
+        @media(max-width:600px){#tigerest-community{padding-block:20px}#tigerest-community .tc-replies{margin-left:8px;padding-left:10px}}
         `;
         (document.head || document.documentElement).appendChild(style);
     }
@@ -85,8 +88,8 @@
                 sessionKey:JSON.stringify(session)};
             this.pendingFocus=focus;
             if(this.state?.item.Id===focus.itemId && this.valid(this.state)){
-                this.state.scope=focus.scope==='episode'&&this.state.item.Type==='Episode'?'episode':'work';
-                this.state.focus=focus;this.pendingFocus=null;await this.load(this.state);return;
+                if(this.state.busy){this.state.queuedFocus=focus;this.pendingFocus=null;return;}
+                this.applyFocus(this.state,focus);this.pendingFocus=null;await this.load(this.state);return;
             }
             try {await this.appRouter.show('/item?id='+encodeURIComponent(focus.itemId)+'&serverId='+encodeURIComponent(session.serverId));}
             catch(error){if(this.pendingFocus===focus)this.pendingFocus=null;throw error;}
@@ -126,9 +129,10 @@
             installStyle();
             const panel = node('section');
             panel.id = 'tigerest-community';
+            panel.className = 'verticalSection';
             panel.setAttribute('aria-label', '评论区');
             const state = {panel, view, item, sessionKey:JSON.stringify(session), scope:item.Type==='Episode'?'episode':'work',
-                avatars:new Map(), urls:new Set(), rootIds:new Set(), version:0, reply:null, busy:false};
+                avatars:new Map(), urls:new Set(), rootIds:new Set(), pages:new Map(), version:0, reply:null, busy:false};
             this.state = state;
             if(this.pendingFocus?.itemId===String(item.Id)&&this.pendingFocus.sessionKey===state.sessionKey){
                 state.focus=this.pendingFocus;this.pendingFocus=null;
@@ -136,25 +140,26 @@
             }
             event.detail?.signal?.addEventListener('abort', () => {if (this.state===state) this.close();}, {once:true});
             if (event.detail?.signal?.aborted) {this.close();return;}
-            panel.appendChild(node('h2', '评论区'));
+            const content=node('div',null,'tc-content padded-left padded-left-page padded-right');
+            state.content=content;panel.appendChild(content);
+            state.title=node('h2','评论区');content.appendChild(state.title);
             const toolbar = node('div', null, 'tc-toolbar');
             state.tabs = [];
             const scopes = item.Type==='Episode' ? [['episode','本集评论'],['work','作品评论']] : [['work','作品评论']];
             for (const [scope, label] of scopes) {
                 const tab = button(label, () => {
                     if (!this.valid(state) || state.busy || state.scope===scope) return;
-                    this.client.cancelRequests();
                     state.scope=scope;state.focus=null;
                     state.input.value='';state.reply=null;state.dialog.replaceChildren();
                     this.updateComposer(state);this.load(state);
                 });
                 tab.dataset.scope=scope;toolbar.appendChild(tab);state.tabs.push(tab);
             }
-            state.refresh = button('刷新评论', () => this.load(state));
-            toolbar.appendChild(state.refresh);panel.appendChild(toolbar);
-            state.topicLabel = node('div', '正在加载…', 'tc-muted');panel.appendChild(state.topicLabel);
-            state.status = node('div', '', 'tc-status');state.status.setAttribute('role','status');state.status.setAttribute('aria-live','polite');panel.appendChild(state.status);
-            state.dialog = node('div');panel.appendChild(state.dialog);
+            state.refresh = button('刷新评论', () => this.load(state, true));
+            toolbar.appendChild(state.refresh);content.appendChild(toolbar);
+            state.topicLabel = node('div', '正在加载…', 'tc-muted');content.appendChild(state.topicLabel);
+            state.status = node('div', '', 'tc-status');state.status.setAttribute('role','status');state.status.setAttribute('aria-live','polite');content.appendChild(state.status);
+            state.dialog = node('div');content.appendChild(state.dialog);
             state.composer = node('form');
             state.replyLabel = node('div', '', 'tc-muted');state.composer.appendChild(state.replyLabel);
             state.cancelReply = button('取消回复', () => {state.reply=null;this.updateComposer(state);});state.composer.appendChild(state.cancelReply);
@@ -164,19 +169,66 @@
             state.send=button('发表评论',()=>this.submit(state));footer.appendChild(state.send);
             state.counter=node('span','0 / 2000','tc-muted');footer.appendChild(state.counter);state.composer.appendChild(footer);
             state.composer.addEventListener('submit',e=>{e.preventDefault();this.submit(state);});
-            panel.appendChild(state.composer);
-            state.list=node('div');panel.appendChild(state.list);
-            state.more=button('加载更多评论',()=>this.loadMore(state));panel.appendChild(state.more);state.more.hidden=true;
-            state.management=node('div');panel.appendChild(state.management);
-            (view.querySelector('.itemMainScrollSlider') || view.querySelector('.scrollSlider') || view).appendChild(panel);
+            content.appendChild(state.composer);
+            state.list=node('div');content.appendChild(state.list);
+            state.pagination=node('nav',null,'tc-pagination');state.pagination.setAttribute('aria-label','评论分页');
+            state.previous=button('上一页',()=>this.changePage(state,-1));state.pagination.appendChild(state.previous);
+            state.pageLabel=node('span','','tc-muted');state.pageLabel.setAttribute('aria-live','polite');state.pagination.appendChild(state.pageLabel);
+            state.next=button('下一页',()=>this.changePage(state,1));state.pagination.appendChild(state.next);
+            state.first=button('返回最新评论',()=>this.load(state,true));state.pagination.appendChild(state.first);
+            content.appendChild(state.pagination);
+            state.management=node('div');content.appendChild(state.management);
+            this.placePanel(state);
+            state.placementObserver=new MutationObserver(records=>{
+                if(records.some(record=>!panel.contains(record.target)))this.placePanel(state);
+            });
+            state.placementObserver.observe(view,{childList:true,subtree:true});
+            if(window.ResizeObserver){state.resizeObserver=new ResizeObserver(()=>this.alignPanel(state));state.resizeObserver.observe(view);}
             this.load(state);
         }
-        async load(state) {
+        placePanel(state) {
+            if(!this.valid(state))return;
+            const view=state.view;
+            const anchor=view.querySelector('.peopleSection, #peopleSection, .castSection, #castCollapsible, .castCollapsible') ||
+                view.querySelector('.chaptersSection, #chaptersCollapsible, .chaptersCollapsible, .mediaInfoSection, #mediaInfoCollapsible, .mediaInfoCollapsible, .aboutSection, .audioVideoMediaInfo');
+            // Insert beside the complete detail section, never into its horizontal card scroller.
+            const section=anchor?.closest('.detailSection, .verticalSection, .emby-collapsible') || anchor;
+            if(section?.parentElement){
+                if(state.panel.nextElementSibling!==section)section.before(state.panel);
+                state.alignmentSection=section;
+            }else{
+                const host=view.querySelector('.details-additionalContent') || view.querySelector('.itemMainScrollSlider') || view.querySelector('.scrollSlider') || view;
+                if(state.panel.parentElement!==host)host.appendChild(state.panel);
+                state.alignmentSection=null;
+            }
+            this.alignPanel(state);
+        }
+        alignPanel(state) {
+            const section=state.alignmentSection;
+            if(!section?.isConnected){state.content.style.paddingInline='clamp(16px,4vw,48px)';return;}
+            const heading=section.querySelector('h2,h3,.sectionTitle') || section;
+            if(heading.closest('.padded-left-page')){
+                // Emby owns responsive spacing (including safe areas and docked drawers).
+                state.content.style.paddingInline='';
+                state.content.style.paddingLeft='';state.content.style.paddingRight='';
+                state.title.classList.toggle('sectionTitle-cards',heading.classList.contains('sectionTitle-cards'));
+                return;
+            }
+            state.title.classList.remove('sectionTitle-cards');
+            state.content.style.paddingInline='';
+            const panelRect=state.panel.getBoundingClientRect(),sectionRect=section.getBoundingClientRect();
+            const left=heading.getBoundingClientRect().left-panelRect.left;
+            const right=panelRect.right-sectionRect.right+parseFloat(getComputedStyle(section).paddingRight||0);
+            if(left>=0)state.content.style.paddingLeft=left+'px';
+            if(right>=0)state.content.style.paddingRight=right+'px';
+        }
+        async load(state, reset=false) {
             if (!this.valid(state) || state.busy) return;
             const version=++state.version;
+            this.client.cancelRequests();state.avatars.clear();
             const focus=state.focus;state.focus=null;
             state.loading=true;state.me=null;state.topic=null;state.cursor=null;state.rootIds.clear();
-            state.list.replaceChildren();state.more.hidden=true;
+            state.list.replaceChildren();state.pagination.hidden=true;
             state.status.textContent='正在加载评论…';
             for(const tab of state.tabs) tab.setAttribute('aria-pressed',String(tab.dataset.scope===state.scope));
             this.updateComposer(state);
@@ -190,15 +242,22 @@
                 state.topic=topic;
                 state.topicLabel.textContent=(state.scope==='episode'?'当前发言对象：本集 · ':'当前发言对象：作品 · ')+(topic.title||state.item.Name||'');
                 const anchor=focus?.topicId===topic.id?focus.rootId:null;
+                let page=state.pages.get(state.scope);
+                if(reset||focus||!page||page.topicId!==topic.id){
+                    page={topicId:topic.id,entries:[{cursor:null,anchorId:anchor}],index:0};
+                    state.pages.set(state.scope,page);
+                }
+                state.page=page;
+                const entry=page.entries[page.index];
                 let data,missing=false;
-                try{data=await this.client.comments(topic.id,null,anchor);}
+                try{data=await this.client.comments(topic.id,entry.cursor,entry.anchorId);}
                 catch(error){
-                    if(!anchor||error.status!==404)throw error;
+                    if(!entry.anchorId||error.status!==404)throw error;
                     if(!this.valid(state)||version!==state.version)return;
-                    missing=true;data=await this.client.comments(topic.id);
+                    missing=true;page.entries=[{cursor:null,anchorId:null}];page.index=0;data=await this.client.comments(topic.id);
                 }
                 if(!this.valid(state)||version!==state.version)return;
-                this.appendRoots(state,data);
+                this.renderRoots(state,data);
                 state.status.textContent=me.muted?'你已被禁言，可浏览评论和删除自己的评论。':('以 '+me.author.name+' 的身份发言');
                 if(anchor&&!missing){await this.focusComment(state,version,focus,data);if(!this.valid(state)||version!==state.version)return;}
                 if(missing||(focus?.commentId&&!anchor))state.status.textContent='目标评论已不可用，已显示当前讨论。';
@@ -215,6 +274,27 @@
             state.replyLabel.textContent=state.reply?'正在回复 @'+state.reply.author.name:'';
             state.refresh.disabled=Boolean(state.loading||state.busy);
             for(const tab of state.tabs)tab.disabled=Boolean(state.busy);
+            this.updatePagination(state);
+        }
+        updatePagination(state) {
+            const page=state.page,locked=Boolean(state.loading||state.busy||!state.me||!state.topic);
+            state.previous.disabled=locked||!page?.index;
+            state.next.disabled=locked||!state.cursor;
+            state.first.hidden=!page?.entries[0].anchorId;
+            state.first.disabled=locked;
+            if(!page)return;
+            const total=page.rootCount==null?'':' · 共 '+page.rootCount+' 条';
+            state.pageLabel.textContent=(page.entries[0].anchorId?'定位评论 · ':'')+'第 '+(page.index+1)+' 页'+total;
+        }
+        applyFocus(state,focus) {
+            const scope=focus.scope==='episode'&&state.item.Type==='Episode'?'episode':'work';
+            if(scope!==state.scope)state.input.value='';
+            state.reply=null;state.dialog.replaceChildren();state.scope=scope;state.focus=focus;
+        }
+        async resumeFocus(state) {
+            if(!this.valid(state)||!state.queuedFocus)return false;
+            this.applyFocus(state,state.queuedFocus);state.queuedFocus=null;
+            await this.load(state);return true;
         }
         async focusComment(state,version,focus,data) {
             const root=data.items?.find(comment=>comment.id===focus.rootId);
@@ -240,9 +320,9 @@
             target.scrollIntoView({block:'center',behavior:'smooth'});
         }
         showError(state,error) {
-            if(this.state!==state||error.name==='AbortError')return;
+            if(!this.valid(state)||error.name==='AbortError')return;
             state.status.textContent=error.message+(error.requestId?'（请求编号：'+error.requestId+'）':'');
-            if(error.status===401){state.me=null;state.input.value='';state.reply=null;state.list.replaceChildren();state.management.replaceChildren();this.updateComposer(state);}
+            if(error.status===401){state.me=null;state.input.value='';state.reply=null;state.pages.clear();state.page=null;state.cursor=null;state.pagination.hidden=true;state.list.replaceChildren();state.management.replaceChildren();this.updateComposer(state);}
         }
         async submit(state) {
             if(!this.valid(state)||state.send.disabled||state.busy)return;
@@ -258,25 +338,40 @@
                     try {state.me=await this.client.me();}catch(_){}
                 }
             } finally {if(this.valid(state)){state.busy=false;this.updateComposer(state);}}
-            if(sent){await this.load(state);this.messages?.refreshSummary();}
-            else if(deletedError){await this.load(state);this.showError(state,deletedError);}
+            if(sent){state.pages.delete(state.scope);this.messages?.refreshSummary();}
+            if(await this.resumeFocus(state))return;
+            if(sent)await this.load(state,true);
+            else if(deletedError){await this.load(state,true);this.showError(state,deletedError);}
         }
-        appendRoots(state,data) {
+        renderRoots(state,data) {
+            for(const url of state.urls)URL.revokeObjectURL(url);state.urls.clear();
+            state.list.replaceChildren();state.rootIds.clear();
             for(const comment of data.items || []) {
                 if(state.rootIds.has(comment.id))continue;
                 state.rootIds.add(comment.id);
                 state.list.appendChild(this.card(state,comment));
             }
             if(!state.rootIds.size)state.list.appendChild(node('p','暂无评论，来聊聊这部作品吧。','tc-empty tc-muted'));
-            state.cursor=data.nextCursor;state.more.hidden=!state.cursor;
+            state.cursor=data.nextCursor;
+            if(Number.isInteger(data.rootCount))state.page.rootCount=data.rootCount;
+            state.pagination.hidden=false;this.updatePagination(state);
         }
-        async loadMore(state) {
-            if(!this.valid(state)||state.more.disabled||!state.cursor)return;
-            const version=state.version;state.more.disabled=true;
-            try {const data=await this.client.comments(state.topic.id,state.cursor);
-                if(this.valid(state)&&version===state.version)this.appendRoots(state,data);
-            }catch(error){this.showError(state,error);}
-            finally {state.more.disabled=false;}
+        async changePage(state,direction) {
+            if(!this.valid(state)||state.loading||state.busy||!state.topic||!state.me)return;
+            const page=state.page,index=page.index+direction;
+            if(index<0||(direction>0&&!state.cursor))return;
+            const entry=direction>0?{cursor:state.cursor,anchorId:null}:page.entries[index];
+            const version=++state.version;this.client.cancelRequests();state.avatars.clear();
+            state.loading=true;state.dialog.replaceChildren();state.reply=null;this.updateComposer(state);
+            try {
+                const data=await this.client.comments(state.topic.id,entry.cursor,entry.anchorId);
+                if(!this.valid(state)||version!==state.version)return;
+                page.index=index;page.entries[index]=entry;page.entries.length=index+1;
+                this.renderRoots(state,data);
+                state.status.textContent=state.me.muted?'你已被禁言，可浏览评论和删除自己的评论。':'以 '+state.me.author.name+' 的身份发言';
+                state.list.scrollIntoView({block:'start',behavior:'smooth'});
+            }catch(error){if(version===state.version)this.showError(state,error);}
+            finally {if(this.valid(state)&&version===state.version){state.loading=false;this.updateComposer(state);}}
         }
         avatar(state,author) {
             const holder=node('span',(author.name||'?').slice(0,1),'tc-avatar');holder.setAttribute('aria-hidden','true');
@@ -303,7 +398,7 @@
             card.appendChild(node('div',text,'tc-body'));
             const actions=node('div',null,'tc-actions');
             if(comment.permissions?.canReply)actions.appendChild(button('回复',()=>{
-                if(!this.valid(state)||state.busy||state.me?.muted)return;
+                if(!this.valid(state)||state.loading||state.busy||state.me?.muted)return;
                 state.reply=comment;this.updateComposer(state);state.input.focus();state.composer.scrollIntoView({block:'nearest',behavior:'smooth'});
             }));
             if(comment.permissions?.canDelete)actions.appendChild(button('删除',()=>this.deleteDialog(state,comment,false)));
@@ -318,7 +413,7 @@
                 append(comment.replies);
                 let cursor=comment.repliesNextCursor;
                 const more=button('加载更多回复',async()=>{
-                    if(!this.valid(state)||more.disabled)return;
+                    if(!this.valid(state)||state.loading||state.busy||more.disabled)return;
                     const version=state.version;more.disabled=true;
                     try {const data=await this.client.replies(comment.id,cursor);
                         if(this.valid(state)&&version===state.version){append(data.items);cursor=data.nextCursor;more.hidden=!cursor;}
@@ -330,18 +425,20 @@
             return card;
         }
         dialog(state,title) {
-            if(!this.valid(state)||state.busy)return null;
+            if(!this.valid(state)||state.loading||state.busy)return null;
             const box=node('div',null,'tc-dialog');box.setAttribute('role','group');box.setAttribute('aria-label',title);box.appendChild(node('h3',title));
             state.dialog.replaceChildren(box);box.scrollIntoView({block:'nearest',behavior:'smooth'});return box;
         }
         async mutation(state,operation,refresh=true) {
-            if(!this.valid(state)||state.busy)return;
+            if(!this.valid(state)||state.loading||state.busy)return;
             state.busy=true;this.updateComposer(state);
             let success=false;
             try {await operation();if(!this.valid(state))return;state.dialog.replaceChildren();state.status.textContent='操作完成';success=true;}
             catch(error){this.showError(state,error);}
             finally {if(this.valid(state)){state.busy=false;this.updateComposer(state);}}
-            if(success&&refresh){state.reply=null;await this.load(state);}
+            if(success&&refresh)state.pages.delete(state.scope);
+            if(await this.resumeFocus(state))return success;
+            if(success&&refresh){state.reply=null;await this.load(state,true);}
             return success;
         }
         deleteDialog(state,comment,admin) {
@@ -418,7 +515,7 @@
             this.epoch++;
             this.metadataController?.abort();this.metadataController=null;this.metadataView=null;
             this.client.clear();
-            if(this.state){for(const url of this.state.urls)URL.revokeObjectURL(url);this.state.panel.remove();}
+            if(this.state){this.state.placementObserver?.disconnect();this.state.resizeObserver?.disconnect();for(const url of this.state.urls)URL.revokeObjectURL(url);this.state.panel.remove();}
             this.state=null;
         }
         destroy() {

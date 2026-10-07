@@ -445,6 +445,18 @@ if(Node_EXECUTABLE)
              COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_community_messages_ui.cjs
                      $<TARGET_FILE:${MAIN_TARGET}> --webengine)
     set_tests_properties(test_community_messages_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+    add_test(NAME test_community_pagination_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_community_pagination.cjs
+                      $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_community_pagination_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+    add_test(NAME test_settings_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_settings_ui.cjs
+                      $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_settings_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+    add_test(NAME test_android_content_insets_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_android_content_insets.cjs
+                      $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_android_content_insets_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
     add_test(NAME test_webengine_startup
              COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_webengine_startup.js
                      $<TARGET_FILE:${MAIN_TARGET}>)

@@ -1,0 +1,80 @@
+// Shared desktop/Android fixture: all API data stays inside this browser profile.
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const withBrowser = require('./community_browser.cjs');
+
+const routes = {
+    '/': {type:'text/html', body:'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#151923;color:white;font:16px sans-serif}.itemMainScrollSlider{display:flex;flex-direction:column;width:100%}.detailSection{padding:24px 5%}.itemMainScrollSlider h2{margin:0}.scroller{display:flex;overflow:auto;height:140px}</style><div class="itemView"><div class="itemMainScrollSlider"></div></div><script src="/client.js"></script><script src="/plugin.js"></script>'},
+    '/client.js': {path:path.join(__dirname,'../native/communityClient.js')},
+    '/plugin.js': {path:path.join(__dirname,'../native/communityPlugin.js')}
+};
+withBrowser(routes, async ({evaluate,call}) => {
+    await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+    await evaluate(`(() => {
+        window.fixtureFailures=[];
+        window.check=(value,message)=>{if(!value)throw Error(message);};
+        window.tick=()=>new Promise(r=>setTimeout(r,40));
+        window.author={id:'author',name:'测试用户',avatarPath:null};
+        window.root=(scope,n)=>({id:scope+'-'+n,topicId:scope+'-topic',rootId:null,state:'visible',body:'第 '+n+' 条主评论',createdAt:'2026-10-01T02:00:00Z',author,
+            permissions:{canReply:true,canDelete:true},replyCount:1,replies:[{id:scope+'-'+n+'-reply',rootId:scope+'-'+n,state:'visible',body:'随主评论显示的回复',author,permissions:{canReply:true}}],repliesNextCursor:null});
+        window.setup=async (sections='<section class="detailSection overviewSection"><h2>简介</h2></section><section class="detailSection peopleSection"><h2>演职人员</h2><div class="scroller"><span>演员</span></div></section><section class="detailSection mediaInfoSection"><h2>媒体信息</h2></section>')=>{
+            window.plugin?.destroy();
+            const view=document.querySelector('.itemView');view.querySelector('.itemMainScrollSlider').innerHTML=sections;
+            window.requests=[];window.hold=null;window.pending=null;window.failNext=false;window.missing=false;window.token='fixture-token';
+            window.roots={episode:Array.from({length:25},(_,n)=>root('episode',n+1)),work:Array.from({length:13},(_,n)=>root('work',n+1))};
+            window.fetch=async(url,options)=>{
+                const u=new URL(url),p=u.pathname.split('/v1')[1];
+                const record={path:p,query:u.searchParams.toString(),options};requests.push(record);
+                let data={};
+                if(p==='/me')data={author,isCommentAdmin:false,muted:false};
+                else if(p==='/topics/resolve')data={id:JSON.parse(options.body).scope+'-topic',title:'作品'};
+                else if(p.startsWith('/topics/')&&options.method==='GET'){
+                    const scope=p.includes('episode-topic')?'episode':'work',items=roots[scope];
+                    if(missing&&u.searchParams.has('anchorId'))return Response.json({error:{code:'NOT_FOUND'}},{status:404});
+                    const offset=u.searchParams.has('anchorId')?items.findIndex(r=>r.id===u.searchParams.get('anchorId')):Number(u.searchParams.get('cursor')?.split(':')[1]||0);
+                    const limit=Number(u.searchParams.get('limit'));
+                    data={items:items.slice(offset,offset+limit),nextCursor:offset+limit<items.length?scope+':'+(offset+limit):null,rootCount:items.length};
+                    if(failNext){failNext=false;throw Error('offline');}
+                }else if(p.includes('/replies')&&options.method==='GET')data={items:[{id:'episode-21-later',rootId:'episode-21',state:'visible',body:'消息中的目标回复',author,permissions:{canReply:true}}],nextCursor:null};
+                else if(options.method==='POST'&&p.endsWith('/comments')){roots.episode.unshift(root('episode',99));data={comment:root('episode',99)};}
+                else if(options.method==='DELETE'){const id=p.split('/').pop();for(const scope of ['episode','work'])roots[scope]=roots[scope].filter(r=>r.id!==id);}
+                if(hold?.(record))return new Promise(resolve=>{window.pending={record,release:()=>resolve(Response.json({data}))};});
+                return Response.json({data});
+            };
+            const api={serverId:()=> '62526c3bf747439c99327ddec5fed4a8',getCurrentUserId:()=> 'user',accessToken:()=>token,serverAddress:()=> 'http://nas.tigerest.top:8095'};
+            window.plugin=new window._communityPlugin({connectionManager:{currentApiClient:()=>api},events:{on:()=>{},off:()=>{}},appRouter:{show:async()=>{}}});
+            window.show=(id='episode')=>view.dispatchEvent(new CustomEvent('itemshow',{bubbles:true,detail:{item:{Id:id,Type:'Episode',Name:'剧集'}}}));
+            window.click=label=>{const b=Array.from(plugin.state.panel.querySelectorAll('button')).find(b=>b.textContent===label&&!b.hidden);check(b,'missing button '+label);b.click();};
+            window.ids=()=>Array.from(plugin.state.list.children).map(row=>row.dataset.commentId).filter(Boolean);
+            window.discuss=()=>plugin.openDiscussion({availability:'available',location:{embyServerId:api.serverId(),itemId:'episode',scope:'episode',topicId:'episode-topic',rootId:'episode-21',commentId:'episode-21-later',canNavigate:true}});
+            show();await tick();
+        };
+    })()`);
+    const cases = {
+        'Emby detail hierarchy inherits page padding': `await setup('<div class="details-additionalContent"><div class="verticalSection peopleSection"><h2 class="sectionTitle sectionTitle-cards padded-left padded-left-page padded-right">演职人员</h2><div class="emby-scroller"><div class="scrollSlider peopleItemsContainer">演员卡片</div></div></div><div class="verticalSection chaptersSection"><h2>章节</h2></div></div>');const style=document.createElement('style');style.textContent='.padded-left-page{padding-inline-start:3.4%}.padded-right{padding-inline-end:3.4%}.sectionTitle-cards{margin-inline:11px!important}';document.head.appendChild(style);await tick();const textLeft=el=>{const r=document.createRange();r.selectNodeContents(el);return r.getBoundingClientRect().left;};check(Math.abs(textLeft(plugin.state.panel.querySelector('h2'))-textLeft(document.querySelector('.peopleSection h2')))<2,'Emby padded heading text aligns');check(plugin.state.panel.parentElement.classList.contains('details-additionalContent'),'panel is cast section sibling');style.remove();`,
+        'position and page-content alignment': `await setup();const p=plugin.state.panel,c=document.querySelector('.peopleSection');check(p.nextElementSibling===c,'comments must precede the whole cast section');check(!p.closest('.scroller'),'comments cannot be inside cast scroller');check(Math.abs(p.querySelector('h2').getBoundingClientRect().left-c.querySelector('h2').getBoundingClientRect().left)<2,'comment and cast headings share left edge');`,
+        'fallback placement and late cast insertion': `await setup('<section class="detailSection overviewSection"><h2>简介</h2></section><section class="detailSection chaptersSection"><h2>章节</h2></section><section class="detailSection mediaInfoSection"><h2>媒体信息</h2></section>');check(plugin.state.panel.nextElementSibling.classList.contains('chaptersSection'),'no cast: comments before chapters');const cast=document.createElement('section');cast.className='detailSection peopleSection';cast.innerHTML='<h2>演职人员</h2><div class="scroller"></div>';document.querySelector('.overviewSection').after(cast);await tick();check(plugin.state.panel.nextElementSibling===cast,'late cast render repositions panel');`,
+        'ten root pages replace previous roots and retain attached replies': `await setup();check(ids().length===10,'first page must contain exactly 10 roots');check(ids()[0]==='episode-1'&&ids()[9]==='episode-10','first page range');check(plugin.state.list.querySelectorAll('.tc-replies [data-comment-id]').length===10,'replies remain attached');click('下一页');await tick();check(ids().length===10&&ids()[0]==='episode-11'&&ids()[9]==='episode-20','second page replaces roots');click('下一页');await tick();check(ids().length===5&&ids()[0]==='episode-21','last page remainder');check(Array.from(plugin.state.panel.querySelectorAll('button')).find(b=>b.textContent==='下一页').disabled,'last page disables next');click('上一页');await tick();check(ids()[0]==='episode-11'&&ids().length===10,'previous page works');check(requests.filter(r=>r.path.endsWith('/comments')).every(r=>new URLSearchParams(r.query).get('limit')==='10'),'all root requests bounded to 10');`,
+        'scope histories remain independent and refresh returns to newest': `await setup();click('下一页');await tick();click('作品评论');await tick();check(ids()[0]==='work-1','work starts on own first page');click('下一页');await tick();check(ids()[0]==='work-11','work own second page');click('本集评论');await tick();check(ids()[0]==='episode-11','episode restores own page');click('刷新评论');await tick();check(ids()[0]==='episode-1','refresh returns to newest');click('作品评论');await tick();check(ids()[0]==='work-11','refresh does not change other scope');`,
+        'deep link to another scope clears the previous reply target': `await setup();click('回复');plugin.state.input.value='本集回复草稿';plugin.state.input.dispatchEvent(new Event('input'));await plugin.openDiscussion({availability:'available',location:{embyServerId:'62526c3bf747439c99327ddec5fed4a8',itemId:'episode',scope:'work',topicId:'work-topic',rootId:'work-11',commentId:'work-11',canNavigate:true}});check(ids()[0]==='work-11','deep link switches scope');check(!plugin.state.reply&&plugin.state.input.value==='','previous scope reply cannot be sent into new scope');`,
+        'empty discussion and rapid clicks keep page navigation bounded': `await setup();roots.episode=[];click('刷新评论');await tick();check(ids().length===0&&plugin.state.list.textContent.includes('暂无评论'),'empty discussion has readable state');check(Array.from(plugin.state.panel.querySelectorAll('button')).filter(b=>['上一页','下一页'].includes(b.textContent)).every(b=>b.disabled),'empty list has no page navigation');await setup();hold=r=>r.path.endsWith('/comments')&&r.query.includes('cursor=');click('下一页');click('下一页');await tick();check(requests.filter(r=>r.path.endsWith('/comments')).length===2,'double click starts only one next-page request');hold=null;pending.release();await tick();check(ids()[0]==='episode-11'&&ids().length===10,'double click cannot skip a page');`,
+        'failed page preserves current rows and can retry': `await setup();failNext=true;click('下一页');await tick();check(ids()[0]==='episode-1'&&ids().length===10,'failed page keeps visible rows');click('下一页');await tick();check(ids()[0]==='episode-11','retry loads the requested page');`,
+        'tab changes cancel and reject a late page': `await setup();hold=r=>r.path.endsWith('/comments')&&r.query.includes('cursor=');click('下一页');await tick();const old=pending;check(old,'pending next page');hold=null;click('作品评论');await tick();check(old.record.options.signal.aborted,'tab change aborts old page request');old.release();await tick();check(ids()[0]==='work-1'&&ids().length===10,'late page cannot append into another topic');`,
+        'navigation and logout cancel late pages': `await setup();hold=r=>r.path.endsWith('/comments')&&r.query.includes('cursor=');click('下一页');await tick();const old=pending;hold=null;show('other-episode');await tick();old.release();await tick();check(ids()[0]==='episode-1'&&ids().length===10,'old detail page cannot affect new item');hold=r=>r.path.endsWith('/comments')&&r.query.includes('cursor=');click('下一页');await tick();const stale=pending;plugin.sessionChanged();stale.release();await tick();check(!document.querySelector('#tigerest-community'),'logout cannot remount late roots');`,
+        'deep link keeps later root/reply, paginates, and returns to newest': `await setup();roots.episode.push(...Array.from({length:10},(_,n)=>root('episode',n+26)));await discuss();check(ids()[0]==='episode-21'&&ids().length===10,'anchor opens a later root without fetching all preceding pages');check(document.querySelector('[data-comment-id="episode-21-later"]').classList.contains('tc-highlight'),'later reply is highlighted');check(requests.filter(r=>r.path.endsWith('/comments')).length===2,'deep link uses one bounded anchor request');click('下一页');await tick();check(ids()[0]==='episode-31'&&ids().length===5,'anchor next page uses continuation cursor');click('上一页');await tick();check(ids()[0]==='episode-21'&&ids().length===10,'anchor previous page restores anchored root range');click('返回最新评论');await tick();check(ids()[0]==='episode-1'&&ids().length===10,'anchor return resets first-page cursor');missing=true;await discuss();check(ids()[0]==='episode-1','unavailable anchor falls back');check(plugin.state.status.textContent.includes('目标评论已不可用'),'unavailable anchor explained');`,
+        'write completion resets page and defers deep link during mutation': `await setup();click('下一页');await tick();plugin.state.input.value='新评论';plugin.state.input.dispatchEvent(new Event('input'));hold=r=>r.options.method==='POST'&&r.path.endsWith('/comments');click('发表评论');await tick();const send=pending;check(send,'write held');check(Array.from(plugin.state.panel.querySelectorAll('button')).filter(b=>['上一页','下一页'].includes(b.textContent)).every(b=>b.disabled),'paging disabled during mutation');await discuss();hold=null;send.release();await tick();await tick();check(document.querySelector('[data-comment-id="episode-21-later"]')?.classList.contains('tc-highlight'),'deep link queued during mutation survives reload');click('返回最新评论');await tick();check(ids()[0]==='episode-99'&&ids().length===10,'new comment visible after reset');`,
+        'delete reloads newest bounded page': `await setup();click('下一页');await tick();click('删除');click('确认删除');await tick();check(ids()[0]==='episode-1'&&ids().length===10,'delete invalidates current cursor history');click('下一页');await tick();check(ids()[0]==='episode-12'&&ids().length===10,'next page uses refreshed server cursor');`
+    };
+    const failures=[];
+    for (const [name,code] of Object.entries(cases)) {
+        const error=await evaluate(`(async()=>{try{${code};return null;}catch(error){return error.message;}finally{plugin?.destroy();}})()`);
+        if(error)failures.push(name+': '+error);
+        console.log((error?'FAIL ':'PASS ')+name+(error?' — '+error:''));
+    }
+    await call('Emulation.setDeviceMetricsOverride',{width:412,height:915,deviceScaleFactor:1,mobile:true});
+    const mobile=await evaluate(`(async()=>{await setup();const p=plugin.state.panel,c=document.querySelector('.peopleSection');const result={left:p.querySelector('h2').getBoundingClientRect().left,castLeft:c.querySelector('h2').getBoundingClientRect().left,width:document.documentElement.scrollWidth,viewport:innerWidth};plugin.destroy();return result;})()`);
+    assert.ok(Math.abs(mobile.left-mobile.castLeft)<2,'phone headings align');
+    assert.ok(mobile.width<=mobile.viewport,'phone comments do not overflow horizontally');
+    assert.deepEqual(failures,[],'shared comment pagination regressions');
+    console.log('PASS mobile alignment and overflow');
+}).catch(error=>{console.error(error);process.exitCode=1;});

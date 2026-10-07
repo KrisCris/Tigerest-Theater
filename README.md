@@ -6,14 +6,14 @@
 
 ## V2.4.1
 
-V2.4 增加消息中心、跨作品评论与回复汇总、持久化已读及评论精确跳转。V2.4.1 将桌面补帧性能回退改为提示，恢复用户选择的显示同步，提供高刷弹幕与中文统计帮助。Android 正式版加入同一版本，保留深色金色网页 UI、消息、评论和基础设置，适配手机、折叠屏及平板窗口，新增独立高刷弹幕和播放手势。版本变化见 [CHANGELOG](CHANGELOG.md)，验证边界见 [桌面报告](docs/reports/2026-10-05-danmaku-rife-control.md)及 [Android 报告](docs/reports/2026-10-06-android-stable.md)。Windows 和 Android 当前为 V2.4.1，Mac 下载仍为 V2.3.3。
+V2.4 增加消息中心、跨作品评论与回复汇总、持久化已读及评论精确跳转。V2.4.1 将桌面补帧性能回退改为提示，恢复用户选择的显示同步，提供高刷弹幕与中文统计帮助。Android 正式版加入同一版本，保留深色金色网页 UI、消息、评论和基础设置，适配手机、折叠屏及平板窗口，新增独立高刷弹幕和播放手势。版本变化见 [CHANGELOG](CHANGELOG.md)，验证边界见 [桌面报告](docs/reports/2026-10-05-danmaku-rife-control.md)及 [Android 报告](docs/reports/2026-10-06-android-stable.md)。Windows、Android 和 Apple Silicon Mac 当前正式版均为 V2.4.2。
 
 | 平台 | 下载 | 安装 |
 | --- | --- | --- |
-| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.1/TigerestTheater-2.4.1-x64.exe) | 按向导安装，可覆盖更新 |
-| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.1/TigerestTheater-2.4.1-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
-| Android 15+，arm64 / x86_64 | [APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.1/TigerestTheater-2.4.1-android.apk) | 可覆盖 Android 预览版；详见 [安卓说明](android/README.md) |
-| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.3.3/TigerestTheater-2.3.3-arm64.dmg) | 将应用拖入「应用程序」 |
+| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.2/TigerestTheater-2.4.2-x64.exe) | 按向导安装，可覆盖更新 |
+| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.2/TigerestTheater-2.4.2-x64.zip) | 完整解压到可写目录，运行 `Tigerest Theater.exe` |
+| Android 15+，arm64 / x86_64 | [APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.2/TigerestTheater-2.4.2-android.apk) | 可覆盖 Android 预览版；详见 [安卓说明](android/README.md) |
+| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.2/TigerestTheater-2.4.2-arm64.dmg) | 将应用拖入「应用程序」 |
 
 基础包已包含 MPV 和所需运行库。Windows RIFE 的大型 AI 组件使用独立扩展，在客户端设置中下载或离线导入。下载文件可用发布页的 SHA-256 清单核验。
 
@@ -25,7 +25,11 @@ Android 首次播放会展示手势教程：双击播放／暂停，左右滑动
 
 「立即更新」会在应用内下载并检查文件长度及 SHA-256。安卓随后打开系统安装器，首次需允许“大河影院”安装应用；Windows 安装版启动升级向导。Windows 便携版打开 ZIP，退出客户端后替换程序并保留 `data`；Mac 打开 DMG，退出后将应用替换到「应用程序」。系统要求的确认仍需完成。下载可取消、失败可重试，暂时无法联网不会阻止使用客户端。
 
-V2.4.1 及更早版本尚未接入这套流程，首次升级需要手动安装含更新功能的新版本。目前上表仍指向已发布的版本，V2.4.2 的构建与验收记录见 [更新功能报告](docs/reports/2026-10-07-client-updates.md)。
+V2.4.1 及更早版本尚未接入这套流程，首次升级需要手动安装含更新功能的新版本。上表指向已发布的 V2.4.2；构建与验收记录见 [更新功能报告](docs/reports/2026-10-07-client-updates.md)。
+
+## V2.4.3 候选版
+
+正在进行用户试用，尚未公开发布。评论区移到演职人员上方、左对齐，主评论每页 10 条；客户端设置采用 Emby 的分类表单布局；右上角更新图标用红点提示新版本。Android 增加播放加载转圈与长按临时倍速，并调整挖孔屏留白和窄屏顶栏。长按使用至少 2 倍速，松手恢复之前的速度。
 
 ## 连接服务器
 

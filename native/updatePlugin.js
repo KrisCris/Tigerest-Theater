@@ -1,8 +1,8 @@
 (function(global) {
     'use strict';
     if (global.TigerestUpdate) return;
-    let api, started, state = {}, dialog, style, title, details, notes, progress, actions;
-    let disposed = false, autoInstall = false, installInFlight = false, hiddenDuringDownload = false, revision = 0;
+    let api, started, state = {}, dialog, style, title, details, notes, progress, actions, entry, entryDot, observer;
+    let disposed = false, autoInstall = false, installInFlight = false, detailsOpen = false, revision = 0;
     function invoke(name, ...args) {
         return new Promise((resolve, reject) => {
             if (!api?.system?.[name]) { reject(new Error('此版本暂不支持更新操作')); return; }
@@ -23,17 +23,25 @@
         return node;
     }
     function close() {
+        detailsOpen = false;
         if (state.status === 'available') {
             state = {...state, deferred:true};
             invoke('deferAppUpdate').catch(() => {});
         }
-        hiddenDuringDownload = state.status === 'downloading';
         dialog?.close();
+        mountEntry();
     }
-    function create() {
-        if (dialog) return;
+    function createStyle() {
+        if (style) return;
         style = element('style');
         style.textContent = `
+          #tigerest-update-button { position:relative; display:inline-flex; align-items:center; justify-content:center; flex:0 0 40px; width:40px; height:44px; min-width:40px; margin:0 2px; padding:0; border:0; border-radius:50%; color:inherit; background:transparent; cursor:pointer; }
+          #tigerest-update-button:hover { background:#ffffff14; }
+          #tigerest-update-button:focus-visible { outline:2px solid #ffbe38; outline-offset:2px; }
+          #tigerest-update-button svg { width:23px; height:23px; pointer-events:none; }
+          #tigerest-update-button [data-update-dot] { position:absolute; top:7px; right:6px; width:7px; height:7px; border-radius:50%; background:#f14d58; box-shadow:0 0 0 2px #171717; pointer-events:none; }
+          #tigerest-update-button [data-update-dot][hidden] { display:none; }
+          #tigerest-update-button.tg-update-fallback { position:fixed; top:calc(8px + var(--tgs-safe-top,0px)); right:calc(8px + var(--tgs-safe-right,0px)); z-index:9990; color:#eceef2; background:#202020; }
           #tigerest-update-dialog { box-sizing:border-box; width:min(520px,calc(100% - 32px)); max-height:calc(100dvh - 32px); overflow:auto; padding:26px; border:1px solid #514732; border-radius:18px; background:#13161d; color:#eceef2; box-shadow:0 22px 80px #0009; font:15px/1.6 system-ui,sans-serif; color-scheme:dark; }
           #tigerest-update-dialog::backdrop { background:#0008; }
           #tigerest-update-dialog h2 { margin:0 0 12px; font-size:22px; color:#ffc341; }
@@ -48,6 +56,46 @@
           @media(max-width:440px) { #tigerest-update-dialog { padding:20px; } #tigerest-update-dialog .tg-update-actions { gap:8px; } }
         `;
         document.head.appendChild(style);
+    }
+    function actionable() {
+        if (!state.version || !['available','ready','error'].includes(state.status)) return false;
+        if (state.status === 'error' && !(state.size > 0)) return false;
+        // Native release selection is authoritative; reject stale/equal version snapshots too.
+        const parts = value => /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(value || ''))?.slice(1).map(Number);
+        const current=parts(state.currentVersion), next=parts(state.version);
+        if (!current || !next) return state.version !== state.currentVersion;
+        for (let index=0;index<3;index++) { if (next[index] !== current[index]) return next[index] > current[index]; }
+        return false;
+    }
+    function mountEntry() {
+        if (disposed || !api || !document.body || !document.head) return;
+        createStyle();
+        if (!entry) {
+            entry=element('button'); entry.id='tigerest-update-button'; entry.type='button';
+            entry.className='headerButton headerSectionItem paper-icon-button-light emby-button-focusscale';
+            entry.setAttribute('aria-haspopup','dialog');
+            entry.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>';
+            entryDot=element('span'); entryDot.dataset.updateDot=''; entryDot.setAttribute('aria-hidden','true'); entry.appendChild(entryDot);
+            entry.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();open();});
+        }
+        const anchor=document.querySelector('#tigerest-mpv-settings-button, .headerUserButton');
+        const header=anchor?.parentElement || document.querySelector('.skinHeader .headerRight, .headerTop .headerRight');
+        if (header && entry.parentElement !== header) header.insertBefore(entry,anchor?.parentElement===header ? anchor : header.firstChild);
+        if (!header && entry.parentElement !== document.body) document.body.appendChild(entry);
+        entry.classList.toggle('tg-update-fallback',!header);
+        entryDot.hidden=!actionable();
+        const label=actionable() ? `客户端有新版本 ${state.version}，查看更新` : state.status==='downloading' ? '客户端更新正在下载，查看进度' : '客户端更新';
+        entry.setAttribute('aria-label',label); entry.title=label;
+        entry.setAttribute('aria-expanded',String(detailsOpen));
+    }
+    function observeHeader() {
+        if (disposed || observer || !document.documentElement) return;
+        observer=new MutationObserver(mountEntry);
+        observer.observe(document.documentElement,{childList:true,subtree:true});
+    }
+    function create() {
+        if (dialog) return;
+        createStyle();
         dialog = element('dialog'); dialog.id = 'tigerest-update-dialog';
         title = element('h2'); title.id = 'tigerest-update-title';
         dialog.setAttribute('aria-labelledby', title.id);
@@ -75,10 +123,9 @@
     }
     function render() {
         if (disposed || !document.body) return;
+        observeHeader(); mountEntry();
         const status = state.status;
-        const show = status === 'available' ? !state.deferred :
-            status === 'ready' || status === 'installing' || (state.manual && ['checking','current','error','downloading'].includes(status));
-        if (!show || hiddenDuringDownload && status === 'downloading') return;
+        if (!detailsOpen) return;
         create();
         title.textContent = ({available:'发现新版本',checking:'检查更新',downloading:'正在下载更新',ready:'更新已准备好',installing:'正在打开安装程序',current:'检查完成',error:'更新未完成'})[status] || '客户端更新';
         const version = state.version ? `当前版本 ${state.currentVersion || '—'} → ${state.version}` : `当前版本 ${state.currentVersion || '—'}`;
@@ -94,14 +141,14 @@
         progress.hidden = status !== 'downloading'; progress.value=percent;
         actions.replaceChildren();
         if (status === 'available' || status === 'error' && state.version && state.size>0) {
-            button(status==='error'?'重试下载':'立即更新','download',async()=>{autoInstall=true;hiddenDuringDownload=false;await invoke('downloadAppUpdate');});
+            button(status==='error'?'重试下载':'立即更新','download',async()=>{autoInstall=true;await invoke('downloadAppUpdate');});
         } else if (status === 'ready') {
             button(state.installLabel || '安装更新','install',()=>install(false));
         } else if (status === 'error') {
             button('重新检查','check',()=>check());
         }
         if (status === 'downloading') button('取消下载','cancel',()=>{autoInstall=false;return invoke('cancelAppUpdate');});
-        if (status === 'available') button('跳过此版本','skip',async()=>{autoInstall=false;await invoke('skipAppUpdate');dialog.close();});
+        if (status === 'available') button('跳过此版本','skip',async()=>{autoInstall=false;await invoke('skipAppUpdate');state={...state,status:'idle',version:''};detailsOpen=false;dialog.close();mountEntry();});
         button(status==='available'?'稍后':status==='downloading'?'后台下载':'关闭','close',close);
         if (!dialog.open) dialog.showModal();
     }
@@ -111,7 +158,7 @@
         if (state.status==='error') autoInstall=false;
         render();
         if (state.status==='ready' && !installInFlight && (autoInstall || state.installAfterDownload)) {
-            autoInstall=false; hiddenDuringDownload=false;
+            autoInstall=false;
             install(true).catch(error=>receive({...state,status:'error',manual:true,error:error.message}));
         }
     }
@@ -127,16 +174,22 @@
         return started;
     }
     async function check() {
-        await start(); hiddenDuringDownload=false; autoInstall=false;
+        await start(); detailsOpen=true; autoInstall=false;
         receive({...state,status:'checking',manual:true,deferred:false,error:''});
         try { await invoke('checkForUpdates',true); }
         catch(error) { receive({...state,status:'error',version:'',size:0,notes:'',error:error.message || '无法检查更新，请重试'}); }
     }
+    async function open() {
+        await start();
+        if (disposed) return;
+        if (!['available','ready','downloading','installing','checking'].includes(state.status) && !actionable()) return check();
+        detailsOpen=true; render();
+    }
     function destroy() {
         disposed=true;autoInstall=false;api?.system?.appUpdateChanged?.disconnect(receive);
-        dialog?.remove();style?.remove();document.removeEventListener('DOMContentLoaded',render);
+        observer?.disconnect();entry?.remove();dialog?.remove();style?.remove();document.removeEventListener('DOMContentLoaded',render);
     }
-    global.TigerestUpdate={start,check,close,destroy};
+    global.TigerestUpdate={start,check,open,close,destroy};
     global._updatePlugin=class { constructor() { this.name='Update Plugin';this.type='input';this.id='updatePlugin';start(); } };
     document.addEventListener('DOMContentLoaded',render,{once:true});
     global.addEventListener('pagehide',destroy,{once:true});

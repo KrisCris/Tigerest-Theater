@@ -643,7 +643,7 @@ def test_brand_assets() -> None:
 def test_settings_ui() -> None:
     shell = read("native/nativeshell.js")
     for marker in (
-        "大河影院 / MPV 设置", "MPV 画质与插件", "tgs-search",
+        "MPV 播放设置", "MPV 画质与插件", "tgs-search",
         "typeof currentValue === 'boolean'", "tigerest-mpv-settings-button",
         "window.tigerestOpenMpvSettings", "event.key === ','", "当前加载着色器",
         "实际缩放", "完整帧流水线",

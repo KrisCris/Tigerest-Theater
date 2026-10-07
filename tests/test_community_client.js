@@ -41,6 +41,8 @@ test('comments and replies carry item authorization and encode opaque cursors', 
     await client.remove('comment1');
     for (const call of calls) assert.equal(call.options.headers['X-Tigerest-Item-Id'], 'a/b');
     assert.equal(new URL(calls[0].url).searchParams.get('cursor'), 'a+/=');
+    assert.equal(new URL(calls[0].url).searchParams.get('limit'), '10', 'root comment pages are bounded to 10');
+    assert.equal(new URL(calls[1].url).searchParams.get('limit'), '20', 'reply pagination keeps its existing batch size');
     assert.equal(calls[2].options.method, 'DELETE');
 });
 test('lost response retry reuses payload UUID; different text uses a new UUID', async () => {
