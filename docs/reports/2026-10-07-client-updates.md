@@ -1,6 +1,6 @@
 # V2.4.2 启动检查与应用内更新验收
 
-状态：Windows / Android 候选包已构建，尚未发布新版本；Mac 共用更新后端已实现，平台构建和实际运行结果单独记录。
+状态：Windows、Android 和 Apple Silicon Mac 的 2.4.2 候选包均已构建；手机已安装并验收，尚未发布新的 GitHub Release。
 
 ## 已确认的行为
 
@@ -26,6 +26,14 @@
 
 日志保存在工作树 `build/desktop-final-build.log`、`desktop-final-targeted-ctest.log`、`desktop-packaging.log`、`desktop-portable-smoke.log`。
 
+## Mac 构建验证
+
+首轮 [Apple Silicon CI](https://github.com/Tigerest/Tigerest-Theater/actions/runs/37572436518) 完成 Release 构建，CTest 32/33 通过，两项新增更新测试均通过。唯一失败为原有 `test_mpv_svp`：`mpv_initialize` 返回后第一次本地 socket 连接立即被拒绝，测试总用时仅 52ms。
+
+[固定 mpv 版本的 IPC 实现](https://github.com/mpv-player/mpv/blob/v0.41.0/input/ipc-unix.c) 在后台线程中执行 bind/listen，初始化返回并不代表监听已就绪。将测试的单次连接改为 3 秒内有界重连，并继续校验 `request_id=42` 的真实 `mpv-version` JSON 响应；未修改播放器配置或跳过测试。
+
+修复提交 `0fd8781` 的[第二轮 CI](https://github.com/Tigerest/Tigerest-Theater/actions/runs/37574399880) 成功：CTest **33/33** 全部通过（10.33 秒），其中 `test_mpv_svp` 通过（0.37 秒）。应用 ad-hoc 签名及 `codesign --verify --deep --strict` 通过；bundle audit 确认 MoltenVK、Python、VapourSynth、RIFE 模型及运行库依赖闭包有效，DMG 已生成。未在实体 Mac 上验证用户界面或实际替换已安装应用，不能将云端构建／原生测试等同于 Mac 实机播放验收。
+
 ## Android 验证
 
 - `testDebugUnitTest`：36 项，0 失败、0 错误。`lintDebug`：0 错误、36 警告。
@@ -35,8 +43,12 @@
 - 系统来源授权、厂商单次安装授权及实际安装完成：2.4.1 / 2040103 升级到 2.4.2 / 2040200，预先保存的设置仍为原值。取消系统安装后返回 ready，手动再试成功，未自动重复弹窗。
 - 升级后直接使用真实 GitHub 接口检查，返回 `current`，无错误；当时最新公开 APK 仍为 2.4.1。实际 APK 下载／升级使用本地夹具，未将其混称为生产发布下载验证。
 - 设置持久化／重置、首次导航桥接及样式、音频／视频共享播放器、两路外置字幕切换及字幕偏移回归通过。旧字幕测试使用内屏固定坐标，首次在外屏点击超出屏幕导致超时；改为读取当前播放器区域中心后，同一测试在外屏通过，播放器代码未因此改变。
+- 签名正式 APK 已覆盖设备上的正式版，包名保持 `top.tigerest.theater`，确认版本 2.4.2 / 2040200，原登录和媒体主页保留。正式设置入口实际点击手动检查，生产接口返回“当前平台暂无可安装的新正式版”。从 1080×2520 外屏切换至 2224×2488 内屏，弹窗重新布局且结果保留。
+- 设备验收结束后恢复自动旋转、物理折叠状态、USB 常亮原值，停止临时保活进程，撤销调试包临时安装来源权限，移除测试 ADB 转发。正式版保留在前台。
 
 设备日志：`android/test-artifacts/update-device-e2e.log`、`update-installed-production.log`、`update-release-sign.log`。网页截图位于 `android/test-artifacts/update-ui/`。
+
+正式版内屏截图：`android/test-artifacts/update-formal-inner.png`。签名正式 APK SHA-256：`fd360e06b633c560accc481dd07e7812486c6d8fa3725b818c12a4c45b24a630`。
 
 ## 交付及发布约束
 
@@ -45,6 +57,6 @@
 - `TigerestTheater-2.4.2-x64.exe`
 - `TigerestTheater-2.4.2-x64.zip`
 - `TigerestTheater-2.4.2-android.apk`
-- `TigerestTheater-2.4.2-arm64.dmg`（平台构建通过后）
+- `TigerestTheater-2.4.2-arm64.dmg`
 
 V2.4.1 及更早安装包没有本次更新器，需要先手动升级一次。GitHub 发布完成且对应平台附件可用后，新客户端才能检测到它；不会因为其他平台先发版而提示不可用更新。

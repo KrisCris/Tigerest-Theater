@@ -74,7 +74,7 @@ node android/tests/test_gestures.cjs
 ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=24 -f lavfi -i sine=frequency=440:sample_rate=48000 -f lavfi -i sine=frequency=660:sample_rate=48000 -t 90 -map 0:v -map 1:a -map 2:a -c:v libx264 -preset ultrafast -crf 28 -c:a aac -metadata:s:a:0 language=eng -metadata:s:a:1 language=jpn -movflags +faststart android/test-artifacts/playback-fixture.mp4
 ```
 
-`test_windows.cjs` 与 `test_player_layout.cjs` 专门针对此次连接的折叠机：内屏 2224×2488、外屏 1080×2520，设备状态 3/0。它们保存并恢复旋转等覆盖，结束后重置为物理设备状态；不同机型应先调整状态／分辨率断言。播放器布局测试覆盖两面板的横竖屏、触控边界、长按拖动、菜单与自动隐藏；应同时目视检查截图，几何断言无法识别视频纹理重复。字幕 UI 测试触控位置也基于这台机的内屏。通用功能代码不依赖这些测试尺寸。
+`test_windows.cjs` 与 `test_player_layout.cjs` 专门针对此次连接的折叠机：内屏 2224×2488、外屏 1080×2520，设备状态 3/0。它们保存并恢复旋转等覆盖，结束后重置为物理设备状态；不同机型应先调整状态／分辨率断言。播放器布局测试覆盖两面板的横竖屏、触控边界、长按拖动、菜单与自动隐藏；应同时目视检查截图，几何断言无法识别视频纹理重复。字幕 UI 测试读取当前播放器区域定位，支持在内外屏执行。通用功能代码不依赖这些测试尺寸。
 
 通用媒体夹具在独立调试配置中预置“已看过教程”；手势测试自行清除此标记，验证真正的首次教程、关闭后不重复、菜单重看及外部暂停优先级。测试不会修改正式版教程状态。正式版验证见 `../docs/reports/2026-10-06-android-stable.md`；早期功能覆盖及未测边界见 `../docs/reports/2026-10-06-android-client.md`。
 
