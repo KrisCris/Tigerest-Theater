@@ -143,7 +143,8 @@ jobs:
     - name: Run unit tests
       shell: pwsh
       run: |
-        $env:PATH = "$env:GITHUB_WORKSPACE/build/mpv;$env:PATH"
+        Get-Content dev/windows/TESTING.md | Out-Null
+        . ./dev/windows/Enter-TestEnvironment.ps1
         ctest --test-dir build --output-on-failure
         if ($LASTEXITCODE -ne 0) { throw 'Windows tests failed' }
     - name: Verify packaged application startup
