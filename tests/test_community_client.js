@@ -164,7 +164,7 @@ test('report validation and throttling do not block comment sends or leak accoun
         commentCalls++;return ok({});
     }});
     client.setContext(session(),'movie');
-    await assert.rejects(client.sendReport('movie','other','短说明'),/10/);
+    await assert.rejects(client.sendReport('movie','other',' 太短 '),/3/);
     await assert.rejects(client.sendReport('movie','unknown','说明足够长但问题类型不正确。'),/类型/);
     await assert.rejects(client.sendReport('movie','other','😀'.repeat(2001)),/2000/);
     assert.equal(reportCalls,0);
@@ -173,6 +173,16 @@ test('report validation and throttling do not block comment sends or leak accoun
     await assert.rejects(client.sendReport('movie','playback_error','播放后始终黑屏且没有任何声音。'),/5 秒/);
     assert.equal(reportCalls,1);
     client.setSession(session(undefined,'new-account'));assert.equal(client.pendingReport,null);
+});
+
+test('reports accept a trimmed three-character description, including Unicode characters', async () => {
+    const Client=load(),bodies=[];let now=1000;
+    const client=new Client({now:()=>now,fetch:async(_,options)=>{bodies.push(JSON.parse(options.body));return ok({report:{id:'report'}});}});
+    client.setContext(session(),'movie');
+    await client.sendReport('movie','other',' 没弹幕 ');
+    now+=3001;
+    await client.sendReport('movie','other',' 😀😀😀 ');
+    assert.deepEqual(bodies.map(body=>body.description),['没弹幕','😀😀😀']);
 });
 
 test('anchors locate roots and replies with item authorization and never share a query with a cursor', async () => {

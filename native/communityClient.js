@@ -264,7 +264,7 @@
             if(!['playback_error','subtitle_missing','subtitle_error','other'].includes(category))throw new Error('问题类型无效。');
             description=String(description||'').trim();
             const length=Array.from(description).length;
-            if(length<10||length>2000)throw new Error('请填写 10–2000 字的说明，补充现象、发生时间或复现方式。');
+            if(length<3||length>2000)throw new Error('请填写 3–2000 字的说明，补充现象、发生时间或复现方式。');
             const wait=Math.ceil((this.reportCooldownUntil-this.now())/1000);
             if(wait>0)throw new Error('请等待 '+wait+' 秒后重试。');
             const details={};

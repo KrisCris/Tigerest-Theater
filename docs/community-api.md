@@ -148,7 +148,7 @@ unreadOnly 仅允许 true/false，省略为 false。unreadCount 是未读且回�
 }
 ```
 
-category 允许 playback_error（播放错误）、subtitle_missing（字幕缺失）、subtitle_error（字幕错误）、other（其他）。description 必填，trim 后 10–2000 个 Unicode 字符、纯文本，可换行；提示用户补充现象、复现方式、字幕语言或发生时间。服务端只接受当前用户可访问的 Movie、Series、Episode，单集同时验证父剧集；媒体名称与位置由服务端确定。
+category 允许 playback_error（播放错误）、subtitle_missing（字幕缺失）、subtitle_error（字幕错误）、other（其他）。description 必填，trim 后 3–2000 个 Unicode 字符、纯文本，可换行；提示用户补充现象、复现方式、字幕语言或发生时间。服务端只接受当前用户可访问的 Movie、Series、Episode，单集同时验证父剧集；媒体名称与位置由服务端确定。最低长度已于 2026-10-09 在局域网 18443 实例完成 [生产验证](backend-report-minimum-length.md)。
 
 context 可省略，字段也可逐项省略：positionSeconds 为 0–604800 的有限数字；platform/clientVersion 为 1–64 字符；mediaSourceId 为 1–128 字符；subtitleStreamIndex 为 -1–1000 的整数，-1 表示未选择。信息只作为排查线索。platform 优先采用客户端原生平台信息，规范值 Windows、macOS、Android、Linux、FreeBSD，无法确定时省略；后台显示此字段。填写“12 分 30 秒”时 positionSeconds 提交数值 750。不要在 context 提交认证头、密码、播放 URL、文件路径或日志；这些不是合法字段。日志使用下面的独立附件接口。客户端展示说明及修复结果时不得解释 HTML。
 

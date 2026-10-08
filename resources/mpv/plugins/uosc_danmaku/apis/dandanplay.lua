@@ -264,7 +264,7 @@ local function valid_api_id(value)
     return type(value) == 'number' or (type(value) == 'string' and value ~= '')
 end
 
-local function match_episode(anime, episode_num, premiere_date, expected_title, fallback, confident_series, api_server, callback)
+local function match_episode(anime, episode_num, premiere_date, expected_title, api_server, callback)
     local bangumiId = anime.bangumiId
     local url = api_server .. "/api/v2/bangumi/" .. bangumiId
     local args = make_danmaku_request_args("GET", url)
@@ -292,16 +292,12 @@ local function match_episode(anime, episode_num, premiere_date, expected_title, 
         local dated_episodes, titled_episodes, nearby_episodes = {}, {}, {}
         local expected_day = broadcast_day(premiere_date)
         local malformed_episode = false
-        local unconfirmed_series = false
+        local excluded_credits = 0
         for _, episode in ipairs(data.bangumi.episodes) do
             local valid = type(episode) == 'table'
             local ep_num = valid and tonumber(episode.episodeNumber)
             local date_matches = valid and premiere_date and broadcast_date(episode.airDate) == premiere_date
             local number_matches = valid and not premiere_date and ep_num == tonumber(episode_num)
-            -- When trying a lower-ranked title without dates, require corroborating
-            -- episode text if Emby supplied it (e.g. an original and its remake).
-            local title_matches = valid and (not fallback or expected_title == ''
-                or jaro_winkler(expected_title, episode_title(episode.episodeTitle)) >= 0.85)
             if ep_num and valid_api_id(episode.episodeId)
                 and type(episode.episodeTitle) == 'string' and episode.episodeTitle:match('%S') then
                 if date_matches then
@@ -309,49 +305,55 @@ local function match_episode(anime, episode_num, premiere_date, expected_title, 
                     if expected_title ~= '' and episode_title(episode.episodeTitle) == expected_title then
                         titled_episodes[#titled_episodes + 1] = episode
                     end
-                elseif number_matches and title_matches then
+                elseif number_matches then
                     callback(episode)
                     return
                 elseif expected_day and ep_num == tonumber(episode_num) then
                     local air_day = broadcast_day(episode.airDate)
-                    if not air_day then
-                        -- A same-numbered episode without a usable date has not
-                        -- been ruled out, so another release is not proven unique.
-                        malformed_episode = true
-                    elseif math.abs(expected_day - air_day) <= 7 then
-                        if expected_title == '' then
-                            -- Emby may only know "第8集". Without episode text,
-                            -- require a stronger series match and global uniqueness.
-                            if confident_series then
-                                nearby_episodes[#nearby_episodes + 1] = episode
-                            else
-                                unconfirmed_series = true
-                            end
-                        elseif jaro_winkler(expected_title, episode_title(episode.episodeTitle)) >= 0.85 then
-                            nearby_episodes[#nearby_episodes + 1] = episode
-                        end
+                    -- Episode text can differ between translations. An unavailable
+                    -- provider date supplies no evidence against the matching number;
+                    -- it ranks below an otherwise equivalent, dated candidate.
+                    if not air_day or math.abs(expected_day - air_day) <= 7 then
+                        nearby_episodes[#nearby_episodes + 1] = episode
                     end
                 end
             else
-                malformed_episode = true
+                -- Dandanplay includes C1 Opening/C2 Ending in the episode list.
+                -- These explicitly numbered credit tracks cannot be a regular
+                -- episode candidate. Keep their exclusion explicit in diagnostics.
+                local credit_track = valid and type(episode.episodeNumber) == 'string'
+                    and episode.episodeNumber:match('^[cC]%d+$')
+                if credit_track then excluded_credits = excluded_credits + 1
+                else malformed_episode = true end
             end
         end
+        msg.debug(('Auto-match release: exact_dates=%d nearby=%d credits_excluded=%d incomplete=%s')
+            :format(#dated_episodes, #nearby_episodes, excluded_credits, tostring(malformed_episode)))
 
         -- Streaming services may release several episodes on the same day.
         -- Resolve exact titles before episode numbers; a date alone may remap
-        -- continuous Emby numbering only when it identifies one unique episode.
+        -- continuous Emby numbering when one episode is identified. Multiple
+        -- supported regular episodes use text similarity and stable ID ordering.
         if #titled_episodes == 1 then callback(titled_episodes[1]); return end
         local candidates = #titled_episodes > 0 and titled_episodes or dated_episodes
-        local numbered_episode, numbered_count = nil, 0
+        local numbered_episodes = {}
         for _, episode in ipairs(candidates) do
             if tonumber(episode.episodeNumber) == tonumber(episode_num) then
-                numbered_episode, numbered_count = episode, numbered_count + 1
+                numbered_episodes[#numbered_episodes + 1] = episode
             end
         end
-        if numbered_count == 1 then callback(numbered_episode); return end
+        local supported = #numbered_episodes > 0 and numbered_episodes or titled_episodes
+        if #supported > 0 then
+            table.sort(supported, function(a, b)
+                local a_score = expected_title ~= '' and jaro_winkler(expected_title, episode_title(a.episodeTitle)) or 0
+                local b_score = expected_title ~= '' and jaro_winkler(expected_title, episode_title(b.episodeTitle)) or 0
+                if a_score ~= b_score then return a_score > b_score end
+                return tostring(a.episodeId) < tostring(b.episodeId)
+            end)
+            callback(supported[1]); return
+        end
         if #dated_episodes == 1 then callback(dated_episodes[1]); return end
-        -- Unresolved exact-date ambiguity cannot be replaced by a weaker date.
-        callback(nil, nearby_episodes, #dated_episodes > 0 or malformed_episode or unconfirmed_series)
+        callback(nil, nearby_episodes, malformed_episode)
     end, nil, {per_request_timeout = 15})
 end
 
@@ -394,18 +396,24 @@ local function match_anime()
 
     local function finish_unmatched()
         if searches_finished and pending_candidates == 0 and not matched then
-            -- Wait for every release/server to finish: an exact date wins,
-            -- and nearby dates are usable only with one corroborated episode.
+            -- Rank available candidates after the release/provider scan. A missing
+            -- alternative no longer vetoes a usable match; the OSD lets users
+            -- verify it and manual selection can correct the saved match.
             local selected, count = nil, 0
             for _, candidate in pairs(nearby_candidates) do
-                selected, count = candidate, count + 1
-            end
-            if count == 1 and not fallback_uncertain then
-                if expected_title == '' then
-                    msg.info('Matched unique series/episode number with broadcast date within seven days (no episode title)')
-                else
-                    msg.info('Matched episode number/title with broadcast date within seven days')
+                count = count + 1
+                if not selected or candidate.series_score > selected.series_score
+                    or (candidate.series_score == selected.series_score and candidate.episode_score > selected.episode_score)
+                    or (candidate.series_score == selected.series_score and candidate.episode_score == selected.episode_score
+                        and candidate.date_distance < selected.date_distance)
+                    or (candidate.series_score == selected.series_score and candidate.episode_score == selected.episode_score
+                        and candidate.date_distance == selected.date_distance and candidate.key < selected.key) then
+                    selected = candidate
                 end
+            end
+            if selected then
+                msg.info(('Auto-match selected ranked regular episode: candidates=%d alternatives_incomplete=%s date_distance=%s')
+                    :format(count, tostring(fallback_uncertain), selected.date_distance == math.huge and 'unknown' or tostring(selected.date_distance)))
                 accept_episode(selected.anime, selected.episode, selected.server)
                 return
             end
@@ -424,7 +432,7 @@ local function match_anime()
         if anime_title:match('第一[季部]') and tonumber(season_num) == 1 then
             target_title = target_title .. ' 第一季'
         end
-        return jaro_winkler(target_title, anime_title)
+        return math.min(1, jaro_winkler(target_title, anime_title))
     end
 
     local function build_args(server)
@@ -469,8 +477,7 @@ local function match_anime()
                 finish_unmatched()
                 return
             end
-            match_episode(anime, episode_num, premiere_date, expected_title, index > 1,
-                title_score(anime.animeTitle) >= 0.85, server, function(episode, nearby, uncertain)
+            match_episode(anime, episode_num, premiere_date, expected_title, server, function(episode, nearby, uncertain)
                 fallback_uncertain = fallback_uncertain or uncertain
                 if episode and not matched then
                     pending_candidates = pending_candidates - 1
@@ -481,7 +488,11 @@ local function match_anime()
                     -- Custom providers allocate deployment-local IDs. Keep their
                     -- candidates separate; repeat records within one release dedupe.
                     local key = server .. '\0' .. tostring(anime.bangumiId) .. '\0' .. tostring(candidate.episodeId)
-                    nearby_candidates[key] = {anime = anime, episode = candidate, server = server}
+                    local expected_day, air_day = broadcast_day(premiere_date), broadcast_day(candidate.airDate)
+                    nearby_candidates[key] = {anime = anime, episode = candidate, server = server, key = key,
+                        series_score = title_score(anime.animeTitle),
+                        episode_score = expected_title ~= '' and math.min(1, jaro_winkler(expected_title, episode_title(candidate.episodeTitle))) or 0,
+                        date_distance = expected_day and air_day and math.abs(expected_day - air_day) or math.huge}
                 end
                 try_candidate(index + 1)
             end)

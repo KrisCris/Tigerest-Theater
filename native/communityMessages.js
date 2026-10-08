@@ -316,7 +316,7 @@
             const category=node('select');category.setAttribute('aria-label','问题类型');
             for(const [value,label]of Object.entries(categories)){const option=node('option',label);option.value=value;category.appendChild(option);}
             const categoryLabel=node('label','问题类型','tm-field');categoryLabel.appendChild(category);
-            const description=node('textarea');description.setAttribute('aria-label','报错说明');description.placeholder='请描述问题现象、发生时间或复现方式（10–2000 字）。';
+            const description=node('textarea');description.setAttribute('aria-label','报错说明');description.placeholder='请描述问题现象、发生时间或复现方式（3–2000 字）。';
             const descriptionLabel=node('label','问题说明','tm-field');descriptionLabel.appendChild(description);
             const position=node('fieldset',null,'tm-position'),positionRow=node('div',null,'tm-time-row');
             const minutes=node('input'),seconds=node('input');
@@ -377,7 +377,7 @@
                             context.positionSeconds=total;
                         }
                         const text=description.value.trim(),length=Array.from(text).length;
-                        if(length<10||length>2000)throw new Error('请填写 10–2000 字的说明，补充现象、发生时间或复现方式。');
+                        if(length<3||length>2000)throw new Error('请填写 3–2000 字的说明，补充现象、发生时间或复现方式。');
                         state.attempt=Object.freeze({itemId:String(item.Id),category:category.value,description:text,context:Object.freeze(context),include:include.checked});
                         controls();
                         if(state.attempt.include){
