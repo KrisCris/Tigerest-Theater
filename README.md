@@ -11,7 +11,7 @@ Windows、Android 和 Apple Silicon Mac 更新至 [V2.4.4](https://github.com/Ti
 - **消息与报错：** 回复和问题修复通知并入统一消息中心；详情页可上报问题，新增「我的报错」及处理详情。
 - **Android 顶栏：** 窄屏换行后靠右对齐；整排按钮无法容纳时保留消息、更新、头像和「更多」，其余操作收入二级菜单。
 - **Windows 补帧：** 修复多次跳转、换片及重建滤镜后 DLL 搜索目录泄漏导致的补帧加载失败。性能不足仍保留补帧；已有 NVIDIA 扩展和模型可继续使用。
-- **桌面弹幕：** 精确首播日期优先；日期相差不超过 7 天时，只有集数、单集标题能核对且候选唯一才自动加载，修复首次自动匹配失败、再次手动搜索却能找到的问题。
+- **桌面弹幕：** 精确首播日期优先；日期相差不超过 7 天时核对集数与单集标题。只有「第 8 集」等占位标题时，按作品、集数及日期匹配；候选唯一才自动加载，修复首次搜索失败和缺少单集标题时重进仍无法加载的问题。
 
 完整版本变化见 [CHANGELOG](CHANGELOG.md)。
 
@@ -142,7 +142,7 @@ M 系列 Mac 的模型与补帧插件随基础包提供，推理使用 macOS 自
 ## 桌面主要功能
 
 - **媒体库与原生播放：** 浏览、搜索、播放队列、音轨与字幕切换，观看进度回传；Windows 提供原生 GPU-Next 与 Render API 兼容后端。
-- **弹幕：** 新配置默认加载，保留已有明确关闭的选择。支持自动匹配、搜索、加载以及字号、透明度、速度、区域等调整；结合首播日期、标题和集号区分同名新旧作品及跨季连续编号。精确日期优先；日期相差不超过 7 天时，只有集数、单集标题和唯一候选均确认才自动加载。保留历史来源的屏蔽状态和时间偏移。
+- **弹幕：** 新配置默认加载，保留已有明确关闭的选择。支持自动匹配、搜索、加载以及字号、透明度、速度、区域等调整；结合首播日期、标题和集号区分同名新旧作品及跨季连续编号。精确日期优先；日期相差不超过 7 天时核对集数及真实单集标题，缺少真实单集标题时要求作品明确匹配，且候选唯一才自动加载。保留历史来源的屏蔽状态和时间偏移。
 - **画质预设：** 默认 Anime AA、真人影视、激进测试 Anime4K 三档，可从播放菜单选择，或使用 `Alt+1`～`Alt+3`。
 - **播放操作：** 内置 uosc 控制栏、中文字体和插件设置。MPV 控制台可在设置中开启，重启后生效。
 - **MPV 配置：** 可选大河内置或系统配置；Windows 读取 `%APPDATA%\mpv`，Mac 读取 `~/.config/mpv` 或 `~/Library/Application Support/mpv`。
@@ -175,7 +175,7 @@ Windows 安装版日志位于 `%LOCALAPPDATA%\Tigerest Theater\profiles\<profile
 
 ## 验证范围
 
-V2.4.4 的 [发布验证清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.4/TigerestTheater-2.4.4-RELEASE-MANIFEST.json) 记录各平台准确构建提交、包摘要、测试结果与未测范围。Windows 使用最终验收的本机构建，完整 CTest 62/62，通过便携包独立运行库启动及嵌入弹幕脚本校验；弹幕 runtime probe 覆盖 39 个 Lua 场景。Android 沿用最终验收 APK，JVM 43/43、Lint 0 错误（36 警告），签名及 16 KB 对齐检查通过；Mac 经 Apple Silicon CI 构建、签名、依赖审计及 DMG 校验。
+V2.4.4 的 [发布验证清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.4/TigerestTheater-2.4.4-RELEASE-MANIFEST.json) 记录各平台准确构建提交、包摘要、测试结果与未测范围。Windows 本机构建完整 CTest 62/62，通过便携包独立运行库启动及嵌入弹幕脚本校验；弹幕 runtime probe 覆盖 43 个 Lua 场景。Android 沿用最终验收 APK，JVM 43/43、Lint 0 错误（36 警告），签名及 16 KB 对齐检查通过；Mac 经 Apple Silicon CI 构建、签名、依赖审计及 DMG 校验。
 
 Mac 尚未完成实体设备播放验收。Android 折叠屏实测使用 Android 16，Android 15、x86_64 和 16 KB 页设备尚未实机验收；二进制对齐检查不能代替实际设备运行。消息、报错、布局及 DLL 生命周期验证见 [2.4.4 试用验证](docs/verification/2026-10-08-client-2.4.4.md)，弹幕日期匹配修复见 [一周容差验证](docs/verification/2026-10-08-danmaku-week.md)。网页接口测试使用隔离夹具，实际生产收发不由自动测试替代。
 

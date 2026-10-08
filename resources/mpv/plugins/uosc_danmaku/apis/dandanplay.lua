@@ -254,7 +254,7 @@ local function valid_api_id(value)
     return type(value) == 'number' or (type(value) == 'string' and value ~= '')
 end
 
-local function match_episode(anime, episode_num, premiere_date, expected_title, fallback, api_server, callback)
+local function match_episode(anime, episode_num, premiere_date, expected_title, fallback, confident_series, api_server, callback)
     local bangumiId = anime.bangumiId
     local url = api_server .. "/api/v2/bangumi/" .. bangumiId
     local args = make_danmaku_request_args("GET", url)
@@ -282,6 +282,7 @@ local function match_episode(anime, episode_num, premiere_date, expected_title, 
         local dated_episodes, titled_episodes, nearby_episodes = {}, {}, {}
         local expected_day = broadcast_day(premiere_date)
         local malformed_episode = false
+        local unconfirmed_series = false
         for _, episode in ipairs(data.bangumi.episodes) do
             local valid = type(episode) == 'table'
             local ep_num = valid and tonumber(episode.episodeNumber)
@@ -291,7 +292,8 @@ local function match_episode(anime, episode_num, premiere_date, expected_title, 
             -- episode text if Emby supplied it (e.g. an original and its remake).
             local title_matches = valid and (not fallback or expected_title == ''
                 or jaro_winkler(expected_title, episode_title(episode.episodeTitle)) >= 0.85)
-            if ep_num and valid_api_id(episode.episodeId) then
+            if ep_num and valid_api_id(episode.episodeId)
+                and type(episode.episodeTitle) == 'string' and episode.episodeTitle:match('%S') then
                 if date_matches then
                     dated_episodes[#dated_episodes + 1] = episode
                     if expected_title ~= '' and episode_title(episode.episodeTitle) == expected_title then
@@ -300,11 +302,24 @@ local function match_episode(anime, episode_num, premiere_date, expected_title, 
                 elseif number_matches and title_matches then
                     callback(episode)
                     return
-                elseif expected_day and ep_num == tonumber(episode_num) and expected_title ~= ''
-                    and jaro_winkler(expected_title, episode_title(episode.episodeTitle)) >= 0.85 then
+                elseif expected_day and ep_num == tonumber(episode_num) then
                     local air_day = broadcast_day(episode.airDate)
-                    if air_day and math.abs(expected_day - air_day) <= 7 then
-                        nearby_episodes[#nearby_episodes + 1] = episode
+                    if not air_day then
+                        -- A same-numbered episode without a usable date has not
+                        -- been ruled out, so another release is not proven unique.
+                        malformed_episode = true
+                    elseif math.abs(expected_day - air_day) <= 7 then
+                        if expected_title == '' then
+                            -- Emby may only know "第8集". Without episode text,
+                            -- require a stronger series match and global uniqueness.
+                            if confident_series then
+                                nearby_episodes[#nearby_episodes + 1] = episode
+                            else
+                                unconfirmed_series = true
+                            end
+                        elseif jaro_winkler(expected_title, episode_title(episode.episodeTitle)) >= 0.85 then
+                            nearby_episodes[#nearby_episodes + 1] = episode
+                        end
                     end
                 end
             else
@@ -326,7 +341,7 @@ local function match_episode(anime, episode_num, premiere_date, expected_title, 
         if numbered_count == 1 then callback(numbered_episode); return end
         if #dated_episodes == 1 then callback(dated_episodes[1]); return end
         -- Unresolved exact-date ambiguity cannot be replaced by a weaker date.
-        callback(nil, nearby_episodes, #dated_episodes > 0 or malformed_episode)
+        callback(nil, nearby_episodes, #dated_episodes > 0 or malformed_episode or unconfirmed_series)
     end, nil, {per_request_timeout = 15})
 end
 
@@ -376,7 +391,11 @@ local function match_anime()
                 selected, count = candidate, count + 1
             end
             if count == 1 and not fallback_uncertain then
-                msg.info('Matched episode number/title with broadcast date within seven days')
+                if expected_title == '' then
+                    msg.info('Matched unique series/episode number with broadcast date within seven days (no episode title)')
+                else
+                    msg.info('Matched episode number/title with broadcast date within seven days')
+                end
                 accept_episode(selected.anime, selected.episode, selected.server)
                 return
             end
@@ -440,7 +459,8 @@ local function match_anime()
                 finish_unmatched()
                 return
             end
-            match_episode(anime, episode_num, premiere_date, expected_title, index > 1, server, function(episode, nearby, uncertain)
+            match_episode(anime, episode_num, premiere_date, expected_title, index > 1,
+                title_score(anime.animeTitle) >= 0.85, server, function(episode, nearby, uncertain)
                 fallback_uncertain = fallback_uncertain or uncertain
                 if episode and not matched then
                     pending_candidates = pending_candidates - 1
