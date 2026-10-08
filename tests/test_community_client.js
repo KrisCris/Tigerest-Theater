@@ -110,10 +110,10 @@ test('message lists use account context without an item; detail reads still requ
     const client=new Client({fetch:async(url,options)=>{calls.push({url,options});return ok({items:[]});}});
     assert.equal(client.setSession(session()),true);
     await client.messageSummary();await client.messages('sent','a+/=');await client.messages('replies');
-    assert.equal(new URL(calls[0].url).pathname,'/community/v1/me/replies');
+    assert.equal(new URL(calls[0].url).pathname,'/community/v1/me/messages');
     assert.equal(new URL(calls[0].url).searchParams.get('limit'),'1');
     assert.equal(new URL(calls[1].url).pathname,'/community/v1/me/comments');
-    assert.equal(new URL(calls[2].url).pathname,'/community/v1/me/replies');
+    assert.equal(new URL(calls[2].url).pathname,'/community/v1/me/messages');
     assert.equal(new URL(calls[1].url).searchParams.get('cursor'),'a+/=');
     for(const call of calls)assert.equal(call.options.headers['X-Tigerest-Item-Id'],undefined);
     await assert.rejects(client.comments('topic'),/详情/);
@@ -129,12 +129,50 @@ test('read state posts notification IDs or an opaque account snapshot to the dep
     client.setSession(session());
     const through='snapshot.opaque+/=not-a-date';
     await client.readMessage('a/b');await client.readAllMessages(through);
-    assert.match(calls[0].url,/me\/replies$/);assert.equal(calls[0].options.method,'POST');
+    assert.match(calls[0].url,/me\/messages$/);assert.equal(calls[0].options.method,'POST');
     assert.deepEqual(JSON.parse(calls[0].options.body),{messageIds:['a/b']});
     assert.deepEqual(JSON.parse(calls[1].options.body),{readThroughToken:through});
     await assert.rejects(client.readAllMessages(''),/刷新/);
     for(const call of calls)assert.equal(call.options.headers['X-Tigerest-Item-Id'],undefined);
     assert.equal(calls.length,2);
+});
+
+test('private report retries preserve their UUID and only send documented diagnostic fields', async () => {
+    const Client=load(),calls=[];let fail=true;
+    const client=new Client({fetch:async(url,options)=>{
+        calls.push({url,options});if(fail){fail=false;throw Error('lost response');}return ok({report:{id:'report1'},replayed:true});
+    }});
+    client.setSession(session());
+    const context={platform:'Android',clientVersion:'2.4.3',positionSeconds:720,token:'never-send',playbackUrl:'never-send'};
+    await assert.rejects(client.sendReport('episode','subtitle_error','字幕比声音提前了大约三秒。',context),/网络/);
+    await client.sendReport('episode','subtitle_error','字幕比声音提前了大约三秒。',context);
+    const first=JSON.parse(calls[0].options.body),retry=JSON.parse(calls[1].options.body);
+    assert.deepEqual(first,retry);assert.match(first.clientRequestId,/^[0-9a-f-]{36}$/);
+    assert.deepEqual(first.context,{positionSeconds:720,platform:'Android',clientVersion:'2.4.3'});
+    assert.equal(calls[0].url,'http://nas.tigerest.top:18443/community/v1/reports');
+    assert.equal(calls[0].options.headers['X-Tigerest-Item-Id'],undefined);
+    await client.reports('open','cursor+/=');await client.report('report/1');
+    assert.equal(new URL(calls[2].url).searchParams.get('status'),'open');
+    assert.equal(new URL(calls[2].url).searchParams.get('cursor'),'cursor+/=');
+    assert.match(calls[3].url,/me\/reports\/report%2F1$/);
+});
+
+test('report validation and throttling do not block comment sends or leak account retry state', async () => {
+    const Client=load();let reportCalls=0,commentCalls=0;
+    const client=new Client({fetch:async(url)=>{
+        if(url.endsWith('/reports')){reportCalls++;return new Response(JSON.stringify({error:{code:'RATE_LIMITED'}}),{status:429,headers:{'Retry-After':'5'}});}
+        commentCalls++;return ok({});
+    }});
+    client.setContext(session(),'movie');
+    await assert.rejects(client.sendReport('movie','other','短说明'),/10/);
+    await assert.rejects(client.sendReport('movie','unknown','说明足够长但问题类型不正确。'),/类型/);
+    await assert.rejects(client.sendReport('movie','other','😀'.repeat(2001)),/2000/);
+    assert.equal(reportCalls,0);
+    await assert.rejects(client.sendReport('movie','playback_error','播放后始终黑屏且没有任何声音。'),error=>error.retryAfter===5);
+    await client.send('topic','普通评论');assert.equal(commentCalls,1);
+    await assert.rejects(client.sendReport('movie','playback_error','播放后始终黑屏且没有任何声音。'),/5 秒/);
+    assert.equal(reportCalls,1);
+    client.setSession(session(undefined,'new-account'));assert.equal(client.pendingReport,null);
 });
 
 test('anchors locate roots and replies with item authorization and never share a query with a cursor', async () => {

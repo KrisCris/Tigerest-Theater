@@ -156,6 +156,7 @@
                 tab.dataset.scope=scope;toolbar.appendChild(tab);state.tabs.push(tab);
             }
             state.refresh = button('刷新评论', () => this.load(state, true));
+            if(item.Type!=='Season'&&this.messages)toolbar.appendChild(button('上报问题',()=>{if(this.valid(state))this.messages.reportProblem(item);}));
             toolbar.appendChild(state.refresh);content.appendChild(toolbar);
             state.topicLabel = node('div', '正在加载…', 'tc-muted');content.appendChild(state.topicLabel);
             state.status = node('div', '', 'tc-status');state.status.setAttribute('role','status');state.status.setAttribute('aria-live','polite');content.appendChild(state.status);
@@ -512,6 +513,7 @@
             await load();
         }
         close() {
+            this.messages?.closeReportForm();
             this.epoch++;
             this.metadataController?.abort();this.metadataController=null;this.metadataView=null;
             this.client.clear();

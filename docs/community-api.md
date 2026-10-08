@@ -1,6 +1,6 @@
 # 评论服务端 API 对接说明（v1）
 
-此文档供另一台机器实现客户端。当前只支持大河的固定 Emby：`62526c3bf747439c99327ddec5fed4a8`。服务端源码位于独立私有仓库，不随客户端公开。客户端已实现评论区；v2.4.0 接入个人消息中心。
+此文档供另一台机器实现客户端。当前只支持大河的固定 Emby：`62526c3bf747439c99327ddec5fed4a8`。服务端源码位于独立私有仓库，不随客户端公开。客户端尚未实现评论 UI。
 
 ## 连接与认证
 
@@ -68,6 +68,11 @@ X-Tigerest-Item-Id: <此详情页可访问的 Emby Item.Id>
 | GET `/me/comments` | `?limit=20&cursor=...` | `{items,nextCursor,totalCount}`，本人评论及回复汇总 |
 | GET `/me/replies` | `?limit=20&cursor=...&unreadOnly=true` | `{items,nextCursor,unreadCount,readThroughToken}`，收到的直接回复 |
 | POST `/me/replies` | `{messageIds:[...]}` 或 `{readThroughToken}` | `{markedCount,unreadCount}`，持久化已读 |
+| POST `/reports` | `{itemId,category,description,clientRequestId,context?}` | `{report,replayed}`，提交私有报错 |
+| GET `/me/reports` | `?limit=20&cursor=...&status=all` | `{items,nextCursor,totalCount}`，本人的报错 |
+| GET `/me/reports/{reportId}` | 认证 | 本人单条报错 |
+| GET `/me/messages` | `?limit=20&cursor=...&unreadOnly=true&type=all` | `{items,nextCursor,unreadCount,readThroughToken}`，统一消息 |
+| POST `/me/messages` | `{messageIds:[...]}` 或 `{readThroughToken}` | `{markedCount,unreadCount}`，统一消息已读 |
 | POST `/topics/resolve` | `{itemId, scope}` | 话题 |
 | GET `/topics/{topicId}/comments` | `?limit=20&cursor=...` | `{items, nextCursor, rootCount}` |
 | POST `/topics/{topicId}/comments` | `{body, clientRequestId}` | `{comment, replayed}` |
@@ -79,7 +84,7 @@ X-Tigerest-Item-Id: <此详情页可访问的 Emby Item.Id>
 | GET `/admin/mutes` | `?limit=20&cursor=...` | `{items, nextCursor}` |
 | PUT `/admin/authors/{authorId}/mute` | `{durationSeconds, reason}` | `{id,name,muted,muteState,mutedUntil}` |
 | DELETE `/admin/authors/{authorId}/mute` | 无请求体 | 同上 |
-| GET `/admin/actions` | `?limit=20&cursor=...` | `{items,nextCursor}` |
+| GET `/admin/actions` | `?limit=20&cursor=...` | `{items,nextCursor}`，仅评论/作者管理记录；私有报错修复审计仅在局域网后台可见 |
 
 分页 limit 范围 1–50，默认 20；`nextCursor=null` 表示结束。游标按原样传回，不跨话题或列表复用。主评论按新到旧，回复按旧到新。主评论列表内置最多 3 条回复和 `repliesNextCursor`；继续加载用该游标，打开完整回复页则从无游标开始，按评论 ID 去重。
 
@@ -120,6 +125,53 @@ unreadOnly 仅允许 true/false，省略为 false。unreadCount 是未读且回�
 “全部已读”提交最新列表返回的 `{ "readThroughToken": "不透明令牌" }`，与 messageIds 二选一。该令牌绑定账号和列表快照，有效 30 分钟；只标记快照内记录，随后收到的新回复仍未读。令牌失效返回 400，刷新列表后重试。已读状态跨客户端、重启保持；无需在客户端维护永久已读清单。
 
 个人列表游标绑定账号、筛选和快照，切换账号或 unreadOnly 时重新从首页请求。取消账号切换前的请求并清空列表/未读缓存；503 应显示暂不可用，不回写空列表或零未读。
+
+## 错误上报与统一消息（2026-10-08 新增）
+
+上述新接口仍在 HTTP 18443，携带原三个 Emby 身份头，不要求单个 `X-Tigerest-Item-Id`。报错只对提交用户与局域网后台管理员可见。
+
+`POST /reports` 示例：
+
+```json
+{
+  "itemId": "当前电影、剧集或单集的 Emby Item.Id",
+  "category": "subtitle_error",
+  "description": "第三集播放到十二分钟后，中文字幕比声音提前约三秒。",
+  "clientRequestId": "客户端生成的 UUID",
+  "context": {
+    "positionSeconds": 720,
+    "platform": "Windows",
+    "clientVersion": "1.0.0",
+    "mediaSourceId": "当前播放的媒体源 ID",
+    "subtitleStreamIndex": 2
+  }
+}
+```
+
+category 允许 playback_error（播放错误）、subtitle_missing（字幕缺失）、subtitle_error（字幕错误）、other（其他）。description 必填，trim 后 10–2000 个 Unicode 字符、纯文本，可换行；提示用户补充现象、复现方式、字幕语言或发生时间。服务端只接受当前用户可访问的 Movie、Series、Episode，单集同时验证父剧集；媒体名称与位置由服务端确定。
+
+context 可省略，字段也可逐项省略：positionSeconds 为 0–604800 的有限数字；platform/clientVersion 为 1–64 字符；mediaSourceId 为 1–128 字符；subtitleStreamIndex 为 -1–1000 的整数，-1 表示未选择。信息只作为排查线索。不要提交认证头、密码、播放 URL、文件路径或日志；这些不是合法字段。客户端展示说明及修复结果时不得解释 HTML。
+
+同一次提交和网络重试复用 clientRequestId；首次 201、重试 200，返回 `{report,replayed}`。按作者永久去重，同 ID 修改内容或目标返回 409 IDEMPOTENCY_CONFLICT。新提交每用户最多 5 条/分钟，间隔至少 3 秒；重试不占新额度。报错与评论发送分别计数，评论禁言不会阻止报错。
+
+`GET /me/reports` 支持 status=all/open/resolved，默认 all，新到旧分页；详情只接受本人的 reportId。他人或不存在的记录返回 404。report 字段为 `{id,category,description,context,status,createdAt,resolvedAt,resolution,location,availability}`：open 为待处理，resolved 为已修复；待处理时 resolvedAt/resolution=null。resolution 是管理员发给用户的修复说明。
+
+报错位置对应确切的原始 Emby 条目，字段与评论 location 中的媒体部分相同：embyServerId、itemId、scope、title、workTitle、seasonNumber、episodeNumber、canNavigate。没有 topicId/rootId/commentId，按 itemId 打开媒体即可。媒体下架或失去访问权限时 location=null、availability=unavailable；用户仍可查看自己提交的说明和修复结果。
+
+管理员在局域网后台填写修复说明并确认后，服务端原子保存已修复状态、一条只属于提交人的未读通知和审计。相同确认不会重复发送。提交报错本身不产生新消息。
+
+新客户端消息中心使用 `GET /me/messages`，type 允许 all/comment_reply/report_resolved，默认 all；unreadOnly 与分页规则沿用回复列表。返回 `{items,nextCursor,unreadCount,readThroughToken}`，两类消息一起按新到旧排列。unreadCount 是两类当前未读总数，即使筛选单一 type 也返回总数。
+
+消息共有 `{id,type,createdAt,readAt,isRead,availability,location,reply,originalComment,report}`：
+
+- comment_reply：reply/originalComment 沿用旧回复对象，report=null；媒体权限及删除占位规则保持一致，location 可用于评论定位。
+- report_resolved：report 为上述报错对象，reply/originalComment=null；显示“报错已修复”及 report.resolution，可打开报错详情或媒体。媒体不可跳转时仍显示修复结果，location=null。
+
+修复通知在媒体下架后仍计未读；回复删除或讨论隐藏仍按旧规则不计未读。GET 和轮询不自动已读。客户端可沿用当前轮询机制读取未读数，无需推送连接。
+
+`POST /me/messages` 同样二选一提交 messageIds（1–50 个，可混合两类）或列表返回的 readThroughToken。未知/他人 ID 整批拒绝、无部分更新；重复标记幂等。快照令牌绑定账号、接口、type 筛选，30 分钟有效；只标记该筛选与快照内消息，之后到达的新消息仍未读。type=all 的令牌用于两类全部已读。
+
+旧 `/me/replies` 保留原响应形状和仅回复的计数，不返回修复消息，拒绝修复消息 ID。新旧接口读取同一回复的同一个消息 ID 和已读状态；任一端标记另一端同步。两组 readThroughToken 不通用，客户端统一消息中心不要把两组未读数相加或重复展示回复。切换接口、type、unreadOnly 或账号时重新从第一页读取；503 不回写空列表/零未读。
 
 ## 评论、回复及删除
 
@@ -168,6 +220,7 @@ unreadOnly 仅允许 true/false，省略为 false。unreadCount 是未读且回�
 | 409 `IDEMPOTENCY_CONFLICT` | 不重试相同 ID 的不同内容 |
 | 409 `TARGET_DELETED` | 刷新讨论并清除旧回复目标 |
 | 409 `PROTECTED_ADMIN` | 管理员不可禁言 |
+| 409 `REPORT_ALREADY_RESOLVED` | 报错已有不同的修复结果，刷新详情 |
 | 413 `BODY_TOO_LARGE` / 415 `UNSUPPORTED_MEDIA_TYPE` | 请求体最多 16 KiB，使用 JSON |
 | 429 `RATE_LIMITED` | 尊重 Retry-After；不要立即循环重试 |
 | 503 `AUTH_UNAVAILABLE` / `COMMUNITY_UNAVAILABLE` | 显示暂不可用，可稍后重试；不影响详情或播放 |

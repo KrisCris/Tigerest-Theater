@@ -2,6 +2,8 @@
 
 独立 Kotlin 工程，最低 Android 15（API 35），目标 API 36，内置 arm64-v8a / x86_64 的 libmpv，无需另装播放器。现有 `native/` 网页插件、消息中心、评论与深色金色样式在构建时同步到 APK；安卓通过限定来源的 WebMessage 桥接替换 Qt WebChannel。
 
+当前本地试用包为 2.4.4（versionCode 2040400），沿用正式签名。新增问题上报与修复通知、我的报错；窄屏顶栏换行后靠右，整排容纳不下时保留消息、更新、头像和「更多」，其余按钮收入二级菜单。下方正式发布链接仍为 2.4.3。
+
 ## 使用
 
 安装 [V2.4.3 正式 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.4.3/TigerestTheater-2.4.3-android.apk)，打开“大河影院”，选择服务器或输入自己的 Emby 地址，然后在服务器网页登录。正式版 versionName 为 `2.4.3`、versionCode 为 `2040300`，可覆盖升级同签名旧版并保留登录和设置。最终 V2.4.3 试用 APK 与本次正式 APK 一致，无需重复安装。登录信息保留在安卓应用私有 WebView 中。普通 Emby 地址可以播放媒体；消息与评论沿用原客户端的服务路由与授权规则，需要相应的服务支持。

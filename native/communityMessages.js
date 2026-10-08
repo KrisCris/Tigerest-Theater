@@ -15,6 +15,7 @@
         const date=new Date(value);return Number.isNaN(date.getTime())?'':date.toLocaleString();
     };
     const body=comment=>comment?.state==='visible'?(comment.body||''):'评论已删除';
+    const categories={playback_error:'播放错误',subtitle_missing:'字幕缺失',subtitle_error:'字幕错误',other:'其他问题'};
     function style(){
         if(document.getElementById('tigerest-messages-style'))return;
         const sheet=node('style');sheet.id='tigerest-messages-style';
@@ -43,8 +44,11 @@
         #tigerest-messages .tm-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;margin:12px 0;font-size:15px}
         #tigerest-messages blockquote{margin:12px 0;padding:10px 14px;background:#111b29;border-left:2px solid #506884;border-radius:4px}
         #tigerest-messages .tm-empty{text-align:center;padding:40px 10px;color:#a9b8cb}
+        #tigerest-messages .tm-field{display:block;margin:14px 0;line-height:1.7}
+        #tigerest-messages textarea,#tigerest-messages select,#tigerest-messages input{box-sizing:border-box;display:block;width:100%;margin-top:6px;padding:10px;border:1px solid #59697e;border-radius:8px;background:#1d293b;color:inherit;font:inherit}
+        #tigerest-messages textarea{min-height:140px;resize:vertical}
         @media(max-width:600px){#tigerest-messages .tm-head{padding:18px 16px 14px}#tigerest-messages .tm-content{padding:6px 14px 18px}#tigerest-messages h2{font-size:22px}#tigerest-messages .tm-card{padding:14px}}
-        `;
+        `.replaceAll('#tigerest-messages',':is(#tigerest-messages,#tigerest-report-form,#tigerest-report-detail)');
         (document.head||document.documentElement).appendChild(sheet);
     }
     class CommunityMessages {
@@ -74,7 +78,7 @@
         badge(){
             if(!this.entry)return;
             this.entry.textContent='消息'+(this.unread>0?' · '+(this.unread>99?'99+':this.unread):'');
-            this.entry.setAttribute('aria-label','消息中心'+(this.unread>0?'，'+this.unread+' 条未读回复':''));
+            this.entry.setAttribute('aria-label','消息中心'+(this.unread>0?'，'+this.unread+' 条未读消息':''));
         }
         async refreshSummary(){
             if(!this.client.context||this.state?.loading||this.state?.busy)return;
@@ -95,18 +99,18 @@
             if(Number.isFinite(data.unreadCount))this.unread=Math.max(0,data.unreadCount);
             this.badge();
         }
-        open(){
+        open(kind='replies'){
             this.sync();if(!this.client.context)return;
             if(this.state){this.state.panel.focus();return;}
             style();const panel=node('dialog');panel.id='tigerest-messages';
             panel.setAttribute('aria-labelledby','tm-heading');
-            const state={panel,kind:'replies',version:0,ids:new Set(),cursor:null,busy:false};
+            const state={panel,kind,version:0,ids:new Set(),cursor:null,busy:false};
             this.state=state;
             const shell=node('div',null,'tm-shell'),head=node('div',null,'tm-head');
             const title=node('div',null,'tm-title'),heading=node('h2','消息中心');heading.id='tm-heading';
-            title.append(heading,button('关闭',()=>this.close()));head.append(title,node('p','查看你的发言，以及其他人对你的回复。','tm-muted'));
+            title.append(heading,button('关闭',()=>this.close()));head.append(title,node('p','查看回复、报错处理结果，以及你的历史发言。','tm-muted'));
             const toolbar=node('div',null,'tm-toolbar');state.tabs=[];
-            for(const [kind,label] of [['replies','收到的回复'],['sent','我的发言']]){
+            for(const [kind,label] of [['replies','收到的消息'],['sent','我的发言'],['reports','我的报错']]){
                 const tab=button(label,()=>{if(state.busy||state.kind===kind)return;state.kind=kind;this.load(state);});
                 tab.dataset.kind=kind;state.tabs.push(tab);toolbar.appendChild(tab);
             }
@@ -142,7 +146,7 @@
             if(state.loadedKind!==kind){state.ids.clear();state.list.replaceChildren();state.cursor=null;state.more.hidden=true;state.through=null;}
             this.controls(state);
             try{
-                const data=await this.client.messages(kind,cursor);
+                const data=kind==='reports'?await this.client.reports('all',cursor):await this.client.messages(kind,cursor);
                 if(!this.valid(state)||version!==state.version)return;
                 if(!more){state.ids.clear();state.list.replaceChildren();}
                 state.loadedKind=kind;
@@ -151,30 +155,34 @@
                     state.through=data.readThroughToken;
                 }
                 for(const message of data.items||[]){
-                    const id=kind==='replies'?message.id:message.comment?.id;
+                    const id=kind==='sent'?message.comment?.id:message.id;
                     if(!id||state.ids.has(id))continue;state.ids.add(id);
                     state.list.appendChild(this.card(state,message));
                 }
-                if(!state.ids.size)state.list.appendChild(node('p',kind==='sent'?'还没有发言，去喜欢的作品聊聊吧。':'还没有收到回复。','tm-empty'));
+                if(!state.ids.size)state.list.appendChild(node('p',kind==='sent'?'还没有发言，去喜欢的作品聊聊吧。':kind==='reports'?'还没有提交报错。':'还没有收到消息。','tm-empty'));
                 state.cursor=data.nextCursor;state.more.hidden=!state.cursor;
-                state.status.textContent=kind==='replies'?'未读回复 '+this.unread+' 条':'你发表过的评论和回复';
+                state.status.textContent=kind==='replies'?'未读消息 '+this.unread+' 条':kind==='reports'?'你提交过的问题与处理结果':'你发表过的评论和回复';
             }catch(error){if(version===state.version||error.status===401)this.error(state,error);}
             finally{if(this.valid(state)&&version===state.version){state.loading=false;this.controls(state);}}
         }
         card(state,message){
-            const received=state.kind==='replies',comment=(received?message.reply:message.comment)||{};
+            const received=state.kind==='replies',report=message.type==='report_resolved'?message.report:state.kind==='reports'?message:null;
+            const comment=(received?message.reply:message.comment)||{};
             const available=message.availability!=='unavailable',location=available?message.location:null;
-            const card=node('article',null,'tm-card');card.dataset.messageId=received?message.id:comment.id;
+            const card=node('article',null,'tm-card');card.dataset.messageId=state.kind==='sent'?comment.id:message.id;
             const unread=received&&!message.isRead&&!message.readAt;card.classList.toggle('tm-unread',unread);
             const header=node('div',null,'tm-card-head');
-            header.append(node('strong',comment.author?.name||'用户'),node('span',time(message.createdAt||comment.createdAt),'tm-muted'));
+            header.append(node('strong',report?(received?'报错已修复':(report.status==='resolved'?'已修复':'待处理')+' · '+(categories[report.category]||'其他问题')):comment.author?.name||'用户'),node('span',time(message.createdAt||comment.createdAt),'tm-muted'));
             card.appendChild(header);
             if(location)card.appendChild(node('p',(location.scope==='episode'?'本集 · ':'作品 · ')+
                 (location.workTitle?location.workTitle+' · ':'')+(location.title||'未命名作品'),'tm-topic'));
             if(available&&message.originalComment){
                 const original=node('blockquote');original.append(node('div','回复的原发言','tm-muted'),node('div',body(message.originalComment),'tm-body'));card.appendChild(original);
             }
-            card.appendChild(node('div',available?(comment.replyToAuthor?'回复 @'+comment.replyToAuthor.name+'：\n':'')+body(comment):'内容已不可用','tm-body'));
+            if(report){
+                card.appendChild(node('div',report.description||'','tm-body'));
+                if(report.status==='resolved')card.appendChild(node('p','修复结果','tm-muted')),card.appendChild(node('div',report.resolution||'','tm-body'));
+            }else card.appendChild(node('div',available?(comment.replyToAuthor?'回复 @'+comment.replyToAuthor.name+'：\n':'')+body(comment):'内容已不可用','tm-body'));
             const actions=node('div',null,'tm-toolbar');
             let read;
             const markRead=async()=>{
@@ -183,11 +191,11 @@
                     const result=await this.client.readMessage(message.id);if(!this.valid(state))return;
                     ++this.summaryVersion;this.lastSummary=Date.now();this.updateUnread(result);
                     message.isRead=true;message.readAt=new Date().toISOString();card.classList.remove('tm-unread');read?.remove();
-                    state.status.textContent='未读回复 '+this.unread+' 条';
+                    state.status.textContent='未读消息 '+this.unread+' 条';
                 }finally{if(this.valid(state)){state.busy=false;this.controls(state);}}
             };
             if(location?.itemId){
-                const open=button(location.canNavigate?'查看讨论':'查看作品',async()=>{
+                const open=button(!report&&location.canNavigate?'查看讨论':'查看作品',async()=>{
                     if(!this.valid(state)||state.busy||state.loading||open.disabled)return;
                     open.disabled=true;
                     try{
@@ -200,6 +208,13 @@
                 });
                 actions.appendChild(open);
             }else actions.appendChild(node('span','作品当前不可访问','tm-muted'));
+            if(report)actions.appendChild(button('查看报错',async()=>{
+                if(!this.valid(state)||state.busy||state.loading)return;
+                try{
+                    if(unread&&!message.isRead&&!message.readAt)await markRead();
+                    if(this.valid(state))await this.reportDetails(report.id);
+                }catch(error){this.error(state,error);}
+            }));
             if(unread){
                 read=button('标为已读',async()=>{
                     if(!this.valid(state)||state.busy||state.loading||read.disabled)return;
@@ -227,14 +242,71 @@
             }
             finally{if(this.valid(state)){state.busy=false;this.controls(state);}}
         }
+        async reportDetails(id){
+            this.closeReportDetails();style();
+            const panel=node('dialog');panel.id='tigerest-report-detail';
+            const content=node('div',null,'tm-content'),heading=node('h2','报错详情');heading.id='tm-report-heading';
+            panel.setAttribute('aria-labelledby',heading.id);content.append(heading,button('关闭',()=>this.closeReportDetails()));
+            const status=node('p','正在加载报错…','tm-status');status.setAttribute('role','status');content.appendChild(status);panel.appendChild(content);
+            const state={panel,key:this.sessionKey};this.reportDetail=state;
+            panel.addEventListener('cancel',event=>{event.preventDefault();this.closeReportDetails();});document.body.appendChild(panel);panel.showModal();
+            try{
+                const report=await this.client.report(id);
+                if(this.reportDetail!==state||state.key!==JSON.stringify(this.session()))return;
+                status.textContent=(categories[report.category]||'其他问题')+' · '+(report.status==='resolved'?'已修复':'待处理');
+                content.append(node('div',report.description,'tm-body'));
+                if(report.status==='resolved')content.append(node('p','修复结果','tm-muted'),node('div',report.resolution,'tm-body'));
+                if(report.location)content.append(node('p',[report.location.workTitle,report.location.title].filter(Boolean).join(' · '),'tm-topic'));
+            }catch(error){
+                if(this.reportDetail!==state||state.key!==JSON.stringify(this.session()))return;
+                if(error.status===401)this.reset(true);else status.textContent=error.message;
+            }
+        }
+        closeReportDetails(){this.reportDetail?.panel.close();this.reportDetail?.panel.remove();this.reportDetail=null;}
+        reportProblem(item){
+            this.sync();if(!this.client.context||!item?.Id)return;
+            if(this.reportForm){this.reportForm.panel.focus();return;}
+            style();const panel=node('dialog');panel.id='tigerest-report-form';
+            const shell=node('div',null,'tm-shell'),head=node('div',null,'tm-head'),title=node('div',null,'tm-title');
+            const heading=node('h2','上报问题');heading.id='tm-report-form-heading';panel.setAttribute('aria-labelledby',heading.id);
+            title.append(heading,button('关闭',()=>this.closeReportForm()));head.append(title,node('p',item.Name||'当前作品','tm-muted'));
+            const form=node('form',null,'tm-content'),status=node('p','','tm-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+            const category=node('select');category.setAttribute('aria-label','问题类型');
+            for(const [value,label]of Object.entries(categories)){const option=node('option',label);option.value=value;category.appendChild(option);}
+            const categoryLabel=node('label','问题类型','tm-field');categoryLabel.appendChild(category);
+            const description=node('textarea');description.setAttribute('aria-label','报错说明');description.placeholder='请描述问题现象、发生时间或复现方式（10–2000 字）。';
+            const descriptionLabel=node('label','问题说明','tm-field');descriptionLabel.appendChild(description);
+            const position=node('input');position.type='number';position.min='0';position.max='604800';position.step='any';position.setAttribute('aria-label','发生时间（秒，可选）');
+            const positionLabel=node('label','发生时间（秒，可选）','tm-field');positionLabel.appendChild(position);
+            const submit=button('提交报错',()=>form.requestSubmit()),actions=node('div',null,'tm-toolbar');actions.appendChild(submit);
+            form.append(categoryLabel,descriptionLabel,positionLabel,status,actions);shell.append(head,form);panel.appendChild(shell);
+            const state={panel,key:this.sessionKey,busy:false};this.reportForm=state;
+            const valid=()=>this.reportForm===state&&state.key===JSON.stringify(this.session());
+            form.addEventListener('submit',async event=>{
+                event.preventDefault();if(!valid()||state.busy||state.saved)return;
+                state.busy=true;submit.disabled=true;category.disabled=description.disabled=position.disabled=true;status.textContent='正在提交报错…';
+                const context={platform:window.tigerestAndroidApi?'Android':/Windows/.test(navigator.userAgent)?'Windows':/Mac/.test(navigator.userAgent)?'macOS':'Linux',clientVersion:window.jmpInfo?.version};
+                if(position.value!=='')context.positionSeconds=Number(position.value);
+                try{
+                    await this.client.sendReport(item.Id,category.value,description.value,context);
+                    if(!valid())return;state.saved=true;category.disabled=description.disabled=position.disabled=true;
+                    status.textContent='报错已提交。管理员确认修复后会在消息中心通知你。';
+                    actions.appendChild(button('查看我的报错',()=>{this.closeReportForm();this.open('reports');}));
+                }catch(error){if(valid()){if(error.status===401)this.reset(true);else status.textContent=error.message;}}
+                finally{if(valid()){state.busy=false;submit.disabled=category.disabled=description.disabled=position.disabled=Boolean(state.saved);}}
+            });
+            panel.addEventListener('cancel',event=>{event.preventDefault();this.closeReportForm();});document.body.appendChild(panel);panel.showModal();description.focus();
+        }
+        closeReportForm(){this.reportForm?.panel.close();this.reportForm?.panel.remove();this.reportForm=null;}
         close(){
+            this.closeReportDetails();
             const state=this.state;this.state=null;
             if(state){this.client.cancelRequests();++this.summaryVersion;state.panel.close();state.panel.remove();}
             this.entry?.focus();
         }
         reset(block=false){
             const key=Client.supported(this.session())?JSON.stringify(this.session()):'';
-            this.close();this.client.clear();++this.summaryVersion;
+            this.close();this.closeReportForm();this.client.clear();++this.summaryVersion;
             this.entry?.remove();this.entry=null;this.sessionKey='';this.unread=0;this.lastSummary=0;
             this.blockedKey=block?key:null;
         }

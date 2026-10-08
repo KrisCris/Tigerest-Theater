@@ -1,5 +1,67 @@
 (function () {
     let header, headerResize, headerChanges, frame, disposed=false, savedHeaderHeight=null;
+    let actionsHost, more, menu, secondary=[];
+    const primary='#tigerest-message-entry,#tigerest-update-button,.headerUserButton';
+    function closeMenu() {
+        if (menu?.open) menu.close();
+        more?.setAttribute('aria-expanded','false');
+    }
+    function openMenu() {
+        layoutActions(header);
+        if (!actionsHost?.isConnected || !actionsHost.classList.contains('tgs-header-condensed')) return;
+        if (!menu) {
+            menu=document.createElement('dialog');menu.id='tigerest-header-menu';
+            menu.setAttribute('aria-labelledby','tigerest-header-menu-title');
+            menu.addEventListener('cancel',event=>{event.preventDefault();closeMenu();});
+            menu.addEventListener('click',event=>{if(event.target===menu)closeMenu();});
+            document.body.appendChild(menu);
+        }
+        menu.replaceChildren();
+        const heading=document.createElement('h2');heading.id='tigerest-header-menu-title';heading.textContent='更多操作';menu.appendChild(heading);
+        for (const action of secondary) {
+            const entry=document.createElement('button');entry.type='button';
+            entry.textContent=action.getAttribute('aria-label') || action.title || action.textContent.trim() || '操作';
+            entry.disabled=Boolean(action.disabled || action.getAttribute('aria-disabled')==='true');
+            entry.addEventListener('click',()=>{
+                closeMenu();
+                if(!action.isConnected||action.disabled||action.getAttribute('aria-disabled')==='true')return;
+                const condensed=actionsHost?.classList.contains('tgs-header-condensed');
+                actionsHost?.classList.remove('tgs-header-condensed');
+                const visible=Boolean(action.getClientRects().length)&&!action.hidden&&action.getAttribute('aria-hidden')!=='true';
+                if(condensed)actionsHost.classList.add('tgs-header-condensed');
+                if(visible)action.click();
+            });
+            menu.appendChild(entry);
+        }
+        const close=document.createElement('button');close.type='button';close.textContent='关闭';close.addEventListener('click',closeMenu);menu.appendChild(close);
+        more.setAttribute('aria-expanded','true');menu.showModal();
+    }
+    function layoutActions(next) {
+        const host=next?.matches('.headerRight')?next:next?.querySelector('.headerRight');
+        if (host!==actionsHost) {
+            closeMenu();actionsHost?.classList.remove('tgs-header-condensed');more?.remove();actionsHost=host;more=null;
+        }
+        if (!host) return;
+        // Emby can replace its header with cloned markup; cloned entries have no handlers.
+        for (const stale of host.querySelectorAll('#tigerest-header-more')) if(stale!==more)stale.remove();
+        if (!more) {
+            more=document.createElement('button');more.id='tigerest-header-more';more.type='button';
+            more.className='headerButton headerSectionItem paper-icon-button-light';more.textContent='⋯';
+            more.setAttribute('aria-label','更多操作');more.setAttribute('aria-haspopup','dialog');more.hidden=true;
+            more.addEventListener('click',openMenu);host.appendChild(more);
+        }
+        const condensed=host.classList.contains('tgs-header-condensed');
+        host.classList.remove('tgs-header-condensed');more.hidden=true;
+        const actions=[...host.children].filter(action=>action!==more&&action.getClientRects().length&&!action.hidden&&action.getAttribute('aria-hidden')!=='true');
+        secondary=actions.filter(action=>!action.matches(primary));
+        const css=getComputedStyle(host),gap=parseFloat(css.columnGap)||0;
+        const width=actions.reduce((sum,action)=>{const style=getComputedStyle(action);return sum+action.getBoundingClientRect().width+(parseFloat(style.marginLeft)||0)+(parseFloat(style.marginRight)||0);},0)+Math.max(0,actions.length-1)*gap;
+        const available=host.clientWidth-(parseFloat(css.paddingLeft)||0)-(parseFloat(css.paddingRight)||0);
+        const compact=matchMedia('(max-width:600px)').matches&&secondary.length>0&&width>available+1;
+        for (const action of host.children) action.classList.toggle('tgs-header-secondary',secondary.includes(action));
+        host.classList.toggle('tgs-header-condensed',compact);more.hidden=!compact;
+        if (!compact || compact!==condensed) closeMenu();
+    }
     function restoreHeaderHeight() {
         if (savedHeaderHeight === null) return;
         const root=document.documentElement;
@@ -11,6 +73,7 @@
         frame=null;
         if (disposed || !document.documentElement) return;
         const next=document.querySelector('.skinHeader');
+        layoutActions(next);
         if (next !== header) {
             headerResize?.disconnect(); header=next;
             if (header && window.ResizeObserver) {
@@ -45,8 +108,19 @@
         }
         document.documentElement.dataset.tigerestWindow = innerWidth < 600 ? 'compact' : innerWidth < 840 ? 'medium' : 'expanded';
         if (!headerChanges) {
-            headerChanges=new MutationObserver(scheduleHeaderMeasure);
-            headerChanges.observe(document.documentElement,{childList:true,subtree:true});
+            const withoutOwnClasses=value=>String(value||'').split(/\s+/).filter(name=>name&&!name.startsWith('tgs-header-')).sort().join(' ');
+            headerChanges=new MutationObserver(records=>{
+                let changed=false;
+                for(const record of records){
+                    if(record.type==='childList'){changed=true;continue;}
+                    if(!header?.contains(record.target)||record.target===more)continue;
+                    if(record.attributeName==='class'&&withoutOwnClasses(record.oldValue)===withoutOwnClasses(record.target.className))continue;
+                    closeMenu();
+                    changed=true;
+                }
+                if(changed)scheduleHeaderMeasure();
+            });
+            headerChanges.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeOldValue:true,attributeFilter:['class','style','hidden','aria-hidden','disabled','aria-label','title']});
         }
         scheduleHeaderMeasure();
     }
@@ -54,6 +128,7 @@
     window.addEventListener('resize', apply);
     document.addEventListener('DOMContentLoaded', apply);
     window.addEventListener('pagehide',()=>{
+        closeMenu();menu?.remove();more?.remove();actionsHost?.classList.remove('tgs-header-condensed');
         disposed=true; headerResize?.disconnect(); headerChanges?.disconnect();
         cancelAnimationFrame(frame); restoreHeaderHeight();
         window.removeEventListener('tigerest-window-changed',apply);

@@ -29,6 +29,7 @@ QString message(const QString& reason,Backend backend=Backend::CoreMLMetal){
     if(reason=="interlaced")return QStringLiteral("隔行视频保持原帧播放");
     if(reason=="unknown-color")return QStringLiteral("色彩信息不完整，保持原帧播放");
     if(reason=="runtime-missing")return QStringLiteral("补帧组件不可用，保持原帧播放");
+    if(reason=="filter-error")return QStringLiteral("补帧滤镜加载或运行失败，已恢复原帧播放");
     return QStringLiteral("补帧已停止，已恢复原帧播放");
 }
 }

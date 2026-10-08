@@ -29,7 +29,9 @@
             this.generation = 0;
             this.controllers = new Set();
             this.pendingSend = null;
+            this.pendingReport = null;
             this.cooldownUntil = 0;
+            this.reportCooldownUntil = 0;
         }
         static session(api) {
             if (!api) return null;
@@ -62,6 +64,7 @@
             for (const controller of this.controllers) controller.abort();
             this.controllers.clear();
             this.pendingSend = null;
+            this.pendingReport = null;
         }
         clear() {
             this.cancelRequests();
@@ -69,6 +72,7 @@
             this.contextKey = '';
             this.base = null;
             this.cooldownUntil = 0;
+            this.reportCooldownUntil = 0;
         }
         async request(path, {method = 'GET', body, item = false, image = false} = {}) {
             if (!this.context) throw new Error(messages.AUTH_REQUIRED);
@@ -102,7 +106,8 @@
                     let retryAfter = 0;
                     if (response.status === 429) {
                         retryAfter = Math.min(86400, Math.max(1, Number(response.headers.get('Retry-After')) || 3));
-                        this.cooldownUntil = Math.max(this.cooldownUntil, this.now() + retryAfter * 1000);
+                        const cooldown=path==='/reports'?'reportCooldownUntil':'cooldownUntil';
+                        this[cooldown] = Math.max(this[cooldown], this.now() + retryAfter * 1000);
                         message = '操作过于频繁，请等待 ' + retryAfter + ' 秒后重试。';
                     }
                     const error = new Error(message);
@@ -160,15 +165,42 @@
         unmute(id) { return this.request('/admin/authors/' + encodeURIComponent(id) + '/mute', {method:'DELETE'}); }
         mutes(cursor) { return this.page('/admin/mutes', cursor, false); }
         actions(cursor) { return this.page('/admin/actions', cursor, false); }
-        messageSummary() { return this.request('/me/replies?limit=1'); }
+        messageSummary() { return this.request('/me/messages?limit=1&type=all'); }
         messages(kind = 'replies', cursor, unreadOnly = false) {
             if (!['sent', 'replies'].includes(kind)) return Promise.reject(new Error('消息类型无效。'));
-            return this.page(kind === 'sent' ? '/me/comments' : '/me/replies?unreadOnly=' + Boolean(unreadOnly), cursor, false);
+            return this.page(kind === 'sent' ? '/me/comments' : '/me/messages?type=all&unreadOnly=' + Boolean(unreadOnly), cursor, false);
         }
-        readMessage(id) { return this.request('/me/replies', {method:'POST', body:{messageIds:[id]}}); }
+        readMessage(id) { return this.request('/me/messages', {method:'POST', body:{messageIds:[id]}}); }
         readAllMessages(readThroughToken) {
             if (typeof readThroughToken !== 'string' || !readThroughToken) return Promise.reject(new Error('消息快照无效，请刷新后重试。'));
-            return this.request('/me/replies', {method:'POST', body:{readThroughToken}});
+            return this.request('/me/messages', {method:'POST', body:{readThroughToken}});
+        }
+        reports(status='all',cursor) {
+            if(!['all','open','resolved'].includes(status))return Promise.reject(new Error('报错状态无效。'));
+            return this.page('/me/reports?status='+status,cursor,false);
+        }
+        report(id) { return this.request('/me/reports/'+encodeURIComponent(id)); }
+        async sendReport(itemId,category,description,context={}) {
+            if(!itemId)throw new Error('请先打开可访问的作品。');
+            if(!['playback_error','subtitle_missing','subtitle_error','other'].includes(category))throw new Error('问题类型无效。');
+            description=String(description||'').trim();
+            const length=Array.from(description).length;
+            if(length<10||length>2000)throw new Error('请填写 10–2000 字的说明，补充现象、发生时间或复现方式。');
+            const wait=Math.ceil((this.reportCooldownUntil-this.now())/1000);
+            if(wait>0)throw new Error('请等待 '+wait+' 秒后重试。');
+            const details={};
+            if(Number.isFinite(context.positionSeconds)&&context.positionSeconds>=0&&context.positionSeconds<=604800)details.positionSeconds=context.positionSeconds;
+            for(const [key,max] of [['platform',64],['clientVersion',64],['mediaSourceId',128]]){
+                if(typeof context[key]==='string'&&context[key].trim()&&Array.from(context[key]).length<=max)details[key]=context[key];
+            }
+            if(Number.isInteger(context.subtitleStreamIndex)&&context.subtitleStreamIndex>=-1&&context.subtitleStreamIndex<=1000)details.subtitleStreamIndex=context.subtitleStreamIndex;
+            const payload={itemId:String(itemId),category,description,context:details},key=JSON.stringify(payload);
+            if(this.pendingReport?.key!==key)this.pendingReport={key,payload:{...payload,clientRequestId:uuid()}};
+            const pending=this.pendingReport;
+            const result=await this.request('/reports',{method:'POST',body:pending.payload});
+            if(this.pendingReport===pending)this.pendingReport=null;
+            this.reportCooldownUntil=Math.max(this.reportCooldownUntil,this.now()+3000);
+            return result;
         }
         adminMessages(filters = {}, cursor) {
             const query = new URLSearchParams({limit:'20'});

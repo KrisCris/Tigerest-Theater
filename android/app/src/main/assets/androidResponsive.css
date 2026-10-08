@@ -10,6 +10,14 @@ body .skinHeader { padding-top:var(--tgs-safe-top) !important; padding-left:0 !i
 body .headerTop { padding-left:max(8px,var(--tgs-safe-left)) !important; padding-right:max(8px,var(--tgs-safe-right)) !important; }
 body .headerRight { flex-wrap:nowrap; flex-shrink:0; }
 body .headerLeft,body .headerMiddle { min-width:0; }
+body #tigerest-header-more { min-width:44px; min-height:44px; flex-shrink:0; }
+body #tigerest-header-more[hidden],body .tgs-header-condensed > .tgs-header-secondary { display:none !important; }
+#tigerest-header-menu { box-sizing:border-box; width:min(340px,calc(100vw - 32px)); max-height:calc(100dvh - 48px); overflow:auto; padding:16px; border:1px solid #43556e; border-radius:16px; background:#141d2b; color:#e9eff8; }
+#tigerest-header-menu::backdrop { background:#0007; }
+#tigerest-header-menu h2 { margin:0 0 12px; font-size:20px; }
+#tigerest-header-menu button { display:block; width:100%; min-height:48px; margin-top:8px; padding:10px 16px; border:1px solid #43556e; border-radius:8px; background:#24344a; color:inherit; font:inherit; text-align:start; }
+#tigerest-header-menu button:disabled { opacity:.45; }
+#tigerest-header-menu button:focus-visible,body #tigerest-header-more:focus-visible { outline:2px solid #ffbe38; outline-offset:2px; }
 body #tigerest-mpv-settings-button { min-width:48px !important; min-height:44px !important; font-size:14px !important; }
 /* Emby's padded page sections already own the gutter. Applying it to .view and
    .mainAnimatedPage as well compounds it on details/home, especially in landscape. */
@@ -32,7 +40,7 @@ body:has(#server-choice) { box-sizing:border-box; padding:calc(var(--tgs-safe-to
  body .skinHeader { height:auto !important; min-height:0 !important; contain:layout style paint; }
  body .headerTop { width:100%; box-sizing:border-box; flex-wrap:wrap !important; }
  body .headerLeft { flex:1 0 100%; width:100%; max-width:100%; overflow-x:auto; }
- body .headerRight { flex:0 1 100%; width:100%; max-width:100%; min-width:0; margin-inline-start:0; justify-content:flex-start; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
+ body .headerRight { flex:0 1 100%; width:100%; max-width:100%; min-width:0; margin-inline-start:0; justify-content:flex-end; justify-content:safe flex-end; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
  body .headerRight::-webkit-scrollbar,body .headerLeft::-webkit-scrollbar { display:none; }
  body .headerRight > *,body .headerLeft > .headerButton { flex-shrink:0; }
  body #tigerest-update-button { min-width:44px; flex-basis:44px; }

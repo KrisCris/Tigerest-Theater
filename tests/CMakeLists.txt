@@ -213,7 +213,7 @@ if(WIN32 AND Python3_Interpreter_FOUND)
   add_test(NAME test_rife_runtime_manager COMMAND test_rife_runtime_manager)
   set_tests_properties(test_rife_runtime_manager PROPERTIES TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
-  foreach(case runtime runtime_prepare mpv_build build_sources mpv_recipe engine_cache engine_prepare windows_job timing_tracker)
+  foreach(case runtime runtime_prepare mpv_build build_sources mpv_recipe engine_cache engine_prepare windows_job timing_tracker windows_dll_lifecycle)
     add_test(NAME test_rife_${case} COMMAND "${Python3_EXECUTABLE}" -m unittest discover
       -s "${CMAKE_CURRENT_SOURCE_DIR}" -p "test_rife_${case}.py" -v)
     set_tests_properties(test_rife_${case} PROPERTIES TIMEOUT 180 LABELS "rife-runtime")
@@ -424,6 +424,10 @@ if(Node_EXECUTABLE)
   add_test(NAME test_community_client
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_community_client.js
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_registration.js)
+  add_test(NAME test_community_reports_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_community_reports_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_community_reports_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_rife_windows_settings
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_rife_windows_settings.js)
   add_test(NAME test_native_settings_registration

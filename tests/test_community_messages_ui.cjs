@@ -33,7 +33,7 @@ async function run(){
                 const u=new URL(url),p=u.pathname.replace('/community/v1','');requests.push({p,query:u.search,method:o.method,body:o.body,headers:o.headers});
                 if(unauthorized)return Response.json({error:{code:'AUTH_INVALID'}},{status:401});
                 if(anchorMissing&&u.searchParams.has('anchorId'))return Response.json({error:{code:'NOT_FOUND'}},{status:404});
-                if(p==='/me/replies'&&o.method==='POST'){
+                if(p==='/me/messages'&&o.method==='POST'){
                     const b=JSON.parse(o.body);
                     if(b.readThroughToken){
                         if(expire){expire=false;return Response.json({error:{code:'INVALID_REQUEST'}},{status:400});}
@@ -42,11 +42,11 @@ async function run(){
                     }else {check(b.messageIds.length===1,'single notification read');readIds.add(b.messageIds[0]);unread--;}
                     return Response.json({data:{markedCount:1,unreadCount:unread}});
                 }
-                if(p==='/me/replies'&&u.searchParams.get('limit')==='1'){
+                if(p==='/me/messages'&&u.searchParams.get('limit')==='1'){
                     if(summaryHold){summaryHold=false;return new Promise(r=>releaseSummary=(status=200)=>r(status===200?Response.json({data:{...replies(),unreadCount:99,readThroughToken:'poll-newer'}}):Response.json({error:{code:'AUTH_INVALID'}},{status})));}
                     return Response.json({data:{...replies(),readThroughToken:'poll-newer'}});
                 }
-                if(p==='/me/replies'||p==='/me/comments'){
+                if(p==='/me/messages'||p==='/me/comments'){
                     if(missing)return Response.json({error:{code:'NOT_FOUND'}},{status:404});
                     if(unavailable)return Response.json({error:{code:'COMMUNITY_UNAVAILABLE'}},{status:503});
                     if(hold){hold=false;return new Promise(r=>release=(status=200)=>r(status===200?Response.json({data:{items:[own('stale','旧回复不应出现')],nextCursor:null}}):Response.json({error:{code:'AUTH_INVALID'}},{status})));}
@@ -89,10 +89,10 @@ async function run(){
             click('加载更多消息');await wait(()=>document.querySelector('[data-message-id="own2"]'));
             check(document.querySelectorAll('[data-message-id="own1"]').length===1,'page deduplication');
             check(requests.some(r=>r.query.includes('cursor=page%2B%2F%3D')),'opaque cursor');
-            hold=true;click('收到的回复');await wait(()=>release);click('我的发言');
+            hold=true;click('收到的消息');await wait(()=>release);click('我的发言');
             await wait(()=>document.querySelector('[data-message-id="own1"]'));release();await new Promise(r=>setTimeout(r,20));
             check(!document.querySelector('#tigerest-messages').textContent.includes('旧回复不应出现'),'tab race discarded');
-            click('收到的回复');await wait(()=>document.querySelector('[data-message-id="notification1"]'));
+            click('收到的消息');await wait(()=>document.querySelector('[data-message-id="notification1"]'));
             await plugin.messages.refreshSummary();
             click('全部已读');await wait(()=>requests.some(r=>r.body?.includes('readThroughToken')));
             check(JSON.parse(requests.find(r=>r.body?.includes('readThroughToken')).body).readThroughToken==='snapshot-visible','server list snapshot');
@@ -132,7 +132,7 @@ async function run(){
             releaseSummary(401);await wait(()=>!document.querySelector('#tigerest-messages'));
             check(!document.querySelector('#tigerest-message-entry'),'delayed unauthorized poll clears the newer list');
             handlers.localusersignedin();plugin.messages.open();await wait(()=>document.querySelector('[data-message-id="notification1"]'));
-            hold=true;release=null;click('我的发言');await wait(()=>release);click('收到的回复');
+            hold=true;release=null;click('我的发言');await wait(()=>release);click('收到的消息');
             await wait(()=>document.querySelector('[data-message-id="notification1"]'));
             release(401);await wait(()=>!document.querySelector('#tigerest-messages'));
             check(!document.querySelector('#tigerest-message-entry'),'delayed unauthorized tab clears the current account');
