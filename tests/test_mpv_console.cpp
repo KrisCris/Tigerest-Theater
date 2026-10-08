@@ -15,6 +15,8 @@ private slots:
   void startupSelection_data();
   void startupSelection();
   void keybindLabels();
+  void qualityProfilesPreserveInterpolation_data();
+  void qualityProfilesPreserveInterpolation();
 };
 
 void TestMpvConsole::disabledByDefault()
@@ -118,6 +120,89 @@ void TestMpvConsole::keybindLabels()
   QFile result(root.filePath("result.txt"));
   QVERIFY(result.open(QIODevice::ReadOnly));
   QCOMPARE(QString::fromUtf8(result.readAll()), QStringLiteral("ok"));
+}
+
+void TestMpvConsole::qualityProfilesPreserveInterpolation_data()
+{
+  QTest::addColumn<bool>("enabled");
+  QTest::newRow("RIFE enabled") << true;
+  QTest::newRow("RIFE disabled") << false;
+}
+
+void TestMpvConsole::qualityProfilesPreserveInterpolation()
+{
+  QFETCH(bool, enabled);
+  QTemporaryDir root;
+  QVERIFY(root.isValid());
+  QFile source(QStringLiteral(SOURCE_ROOT "/resources/mpv/mpv.conf.in"));
+  QVERIFY(source.open(QIODevice::ReadOnly));
+  QString config = QString::fromUtf8(source.readAll());
+  config.replace("@TIGEREST_PROFILE@", "tigerest-default");
+  config.replace("@TIGEREST_IPC_SERVER@", "");
+  config.replace("@TIGEREST_SCRIPTS@", "");
+  config.replace("script=~~/plugins/stats.lua", "");
+  config.replace("input-conf=~~/input.conf", "");
+  config.replace("~~/shaders/", QStringLiteral(SOURCE_ROOT "/resources/mpv/shaders/"));
+  QFile output(root.filePath("mpv.conf"));
+  QVERIFY(output.open(QIODevice::WriteOnly));
+  output.write(config.toUtf8()); output.close();
+  QFile overrides(root.filePath("user-overrides.conf"));
+  QVERIFY(overrides.open(QIODevice::WriteOnly)); overrides.close();
+  const auto oldRoot = qgetenv("TIGEREST_MPV_CONFIG_DIR");
+  const auto restore = qScopeGuard([&] {
+    if (oldRoot.isNull()) qunsetenv("TIGEREST_MPV_CONFIG_DIR");
+    else qputenv("TIGEREST_MPV_CONFIG_DIR", oldRoot);
+  });
+  qputenv("TIGEREST_MPV_CONFIG_DIR", root.path().toUtf8());
+  QObject owner;
+  auto* controller = new MpvController(&owner);
+  controller->init();
+  const auto cleanup = qScopeGuard([&] {
+    mpv_set_wakeup_callback(controller->mpv(), nullptr, nullptr);
+    mpv_terminate_destroy(controller->mpv());
+  });
+  QCOMPARE(controller->getProperty("video-sync").toString(), QStringLiteral("display-resample"));
+  const auto shaders = [&] {
+    QStringList result;
+    for (const auto& value : controller->getProperty("glsl-shaders").toList())
+      if (!value.toString().trimmed().isEmpty()) result.append(value.toString());
+    return result;
+  };
+  const auto defaultShaders = shaders();
+  QCOMPARE(defaultShaders.size(), 3);
+  // A labelled no-op graph exercises real mpv filter retention without loading
+  // an external RIFE engine. The production interpolation model is not involved.
+  QVERIFY(controller->setProperty("vf", enabled ? "@tigerest-rife:lavfi=[null]" : "") >= 0);
+  QVERIFY(controller->setProperty("video-sync", enabled ? "audio" : "display-resample") >= 0);
+  QVERIFY(controller->setProperty("user-data/tigerest/rife-clock-owned", enabled) >= 0);
+  const auto filters = controller->getProperty("vf");
+  const auto sync = controller->getProperty("video-sync");
+  const auto loaded = controller->command(QVariantList{QStringLiteral("load-script"),
+      QStringLiteral(SOURCE_ROOT "/resources/mpv/plugins/profile_menu.lua")});
+  QVERIFY(!loaded.canConvert<ErrorReturn>());
+  QTRY_COMPARE_WITH_TIMEOUT(controller->getProperty("user-data/profile_menu/current").toString(),
+                           QStringLiteral("tigerest-default"), 5000);
+  for (const bool luaMenu : {false, true}) {
+    const auto apply = [&](const QString& profile) {
+      controller->command(QStringList{"change-list", "glsl-shaders", "clr", ""});
+      return controller->command(QStringList{"apply-profile", profile});
+    };
+    QVERIFY(!apply("tigerest-aggressive-test").canConvert<ErrorReturn>());
+    QCOMPARE(shaders().size(), 4);
+    if (luaMenu) {
+      controller->setProperty("user-data/profile_menu/current", "pending");
+      const auto result = controller->command(QStringList{"script-binding", "profile_menu/apply-default"});
+      QVERIFY(!result.canConvert<ErrorReturn>());
+      QTRY_COMPARE_WITH_TIMEOUT(controller->getProperty("user-data/profile_menu/current").toString(),
+                               QStringLiteral("tigerest-default"), 5000);
+    } else {
+      QVERIFY(!apply("tigerest-default").canConvert<ErrorReturn>());
+    }
+    QCOMPARE(shaders(), defaultShaders);
+    QCOMPARE(controller->getProperty("vf"), filters);
+    QCOMPARE(controller->getProperty("video-sync"), sync);
+    QCOMPARE(controller->getProperty("user-data/tigerest/rife-clock-owned").toBool(), enabled);
+  }
 }
 
 QTEST_GUILESS_MAIN(TestMpvConsole)

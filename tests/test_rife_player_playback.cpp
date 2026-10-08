@@ -10,6 +10,7 @@
 #include "core/ProfileManager.h"
 #include "player/PlayerComponent.h"
 #include "player/MpvVideoItem.h"
+#include "player/MpvConfigManager.h"
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include "settings/SettingsComponent.h"
@@ -390,6 +391,8 @@ private slots:
         auto& settings=SettingsComponent::Get();QVERIFY(settings.componentInitialize());
         QVERIFY(InputComponent::Get().componentInitialize());
         settings.setValue(SETTINGS_SECTION_MPV,"configMode","embedded");
+        settings.setValue(SETTINGS_SECTION_MPV,"enableUosc",false);
+        settings.setValue(SETTINGS_SECTION_MPV,"enableDanmaku",false);
         settings.setValue(SETTINGS_SECTION_VIDEO,"aiRife",true);
         settings.setValue(SETTINGS_SECTION_VIDEO,"hardwareDecoding","disabled");
         settings.setValue(SETTINGS_SECTION_VIDEO,"refreshrate.auto_switch",false);
@@ -414,6 +417,7 @@ private slots:
         QVERIFY(!player.selectWindowsRifeModel("missing-model",60));
         QVERIFY(!player.selectWindowsRifeModel("rife-4.25-lite",23));
         QVERIFY(player.selectWindowsRifeModel("rife-4.25-lite",75));
+        QVERIFY(MpvConfigManager::prepare());
         // Match MpvAbstractItem's real worker-thread ownership and teardown.
         QThread worker;auto* controller=new MpvController;
         controller->moveToThread(&worker);
@@ -440,6 +444,18 @@ private slots:
         QVERIFY(player.windowsRifeStatus()["engineCacheHitForItem"].toBool());
         QCOMPARE(playback()["state"].toInt(),2); // Active, observed by the real Player timer.
         QCOMPARE(playback()["factor"].toDouble(),2.5);
+        const auto activeFilters=controller->getProperty("vf");
+        const auto activeClock=controller->getProperty("video-sync");
+        for(const QString& profile:{QStringLiteral("tigerest-aggressive-test"),
+            QStringLiteral("tigerest-default"),QStringLiteral("tigerest-default")}) {
+            const auto frames=playback()["generatedFrames"].toULongLong();
+            QVERIFY(!controller->command(QStringList{"change-list","glsl-shaders","clr",""}).canConvert<ErrorReturn>());
+            QVERIFY(!controller->command(QStringList{"apply-profile",profile}).canConvert<ErrorReturn>());
+            QCOMPARE(controller->getProperty("vf"),activeFilters);
+            QCOMPARE(controller->getProperty("video-sync"),activeClock);
+            QTRY_VERIFY_WITH_TIMEOUT(playback()["generatedFrames"].toULongLong()>frames,5000);
+            QCOMPARE(playback()["state"].toInt(),2);
+        }
         QVERIFY(!player.selectWindowsRifeModel("rife-4.25-heavy",240));
         QVERIFY(playback()["processedPairs"].toULongLong()>0);
         QVERIFY(!playback()["timingAvailable"].toBool());QVERIFY(playback()["p95Ms"].isNull());

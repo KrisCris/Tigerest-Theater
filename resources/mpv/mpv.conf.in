@@ -35,6 +35,8 @@ reset-on-next-file=pause,speed,video-pan-x,video-pan-y,video-zoom
 @TIGEREST_IPC_SERVER@
 # 精确定位时保留送入补帧滤镜的帧，避免 SVP 音画不同步。
 hr-seek-framedrop=no
+# 启动时让视频跟随显示器并重采样音频；运行中的画质切档保留 RIFE 当前接管的时钟。
+video-sync=display-resample
 
 # 默认字幕字体使用用户提供配置中的 Segoe UI；系统缺少该字体时由字体回退机制选择可用字体。
 sub-font=Segoe UI
@@ -96,8 +98,6 @@ cscale-antiring=0.7
 dither-depth=auto
 # 字幕在独立 OSD 阶段合成，不经过视频 shader，保持文字锐度和原始颜色。
 blend-subtitles=no
-# 让视频跟随显示器刷新节奏，并轻微重采样音频以维持音画同步。
-video-sync=display-resample
 # 关闭 mpv 自带时间轴插帧，避免与 SVP 等外部插帧链重复处理。
 interpolation=no
 

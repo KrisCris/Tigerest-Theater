@@ -135,6 +135,8 @@ if(WIN32)
     qt_add_resources(test_rife_player_playback "test_rife_player_playback_resources"
       PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
       FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
+            "${CMAKE_SOURCE_DIR}/resources/mpv/input.conf"
+            "${CMAKE_SOURCE_DIR}/resources/mpv/plugins/stats.lua"
             "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
     target_link_libraries(test_rife_player_playback jmp_core Qt6::Test)
     target_include_directories(test_rife_player_playback PRIVATE ${TEST_INCLUDE_DIRS})
