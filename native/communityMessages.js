@@ -16,6 +16,19 @@
     };
     const body=comment=>comment?.state==='visible'?(comment.body||''):'评论已删除';
     const categories={playback_error:'播放错误',subtitle_missing:'字幕缺失',subtitle_error:'字幕错误',other:'其他问题'};
+    function reportPlatform(){
+        const system=window.api?.system;
+        if(window.tigerestAndroidApi||system?.isAndroid===true)return 'Android';
+        for(const [flag,name]of [['isWindows','Windows'],['isMacos','macOS'],['isLinux','Linux'],['isFreeBSD','FreeBSD']]){
+            if(system?.[flag]===true)return name;
+        }
+        // The native shell identifies Windows as Winnt and macOS as Darwin.
+        // An unrecognized browser must not be reported as Linux by default.
+        const userAgent=navigator.userAgent;
+        for(const [pattern,name]of [[/Android/i,'Android'],[/Windows|Winnt/i,'Windows'],[/Mac|Darwin/i,'macOS'],[/FreeBSD/i,'FreeBSD'],[/Linux/i,'Linux']]){
+            if(pattern.test(userAgent))return name;
+        }
+    }
     function style(){
         if(document.getElementById('tigerest-messages-style'))return;
         const sheet=node('style');sheet.id='tigerest-messages-style';
@@ -47,6 +60,10 @@
         #tigerest-messages .tm-field{display:block;margin:14px 0;line-height:1.7}
         #tigerest-messages textarea,#tigerest-messages select,#tigerest-messages input{box-sizing:border-box;display:block;width:100%;margin-top:6px;padding:10px;border:1px solid #59697e;border-radius:8px;background:#1d293b;color:inherit;font:inherit}
         #tigerest-messages textarea{min-height:140px;resize:vertical}
+        #tigerest-messages .tm-position{border:0;padding:0;margin:14px 0;min-width:0}
+        #tigerest-messages .tm-position legend{padding:0;line-height:1.7}
+        #tigerest-messages .tm-time-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+        #tigerest-messages .tm-time-row .tm-field{min-width:0;margin:6px 0 0}
         @media(max-width:600px){#tigerest-messages .tm-head{padding:18px 16px 14px}#tigerest-messages .tm-content{padding:6px 14px 18px}#tigerest-messages h2{font-size:22px}#tigerest-messages .tm-card{padding:14px}}
         `.replaceAll('#tigerest-messages',':is(#tigerest-messages,#tigerest-report-form,#tigerest-report-detail)');
         (document.head||document.documentElement).appendChild(sheet);
@@ -276,24 +293,36 @@
             const categoryLabel=node('label','问题类型','tm-field');categoryLabel.appendChild(category);
             const description=node('textarea');description.setAttribute('aria-label','报错说明');description.placeholder='请描述问题现象、发生时间或复现方式（10–2000 字）。';
             const descriptionLabel=node('label','问题说明','tm-field');descriptionLabel.appendChild(description);
-            const position=node('input');position.type='number';position.min='0';position.max='604800';position.step='any';position.setAttribute('aria-label','发生时间（秒，可选）');
-            const positionLabel=node('label','发生时间（秒，可选）','tm-field');positionLabel.appendChild(position);
+            const position=node('fieldset',null,'tm-position'),positionRow=node('div',null,'tm-time-row');
+            const minutes=node('input'),seconds=node('input');
+            for(const [input,label,max]of [[minutes,'分钟','10080'],[seconds,'秒','59']]){
+                input.type='number';input.inputMode='numeric';input.min='0';input.max=max;input.step='1';input.placeholder='0';
+                input.setAttribute('aria-label','发生时间：'+label+'（可选）');
+                const field=node('label',label,'tm-field');field.appendChild(input);positionRow.appendChild(field);
+            }
+            position.append(node('legend','发生时间（可选）'),positionRow);
             const submit=button('提交报错',()=>form.requestSubmit()),actions=node('div',null,'tm-toolbar');actions.appendChild(submit);
-            form.append(categoryLabel,descriptionLabel,positionLabel,status,actions);shell.append(head,form);panel.appendChild(shell);
+            form.append(categoryLabel,descriptionLabel,position,status,actions);shell.append(head,form);panel.appendChild(shell);
             const state={panel,key:this.sessionKey,busy:false};this.reportForm=state;
             const valid=()=>this.reportForm===state&&state.key===JSON.stringify(this.session());
             form.addEventListener('submit',async event=>{
                 event.preventDefault();if(!valid()||state.busy||state.saved)return;
-                state.busy=true;submit.disabled=true;category.disabled=description.disabled=position.disabled=true;status.textContent='正在提交报错…';
-                const context={platform:window.tigerestAndroidApi?'Android':/Windows/.test(navigator.userAgent)?'Windows':/Mac/.test(navigator.userAgent)?'macOS':'Linux',clientVersion:window.jmpInfo?.version};
-                if(position.value!=='')context.positionSeconds=Number(position.value);
+                state.busy=true;submit.disabled=true;category.disabled=description.disabled=minutes.disabled=seconds.disabled=true;status.textContent='正在提交报错…';
+                const context={platform:reportPlatform(),clientVersion:window.jmpInfo?.version};
                 try{
+                    if(minutes.value!==''||seconds.value!==''){
+                        const minuteValue=Number(minutes.value||0),secondValue=Number(seconds.value||0);
+                        if(!Number.isInteger(minuteValue)||minuteValue<0||!Number.isInteger(secondValue)||secondValue<0||secondValue>59)throw new Error('请填写非负整数分钟和 0–59 秒。');
+                        const total=minuteValue*60+secondValue;
+                        if(total>604800)throw new Error('发生时间不能超过 7 天。');
+                        context.positionSeconds=total;
+                    }
                     await this.client.sendReport(item.Id,category.value,description.value,context);
-                    if(!valid())return;state.saved=true;category.disabled=description.disabled=position.disabled=true;
+                    if(!valid())return;state.saved=true;category.disabled=description.disabled=minutes.disabled=seconds.disabled=true;
                     status.textContent='报错已提交。管理员确认修复后会在消息中心通知你。';
                     actions.appendChild(button('查看我的报错',()=>{this.closeReportForm();this.open('reports');}));
                 }catch(error){if(valid()){if(error.status===401)this.reset(true);else status.textContent=error.message;}}
-                finally{if(valid()){state.busy=false;submit.disabled=category.disabled=description.disabled=position.disabled=Boolean(state.saved);}}
+                finally{if(valid()){state.busy=false;submit.disabled=category.disabled=description.disabled=minutes.disabled=seconds.disabled=Boolean(state.saved);}}
             });
             panel.addEventListener('cancel',event=>{event.preventDefault();this.closeReportForm();});document.body.appendChild(panel);panel.showModal();description.focus();
         }
