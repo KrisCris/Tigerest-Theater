@@ -1,10 +1,11 @@
 -- Run the real Lua entry points with a deterministic mpv event loop. Network,
 -- OSD submission and media properties are the only substituted boundaries.
 local original_mp = mp
+local unpack = unpack or table.unpack
 local fixture = debug.getinfo(1, 'S').source:sub(2):match('^(.*)[/\\]')
 local root = fixture .. '/../../resources/mpv/plugins/uosc_danmaku/'
 
-local function sandbox(integration)
+local function sandbox(integration, mapping)
     local env = setmetatable({}, {__index = _G})
     env._G = env
     local props = {pause = false, ['time-pos'] = 10, ['display-fps'] = 120,
@@ -80,7 +81,8 @@ local function sandbox(integration)
         if name == 'mp.msg' then return original_mp.msg end
         if name == 'mp.utils' then return require('mp.utils') end
         if name == 'mp.options' then return {read_options = function() end} end
-        if name == 'modules/utils' or name == 'modules/options'
+        if name == 'modules/utils' or name == 'modules/options' or name == 'modules/mapping'
+            or (mapping and name == 'modules/menu')
             or (integration and (name == 'modules/parse' or name == 'modules/guess'
                 or name == 'modules/render' or name == 'apis/dandanplay')) then
             return load_script(name .. '.lua')
@@ -152,11 +154,181 @@ local function sandbox(integration)
         props['user-data/tigerest/emby/season-number'] = 1
         props['user-data/tigerest/emby/episode-number'] = 3
         props['media-title'] = 'Fixture series S01E03'
+        -- Existing matcher regressions explicitly exercise third-party legacy APIs.
+        if not mapping then env.options.api_server = 'http://legacy.example.test' end
     end
     return state
 end
 
 local cases = {}
+local function mapping_reply(s, index, origin, episode, text)
+    s.requests[index](true, {status=0, stdout='HTTP/1.1 200 OK\r\n\r\n' .. require('mp.utils').format_json({
+        success=true, matched=true, match={origin=origin, bangumiId='tmdb-55', episodeId=episode,
+            animeTitle='Chosen work', episodeTitle=text}, danmaku={count=1, comments={{p='10,1,16777215',m=text}}}})})
+end
+function cases.manual_selection_wins_over_delayed_shared_hit()
+    local s = sandbox(true, true)
+    s.emit('file-loaded')
+    s.props['user-data/tigerest/danmaku/mapping-auth-file'] = '/private/header'
+    s.env.io = setmetatable({open=function() return {read=function() return 'Authorization: Bearer fixture-token\n' end,close=function() end} end},{__index=io})
+    s.env.set_episode_id('55555',true,'http://nas.tigerest.top:18443','tmdb-55',s.env.mapping_playback_token())
+    mapping_reply(s,2,'manual','55555','MANUAL_CHOICE')
+    mapping_reply(s,1,'shared','11111','DELAYED_AUTO')
+    assert(s.env.DANMAKU.episode == 'MANUAL_CHOICE' and s.env.DANMAKU.mapping_origin == 'manual',
+        'A delayed auto lookup for the same file must not replace an explicit selection')
+end
+function cases.manual_selection_prevents_delayed_lookup_fallback()
+    local s = sandbox(true, true)
+    s.emit('file-loaded')
+    s.props['user-data/tigerest/danmaku/mapping-auth-file'] = '/private/header'
+    s.env.io = setmetatable({open=function() return {read=function() return 'Authorization: Bearer fixture-token\n' end,close=function() end} end},{__index=io})
+    s.env.set_episode_id('55555',true,'http://nas.tigerest.top:18443','tmdb-55',s.env.mapping_playback_token())
+    mapping_reply(s,2,'manual','55555','MANUAL_CHOICE')
+    s.requests[1](true,{status=0,stdout='HTTP/1.1 200 OK\r\n\r\n{"success":true,"matched":false}'})
+    assert(#s.requests == 2,'An old lookup miss must not start a legacy chain after manual selection')
+end
+function cases.manual_selection_cancels_existing_legacy_chain()
+    local s = sandbox(true, true)
+    s.emit('file-loaded')
+    s.requests[1](true,{status=0,stdout='HTTP/1.1 200 OK\r\n\r\n{"success":true,"matched":false}'})
+    assert(#s.requests == 2,'Expected pending legacy anime lookup')
+    s.props['user-data/tigerest/danmaku/mapping-auth-file'] = '/private/header'
+    s.env.io = setmetatable({open=function() return {read=function() return 'Authorization: Bearer fixture-token\n' end,close=function() end} end},{__index=io})
+    s.env.set_episode_id('55555',true,'http://nas.tigerest.top:18443','tmdb-55',s.env.mapping_playback_token())
+    mapping_reply(s,3,'manual','55555','MANUAL_CHOICE')
+    s.respond(2,{animes={{type='tvseries',animeTitle='Fixture series',bangumiId='42'}}})
+    assert(#s.requests == 3,'Pending legacy matching must not resume after an explicit choice')
+    assert(s.env.DANMAKU.episode == 'MANUAL_CHOICE','The existing legacy chain must preserve the manual choice')
+end
+function cases.anime_search_selection_keeps_original_playback_identity()
+    local s = sandbox(true,true)
+    s.env.uosc_available = true
+    s.env.update_menu_uosc = function(_,_,items) return require('mp.utils').format_json({items=items}) end
+    s.env.get_animes('Fixture series')
+    s.respond(1,{animes={{animeTitle='Work A catalog',bangumiId='tmdb-11'}}})
+    local menu = require('mp.utils').parse_json(s.env.latest_menu_anime)
+    local row = menu.items[1].value
+    s.emit('on_unload')
+    s.props.path = 'https://example.test/replacement.mkv'
+    s.props['user-data/tigerest/emby/series-name'] = 'Work B'
+    s.messages['search-episodes-event'](unpack(row,4))
+    assert(#s.requests == 1,'A cached anime selection from work A must not fetch or calibrate against work B')
+    assert(s.env.latest_menu_anime == nil or s.env.latest_menu_anime == '' or #s.env.latest_menu_anime == 0,
+        'Unload must invalidate cached anime menus')
+end
+function cases.shared_lookup_precedes_local_history_and_uses_complete_response()
+    local s = sandbox(true, true)
+    s.set_history({show_danmaku = true, ['Fixture series Season1'] = {
+        fname = 'Fixture series S01E03', episodeNumber = 3, episodeId = 123,
+        animeTitle = 'Wrong previous title', episodeTitle = 'Wrong previous episode'}})
+    s.emit('file-loaded')
+    local args = s.request_args[1]
+    assert(args and args[#args] == 'http://nas.tigerest.top:18443/api/tigerest/v1/danmaku',
+        'Every playback must look up shared mapping before reusing history')
+    local body
+    for i, value in ipairs(args) do if value == '--data-binary' then body = require('mp.utils').parse_json(args[i + 1]) end end
+    assert(body and body.source.title == 'Fixture series' and body.source.season == 1 and body.source.episode == 3,
+        'Lookup must retain exact original metadata identity')
+    assert(not body.selection, 'Automatic lookup cannot calibrate')
+    s.requests[1](true, {status = 0, stdout = 'HTTP/1.1 200 OK\r\n\r\n' .. require('mp.utils').format_json({
+        success = true, matched = true, match = {origin = 'shared', bangumiId = 'tmdb-42',
+            episodeId = '999999999', animeTitle = 'Catalog title', episodeTitle = 'Catalog episode'},
+        danmaku = {count = 1, comments = {{p = '10,1,16777215', m = 'Shared response'}}}})})
+    assert(#s.requests == 1 and s.env.COMMENTS and #s.env.COMMENTS == 1,
+        'A shared hit must load the full response without another GET or history matching')
+    assert(s.env.DANMAKU.mapping_origin == 'shared', 'Shared provenance must remain visible')
+end
+function cases.shared_lookup_miss_falls_back_and_stale_response_is_discarded()
+    local s = sandbox(true, true)
+    s.emit('file-loaded')
+    assert(s.request_args[1][#s.request_args[1]]:find('/api/tigerest/v1/danmaku', 1, true), 'Expected shared lookup')
+    s.requests[1](true, {status = 0, stdout = 'HTTP/1.1 200 OK\r\n\r\n{"success":true,"matched":false,"reason":"no-mapping"}'})
+    assert(s.request_args[2][#s.request_args[2]]:find('/search/anime?', 1, true), 'A mapping miss must retain legacy matching')
+    local stale = sandbox(true, true)
+    stale.emit('file-loaded'); stale.emit('on_unload')
+    stale.props['user-data/tigerest/emby/episode-number'] = 4
+    stale.requests[1](true, {status = 0, stdout = 'HTTP/1.1 200 OK\r\n\r\n{"success":true,"matched":false}'})
+    assert(#stale.requests == 1 and stale.env.COMMENTS == nil, 'Stale lookup must neither load nor start fallback for replacement media')
+end
+local function mapping_header(s)
+    s.props['user-data/tigerest/danmaku/mapping-auth-file'] = '/private/fixture-header'
+    s.env.io = setmetatable({open = function(path)
+        assert(path == '/private/fixture-header', 'Only the private header may be opened')
+        return {read=function() return 'Authorization: Bearer fixture-private-token\n' end, close=function() end}
+    end}, {__index=io})
+end
+function cases.explicit_selection_uses_original_identity_and_private_header_reference()
+    local s = sandbox(true, true); mapping_header(s)
+    s.env.DANMAKU.anime, s.env.DANMAKU.episode = 'Selected catalog title', 'Catalog E5'
+    s.env.set_episode_id('99000005', true, 'http://nas.tigerest.top:18443', 'tmdb-99', s.env.mapping_playback_token())
+    local args, body = s.request_args[1]
+    for i, value in ipairs(args) do
+        assert(not value:find('fixture-private-token', 1, true), 'Credential cannot appear in subprocess arguments')
+        if value == '--data-binary' then body = require('mp.utils').parse_json(args[i + 1]) end
+    end
+    assert(body.source.title == 'Fixture series' and body.source.episode == 3 and body.source.season == 1,
+        'Manual selection must preserve the original source, even when selected catalog numbering differs')
+    assert(body.selection.bangumiId == 'tmdb-99' and body.selection.episodeId == '99000005', 'Both selected IDs must travel unchanged')
+    local header = false; for _, value in ipairs(args) do if value == '@/private/fixture-header' then header = true end end
+    assert(header, 'curl receives only a reference to the private header')
+    s.requests[1](true, {status=0, stdout='HTTP/1.1 200 OK\r\n\r\n' .. require('mp.utils').format_json({success=true,matched=true,
+        match={origin='manual',episodeId='99000005',bangumiId='tmdb-99',animeTitle='Selected catalog title',episodeTitle='Catalog E5'},
+        danmaku={count=1,comments={{p='10,1,16777215',m='Manual response'}}}})})
+    assert(#s.requests == 1 and #s.env.COMMENTS == 1 and s.env.DANMAKU.mapping_origin == 'manual',
+        'Successful manual POST replaces the GET entirely')
+end
+function cases.manual_post_failure_loads_exact_chosen_id_and_reports_unsaved_mapping()
+    local s = sandbox(true, true); mapping_header(s)
+    local notice
+    s.env.show_message = function(value) notice = value end
+    s.env.set_episode_id('99000005', true, 'http://nas.tigerest.top:18443', 'tmdb-99', s.env.mapping_playback_token())
+    s.requests[1](true, {status=0, stdout='HTTP/1.1 503 Busy\r\n\r\n{"success":false}'})
+    assert(s.request_args[2][#s.request_args[2]]:find('/comment/99000005?',1,true), 'Failure must fetch the chosen episode without ID arithmetic')
+    s.respond(2,{count=1,comments={{p='10,1,16777215',m='Legacy fallback'}}})
+    assert(notice == '弹幕已加载，但共享匹配未保存', 'Fallback must not imply that calibration was saved')
+end
+function cases.no_token_third_party_unknown_season_and_stale_manual_are_legacy_only()
+    local no_token = sandbox(true, true)
+    no_token.env.set_episode_id('99000005',true,'http://nas.tigerest.top:18443','99',no_token.env.mapping_playback_token())
+    assert(no_token.request_args[1][#no_token.request_args[1]]:find('/comment/99000005?',1,true), 'No token selects legacy GET')
+    local third = sandbox(true, true); mapping_header(third)
+    third.env.set_episode_id('99000005',true,'https://third.example.test','99',third.env.mapping_playback_token())
+    assert(third.request_args[1][#third.request_args[1]]:find('https://third.example.test/api/v2/comment/',1,true), 'Third parties never receive the mapping protocol')
+    for _, season in ipairs({-1,0,1.5,1001}) do
+        local unknown = sandbox(true, true); unknown.props['user-data/tigerest/emby/season-number'] = season
+        unknown.emit('file-loaded')
+        assert(not unknown.request_args[1][#unknown.request_args[1]]:find('/tigerest/',1,true), 'Unknown seasons and specials must not be guessed')
+    end
+    local stale = sandbox(true,true); mapping_header(stale)
+    local token = stale.env.mapping_playback_token(); stale.emit('on_unload')
+    stale.env.set_episode_id('99000005',true,'http://nas.tigerest.top:18443','99',token)
+    assert(#stale.requests == 0, 'Stale menu selection must never calibrate the replacement playback')
+end
+function cases.rate_limit_cooldown_survives_playback_change()
+    local s = sandbox(true,true)
+    s.emit('file-loaded')
+    s.requests[1](true,{status=0,stdout='HTTP/1.1 429 Too Many Requests\r\nRetry-After: 120\r\n\r\n{"success":false}'})
+    s.emit('on_unload'); s.props['user-data/tigerest/emby/episode-number'] = 4
+    local count = #s.requests
+    s.env.auto_load_danmaku(s.props.path,'Fixture series Season1','Fixture series S01E04',4)
+    assert(#s.requests == count + 1 and not s.request_args[#s.requests][#s.request_args[#s.requests]]:find('/tigerest/',1,true),
+        'A new playback during Retry-After must skip another mapping POST')
+end
+function cases.manual_menu_carries_catalog_and_original_generation_to_selection()
+    local s = sandbox(true,true); mapping_header(s)
+    s.env.uosc_available = true
+    local items
+    s.env.update_menu_uosc = function(_, _, value) if type(value) == 'table' then items = value end end
+    s.env.get_episodes('Chosen catalog title','tmdb-99','http://nas.tigerest.top:18443',s.env.mapping_playback_token())
+    s.respond(1,{bangumi={episodes={{episodeId='99000005',episodeTitle='Catalog E5',episodeNumber=5}}}})
+    local event = items[2].value
+    assert(event[8] == 'tmdb-99' and event[9] == s.env.mapping_playback_token(), 'Menu must preserve both catalog ID and playback identity')
+    s.messages['load-danmaku'](event[4],event[5],event[6],event[7],event[8],event[9])
+    assert(s.request_args[2][#s.request_args[2]]:find('/tigerest/',1,true), 'Real manual event must call calibration POST')
+    s.emit('on_unload')
+    s.messages['load-danmaku'](event[4],event[5],event[6],event[7],event[8],event[9])
+    assert(#s.requests == 2, 'Old menu events cannot load or calibrate a replacement video')
+end
 function cases.rife_clock_owner_survives_comment_and_window_transitions()
     local s = sandbox()
     s.props['video-sync'] = 'audio'

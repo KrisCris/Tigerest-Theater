@@ -3,6 +3,7 @@
 //
 
 #include "Log.h"
+#include "ReportDiagnostics.h"
 
 #include <QtQml>
 #include <QGuiApplication>
@@ -23,6 +24,60 @@ QHash<QtMsgType, int> messageLevelValue({{QtDebugMsg, 0}, {QtInfoMsg, 1}, {QtWar
 static QMutex logMutex;
 static QFile* logFile = nullptr;
 static QString tempLogPath;
+static QTemporaryFile* reportLogFile = nullptr;
+static QString logProfileDir;
+static QString reportScope;
+static QString reportScopeProfile;
+static bool reportLogTruncated = false;
+
+void Log::SetReportDiagnosticsScope(const QString& key)
+{
+  QMutexLocker lock(&logMutex);
+  const auto profile = ProfileManager::activeProfile().logDir();
+  if(key == reportScope && profile == reportScopeProfile) return;
+  // The opaque session key is kept in memory only, never written to either log.
+  reportScope = key.size() <= 256 ? key : QString();
+  reportScopeProfile = profile;
+  reportLogTruncated = false;
+  if(reportLogFile && reportLogFile->isOpen() && (!reportLogFile->resize(0) || !reportLogFile->seek(0)))
+  { delete reportLogFile; reportLogFile = nullptr; }
+}
+
+QVariantMap Log::CollectReportDiagnostics()
+{
+  QMutexLocker lock(&logMutex);
+  if(reportScope.isEmpty() || !reportLogFile || !reportLogFile->isOpen() ||
+     logProfileDir != reportScopeProfile ||
+     reportScopeProfile != ProfileManager::activeProfile().logDir()) return {};
+  if(!reportLogFile->flush()) return {};
+  auto result = ReportDiagnostics::collectFile(reportLogFile->fileName(), 0);
+  if(!result.isEmpty() && reportLogTruncated) result.insert(QStringLiteral("truncated"), true);
+  return result;
+}
+
+static void appendReportRecord(QtMsgType type, const QMessageLogContext& context, const QString& msg)
+{
+  if(reportScope.isEmpty() || !reportLogFile || !reportLogFile->isOpen() || logProfileDir != reportScopeProfile ||
+     reportScopeProfile != ProfileManager::activeProfile().logDir()) return;
+  // Sanitize one actual Qt message before storage. Never reconstruct untrusted
+  // multiline message boundaries from raw log text at the WebChannel boundary.
+  const auto formatted = qFormatLogMessage(type, context, msg);
+  const auto bytes = ReportDiagnostics::sanitize(formatted).toUtf8() + '\n';
+  if(formatted.size() > ReportDiagnostics::MaxRecordChars) reportLogTruncated = true;
+  if(reportLogFile->size() + bytes.size() > ReportDiagnostics::MaxReadBytes)
+  {
+    const auto keep = ReportDiagnostics::MaxReadBytes - bytes.size();
+    reportLogFile->seek(qMax(qint64(0), reportLogFile->size() - keep));
+    auto tail = reportLogFile->read(keep);
+    const auto newline = tail.indexOf('\n');
+    tail = newline < 0 ? QByteArray() : tail.mid(newline + 1);
+    if(!reportLogFile->resize(0) || !reportLogFile->seek(0) || reportLogFile->write(tail) != tail.size())
+    { delete reportLogFile; reportLogFile = nullptr; return; }
+    reportLogTruncated = true;
+  }
+  if(!reportLogFile->seek(reportLogFile->size()) || reportLogFile->write(bytes) != bytes.size() || !reportLogFile->flush())
+  { delete reportLogFile; reportLogFile = nullptr; }
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // adapted from https://stackoverflow.com/a/62390212
@@ -33,6 +88,10 @@ static void qtMessageOutput(QtMsgType type, const QMessageLogContext& context, c
   // Check if message meets any output threshold
   bool shouldOutputToTerminal = messageLevelValue[type] >= terminalLogLevel;
   bool shouldOutputToFile = messageLevelValue[type] >= fileLogLevel;
+
+  // Match the active logging policy; verbose mpv messages normally suppressed
+  // at info level must not introduce synchronous diagnostic file I/O.
+  if (shouldOutputToFile) appendReportRecord(type, context, msg);
 
   if (!shouldOutputToTerminal && !shouldOutputToFile && type != QtFatalMsg)
     return;
@@ -158,6 +217,13 @@ void Log::Init()
 
   // Create unique log file for this instance
   QString logDir = getLogDir();
+  logProfileDir = logDir;
+  reportScope.clear(); reportScopeProfile.clear(); reportLogTruncated = false;
+  delete reportLogFile;
+  reportLogFile = new QTemporaryFile(logDir + "/report-diagnostics-XXXXXX.tmp");
+  // This file contains only per-message redacted data. It is bounded, ephemeral,
+  // deleted at cleanup, and previous process/account data is never imported.
+  if(!reportLogFile->open()) { delete reportLogFile; reportLogFile = nullptr; }
   // Upgrade old logs in place before rotation. Earlier versions covered URL
   // query tokens but not libmpv's colon-form HTTP header diagnostics.
   censorExistingLogs(logDir);
@@ -238,6 +304,9 @@ void Log::Cleanup()
 
   delete logFile;
   logFile = nullptr;
+  delete reportLogFile;
+  reportLogFile = nullptr;
+  reportScope.clear(); reportScopeProfile.clear(); logProfileDir.clear(); reportLogTruncated = false;
 
   if (!tempLogPath.isEmpty())
   {

@@ -1126,3 +1126,13 @@ blacklist_path=
 
 - [slqy123/uosc_danmaku](https://github.com/slqy123/uosc_danmaku) 本项目的fork版本，实现了通过dandanplay api发送弹幕的功能，由于版本的兼容性以及功能的易用性问题未被合并，具体讨论请参阅 [#220](https://github.com/Tony15246/uosc_danmaku/pull/220)
 - ~~[Loukyuu1120/uosc_danmaku](https://github.com/Loukyuu1120/uosc_danmaku) 本项目的fork版本，实现了自定义多个 api_servers 与 弹幕来源选择菜单 功能，具体讨论请参阅 [#282](https://github.com/Tony15246/uosc_danmaku/issues/282)~~ 相关功能主仓库已实现
+
+## Tigerest 共享匹配与私有写入配置
+
+Tigerest 播放器会在每个新播放项上，先以原作品元数据的标题、季度、集数读取自家 NAS 的共享匹配；命中后直接使用完整弹幕响应。未知季度、特别篇、第三方服务器和不可用服务继续使用原匹配流程。共享命中会显示“来自共享匹配”，弹幕菜单仍可手动纠正。
+
+写入令牌默认不存在。桌面端可在当前播放器 profile 数据目录下创建 `private/danmaku-mapping-authorization.txt`，内容只有一行 `Authorization: Bearer <NAS 管理者提供的 mappingWriteToken>`。不要把这个文件加入 MPV 公共配置、发行包或设置导出；限制文件权限为当前用户。播放器只向 Lua 传递此私有文件的路径，curl 使用 `--header @文件路径`，令牌值不进入命令参数或日志。
+
+Android 端在播放器“弹幕”菜单中选择“配置共享匹配写入令牌”，输入 NAS 管理者提供的令牌。留空保存会清除。该值保存在应用私有偏好中，系统备份已禁用，网页桥、普通设置和 bootstrap 均无法读取它。
+
+只有手动选择具体弹幕集数时才保存校准，同时携带作品 ID 和剧集 ID，并保留原视频身份。保存失败时仍加载所选剧集的旧接口弹幕并提示“弹幕已加载，但共享匹配未保存”；未配置令牌时直接使用旧 GET。不会按弹幕 ID 加减来推算后续集数。

@@ -12,6 +12,7 @@ Sha256 = require("modules/hash")
 
 require("modules/options")
 require("modules/utils")
+require("modules/mapping")
 require("modules/parse")
 require("modules/guess")
 require('modules/render')
@@ -320,7 +321,8 @@ function write_history(episodeid, api_server)
     local fname = mp.get_property('filename/no-ext')
     local episodeNumber = 0
     if episodeid then
-        episodeNumber = tonumber(episodeid) % 1000
+        local _, _, source_episode = parse_title()
+        episodeNumber = tonumber(source_episode) or 0
     elseif DANMAKU.extra then
         episodeNumber = DANMAKU.extra.episodenum
     end
@@ -603,6 +605,10 @@ end
 
 -- 自动加载上次匹配的弹幕
 function auto_load_danmaku(path, dir, filename, number)
+    lookup_shared_danmaku(function() auto_load_danmaku_legacy(path, dir, filename, number) end)
+end
+
+function auto_load_danmaku_legacy(path, dir, filename, number)
     if dir ~= nil then
         local history_json = read_file(HISTORY_PATH)
         if history_json ~= nil then
@@ -620,13 +626,9 @@ function auto_load_danmaku(path, dir, filename, number)
                 local history_api_server = resolve_api_server(history_dir.api_server)
                 local playing_number = nil
 
-                -- A continuous Emby season may span several independent anime
-                -- releases. Reuse a manual match for the same file, but resolve
-                -- another dated episode instead of assuming contiguous IDs.
-                if filename ~= history_fname and history_id
-                    and mp.get_property_bool('user-data/tigerest/emby/valid', false)
-                    and tostring(mp.get_property_native('user-data/tigerest/emby/premiere-date', ''))
-                        :match('^%d%d%d%d%-%d%d%-%d%d') then
+                -- Episode IDs are opaque catalog identifiers. Reuse a manual
+                -- match for the same file; another file needs fresh matching.
+                if filename ~= history_fname and history_id then
                     get_danmaku_with_hash(filename, path)
                     return
                 end
@@ -651,8 +653,7 @@ function auto_load_danmaku(path, dir, filename, number)
                     show_message("自动加载上次匹配的弹幕", 3)
                     msg.verbose("自动加载上次匹配的弹幕")
                     if history_id then
-                        local tmp_id = tostring(x + history_id)
-                        set_episode_id(tmp_id)
+                        set_episode_id(tostring(history_id))
                     elseif history_extra then
                         local episodenum = history_extra.episodenum + x
                         get_details(history_extra.class, history_extra.id, history_extra.site,

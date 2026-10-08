@@ -6,6 +6,7 @@
 #define PLEXMEDIAPLAYER_LOG_H
 
 #include <QString>
+#include <QVariantMap>
 
 namespace Log
 {
@@ -16,6 +17,8 @@ namespace Log
   void CensorAuthTokens(QString& msg);
   void SetLogLevel(const QString& level);
   int ParseLogLevel(const QString& level);
+  void SetReportDiagnosticsScope(const QString& key);
+  QVariantMap CollectReportDiagnostics();
 }
 
 #endif //PLEXMEDIAPLAYER_LOG_H

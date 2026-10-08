@@ -17,6 +17,7 @@
 #include "utils/Log.h"
 #include "ComponentManager.h"
 #include "settings/SettingsSection.h"
+#include "core/ProfileManager.h"
 
 #include "MpvVideoItem.h"
 #include "PlaybackIdentity.h"
@@ -29,7 +30,6 @@
 #include "interpolation/windows/RifeExtensionManager.h"
 #include <QFileDialog>
 #include "Version.h"
-#include "core/ProfileManager.h"
 #endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
 #include "interpolation/FrameInterpolationController.h"
@@ -716,6 +716,12 @@ bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
 
   const QString identityRoot = QStringLiteral("user-data/tigerest/emby/");
   auto& settings = SettingsComponent::Get();
+  // Only a private filename is published; the credential is never an MPV option,
+  // setting, log field or web/bootstrap property. Absence enables read-only mapping.
+  setIdentityProperty(QStringLiteral("user-data/tigerest/danmaku/mapping-auth-file"),
+    ProfileManager::Get().hasActiveProfile()
+      ? ProfileManager::activeProfile().dataDir(QStringLiteral("private/danmaku-mapping-authorization.txt"))
+      : QString());
   setIdentityProperty(QStringLiteral("user-data/tigerest/danmaku/api-server"),
     MpvConfigManager::danmakuApiServer(
       settings.value(SETTINGS_SECTION_MAIN, "userWebClient").toString(),

@@ -108,6 +108,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
             else if(savedInstanceState != null) { webHost.restore(savedInstanceState) }
             else webHost.openSaved()
         } catch(error: Exception) {
+            DiagnosticsLog.app.record("error","Activity initialization failed: ${error.javaClass.simpleName}")
             setContentView(TextView(this).apply { setTextColor(Color.WHITE); setBackgroundColor(Color.rgb(16,16,16)); textSize = 18f; gravity = Gravity.CENTER; text = "客户端初始化失败\n${error.message}" })
             android.util.Log.e("TigerestAndroid","Initialization failed",error)
         }
@@ -175,9 +176,9 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     override fun onDisplayAdded(displayId: Int) { updateWindowMetrics() }
     override fun onDisplayRemoved(displayId: Int) { updateWindowMetrics() }
     override fun onDisplayChanged(displayId: Int) { updateWindowMetrics() }
-    override fun onResume() { super.onResume(); updates.resumed(this) }
-    override fun onPause() { if(::controls.isInitialized) controls.cancelGesture(); updates.paused(this); super.onPause() }
-    override fun onStop() { super.onStop(); if(::webHost.isInitialized) { controls.playbackHidden();model.player.background() } }
+    override fun onResume() { super.onResume(); DiagnosticsLog.app.record("info","Activity resumed"); updates.resumed(this) }
+    override fun onPause() { DiagnosticsLog.app.record("info","Activity paused"); if(::controls.isInitialized) controls.cancelGesture(); updates.paused(this); super.onPause() }
+    override fun onStop() { super.onStop(); DiagnosticsLog.app.record("info","Activity stopped"); if(::webHost.isInitialized) { controls.playbackHidden();model.player.background() } }
     override fun onSaveInstanceState(outState: Bundle) { if(::webHost.isInitialized) webHost.view.saveState(outState); super.onSaveInstanceState(outState) }
     override fun onDestroy() { if(updates.engine.changed === updateListener) updates.engine.changed = {}; updates.paused(this); getSystemService(DisplayManager::class.java).unregisterDisplayListener(this); webFileCallback?.onReceiveValue(null); if(::bridge.isInitialized) bridge.close(); if(::webHost.isInitialized) webHost.close(); super.onDestroy() }
 }

@@ -831,6 +831,18 @@ QString SystemComponent::getUserAgent()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
+bool SystemComponent::setReportDiagnosticsScope(const QString& key)
+{
+  if(key.size() > 256) { Log::SetReportDiagnosticsScope(QString()); return false; }
+  Log::SetReportDiagnosticsScope(key);
+  return true;
+}
+
+QVariantMap SystemComponent::collectReportDiagnostics() const
+{
+  return Log::CollectReportDiagnostics();
+}
+
 QString SystemComponent::debugInformation()
 {
   QString debugInfo;

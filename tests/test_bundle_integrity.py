@@ -119,6 +119,14 @@ def run_portable_bundle_script(
         source_dir.mkdir()
         binary_dir.mkdir()
         (source_dir / "app.exe").write_bytes(b"application")
+        # A staged app may have been opened in portable mode. Packaging must
+        # never export user state or a privately provisioned mapping credential.
+        for relative in ("data/profiles/user/private/danmaku-mapping-authorization.txt",
+                         "profiles/user/private/danmaku-mapping-authorization.txt",
+                         "logs/report-diagnostics-fixture.tmp"):
+            private_file = source_dir / relative
+            private_file.parent.mkdir(parents=True, exist_ok=True)
+            private_file.write_bytes(b"synthetic private state")
         if runtime_files is not None:
             runtime_dir.mkdir()
             for filename, contents in runtime_files.items():

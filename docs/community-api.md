@@ -18,7 +18,7 @@ X-Emby-User-Id: <登录响应的 User.Id>
 
 浏览器客户端的 Origin 必须在服务端配置中逐项允许；原生 HTTP 客户端不需要 Origin。所有数据读取和头像下载也需要认证，头像请求不要把 Token 写入 URL。客户端的日志、异常提示和剪贴板示例不能包含 Token。
 
-成功返回 `{ "data": ..., "requestId": "..." }`，失败返回 `{ "error": { "code": "...", "message": "..." }, "requestId": "..." }`。头像成功返回图片字节。时间使用 UTC ISO 8601；禁言结束时间 `mutedUntil` 使用 Unix 毫秒。
+成功返回 `{ "data": ..., "requestId": "..." }`，失败返回 `{ "error": { "code": "...", "message": "..." }, "requestId": "..." }`。头像成功返回图片字节，诊断日志下载成功返回纯文本。时间使用 UTC ISO 8601；禁言结束时间 `mutedUntil` 使用 Unix 毫秒。
 
 ## 详情页话题
 
@@ -150,11 +150,11 @@ unreadOnly 仅允许 true/false，省略为 false。unreadCount 是未读且回�
 
 category 允许 playback_error（播放错误）、subtitle_missing（字幕缺失）、subtitle_error（字幕错误）、other（其他）。description 必填，trim 后 10–2000 个 Unicode 字符、纯文本，可换行；提示用户补充现象、复现方式、字幕语言或发生时间。服务端只接受当前用户可访问的 Movie、Series、Episode，单集同时验证父剧集；媒体名称与位置由服务端确定。
 
-context 可省略，字段也可逐项省略：positionSeconds 为 0–604800 的有限数字；platform/clientVersion 为 1–64 字符；mediaSourceId 为 1–128 字符；subtitleStreamIndex 为 -1–1000 的整数，-1 表示未选择。信息只作为排查线索。不要提交认证头、密码、播放 URL、文件路径或日志；这些不是合法字段。客户端展示说明及修复结果时不得解释 HTML。
+context 可省略，字段也可逐项省略：positionSeconds 为 0–604800 的有限数字；platform/clientVersion 为 1–64 字符；mediaSourceId 为 1–128 字符；subtitleStreamIndex 为 -1–1000 的整数，-1 表示未选择。信息只作为排查线索。platform 优先采用客户端原生平台信息，规范值 Windows、macOS、Android、Linux、FreeBSD，无法确定时省略；后台显示此字段。填写“12 分 30 秒”时 positionSeconds 提交数值 750。不要在 context 提交认证头、密码、播放 URL、文件路径或日志；这些不是合法字段。日志使用下面的独立附件接口。客户端展示说明及修复结果时不得解释 HTML。
 
 同一次提交和网络重试复用 clientRequestId；首次 201、重试 200，返回 `{report,replayed}`。按作者永久去重，同 ID 修改内容或目标返回 409 IDEMPOTENCY_CONFLICT。新提交每用户最多 5 条/分钟，间隔至少 3 秒；重试不占新额度。报错与评论发送分别计数，评论禁言不会阻止报错。
 
-`GET /me/reports` 支持 status=all/open/resolved，默认 all，新到旧分页；详情只接受本人的 reportId。他人或不存在的记录返回 404。report 字段为 `{id,category,description,context,status,createdAt,resolvedAt,resolution,location,availability}`：open 为待处理，resolved 为已修复；待处理时 resolvedAt/resolution=null。resolution 是管理员发给用户的修复说明。
+`GET /me/reports` 支持 status=all/open/resolved，默认 all，新到旧分页；详情只接受本人的 reportId。他人或不存在的记录返回 404。report 字段为 `{id,category,description,context,status,createdAt,resolvedAt,resolution,location,availability,diagnostics}`：open 为待处理，resolved 为已修复；待处理时 resolvedAt/resolution=null。resolution 是管理员发给用户的修复说明。diagnostics 无附件时为 null，有附件时只含下述元数据；修复消息中的 report 同样返回元数据，列表和通知均不返回日志正文。
 
 报错位置对应确切的原始 Emby 条目，字段与评论 location 中的媒体部分相同：embyServerId、itemId、scope、title、workTitle、seasonNumber、episodeNumber、canNavigate。没有 topicId/rootId/commentId，按 itemId 打开媒体即可。媒体下架或失去访问权限时 location=null、availability=unavailable；用户仍可查看自己提交的说明和修复结果。
 
@@ -172,6 +172,75 @@ context 可省略，字段也可逐项省略：positionSeconds 为 0–604800 �
 `POST /me/messages` 同样二选一提交 messageIds（1–50 个，可混合两类）或列表返回的 readThroughToken。未知/他人 ID 整批拒绝、无部分更新；重复标记幂等。快照令牌绑定账号、接口、type 筛选，30 分钟有效；只标记该筛选与快照内消息，之后到达的新消息仍未读。type=all 的令牌用于两类全部已读。
 
 旧 `/me/replies` 保留原响应形状和仅回复的计数，不返回修复消息，拒绝修复消息 ID。新旧接口读取同一回复的同一个消息 ID 和已读状态；任一端标记另一端同步。两组 readThroughToken 不通用，客户端统一消息中心不要把两组未读数相加或重复展示回复。切换接口、type、unreadOnly 或账号时重新从第一页读取；503 不回写空列表/零未读。
+
+## 报错诊断日志附件（2026-10-08）
+
+现有 `POST /reports` 请求、认证、16 KiB 请求体上限、限流及幂等规则保持兼容。先提交报错取得 report.id，再单独上传附件；附件失败不能把已提交的报错显示为提交失败，也不能重新创建报错。附件上传不产生额外通知，不改变修复通知及已读状态。
+
+| 方法、路径 | 权限与请求 | 成功返回 |
+|---|---|---|
+| PUT `/reports/{reportId}/diagnostics` | 本人报错；三个 Emby 身份头，无需 Item 头；无查询参数 | 首次 201，幂等重试 200，`{diagnostics,replayed}` |
+| GET `/me/reports/{reportId}/diagnostics` | 本人报错；三个 Emby 身份头，无需 Item 头；无查询参数 | 200，UTF-8 纯文本下载 |
+
+仅接收 `application/json` 或 `application/json; charset=utf-8`，不接受 gzip 等内容编码。上传对象只接受且必须包含以下四个字段：
+
+```json
+{
+  "clientRequestId": "附件专用 UUID，在重试中复用",
+  "capturedAt": "2026-10-08T08:00:00Z",
+  "truncated": true,
+  "logText": "已经客户端脱敏的诊断信息和相关日志"
+}
+```
+
+clientRequestId 为 UUID；capturedAt 为合法 UTC ISO 8601，必须以 Z 结尾，允许 1–3 位毫秒；truncated 必须为布尔值；logText 为非空纯文本，允许换行、回车和制表符，不允许其他控制字符、NUL 或无效 Unicode。只接收文本，不接收 ZIP、文件上传或让服务端读取任意文件路径的参数。JSON 原始请求体最多 **8 MiB（8388608 字节）**；解码后 logText 按 **UTF-8 字节**计数，客户端脱敏后和服务端再次脱敏后均不得超过 **1 MiB（1048576 字节）**。
+
+成功 data 示例：
+
+```json
+{
+  "diagnostics": {
+    "id": "服务端附件 UUID",
+    "createdAt": "2026-10-08T08:00:01.000Z",
+    "capturedAt": "2026-10-08T08:00:00.000Z",
+    "expiresAt": "2026-11-07T08:00:01.000Z",
+    "bytes": 24000,
+    "truncated": true,
+    "availability": "available"
+  },
+  "replayed": false
+}
+```
+
+bytes 是实际保存的脱敏后文本字节数。每条报错最多一个不可替换附件。相同用户、报错、附件 clientRequestId 及相同 capturedAt/truncated/logText 重试返回 200、replayed=true；UUID 大小写和等价毫秒表示会规范化。相同 ID 修改上述内容返回 409 `IDEMPOTENCY_CONFLICT`，即使修改部分会被脱敏也算冲突；报错已有其他 ID 的附件返回 409 `DIAGNOSTICS_ALREADY_EXISTS`。到期及恢复备份后仍保留幂等记录，相同请求返回已有 expired 元数据，不重新保存正文。
+
+新附件每用户最多 5 次/分钟，间隔至少 3 秒，使用与报错相同的限额值、独立计数，所以报错成功后可以立即上传；成功附件的幂等重试不占新附件额度。IP、读取和失败认证的现有限额仍适用；429 携带 Retry-After 秒数。
+
+| 状态 / code | 含义与客户端处理 |
+|---|---|
+| 400 `INVALID_REQUEST` | UUID、时间、类型、空正文、控制字符、无效 UTF-8 或非白名单字段错误 |
+| 401 `AUTH_REQUIRED` / `AUTH_INVALID` | 缺少或失效身份，停止上传并清除该账号日志快照 |
+| 403 `SERVER_NOT_ALLOWED` / `FORBIDDEN` | 不受支持的身份服务或 Origin/后台权限不允许 |
+| 404 `NOT_FOUND` | 报错不存在、属于他人，或该报错尚无附件；不泄露是否存在他人报错 |
+| 409 `IDEMPOTENCY_CONFLICT` / `DIAGNOSTICS_ALREADY_EXISTS` | 不修改旧附件，不自动换 UUID 重传 |
+| 410 `DIAGNOSTICS_EXPIRED` | 正文已到期或备份恢复后无正文；保留报错与修复结果 |
+| 413 `DIAGNOSTICS_TOO_LARGE` | JSON 超过 8 MiB，或解码/脱敏后的文本超过 1 MiB |
+| 415 `UNSUPPORTED_MEDIA_TYPE` | 不是允许的 UTF-8 JSON 或使用了内容压缩 |
+| 429 `RATE_LIMITED` | 按 Retry-After 等待，复用同一快照与 UUID |
+| 503 `DIAGNOSTICS_STORAGE_UNAVAILABLE` | 附件存储暂不可用，报错仍已提交；只重试附件 |
+| 503 `AUTH_UNAVAILABLE` / `COMMUNITY_UNAVAILABLE` | 身份/服务暂不可用；只重试附件，不重新提交报错 |
+
+保存正文及元数据在私有 SQLite 中原子完成，失败不会发布空附件。本人和局域网后台所有者可读取；其他用户、其他评论管理员、未登录请求不能读取，知道附件 UUID 不能公开下载。媒体下架或访问权限变化后，报错本人和后台所有者仍可访问已有附件。下载返回 `text/plain; charset=utf-8`、`Content-Disposition: attachment; filename="report-diagnostics-<服务端附件UUID>.txt"`、`Cache-Control: no-store` 和 `X-Content-Type-Options: nosniff`。
+
+后台沿用独立局域网端口、指定所有者登录和每次验证的会话权限：`GET /admin/api/reports/{reportId}/diagnostics` 下载；同一路径 `?view=preview` 返回纯文本、Content-Disposition 为 inline，供后台以 textContent 预览。其他查询参数拒绝。详情显示上传时间、实际大小、截断状态、查看/下载和过期状态，不执行正文中的 HTML。
+
+默认从上传成功起保留 **30 天**，私有配置 `community.diagnosticsRetentionDays` 可设置 1–365 的整数。启动、每 60 秒及附件读写时清除到期正文；下载先检查期限，到期立即返回 410，不等待定时器。元数据 availability 改为 expired，报错、修复说明及轻量幂等记录继续保留。此期限针对应用中的正文及已完成常规备份，不承诺原始磁盘/WAL、崩溃临时文件和人工恢复快照的取证擦除。常规备份只保留附件元数据，不保存日志正文；恢复后附件标为 expired，无法从该备份恢复文本，其他报错和已读状态正常保留。
+
+客户端对接流程：报错窗口默认勾选“附带诊断日志”，说明已脱敏且允许取消；仅收集当前账号配置最近约 10 分钟的应用日志，最多 1 MiB，可附上一启动末尾故障记录并标明截断。Windows/macOS 使用当前配置的应用日志；Android 需应用内有界日志记录，不依赖 ADB 或收集其他应用日志。日志无法读取或用户取消时，正常提交报错。
+
+上传前必须覆盖 JSON、HTTP 头、URL 查询参数、大小写与 URL 编码，移除登录 Token、认证头、密码、签名/敏感查询参数、本地绝对路径及私人账号信息；保留状态码、组件错误、播放器状态、字幕/弹幕匹配等线索。服务端对已知格式再次脱敏，包括令牌/密码/账号字段、认证及 Cookie 头、URL 凭据和完整查询参数、已知路径；这不能替代客户端脱敏。服务日志不写入附件正文或请求头。
+
+**只抓取一次日志快照、生成一次附件 UUID**；网络重试不能重新抓取变化后的日志。成功显示“报错已提交，诊断日志已附带”；附件失败显示“报错已提交，日志上传失败”，提供单独重试。退出登录、切换账号或取消操作时中止待发请求并清除内存快照。此版本交付后端契约，客户端自动采集/上传与 UI 由客户端后续实现。
 
 ## 评论、回复及删除
 

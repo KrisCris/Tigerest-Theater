@@ -10,7 +10,13 @@
         IDEMPOTENCY_CONFLICT: '本次发送的内容已变更，请刷新后重试。',
         AUTH_UNAVAILABLE: '身份验证服务暂不可用，请稍后重试。',
         COMMUNITY_UNAVAILABLE: '评论服务暂不可用，请稍后重试。',
-        MESSAGES_UNAVAILABLE: '消息功能尚未启用，请联系管理员升级评论服务。'
+        MESSAGES_UNAVAILABLE: '消息功能尚未启用，请联系管理员升级评论服务。',
+        DIAGNOSTICS_ALREADY_EXISTS: '此报错已有日志附件，无法替换。',
+        DIAGNOSTICS_EXPIRED: '日志附件已到期，报错及修复结果仍可查看。',
+        DIAGNOSTICS_TOO_LARGE: '日志附件过大，报错仍已保存。',
+        DIAGNOSTICS_STORAGE_UNAVAILABLE: '日志存储暂不可用，请稍后重试附件。',
+        UNSUPPORTED_MEDIA_TYPE: '日志附件格式不受支持。',
+        INVALID_REQUEST: '提交内容格式无效，请检查后重试。'
     };
     function abortError() { const error = new Error('评论请求已取消'); error.name = 'AbortError'; return error; }
     function uuid() {
@@ -22,16 +28,49 @@
         const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
         return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');
     }
+    const uuidPattern=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+    function textBytes(text) {
+        let bytes=0;
+        for(let i=0;i<text.length;i++){
+            const code=text.charCodeAt(i);
+            if(code>=0xd800&&code<=0xdbff){
+                const low=text.charCodeAt(++i);
+                if(!(low>=0xdc00&&low<=0xdfff))throw new Error('诊断日志含有无效字符。');
+                bytes+=4;
+            }else if(code>=0xdc00&&code<=0xdfff)throw new Error('诊断日志含有无效字符。');
+            else bytes+=code<0x80?1:code<0x800?2:3;
+        }
+        return bytes;
+    }
+    function validateDiagnostics(payload) {
+        if(!payload||typeof payload!=='object'||Object.keys(payload).length!==4||
+            !['clientRequestId','capturedAt','truncated','logText'].every(key=>Object.hasOwn(payload,key))||
+            typeof payload.clientRequestId!=='string'||!uuidPattern.test(payload.clientRequestId)||typeof payload.truncated!=='boolean'||
+            typeof payload.logText!=='string'||payload.logText.length>1048576||!payload.logText.trim()||
+            /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(payload.logText))
+            throw new Error('诊断日志格式无效。');
+        const utc=typeof payload.capturedAt==='string'&&payload.capturedAt.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?Z$/);
+        const date=utc&&new Date(payload.capturedAt);
+        if(!date||!Number.isFinite(date.getTime())||date.toISOString()!==utc[1]+'.'+(utc[2]||'').padEnd(3,'0')+'Z')
+            throw new Error('诊断日志时间无效。');
+        if(textBytes(payload.logText)>1048576||textBytes(JSON.stringify(payload))>8388608)
+            throw new Error('诊断日志超过大小限制。');
+        return payload;
+    }
     class CommunityClient {
         constructor({ fetch: request = window.fetch.bind(window), now = Date.now } = {}) {
             this.fetch = request;
             this.now = now;
             this.generation = 0;
             this.controllers = new Set();
+            this.reportControllers = new Set();
+            this.reportGeneration = 0;
             this.pendingSend = null;
             this.pendingReport = null;
             this.cooldownUntil = 0;
             this.reportCooldownUntil = 0;
+            this.diagnosticsCooldownUntil = 0;
+            this.diagnosticsSnapshots = new WeakMap();
         }
         static session(api) {
             if (!api) return null;
@@ -64,7 +103,14 @@
             for (const controller of this.controllers) controller.abort();
             this.controllers.clear();
             this.pendingSend = null;
+            this.cancelReportRequests();
+        }
+        cancelReportRequests() {
+            this.reportGeneration++;
+            for(const controller of this.reportControllers)controller.abort();
+            this.reportControllers.clear();
             this.pendingReport = null;
+            this.diagnosticsSnapshots = new WeakMap();
         }
         clear() {
             this.cancelRequests();
@@ -73,13 +119,17 @@
             this.base = null;
             this.cooldownUntil = 0;
             this.reportCooldownUntil = 0;
+            this.diagnosticsCooldownUntil = 0;
         }
         async request(path, {method = 'GET', body, item = false, image = false} = {}) {
             if (!this.context) throw new Error(messages.AUTH_REQUIRED);
             if (item && !this.context.itemId) throw new Error('请先打开可访问的媒体详情。');
             const generation = this.generation;
+            const reportRequest=method!=='GET'&&/^\/reports(?:\/|$)/.test(path),reportGeneration=this.reportGeneration;
+            const cancelled=()=>generation!==this.generation||(reportRequest&&reportGeneration!==this.reportGeneration);
             const controller = new AbortController();
             this.controllers.add(controller);
+            if(reportRequest)this.reportControllers.add(controller);
             const timeout = setTimeout(() => controller.abort(), 15000);
             const headers = {'X-Emby-Token': this.context.token,
                 'X-Emby-Server-Id': this.context.serverId, 'X-Emby-User-Id': this.context.userId};
@@ -89,37 +139,39 @@
                 const response = await this.fetch(this.base + path, {method, headers,
                     body: body === undefined ? undefined : JSON.stringify(body),
                     credentials: 'omit', redirect: 'error', cache: 'no-store', signal: controller.signal});
-                if (generation !== this.generation) throw abortError();
+                if (cancelled()) throw abortError();
                 if (response.ok && image) {
                     if (!/^image\/(png|jpeg|webp)(;|$)/i.test(response.headers.get('Content-Type') || ''))
                         throw new Error('头像暂不可用');
                     const blob = await response.blob();
-                    if (generation !== this.generation) throw abortError();
+                    if (cancelled()) throw abortError();
                     if (blob.size > 5 * 1024 * 1024) throw new Error('头像暂不可用');
                     return blob;
                 }
-                const payload = await response.json();
-                if (generation !== this.generation) throw abortError();
+                let payload;
+                try{payload=await response.json();}
+                catch(error){if(response.ok)throw error;payload={};}
+                if (cancelled()) throw abortError();
                 if (!response.ok) {
-                    const code = String(payload.error?.code || 'UNKNOWN');
+                    const code = String(payload?.error?.code || 'UNKNOWN');
                     let message = messages[code] || '评论请求失败，请稍后重试。';
                     let retryAfter = 0;
                     if (response.status === 429) {
                         retryAfter = Math.min(86400, Math.max(1, Number(response.headers.get('Retry-After')) || 3));
-                        const cooldown=path==='/reports'?'reportCooldownUntil':'cooldownUntil';
+                        const cooldown=/^\/reports\/[^/]+\/diagnostics$/.test(path)?'diagnosticsCooldownUntil':path==='/reports'?'reportCooldownUntil':'cooldownUntil';
                         this[cooldown] = Math.max(this[cooldown], this.now() + retryAfter * 1000);
                         message = '操作过于频繁，请等待 ' + retryAfter + ' 秒后重试。';
                     }
                     const error = new Error(message);
                     Object.assign(error, {code, status: response.status, retryAfter});
                     // Only display a UUID request ID; never forward backend error text.
-                    if (/^[0-9a-f-]{36}$/i.test(payload.requestId || '')) error.requestId = payload.requestId;
+                    if (uuidPattern.test(payload?.requestId || '')) error.requestId = payload.requestId;
                     if (response.status === 401) this.clear();
                     throw error;
                 }
                 return payload.data;
             } catch (error) {
-                if (generation !== this.generation) {
+                if (cancelled()) {
                     if (error.status === 401) throw error;
                     throw abortError();
                 }
@@ -129,6 +181,7 @@
             } finally {
                 clearTimeout(timeout);
                 this.controllers.delete(controller);
+                this.reportControllers.delete(controller);
             }
         }
         me() { return this.request('/me'); }
@@ -180,6 +233,32 @@
             return this.page('/me/reports?status='+status,cursor,false);
         }
         report(id) { return this.request('/me/reports/'+encodeURIComponent(id)); }
+        createReportDiagnostics(snapshot) {
+            const payload=Object.freeze(validateDiagnostics({clientRequestId:uuid(),capturedAt:snapshot?.capturedAt,
+                truncated:snapshot?.truncated,logText:snapshot?.logText}));
+            this.diagnosticsSnapshots.set(payload,{generation:this.generation,contextKey:this.contextKey,blocked:false});
+            return payload;
+        }
+        async uploadReportDiagnostics(reportId,payload) {
+            validateDiagnostics(payload);
+            const binding=this.diagnosticsSnapshots.get(payload);
+            if(!binding||binding.blocked||binding.generation!==this.generation||binding.contextKey!==this.contextKey)
+                throw new Error('诊断日志已取消或无法重试。');
+            if(!this.context)throw new Error(messages.AUTH_REQUIRED);
+            if(typeof reportId!=='string'||!reportId)throw new Error('报错编号无效。');
+            if(binding.reportId&&binding.reportId!==reportId)throw new Error('诊断日志已绑定其他报错。');
+            binding.reportId=reportId;
+            const wait=Math.ceil((this.diagnosticsCooldownUntil-this.now())/1000);
+            if(wait>0)throw new Error('请等待 '+wait+' 秒后重试日志附件。');
+            try{
+                const result=await this.request('/reports/'+encodeURIComponent(reportId)+'/diagnostics',{method:'PUT',body:payload});
+                this.diagnosticsCooldownUntil=Math.max(this.diagnosticsCooldownUntil,this.now()+3000);
+                return result;
+            }catch(error){
+                if(error.status===401||error.status===409)binding.blocked=true;
+                throw error;
+            }
+        }
         async sendReport(itemId,category,description,context={}) {
             if(!itemId)throw new Error('请先打开可访问的作品。');
             if(!['playback_error','subtitle_missing','subtitle_error','other'].includes(category))throw new Error('问题类型无效。');

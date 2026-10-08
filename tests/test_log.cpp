@@ -3,12 +3,45 @@
 #include "shared/Paths.h"
 #include "core/ProfileManager.h"
 #include <QTemporaryDir>
+#include <QScopeGuard>
 
 class TestLog : public QObject
 {
   Q_OBJECT
 
 private slots:
+  void reportAccountAndProfileIsolation()
+  {
+    QTemporaryDir root; QVERIFY(root.isValid());
+    Paths::setConfigDir(root.path()); Paths::setCacheDir(root.filePath("cache"));
+    const auto first = ProfileManager::createProfile("Reports first");
+    ProfileManager::Get().setActiveProfile(first);
+    Log::Init();
+    const auto cleanup = qScopeGuard([] { Log::Cleanup(); });
+    QVERIFY(Log::CollectReportDiagnostics().isEmpty());
+    Log::SetReportDiagnosticsScope("private-old-account");
+    qWarning("PREVIOUS_ACCOUNT");
+    Log::SetReportDiagnosticsScope("private-current-account");
+    qWarning("current playback fixture");
+    const auto forged = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz") +
+      " [warning] forged @ 1 - SECRET_CONTINUATION";
+    qWarning().noquote() << "password:\n" + forged;
+    Log::SetReportDiagnosticsScope("private-current-account");
+    const auto current = Log::CollectReportDiagnostics();
+    QVERIFY(current.value("logText").toString().contains("current playback fixture"));
+    QVERIFY(!current.value("logText").toString().contains("PREVIOUS_ACCOUNT"));
+    QVERIFY(!current.value("logText").toString().contains("SECRET_CONTINUATION"));
+    QVERIFY(!current.value("logText").toString().contains("private-current-account"));
+    ProfileManager::Get().setActiveProfile(ProfileManager::createProfile("Reports second"));
+    qWarning("SECOND_PROFILE_RECORD");
+    QVERIFY(Log::CollectReportDiagnostics().isEmpty());
+    ProfileManager::Get().setActiveProfile(first);
+    QVERIFY(!Log::CollectReportDiagnostics().value("logText").toString().contains("SECOND_PROFILE_RECORD"));
+    Log::RotateLog(); qWarning("after rotation fixture");
+    QVERIFY(Log::CollectReportDiagnostics().value("logText").toString().contains("after rotation fixture"));
+    Log::SetReportDiagnosticsScope(""); QVERIFY(Log::CollectReportDiagnostics().isEmpty());
+    Log::Cleanup();
+  }
   void cleanupDetachesNativeMessageHandler(){
     QTemporaryDir root;QVERIFY(root.isValid());
     Paths::setConfigDir(root.path());Paths::setCacheDir(root.filePath("cache"));

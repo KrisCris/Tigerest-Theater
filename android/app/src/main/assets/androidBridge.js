@@ -21,7 +21,7 @@
   const operations={
    player:'load queueMedia clearQueue seekTo stop streamSwitch pause play setVolume volume setMuted muted getAudioDeviceList setAudioDevice setAudioStream setSubtitleStream getSubtitleStreams setAudioDelay setSubtitleDelay setVideoOnlyMode setVideoRectangle setPlaybackRate getPosition getDuration mpvDiagnostics getWebPlaylist getCurrentWebPlaylistItemId setWebPlaylist notifyShuffleChange notifyRepeatChange notifyFullscreenChange notifyRateChange notifyQueueChange notifyPlaybackStop notifyDurationChange notifyPlaybackState notifyPosition notifySeek notifyMetadata notifyVolumeChange notifyStreamingBitrateResult',
    settings:'setValue resetToDefault value',
-   system:'exit restart hello isAddressOnLocalSubnet checkServerConnectivity cancelServerConnectivity openExternalUrl systemInformation getUserAgent debugInformation checkForUpdates appUpdateState downloadAppUpdate installAppUpdate cancelAppUpdate skipAppUpdate deferAppUpdate',
+   system:'exit restart hello isAddressOnLocalSubnet checkServerConnectivity cancelServerConnectivity openExternalUrl systemInformation getUserAgent debugInformation setReportDiagnosticsScope collectReportDiagnostics checkForUpdates appUpdateState downloadAppUpdate installAppUpdate cancelAppUpdate skipAppUpdate deferAppUpdate',
    window:'setFullScreen isFullScreen beginPlaybackSession endPlaybackSession requestPlaybackFullScreen setCursorVisibility',
    danmaku:'search episodes match load loadUrl importFile setSource sources setEnabled',
   };

@@ -16,6 +16,22 @@
     };
     const body=comment=>comment?.state==='visible'?(comment.body||''):'评论已删除';
     const categories={playback_error:'播放错误',subtitle_missing:'字幕缺失',subtitle_error:'字幕错误',other:'其他问题'};
+    const unavailableDiagnostics=Symbol('unavailable diagnostics bridge');
+    // Qt invokes callbacks; Android may also return a Promise. Consume the first
+    // delivery only and fail closed when a bridge is unavailable or unresponsive.
+    function systemCall(system,name,args=[]){
+        if(typeof system?.[name]!=='function')return Promise.resolve(unavailableDiagnostics);
+        return new Promise(resolve=>{
+            let settled=false;
+            const finish=value=>{if(settled)return;settled=true;clearTimeout(timer);resolve(value);};
+            const timer=setTimeout(()=>finish(unavailableDiagnostics),5000);
+            try{
+                const result=system[name](...args,finish);
+                if(result?.then)result.then(finish,()=>finish(unavailableDiagnostics));
+                else if(result!==undefined)finish(result);
+            }catch(_){finish(unavailableDiagnostics);}
+        });
+    }
     function reportPlatform(){
         const system=window.api?.system;
         if(window.tigerestAndroidApi||system?.isAndroid===true)return 'Android';
@@ -64,6 +80,9 @@
         #tigerest-messages .tm-position legend{padding:0;line-height:1.7}
         #tigerest-messages .tm-time-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
         #tigerest-messages .tm-time-row .tm-field{min-width:0;margin:6px 0 0}
+        #tigerest-messages .tm-diagnostics{display:flex;gap:10px;align-items:flex-start;margin:16px 0;line-height:1.5}
+        #tigerest-messages .tm-diagnostics input{width:auto;margin:4px 0 0;flex:none}
+        #tigerest-messages .tm-diagnostics small{display:block;color:#a9b8cb;margin-top:4px}
         @media(max-width:600px){#tigerest-messages .tm-head{padding:18px 16px 14px}#tigerest-messages .tm-content{padding:6px 14px 18px}#tigerest-messages h2{font-size:22px}#tigerest-messages .tm-card{padding:14px}}
         `.replaceAll('#tigerest-messages',':is(#tigerest-messages,#tigerest-report-form,#tigerest-report-detail)');
         (document.head||document.documentElement).appendChild(sheet);
@@ -82,7 +101,13 @@
             if(this.blockedKey===key)return;
             if(key!==this.sessionKey){
                 this.reset();this.sessionKey=key;
-                if(key)this.client.setSession(session);
+                if(key){
+                    this.client.setSession(session);
+                    this.diagnosticsSystem=window.api?.system||window.tigerestAndroidApi?.system;
+                    const bytes=window.crypto.getRandomValues(new Uint8Array(16));
+                    this.diagnosticsScope=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+                    this.diagnosticsReady=systemCall(this.diagnosticsSystem,'setReportDiagnosticsScope',[this.diagnosticsScope]);
+                }
             }
             if(!key)return;
             const host=document.querySelector('.headerRight');
@@ -301,32 +326,85 @@
                 const field=node('label',label,'tm-field');field.appendChild(input);positionRow.appendChild(field);
             }
             position.append(node('legend','发生时间（可选）'),positionRow);
-            const submit=button('提交报错',()=>form.requestSubmit()),actions=node('div',null,'tm-toolbar');actions.appendChild(submit);
-            form.append(categoryLabel,descriptionLabel,position,status,actions);shell.append(head,form);panel.appendChild(shell);
-            const state={panel,key:this.sessionKey,busy:false};this.reportForm=state;
+            const include=node('input');include.type='checkbox';include.checked=true;include.setAttribute('aria-label','附带诊断日志');
+            const includeLabel=node('label',null,'tm-diagnostics'),includeText=node('span','附带诊断日志');
+            includeText.appendChild(node('small','自动附带近期已脱敏的应用日志，帮助排查问题。可取消勾选；日志仅供你和后台管理员查看。'));
+            includeLabel.append(include,includeText);
+            const submit=button('提交报错',()=>form.requestSubmit()),retry=button('重试日志附件',()=>upload());retry.hidden=true;
+            const actions=node('div',null,'tm-toolbar');actions.append(submit,retry);
+            form.append(categoryLabel,descriptionLabel,position,includeLabel,status,actions);shell.append(head,form);panel.appendChild(shell);
+            const state={panel,key:this.sessionKey,busy:false,attempt:null,diagnostics:null};this.reportForm=state;
             const valid=()=>this.reportForm===state&&state.key===JSON.stringify(this.session());
+            const controls=()=>{
+                const frozen=Boolean(state.attempt||state.saved||state.busy);
+                category.disabled=description.disabled=minutes.disabled=seconds.disabled=include.disabled=frozen;
+                submit.disabled=Boolean(state.busy||state.saved);
+                retry.disabled=Boolean(state.busy||this.client.diagnosticsCooldownUntil>this.client.now());
+            };
+            const savedText='报错已提交。管理员确认修复后会在消息中心通知你。';
+            const showSaved=()=>{
+                submit.hidden=true;
+                if(!state.savedAction){state.savedAction=button('查看我的报错',()=>{this.closeReportForm();this.open('reports');});actions.appendChild(state.savedAction);}
+            };
+            const upload=async()=>{
+                if(!valid()||state.busy||!state.saved||!state.diagnostics)return;
+                state.busy=true;retry.hidden=true;controls();status.textContent=savedText+' 正在附带日志…';
+                try{
+                    await this.client.uploadReportDiagnostics(state.reportId,state.diagnostics);
+                    if(!valid())return;state.diagnostics=null;clearInterval(state.retryTimer);state.retryTimer=null;
+                    status.textContent=savedText+' 日志已附带。';
+                }catch(error){
+                    if(!valid()||error.name==='AbortError')return;
+                    if(error.status===401){this.reset(true);return;}
+                    const retryable=!error.status||error.status===429||error.status>=500;
+                    status.textContent=savedText+' 日志附件未上传。'+error.message;
+                    retry.hidden=!retryable;
+                    if(!retryable)state.diagnostics=null;
+                    if(retryable&&!state.retryTimer)state.retryTimer=setInterval(()=>{if(valid())controls();},250);
+                }finally{if(valid()){state.busy=false;controls();}}
+            };
             form.addEventListener('submit',async event=>{
                 event.preventDefault();if(!valid()||state.busy||state.saved)return;
-                state.busy=true;submit.disabled=true;category.disabled=description.disabled=minutes.disabled=seconds.disabled=true;status.textContent='正在提交报错…';
-                const context={platform:reportPlatform(),clientVersion:window.jmpInfo?.version};
+                state.busy=true;controls();status.textContent='正在提交报错…';
                 try{
-                    if(minutes.value!==''||seconds.value!==''){
-                        const minuteValue=Number(minutes.value||0),secondValue=Number(seconds.value||0);
-                        if(!Number.isInteger(minuteValue)||minuteValue<0||!Number.isInteger(secondValue)||secondValue<0||secondValue>59)throw new Error('请填写非负整数分钟和 0–59 秒。');
-                        const total=minuteValue*60+secondValue;
-                        if(total>604800)throw new Error('发生时间不能超过 7 天。');
-                        context.positionSeconds=total;
+                    if(!state.attempt){
+                        const context={platform:reportPlatform(),clientVersion:window.jmpInfo?.version};
+                        if(minutes.value!==''||seconds.value!==''){
+                            const minuteValue=Number(minutes.value||0),secondValue=Number(seconds.value||0);
+                            if(!Number.isInteger(minuteValue)||minuteValue<0||!Number.isInteger(secondValue)||secondValue<0||secondValue>59)throw new Error('请填写非负整数分钟和 0–59 秒。');
+                            const total=minuteValue*60+secondValue;
+                            if(total>604800)throw new Error('发生时间不能超过 7 天。');
+                            context.positionSeconds=total;
+                        }
+                        const text=description.value.trim(),length=Array.from(text).length;
+                        if(length<10||length>2000)throw new Error('请填写 10–2000 字的说明，补充现象、发生时间或复现方式。');
+                        state.attempt=Object.freeze({itemId:String(item.Id),category:category.value,description:text,context:Object.freeze(context),include:include.checked});
+                        controls();
+                        if(state.attempt.include){
+                            status.textContent='正在准备已脱敏的诊断日志…';
+                            const scopeReady=await this.diagnosticsReady;if(!valid())return;
+                            const snapshot=scopeReady===unavailableDiagnostics||scopeReady===false?null:await systemCall(this.diagnosticsSystem,'collectReportDiagnostics');
+                            if(!valid())return;
+                            try{state.diagnostics=this.client.createReportDiagnostics(snapshot);}catch(_){state.diagnostics=null;}
+                        }
                     }
-                    await this.client.sendReport(item.Id,category.value,description.value,context);
-                    if(!valid())return;state.saved=true;category.disabled=description.disabled=minutes.disabled=seconds.disabled=true;
-                    status.textContent='报错已提交。管理员确认修复后会在消息中心通知你。';
-                    actions.appendChild(button('查看我的报错',()=>{this.closeReportForm();this.open('reports');}));
+                    const result=await this.client.sendReport(state.attempt.itemId,state.attempt.category,state.attempt.description,state.attempt.context);
+                    if(!valid())return;state.saved=true;state.reportId=result?.report?.id;showSaved();
+                    status.textContent=savedText+(state.attempt.include&&!state.diagnostics?' 未能取得可用的诊断日志。':'');
+                    state.busy=false;
+                    if(state.diagnostics)await upload();
                 }catch(error){if(valid()){if(error.status===401)this.reset(true);else status.textContent=error.message;}}
-                finally{if(valid()){state.busy=false;submit.disabled=category.disabled=description.disabled=minutes.disabled=seconds.disabled=Boolean(state.saved);}}
+                finally{if(valid()){state.busy=false;controls();}}
             });
             panel.addEventListener('cancel',event=>{event.preventDefault();this.closeReportForm();});document.body.appendChild(panel);panel.showModal();description.focus();
         }
-        closeReportForm(){this.reportForm?.panel.close();this.reportForm?.panel.remove();this.reportForm=null;}
+        closeReportForm(){
+            const state=this.reportForm;this.reportForm=null;
+            if(state){
+                clearInterval(state.retryTimer);state.attempt=null;state.diagnostics=null;
+                this.client.cancelReportRequests();state.panel.close();state.panel.remove();
+            }
+        }
         close(){
             this.closeReportDetails();
             const state=this.state;this.state=null;
@@ -336,6 +414,8 @@
         reset(block=false){
             const key=Client.supported(this.session())?JSON.stringify(this.session()):'';
             this.close();this.closeReportForm();this.client.clear();++this.summaryVersion;
+            systemCall(this.diagnosticsSystem,'setReportDiagnosticsScope',['']);
+            this.diagnosticsSystem=null;this.diagnosticsScope=null;this.diagnosticsReady=null;
             this.entry?.remove();this.entry=null;this.sessionKey='';this.unread=0;this.lastSummary=0;
             this.blockedKey=block?key:null;
         }

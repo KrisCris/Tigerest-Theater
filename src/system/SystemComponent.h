@@ -58,6 +58,8 @@ public:
   Q_INVOKABLE QString getUserAgent();
 
   Q_INVOKABLE QString debugInformation();
+  Q_INVOKABLE bool setReportDiagnosticsScope(const QString& key);
+  Q_INVOKABLE QVariantMap collectReportDiagnostics() const;
 
   Q_INVOKABLE QStringList networkAddresses() const;
 

@@ -203,3 +203,93 @@ test('account-wide requests are aborted when the identity changes or authenticat
     invalid.setSession(session());await assert.rejects(invalid.messageSummary(),error=>error.status===401);
     assert.equal(invalid.context,null);
 });
+
+const diagnosticSnapshot=()=>({capturedAt:'2026-10-09T01:02:03.12Z',truncated:false,logText:'已脱敏的播放错误\n[redacted]'});
+test('diagnostics use an immutable exact four-field attachment and upload after the report without item authorization', async()=>{
+    const Client=load(),calls=[];
+    const client=new Client({fetch:async(url,options)=>{calls.push({url,options});return ok(url.endsWith('/reports')?{report:{id:'report-id'}}:{diagnostics:{id:'attachment-id'}});}});
+    client.setContext(session(),'episode');
+    const snapshot=diagnosticSnapshot(),payload=client.createReportDiagnostics(snapshot);
+    snapshot.logText='later snapshot must not replace the first capture';
+    assert.equal(Object.isFrozen(payload),true);
+    assert.deepEqual(Object.keys(payload).sort(),['capturedAt','clientRequestId','logText','truncated']);
+    const saved=await client.sendReport('episode','playback_error','播放时出现黑屏且没有正常声音。');
+    await client.uploadReportDiagnostics(saved.report.id,payload);
+    assert.deepEqual(calls.map(c=>[new URL(c.url).pathname,c.options.method]),[
+        ['/community/v1/reports','POST'],['/community/v1/reports/report-id/diagnostics','PUT']]);
+    const sent=JSON.parse(calls[1].options.body);
+    assert.equal(sent.logText,'已脱敏的播放错误\n[redacted]');
+    assert.match(sent.clientRequestId,/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
+    assert.equal(calls[1].options.headers['X-Tigerest-Item-Id'],undefined);
+    assert.equal(calls[1].options.headers['Content-Type'],'application/json');
+});
+test('diagnostics reject malformed UTC, controls, Unicode and byte overflow before transport', async()=>{
+    const Client=load();let calls=0;
+    const client=new Client({fetch:async()=>{calls++;return ok({});}});client.setSession(session());
+    const invalid=[{capturedAt:'2026-02-30T01:02:03Z'},{capturedAt:'2026-10-09T01:02:03+00:00'},
+        {capturedAt:'2026-10-09T01:02:03.1234Z'},{capturedAt:'2026-10-09T24:02:03Z'},
+        {truncated:0},{logText:''},{logText:'abc\0def'},{logText:'abc\u001bdef'},{logText:'abc\u007fdef'},
+        {logText:'\ud800'},{logText:'\udfff'},{logText:'😀'.repeat(262145)}];
+    for(const change of invalid)assert.throws(()=>client.createReportDiagnostics({...diagnosticSnapshot(),...change}),/日志/);
+    const boundary=client.createReportDiagnostics({...diagnosticSnapshot(),logText:'😀'.repeat(262144)});
+    await client.uploadReportDiagnostics('report',boundary);assert.equal(calls,1);
+    await assert.rejects(client.uploadReportDiagnostics('report',{...boundary,clientRequestId:'invalid'}),/日志/);
+    await assert.rejects(client.uploadReportDiagnostics('report',{...boundary,token:'never-send'}),/日志/);
+    assert.equal(calls,1);
+});
+test('attachment retries freeze the payload and have an independent Retry-After cooldown',async()=>{
+    const Client=load(),calls=[];let now=1000,attempt=0;
+    const client=new Client({now:()=>now,fetch:async(url,options)=>{
+        calls.push({url,options});
+        if(url.endsWith('/diagnostics')){attempt++;if(attempt===1)throw Error('lost secret response');if(attempt===2)return new Response(JSON.stringify({error:{code:'RATE_LIMITED',message:'private-log-text'}}),{status:429,headers:{'Retry-After':'7'}});}
+        return ok(url.endsWith('/reports')?{report:{id:'saved'}}:{diagnostics:{id:'stored'}});
+    }});client.setContext(session(),'episode');
+    const payload=client.createReportDiagnostics(diagnosticSnapshot());
+    await client.sendReport('episode','other','播放时出现黑屏且没有正常声音。');
+    await assert.rejects(client.uploadReportDiagnostics('saved',payload),/网络/);
+    await assert.rejects(client.uploadReportDiagnostics('saved',payload),e=>e.retryAfter===7&&!e.message.includes('private-log-text'));
+    now+=3000;await client.sendReport('episode','other','这一条报错仍可独立提交给管理员。');
+    await client.send('topic','评论仍可发送');
+    await assert.rejects(client.uploadReportDiagnostics('saved',payload),/4 秒/);
+    now+=4000;await client.uploadReportDiagnostics('saved',payload);
+    const uploads=calls.filter(c=>c.url.endsWith('/diagnostics'));
+    assert.equal(uploads.length,3);assert.equal(new Set(uploads.map(c=>c.options.body)).size,1);
+    assert.equal(calls.filter(c=>c.url.endsWith('/reports')).length,2);
+});
+test('401, conflict, cancellation and account changes stop reuse of a captured attachment',async()=>{
+    for(const status of [401,409]){
+        const Client=load();let calls=0;
+        const client=new Client({fetch:async()=>{calls++;return new Response(JSON.stringify({error:{code:status===401?'AUTH_INVALID':'DIAGNOSTICS_ALREADY_EXISTS',message:'secret backend text'}}),{status});}});
+        client.setSession(session());const payload=client.createReportDiagnostics(diagnosticSnapshot());
+        await assert.rejects(client.uploadReportDiagnostics('saved',payload),e=>e.status===status&&!e.message.includes('secret'));
+        await assert.rejects(client.uploadReportDiagnostics('saved',payload));assert.equal(calls,1);
+    }
+    const Client=load();let calls=0;
+    const client=new Client({fetch:async()=>{calls++;return ok({});}});client.setSession(session());
+    let payload=client.createReportDiagnostics(diagnosticSnapshot());client.cancelRequests();
+    await assert.rejects(client.uploadReportDiagnostics('saved',payload));
+    payload=client.createReportDiagnostics(diagnosticSnapshot());client.setSession(session(undefined,'replacement-account'));
+    await assert.rejects(client.uploadReportDiagnostics('saved',payload));assert.equal(calls,0);
+});
+test('closing a report aborts only report requests and invalidates the captured payload',async()=>{
+    const Client=load(),pending=[];
+    const client=new Client({fetch:(url,options)=>new Promise(resolve=>pending.push({url,signal:options.signal,resolve}))});
+    client.setSession(session());const payload=client.createReportDiagnostics(diagnosticSnapshot());
+    const summary=client.messageSummary(),upload=client.uploadReportDiagnostics('saved',payload);
+    client.cancelReportRequests();
+    assert.equal(pending[0].signal.aborted,false);assert.equal(pending[1].signal.aborted,true);
+    pending[0].resolve(ok({unreadCount:3}));pending[1].resolve(ok({diagnostics:{id:'stale'}}));
+    assert.equal((await summary).unreadCount,3);await assert.rejects(upload,e=>e.name==='AbortError');
+    await assert.rejects(client.uploadReportDiagnostics('saved',payload));assert.equal(pending.length,2);
+});
+test('non-JSON authentication and rate-limit errors still stop or delay attachment uploads',async()=>{
+    for(const status of [401,409,429]){
+        const Client=load();let calls=0;
+        const client=new Client({now:()=>1000,fetch:async()=>{calls++;return new Response('private gateway error text',{status,headers:{'Retry-After':'8'}});}});
+        client.setSession(session());const payload=client.createReportDiagnostics(diagnosticSnapshot());
+        await assert.rejects(client.uploadReportDiagnostics('saved',payload),e=>e.status===status&&!e.message.includes('private gateway'));
+        await assert.rejects(client.uploadReportDiagnostics('saved',payload));assert.equal(calls,1);
+        if(status===401)assert.equal(client.context,null);
+        if(status===429)assert.equal(client.diagnosticsCooldownUntil,9000);
+    }
+});

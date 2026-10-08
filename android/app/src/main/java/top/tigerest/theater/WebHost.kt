@@ -43,14 +43,15 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
                 return true
             }
             override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { bridge.pageStarted(); activity.loading(true) }
-            override fun onPageFinished(view: WebView,url: String) { activity.loading(false); activity.updateWindowMetrics() }
-            override fun onReceivedError(view: WebView,request: WebResourceRequest,error: android.webkit.WebResourceError) { if(request.isForMainFrame) activity.webError("网页加载失败（${error.errorCode}），请检查连接后重试") }
+            override fun onPageFinished(view: WebView,url: String) { DiagnosticsLog.app.record("info","WebView main document loaded"); activity.loading(false); activity.updateWindowMetrics() }
+            override fun onReceivedError(view: WebView,request: WebResourceRequest,error: android.webkit.WebResourceError) { if(request.isForMainFrame) { DiagnosticsLog.app.record("error","WebView main document load failed code=${error.errorCode}"); activity.webError("网页加载失败（${error.errorCode}），请检查连接后重试") } }
         }
         view.webChromeClient = object: WebChromeClient() {
             override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                 if(BuildConfig.DEBUG && message.message().startsWith("TGS phase ")) android.util.Log.i("TigerestWeb",message.message())
                 // Server scripts can include authenticated URLs in errors. Keep diagnostics structural.
                 if(BuildConfig.DEBUG && message.messageLevel() == ConsoleMessage.MessageLevel.ERROR) android.util.Log.e("TigerestWeb","Web script error at line ${message.lineNumber()}")
+                if(message.messageLevel() == ConsoleMessage.MessageLevel.ERROR) DiagnosticsLog.app.record("error","WebView script error at line ${message.lineNumber()}")
                 return true
             }
             override fun onShowFileChooser(webView: WebView,callback: android.webkit.ValueCallback<Array<android.net.Uri>>,params: FileChooserParams): Boolean { activity.chooseWebFile(callback,params.createIntent()); return true }

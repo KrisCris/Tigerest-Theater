@@ -191,9 +191,10 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         }.setNeutralButton("重置") { _,_ -> player.dispatch("setSubtitleDelay",JSONArray().put(0)) }.setNegativeButton("取消",null).show()
     }
     private fun danmakuMenu() {
-        AlertDialog.Builder(activity).setTitle("弹幕").setItems(arrayOf("开启／关闭弹幕","搜索弹幕","来源、屏蔽与时间偏移","导入 XML / JSON / ASS","弹幕样式","添加视频网站来源")) { _,index -> when(index) {
+        AlertDialog.Builder(activity).setTitle("弹幕").setItems(arrayOf("开启／关闭弹幕","搜索弹幕","来源、屏蔽与时间偏移","导入 XML / JSON / ASS","弹幕样式","添加视频网站来源","配置共享匹配写入令牌")) { _,index -> when(index) {
             0 -> activity.toggleDanmaku(); 1 -> searchDialog(); 2 -> sourceDialog(); 3 -> activity.chooseDanmakuFile(); 4 -> { player.dispatch("pause",JSONArray()); activity.showWebSettings("danmaku") }
             5 -> { val url = EditText(activity).apply { hint = "HTTP(S) 视频页面网址"; inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI }; AlertDialog.Builder(activity).setTitle("添加弹幕来源").setView(url).setPositiveButton("加载") { _,_ -> network { repository.loadUrl(url.text.toString()) } }.setNegativeButton("取消",null).show() }
+            6 -> mappingCredentialDialog()
         } }.show()
     }
     private fun searchDialog() {
@@ -201,11 +202,33 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         val input = EditText(activity).apply { hint = "作品名称"; setSingleLine() }
         AlertDialog.Builder(activity).setTitle("搜索弹幕").setView(input).setPositiveButton("搜索") { _,_ -> network {
             val result = repository.search(input.text.toString())
-            activity.runOnUiThread { if(!repository.isCurrent(token)) return@runOnUiThread; selectArray("选择作品",result,"animeTitle") { index ->
-                val anime = result.getJSONObject(index); val id = anime.get("bangumiId").toString(); repository.rememberMatch(id)
-                network { val episodes = repository.episodes(id); activity.runOnUiThread { if(!repository.isCurrent(token)) return@runOnUiThread; selectArray("选择集数",episodes,"episodeTitle") { episode -> network { val selected = episodes.getJSONObject(episode); repository.load(selected.get("episodeId").toString(),selected.optString("episodeTitle"),token) } } } }
+            activity.runOnUiThread { if(!repository.isCurrent(token)) return@runOnUiThread; selectArray("选择作品",result,"animeTitle") chooseAnime@ { index ->
+                if(!repository.isCurrent(token)) return@chooseAnime
+                val anime = result.getJSONObject(index); val id = anime.get("bangumiId").toString()
+                network fetchEpisodes@ { if(!repository.isCurrent(token)) return@fetchEpisodes; val episodes = repository.episodes(id); activity.runOnUiThread episodeUi@ { if(!repository.isCurrent(token)) return@episodeUi; selectArray("选择集数",episodes,"episodeTitle") chooseEpisode@ { episode ->
+                    if(!repository.isCurrent(token)) return@chooseEpisode
+                    val selected = episodes.getJSONObject(episode)
+                    network { repository.selectEpisode(id,selected.get("episodeId").toString(),selected.optString("episodeTitle"),token) }
+                } } }
             } }
         } }.setNegativeButton("取消",null).show()
+    }
+    private fun mappingCredentialDialog() {
+        val input = EditText(activity).apply {
+            hint = "由 NAS 管理者提供的令牌；留空清除"
+            setSingleLine()
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+            imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+        }
+        AlertDialog.Builder(activity).setTitle("共享弹幕匹配")
+            .setMessage("令牌只保存在此应用内，用于将手动选集同步到自己的 NAS。没有令牌也能读取共享匹配。")
+            .setView(input).setPositiveButton("保存") { _,_ ->
+                runCatching { repository.configureMappingCredential(input.text.toString()) }
+                    .onSuccess { activity.notify(if(input.text.isNullOrBlank()) "已清除共享匹配写入令牌" else "已保存共享匹配写入令牌") }
+                    .onFailure { activity.notify("共享匹配令牌格式无效") }
+                input.text.clear()
+            }.setNegativeButton("取消") { _,_ -> input.text.clear() }.show()
     }
     private fun selectArray(title: String,array: JSONArray,key: String,selected: (Int) -> Unit) {
         if(array.length() == 0) { activity.notify("没有搜索结果"); return }

@@ -22,8 +22,9 @@ file(MAKE_DIRECTORY "${ZIP_DIR}")
 # Copy all files except redist folder and vc_redist installer
 file(GLOB_RECURSE ALL_FILES RELATIVE "${SOURCE_DIR}" "${SOURCE_DIR}/*")
 foreach(f ${ALL_FILES})
-  # Skip redist folder and VCRedist installer
-  if(f MATCHES "^redist/" OR f STREQUAL "vc_redist.x64.exe")
+  # Runtime/user state is never part of an installer/portable distribution.
+  # In particular, mapping write credentials belong only to a private profile.
+  if(f MATCHES "^(redist|data|profiles|logs)/" OR f STREQUAL "vc_redist.x64.exe")
     continue()
   endif()
 

@@ -5,9 +5,14 @@ local unpack = unpack or table.unpack
 input_loaded, input = pcall(require, "mp.input")
 uosc_available = false
 latest_menu_anime = {}
+local latest_menu_anime_token = nil
 local active_request_cancel = nil
 local active_request_type = nil
 local request_cancelled = false
+
+local function menu_is_current(token)
+    return token and token == mapping_playback_token()
+end
 
 -- 如果 latest_menu_anime 中存在首项为加载占位，移除它（兼容完整 menu props 或 items 数组）
 local function strip_loading_from_latest_menu_anime()
@@ -47,6 +52,13 @@ local function perform_cancel_active_request(expected_type)
     end
 end
 
+mp.add_hook('on_unload', 41, function()
+    perform_cancel_active_request()
+    request_cancelled = true
+    latest_menu_anime = {}
+    latest_menu_anime_token = nil
+end)
+
 local function make_build_args(encoded_query)
     return function(server)
         local url = server .. "/api/v2/search/anime"
@@ -57,7 +69,7 @@ end
 
 local function make_handle_response(ctx)
     return function(server, err, out)
-        if request_cancelled then
+        if request_cancelled or not menu_is_current(ctx.playback_token) then
             ctx.remaining.n = math.max(0, ctx.remaining.n - 1)
             return
         end
@@ -71,7 +83,7 @@ local function make_handle_response(ctx)
                     for _, v in ipairs(list) do table.insert(final_items, v) end
                 end
             end
-            if request_cancelled then return end
+            if request_cancelled or not menu_is_current(ctx.playback_token) then return end
             if uosc_available then
                 latest_menu_anime = update_menu_uosc(ctx.menu_type, ctx.menu_title, final_items, ctx.footnote, ctx.menu_cmd, ctx.query)
             else
@@ -79,6 +91,7 @@ local function make_handle_response(ctx)
                 if input_loaded then
                     input.terminate()
                     mp.add_timeout(0.1, function()
+                        if not menu_is_current(ctx.playback_token) then return end
                         open_menu_select(final_items)
                     end)
                 end
@@ -114,7 +127,7 @@ local function make_handle_response(ctx)
                 table.insert(ctx.server_items[server], {
                     title = anime.animeTitle,
                     hint = hint,
-                    value = { "script-message-to", mp.get_script_name(), "search-episodes-event", anime.animeTitle, anime.bangumiId, server },
+                    value = { "script-message-to", mp.get_script_name(), "search-episodes-event", anime.animeTitle, anime.bangumiId, server, ctx.playback_token },
                 })
                 ctx.total_count = (ctx.total_count or 0) + 1
             end
@@ -153,6 +166,7 @@ local function make_handle_response(ctx)
                 show_message("", 0)
                 input.terminate()
                 mp.add_timeout(0.1, function()
+                    if not menu_is_current(ctx.playback_token) then return end
                     latest_menu_anime = utils.format_json(display_items)
                     open_menu_select(display_items)
                 end)
@@ -167,7 +181,10 @@ local function make_handle_response(ctx)
 end
 
 -- 打开番剧数据匹配菜单
-function get_animes(query)
+function get_animes(query, playback_token)
+    playback_token = playback_token or mapping_playback_token()
+    if not menu_is_current(playback_token) then return end
+    latest_menu_anime_token = playback_token
     local encoded_query = url_encode(query)
     local server_metas = get_api_server_list(options.api_server, true)
     local servers = {}
@@ -193,7 +210,7 @@ function get_animes(query)
     local menu_type = "menu_anime"
     local menu_title = "在此处输入番剧名称"
     local footnote = "使用enter或ctrl+enter进行搜索"
-    local menu_cmd = { "script-message-to", mp.get_script_name(), "search-anime-event" }
+    local menu_cmd = { "script-message-to", mp.get_script_name(), "search-anime-scoped-event", playback_token }
 
     local function strip_trailing_dots(s)
         if not s then return "" end
@@ -233,12 +250,13 @@ function get_animes(query)
         server_order = server_order,
         server_notes = server_notes,
         total_count = total_count,
+        playback_token = playback_token,
     }
 
     local handle_response = make_handle_response(ctx)
 
     local cancel_fn = parallel_requests(servers, build_args, handle_response, function()
-        if request_cancelled then return end
+        if request_cancelled or not menu_is_current(ctx.playback_token) then return end
         local final_items = {}
         for _, srv in ipairs(ctx.server_order or {}) do
             local list = ctx.server_items and ctx.server_items[srv]
@@ -255,6 +273,7 @@ function get_animes(query)
                 show_message("", 0)
                 input.terminate()
                 mp.add_timeout(0.1, function()
+                    if not menu_is_current(ctx.playback_token) then return end
                     open_menu_select(final_items)
                 end)
             end
@@ -264,7 +283,9 @@ function get_animes(query)
     active_request_type = menu_type
 end
 
-function get_episodes(animeTitle, bangumiId, api_server)
+function get_episodes(animeTitle, bangumiId, api_server, playback_token)
+    -- Never manufacture a new playback identity for an old catalog result.
+    if not menu_is_current(playback_token) then return end
     local url = api_server .. "/api/v2/bangumi/" .. bangumiId
     local items = {}
 
@@ -291,7 +312,7 @@ function get_episodes(animeTitle, bangumiId, api_server)
     active_request_type = menu_type
     active_request_cancel = call_cmd_async(args, function(err, stdout)
         active_request_cancel = nil
-        if request_cancelled then
+        if request_cancelled or not menu_is_current(playback_token) then
             return
         end
 
@@ -320,7 +341,7 @@ function get_episodes(animeTitle, bangumiId, api_server)
 
         table.insert(items, {
             title = "← 返回搜索结果",
-            value = { "script-message-to", mp.get_script_name(), "open-latest-menu-anime", latest_menu_anime },
+            value = { "script-message-to", mp.get_script_name(), "open-latest-menu-anime", playback_token },
             keep_open = false,
             selectable = true,
         })
@@ -330,7 +351,7 @@ function get_episodes(animeTitle, bangumiId, api_server)
                 title = episode.episodeTitle,
                 hint = episode.episodeNumber,
                 value = { "script-message-to", mp.get_script_name(), "load-danmaku",
-                animeTitle, episode.episodeTitle, episode.episodeId, api_server },
+                animeTitle, episode.episodeTitle, episode.episodeId, api_server, bangumiId, playback_token },
                 keep_open = false,
                 selectable = true,
             })
@@ -343,6 +364,7 @@ function get_episodes(animeTitle, bangumiId, api_server)
             show_message("", 0)
             input.terminate()
             mp.add_timeout(0.1, function()
+                if not menu_is_current(playback_token) then return end
                 open_menu_select(items)
             end)
         end
@@ -424,6 +446,7 @@ end
 
 -- 打开弹幕输入搜索菜单
 function open_input_menu_get()
+    local playback_token = mapping_playback_token()
     mp.commandv('script-message-to', 'console', 'disable')
     local title = parse_title()
     input.get({
@@ -432,7 +455,7 @@ function open_input_menu_get()
         cursor_position = title and #title + 1,
         submit = function(text)
             input.terminate()
-            mp.commandv("script-message-to", mp.get_script_name(), "search-anime-event", text)
+            mp.commandv("script-message-to", mp.get_script_name(), "search-anime-scoped-event", playback_token, text)
         end
     })
 end
@@ -464,7 +487,7 @@ function open_input_menu_uosc()
         search_style = "palette",
         search_debounce = "submit",
         search_suggestion = parse_title(),
-        on_search = { "script-message-to", mp.get_script_name(), "search-anime-event" },
+        on_search = { "script-message-to", mp.get_script_name(), "search-anime-scoped-event", mapping_playback_token() },
         footnote = "使用enter或ctrl+enter进行搜索",
         items = items
     }
@@ -1361,7 +1384,10 @@ mp.register_script_message("set", function(prop, value)
 end)
 
 -- 注册函数给 uosc 按钮使用
-mp.register_script_message("search-anime-event", function(query)
+local function search_anime(query, playback_token)
+    playback_token = playback_token or mapping_playback_token()
+    if not menu_is_current(playback_token) then return end
+    latest_menu_anime_token = playback_token
     perform_cancel_active_request()
     if uosc_available then
         mp.commandv("script-message-to", "uosc", "close-menu", "menu_danmaku")
@@ -1370,23 +1396,29 @@ mp.register_script_message("search-anime-event", function(query)
     if name and class then
         query_extra(name, class)
     else
-        get_animes(query)
+        get_animes(query, playback_token)
     end
+end
+mp.register_script_message("search-anime-event", search_anime)
+mp.register_script_message("search-anime-scoped-event", function(playback_token, query)
+    search_anime(query, playback_token)
 end)
-mp.register_script_message("search-episodes-event", function(animeTitle, bangumiId, api_server)
+mp.register_script_message("search-episodes-event", function(animeTitle, bangumiId, api_server, playback_token)
+    if not menu_is_current(playback_token) then return end
     perform_cancel_active_request()
     if uosc_available then
         mp.commandv("script-message-to", "uosc", "close-menu", "menu_anime")
     end
 
-    get_episodes(animeTitle, bangumiId, api_server)
+    get_episodes(animeTitle, bangumiId, api_server, playback_token)
 end)
 
-mp.register_script_message("load-danmaku", function(animeTitle, episodeTitle, episodeId, api_server)
+mp.register_script_message("load-danmaku", function(animeTitle, episodeTitle, episodeId, api_server, bangumiId, playback_token)
+    if playback_token and playback_token ~= mapping_playback_token() then return end
     ENABLED = true
     DANMAKU.anime = animeTitle
     DANMAKU.episode = episodeTitle
-    set_episode_id(episodeId, true, api_server)
+    set_episode_id(episodeId, true, api_server, bangumiId, playback_token)
 end)
 
 mp.register_script_message("add-source-event", function(query)
@@ -1411,12 +1443,14 @@ mp.register_script_message("open_content_danmaku_menu", function()
     open_content_menu()
 end)
 
-mp.register_script_message("open-latest-menu-anime", function ()
+mp.register_script_message("open-latest-menu-anime", function (playback_token)
+    if not menu_is_current(latest_menu_anime_token) or (playback_token and not menu_is_current(playback_token)) then return end
     if uosc_available then
         mp.commandv("script-message-to", "uosc", "open-menu", latest_menu_anime)
     elseif input_loaded then
         show_message("", 0)
         mp.add_timeout(0.1, function()
+            if not menu_is_current(latest_menu_anime_token) then return end
             open_menu_select(utils.parse_json(latest_menu_anime))
         end)
     end

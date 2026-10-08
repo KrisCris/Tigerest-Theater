@@ -21,10 +21,8 @@ end
 
 -- 写入history.json
 -- 读取episodeId获取danmaku
-function set_episode_id(input, from_menu, api_server)
-    from_menu = from_menu or false
+function prepare_episode_id(input, selected_server)
     DANMAKU.source = "dandanplay"
-    local selected_server = api_server
     for url, source in pairs(DANMAKU.sources) do
         if source.from == "api_server" then
             if not source.from_history then
@@ -35,7 +33,7 @@ function set_episode_id(input, from_menu, api_server)
         end
     end
 
-    if not api_server then
+    if not selected_server then
         if DANMAKU.api_server ~= nil then
             selected_server = DANMAKU.api_server
         else
@@ -49,10 +47,22 @@ function set_episode_id(input, from_menu, api_server)
     selected_server = resolve_api_server(selected_server)
     DANMAKU.api_server = selected_server
 
-    local episodeId = tonumber(input)
-    write_history(episodeId, selected_server)
+    write_history(input, selected_server)
     set_danmaku_button()
-    fetch_danmaku(episodeId, from_menu, selected_server)
+    DANMAKU.mapping_origin = nil
+    return selected_server
+end
+
+function set_episode_id(input, from_menu, api_server, bangumi_id, playback_token)
+    if from_menu and not begin_manual_danmaku_selection(playback_token) then return end
+    local selected_server = resolve_api_server(api_server or DANMAKU.api_server
+        or get_api_server_list(options.api_server)[1])
+    local function legacy(save_failed)
+        prepare_episode_id(input, selected_server)
+        fetch_danmaku(input, from_menu or false, selected_server, save_failed)
+    end
+    if from_menu and select_shared_danmaku(input, bangumi_id, selected_server, playback_token, legacy) then return end
+    legacy()
 end
 
 -- 回退使用额外的弹幕获取方式
@@ -657,7 +667,7 @@ end
 
 -- 匹配弹幕库 comment, 仅匹配dandan本身弹幕库
 -- 通过danmaku api（url）+id获取弹幕
-function fetch_danmaku(episodeId, from_menu, api_server)
+function fetch_danmaku(episodeId, from_menu, api_server, save_failed)
     api_server = resolve_api_server(api_server)
     local url = api_server .. "/api/v2/comment/" .. episodeId .. "?withRelated=true&chConvert=0"
     show_message("弹幕加载中...", 30)
@@ -670,6 +680,9 @@ function fetch_danmaku(episodeId, from_menu, api_server)
 
     fetch_danmaku_data(args, function(data)
         handle_fetched_danmaku(data, url, from_menu)
+        if save_failed and data and data.comments then
+            show_message('弹幕已加载，但共享匹配未保存', 5)
+        end
     end)
 end
 

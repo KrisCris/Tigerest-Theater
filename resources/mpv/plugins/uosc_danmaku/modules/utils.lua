@@ -815,13 +815,14 @@ local async_running_count = 0
 local async_generation = 0
 local async_commands = {}
 
-mp.add_hook("on_unload", 40, function()
+function cancel_danmaku_async_requests()
     async_generation = async_generation + 1
     async_running_count = 0
     local previous = async_commands
     async_commands = {}
     for id in pairs(previous) do mp.abort_async_command(id) end
-end)
+end
+mp.add_hook("on_unload", 40, cancel_danmaku_async_requests)
 
 function mark_async_start()
     async_running_count = async_running_count + 1

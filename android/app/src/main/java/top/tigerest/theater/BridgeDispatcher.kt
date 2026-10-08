@@ -18,7 +18,8 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
     private var proxy: JavaScriptReplyProxy? = null
     @Volatile private var epoch = 0L
     private var connection = 0L
-    fun pageStarted() { epoch++; proxy = null }
+    init { DiagnosticsLog.app.setScope("") }
+    fun pageStarted() { epoch++; proxy = null; DiagnosticsLog.app.setScope("") }
     fun emit(component: String, signal: String, args: JSONArray = JSONArray()) {
         val target = proxy ?: return
         val generation = epoch
@@ -36,7 +37,7 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
             val id = request.optLong("id"); if(id <= 0) return@Runnable
             val response = JSONObject().put("id",id)
             try { response.put("result",call(request.getString("component"),request.getString("method"),request.optJSONArray("args") ?: JSONArray()) ?: JSONObject.NULL) }
-            catch(error: Exception) { response.put("error",if(error is IllegalArgumentException || error is IllegalStateException) error.message?.take(180) ?: "操作无效" else "客户端操作失败，请重试") }
+            catch(error: Exception) { DiagnosticsLog.app.record("error","Bridge operation failed: ${error.javaClass.simpleName}"); response.put("error",if(error is IllegalArgumentException || error is IllegalStateException) error.message?.take(180) ?: "操作无效" else "客户端操作失败，请重试") }
             // Preserve signal-before-reply ordering even when the operation ran
             // on main; callers may start a new session immediately after stop.
             ui.post { if(generation == epoch) reply.postMessage(response.toString()) }
@@ -57,6 +58,8 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
             else -> throw IllegalArgumentException("设置操作无效")
         }
         "system" -> when(method) {
+            "setReportDiagnosticsScope" -> { require(args.length() == 1 && args.get(0) is String && args.getString(0).length <= 256); DiagnosticsLog.app.setScope(args.getString(0)); true }
+            "collectReportDiagnostics" -> { require(args.length() == 0); DiagnosticsLog.app.collect() }
             "checkForUpdates" -> { require(args.length() <= 1 && (args.length() == 0 || args.get(0) is Boolean)); activity.updates.engine.check(args.optBoolean(0,false)) }
             "appUpdateState" -> { require(args.length() == 0); activity.updates.engine.snapshot() }
             "downloadAppUpdate" -> { require(args.length() == 0); activity.updates.engine.download() }
@@ -98,5 +101,5 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
         "danmaku" -> if(method == "importFile") { activity.runOnUiThread { activity.chooseDanmakuFile() }; true } else activity.danmaku.dispatch(method,args)
         else -> throw IllegalArgumentException("客户端组件无效")
     }
-    fun close() { epoch++; proxy = null; worker.shutdownNow(); network.shutdownNow() }
+    fun close() { epoch++; proxy = null; DiagnosticsLog.app.setScope(""); worker.shutdownNow(); network.shutdownNow() }
 }
