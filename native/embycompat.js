@@ -116,6 +116,61 @@
         // that suffix as well.
         defineModule('tigerest/apphost.js', [], createAppHost);
 
+        // HomeView still owns /home and its favorites tab. Replace its home
+        // controller so every existing Home command uses the same gallery.
+        defineModule('home/hometab.js', ['modules/tabbedview/basetab.js', 'connectionManager', 'appRouter', 'modules/maintabsmanager.js'], function (baseTab, connectionManager, appRouter, mainTabsManager) {
+            const BaseTab = moduleValue(baseTab), manager = moduleValue(connectionManager), router = moduleValue(appRouter), tabs = moduleValue(mainTabsManager);
+            const fullscreenSessions = new Set();
+            const fullscreenPending = new Map();
+            let fullscreenEpoch = 0;
+            window.TigerestHomeReset = () => { ++fullscreenEpoch; fullscreenSessions.clear(); fullscreenPending.clear(); };
+            const enterFullscreen = async (api, signal) => {
+                const session = [api.serverId(), api.getCurrentUserId()].join('|'), epoch = fullscreenEpoch;
+                await window.initCompleted;
+                if (signal?.aborted || epoch !== fullscreenEpoch || fullscreenSessions.has(session)) return;
+                if (window.api?.window?.setFullScreen) {
+                    let pending = fullscreenPending.get(session);
+                    if (!pending) {
+                        pending = Promise.resolve(window.api.window.setFullScreen(true)).finally(() => { if (fullscreenPending.get(session) === pending) fullscreenPending.delete(session); });
+                        fullscreenPending.set(session, pending);
+                    }
+                    await pending;
+                    if (epoch === fullscreenEpoch && !signal?.aborted) fullscreenSessions.add(session);
+                }
+            };
+            function HomeTab(view, params, options) { BaseTab.apply(this, arguments); }
+            Object.assign(HomeTab.prototype, BaseTab.prototype);
+            HomeTab.prototype.onTemplateLoaded = function () {
+                this.scroller?.pause?.();
+                this.scroller = null;
+                // sectionstab.template.html is an upgraded Emby scroller.
+                // It must not resume against the legacy slider we replace.
+                this.view.classList?.remove('scrollFrameY');
+                this.view.removeAttribute?.('is');
+                // Select the active original HomeView tab. Some Emby versions'
+                // showFavorites() helper emits /home&tab=favorites, losing the
+                // query parameter and reopening the home tab instead.
+                this.gallery = new window.TigerestHomeGallery(this.view, { apiProvider: () => manager.currentApiClient(), router, enterFullscreen, openFavorites: () => tabs.selectedTabIndex(1) });
+                BaseTab.prototype.onTemplateLoaded.apply(this, arguments);
+            };
+            HomeTab.prototype.enableFocusPreview = function () { return false; };
+            HomeTab.prototype.getFocusContainerElement = function () { return this.view; };
+            HomeTab.prototype.scrollToBeginning = function () { this.gallery?.scrollToBeginning(); };
+            HomeTab.prototype.onResume = function (options) {
+                BaseTab.prototype.onResume.apply(this, arguments);
+                return this.gallery?.start(options);
+            };
+            HomeTab.prototype.onPause = function () {
+                this.gallery?.stop();
+                BaseTab.prototype.onPause.apply(this, arguments);
+            };
+            HomeTab.prototype.destroy = function () {
+                this.gallery?.destroy(); this.gallery = null;
+                BaseTab.prototype.destroy.apply(this, arguments);
+            };
+            return { default: HomeTab };
+        });
+
         defineModule('tigerest/settings.js', [], function () {
             return class TigerestSettingsPlugin {
                 constructor() { this.id = 'tigerest-native-settings'; }

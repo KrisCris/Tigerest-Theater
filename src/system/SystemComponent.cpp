@@ -973,6 +973,7 @@ QString SystemComponent::getNativeShellScript()
   clientData.insert("version", QJsonValue::fromVariant(Version::GetVersionString()));
   clientData.insert("userAgent", QJsonValue::fromVariant(getUserAgent()));
   clientData.insert("scriptPath", QJsonValue::fromVariant("file:///" + path));
+  clientData.insert("homeArtPath", "qrc:///web-client/extension/home-art");
   QString defaultMode = SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "layout").toString();
 
   QFile flatpakOsFile {"/run/host/os-release"};
@@ -1034,6 +1035,8 @@ QString SystemComponent::getNativeShellScript()
     ":/web-client/extension/connectivityHelper.js",
     ":/web-client/extension/nativeshell.js",
     ":/web-client/extension/offline.js",
+    ":/web-client/extension/homeData.js",
+    ":/web-client/extension/homeGallery.js",
     ":/web-client/extension/embycompat.js"
   };
 

@@ -22,7 +22,7 @@ android {
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 val sharedAssets = tasks.register<Copy>("syncSharedWebAssets") {
-    from(rootProject.file("../native")) { include("*.js", "*.css", "*.html", "*.png") }
+    from(rootProject.file("../native")) { include("*.js", "*.css", "*.html", "*.png", "home-art/*.png") }
     from(rootProject.file("../resources/settings/settings_description.json"))
     into("src/main/assets/shared")
 }
