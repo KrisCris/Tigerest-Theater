@@ -62,7 +62,7 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
     @Synchronized fun autoMatch(metadata: JSONObject) {
         val token = requestGeneration.playbackChanged(); item = JSONObject(metadata.toString())
         val original = JSONObject(item.toString())
-        mappingClient.dispatcher.cancelAll()
+        mappingClient.dispatcher.cancelAll(); client.dispatcher.cancelAll()
         group = metadata.optString("SeriesName",metadata.optString("Name"))+":"+metadata.optInt("ParentIndexNumber",-1)
         itemKey = metadata.optString("Id").ifBlank { metadata.optString("Name")+":"+metadata.optInt("IndexNumber",-1) }
         val historyKey = itemKey
@@ -96,21 +96,23 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
                 val animes = search(title)
                 if(token != generation) return@execute
                 val savedBangumi = prefs.getString("match:$group",null)
-                val selected = (0 until animes.length()).map { animes.getJSONObject(it) }.let { results ->
-                    results.find { it.optString("bangumiId") == savedBangumi }
-                        ?: DanmakuMatch.select(results,title,original.optInt("ParentIndexNumber",-1))
+                val selected = DanmakuMatch.resolve((0 until animes.length()).mapNotNull { animes.optJSONObject(it) },
+                    title,original.optInt("ParentIndexNumber",-1),original.optInt("IndexNumber",-1),
+                    original.optString("PremiereDate"),original.optString("Name"),savedBangumi,{token==generation}) { anime ->
+                    val records=episodes(anime.get("bangumiId").toString(),origin)
+                    (0 until records.length()).mapNotNull { records.optJSONObject(it) }
                 }
-                if(selected == null) { if(token == generation) status("弹幕未自动匹配，请手动搜索作品"); return@execute }
-                val episodeNumber = original.optInt("IndexNumber",-1)
-                val episodes = episodes(selected.get("bangumiId").toString())
-                val episode = (0 until episodes.length()).map { episodes.getJSONObject(it) }.let { records -> records.find { it.optString("episodeNumber").toDoubleOrNull() == episodeNumber.toDouble() } ?: records.singleOrNull() }
-                if(episode == null) { if(token == generation) status("请手动选择弹幕集数"); return@execute }
-                if(token == generation) load(episode.get("episodeId").toString(),episode.optString("episodeTitle",title),token)
+                if(selected == null) { if(token == generation) status("弹幕未自动匹配，请手动搜索作品或选择集数"); return@execute }
+                if(token == generation) {
+                    DiagnosticsLog.app.record("info","Danmaku selected ranked regular episode (dateDistance=${selected.dateDistance ?: "unknown"})")
+                    val label=selected.anime.optString("animeTitle",title)+" - "+selected.episode.optString("episodeTitle",title)
+                    loadLegacy(selected.episode.get("episodeId").toString(),label,token,origin)
+                }
             } catch(_: Exception) { if(token == generation) status("弹幕暂不可用，可以稍后手动搜索") }
         }
     }
     fun search(keyword: String): JSONArray { require(keyword.isNotBlank() && keyword.length <= 200); return fetch("/api/v2/search/anime?keyword="+URLEncoder.encode(keyword,"UTF-8")).optJSONArray("animes") ?: JSONArray() }
-    fun episodes(id: String): JSONArray { require(id.length <= 100 && id.matches(Regex("(?:[0-9]+|tmdb-[A-Za-z0-9-]+)"))); val bangumi = fetch("/api/v2/bangumi/$id").optJSONObject("bangumi") ?: JSONObject(); return bangumi.optJSONArray("episodes") ?: JSONArray() }
+    fun episodes(id: String,origin: String = base()): JSONArray { require(id.length <= 100 && id.matches(Regex("(?:[0-9]+|tmdb-[A-Za-z0-9-]+)"))); val bangumi = fetch("/api/v2/bangumi/$id",origin).optJSONObject("bangumi") ?: JSONObject(); return bangumi.optJSONArray("episodes") ?: JSONArray() }
     private fun cacheName(item: String,id: String) = MessageDigest.getInstance("SHA-256").digest((item+":"+id).toByteArray()).joinToString("") { "%02x".format(it) }+".json"
     @Synchronized private fun add(id: String,title: String,comments: List<DanmakuComment>,token: Long,remember: Boolean = true,policyId: String = id) {
         if(token != generation) return
@@ -127,7 +129,7 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
             val files = cache.listFiles()?.sortedBy { it.lastModified() } ?: emptyList(); var total = files.sumOf { it.length() }
             for(file in files) { if(total <= 128L*1024*1024) break; total -= file.length(); file.delete() }
         }
-        changed(); status("${title} · 已加载 ${comments.size} 条弹幕")
+        changed(); status("${title}\n已加载 ${comments.size} 条弹幕\n匹配不正确可在弹幕菜单中手动纠正")
     }
     fun load(id: String,title: String = "弹幕",token: Long = generation): Int {
         if(token != generation) return 0
@@ -145,11 +147,12 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
         if(token != generation) return 0
         val match = result.match ?: return 0
         val comments = DanmakuParser.parse(result.danmaku!!.toString())
-        add(match.get("episodeId").toString(),match.optString("episodeTitle","弹幕"),comments,token,policyId="dandanplay:"+origin)
+        val label=listOf(match.optString("animeTitle"),match.optString("episodeTitle","弹幕")).filter { it.isNotBlank() }.joinToString(" - ")
+        add(match.get("episodeId").toString(),label,comments,token,policyId="dandanplay:"+origin)
         if(token == generation) {
             val shared = match.optString("origin") == "shared"
             DiagnosticsLog.app.record("info",if(shared) "Danmaku shared mapping loaded" else "Danmaku manual mapping saved and loaded")
-            if(shared) status("来自共享匹配 · 已加载 ${comments.size} 条弹幕，可手动纠正")
+            if(shared) status("${label}\n来自共享匹配 · 已加载 ${comments.size} 条弹幕\n可在弹幕菜单中手动纠正")
         }
         return comments.size
     }

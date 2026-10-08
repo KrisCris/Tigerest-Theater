@@ -90,7 +90,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
             }
             model.settings.changed = { section,values -> bridge.emit("settings","sectionValueUpdate",JSONArray().put(section).put(values)); runOnUiThread { model.player.applySettings(); overlay.rebuild(); if(section == "main") webHost.applySettings() } }
             danmaku.changed = { runOnUiThread { overlay.rebuild(); bridge.emit("danmaku","sourcesChanged",JSONArray().put(danmaku.sourceSnapshot())) } }
-            danmaku.status = { text -> runOnUiThread { notify(text); bridge.emit("danmaku","status",JSONArray().put(text)) } }
+            danmaku.status = { text -> runOnUiThread { if(!controls.showDanmakuStatus(text)) notify(text); bridge.emit("danmaku","status",JSONArray().put(text)) } }
             root.setOnApplyWindowInsetsListener { _,insets -> currentInsets = insets; updateWindowMetrics(); insets }
             root.addOnLayoutChangeListener { _,_,_,_,_,_,_,_,_ -> updateWindowMetrics() }
             lifecycleScope.launch { WindowInfoTracker.getOrCreate(this@MainActivity).windowLayoutInfo(this@MainActivity).collect { info ->

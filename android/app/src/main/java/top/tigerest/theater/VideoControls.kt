@@ -48,6 +48,13 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
     private val hideFeedback = Runnable { gestureFeedback.visibility=View.GONE }
+    private val danmakuStatus = TextView(activity).apply {
+        setTextColor(Color.WHITE);textSize=14f;gravity=Gravity.CENTER
+        setPadding(dp(16),dp(12),dp(16),dp(12));visibility=View.GONE
+        background=GradientDrawable().apply { setColor(0xdc101010.toInt());cornerRadius=dp(12).toFloat() }
+        accessibilityLiveRegion=View.ACCESSIBILITY_LIVE_REGION_POLITE
+    }
+    private val hideDanmakuStatus = Runnable { danmakuStatus.visibility=View.GONE }
     private val gestures = PlayerGestures(activity,player,{ performClick() },{ text ->
         handler.removeCallbacks(hideFeedback);gestureFeedback.text=text;gestureFeedback.visibility=if(text.isEmpty()) View.GONE else View.VISIBLE
         if(text.isNotEmpty() && !touching) handler.postDelayed(hideFeedback,1000)
@@ -59,7 +66,13 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
     fun controlsVisible() = controls.visibility == View.VISIBLE
     fun playbackStarted() { post { if(player.state.active && player.isVideo()) gestures.playbackStarted() } }
     fun cancelGesture() { touching = false; gestures.cancelTouch() }
-    fun playbackHidden() { touching = false; gestures.suspend();gestureFeedback.visibility=View.GONE;loadingIndicator.visibility=View.GONE }
+    fun playbackHidden() { touching = false; gestures.suspend();gestureFeedback.visibility=View.GONE;loadingIndicator.visibility=View.GONE;handler.removeCallbacks(hideDanmakuStatus);danmakuStatus.visibility=View.GONE }
+    fun showDanmakuStatus(text: String): Boolean {
+        if(!player.state.active || !player.isVideo() || visibility!=View.VISIBLE) return false
+        handler.removeCallbacks(hideDanmakuStatus);danmakuStatus.text=text;danmakuStatus.visibility=View.VISIBLE
+        handler.postDelayed(hideDanmakuStatus,5000)
+        return true
+    }
     private fun updateLoadingIndicator() {
         val shown = player.isVideo() && player.state.loading
         loadingIndicator.visibility = if(shown) View.VISIBLE else View.GONE
@@ -135,6 +148,7 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         controls.addView(actions); addView(controls,LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.WRAP_CONTENT,Gravity.BOTTOM))
         addView(loadingIndicator,LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT,Gravity.CENTER))
         addView(gestureFeedback,LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT,Gravity.CENTER))
+        addView(danmakuStatus,LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.WRAP_CONTENT,Gravity.TOP).apply { topMargin=dp(76);leftMargin=dp(16);rightMargin=dp(16) })
         applySafeInsets(safeInsets)
     }
     private fun skip(delta: Long) { val duration = player.dispatch("getDuration",JSONArray()) as Long; player.dispatch("seekTo",JSONArray().put((player.state.positionMs+delta).coerceIn(0,duration.coerceAtLeast(0)))) }
@@ -247,6 +261,6 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
     private fun network(action: () -> Unit) { thread { runCatching(action).onFailure { activity.runOnUiThread { activity.notify(it.message ?: "弹幕服务暂不可用") } } } }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); handler.post(update) }
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) { super.onWindowFocusChanged(hasWindowFocus); menuOpen = !hasWindowFocus; if(hasWindowFocus && visibility == View.VISIBLE) showControls() else { cancelGesture(); handler.removeCallbacks(hide) } }
-    override fun onDetachedFromWindow() { handler.removeCallbacks(update); handler.removeCallbacks(hide);handler.removeCallbacks(hideFeedback);gestures.suspend(); super.onDetachedFromWindow() }
+    override fun onDetachedFromWindow() { handler.removeCallbacks(update); handler.removeCallbacks(hide);handler.removeCallbacks(hideFeedback);handler.removeCallbacks(hideDanmakuStatus);gestures.suspend(); super.onDetachedFromWindow() }
     private fun format(ms: Long): String { val seconds = ms/1000; return "%d:%02d".format(seconds/60,seconds%60) }
 }
