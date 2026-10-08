@@ -245,6 +245,297 @@ function cases.unmatched_episode_is_visible_and_does_not_load_wrong_remake()
     assert(#s.requests == 2, 'A conflicting air date must not fetch the same-numbered wrong episode')
     assert(notice and notice ~= '', 'Unmatched episodes must report a visible result instead of silently stopping')
 end
+function cases.nearby_dates_match_a_corroborated_episode_within_one_week()
+    for _, dates in ipairs({
+        {'2026-07-20', '2026-07-17'}, -- The reported production failure.
+        {'2026-08-03', '2026-07-27'}, -- Seven days, crossing a month.
+        {'2026-12-28', '2027-01-04'}, -- Seven days in the other direction.
+        {'2024-03-02', '2024-02-24'}, -- Leap-year boundary.
+        {'1963-01-04', '1963-01-01'}, -- Dates before the Windows CRT epoch.
+        {'1900-03-03', '1900-02-24'}, -- Century years are not always leap years.
+    }) do
+        local s = sandbox(true)
+        s.set_history({show_danmaku = true})
+        s.props['user-data/tigerest/emby/premiere-date'] = dates[1] .. 'T00:00:00Z'
+        s.props['user-data/tigerest/emby/episode-name'] = '被怀疑是私生子，还要陪她去初次冒险'
+        s.emit('file-loaded')
+        s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+        s.respond(2, {bangumi = {episodes = {
+            {episodeNumber = '4', episodeTitle = '第4话 Another episode', episodeId = 420004, airDate = dates[2]},
+            {episodeNumber = '3', episodeTitle = '第3话 被怀疑是私生子 还要陪她去初次冒险', episodeId = 420003, airDate = dates[2]},
+        }}})
+        assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
+            'A corroborated E3 within seven days must load E3 instead of the nearby E4: ' .. dates[1])
+        s.respond(3, {count = 1, comments = {{p = '10,1,16777215', m = 'Matched without manual search'}}})
+        assert(s.props['user-data/uosc_danmaku/has-danmaku'], 'The first automatic match must render its comments')
+    end
+end
+function cases.nearby_dates_decline_out_of_range_or_unconfirmed_episodes()
+    for _, record in ipairs({
+        {date = '2026-07-12', number = '3', title = 'Confirmed episode'}, -- Eight days before.
+        {date = '2026-07-28', number = '3', title = 'Confirmed episode'}, -- Eight days after.
+        {date = '1989-07-17', number = '3', title = 'Confirmed episode'}, -- Old release, matching text.
+        {date = '2026-07-17', number = '4', title = 'Confirmed episode'}, -- Wrong episode number.
+        {date = '2026-07-17', number = '3', title = 'Unrelated story'},
+        {date = '2026-07-17', number = '3', title = 'Confirmed episode', expected = ''},
+        {date = '', number = '3', title = 'Confirmed episode'},
+        {date = '2026-07-00', number = '3', title = 'Confirmed episode'},
+    }) do
+        local s = sandbox(true)
+        s.set_history({show_danmaku = true})
+        s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+        s.props['user-data/tigerest/emby/episode-name'] = record.expected or 'Confirmed episode'
+        local notice
+        s.env.show_message = function(message) notice = message end
+        s.emit('file-loaded')
+        s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+        s.respond(2, {bangumi = {episodes = {{episodeNumber = record.number,
+            episodeTitle = '第' .. record.number .. '话 ' .. record.title, episodeId = 420003, airDate = record.date}}}})
+        assert(#s.requests == 2, 'An unconfirmed or out-of-range episode must not be loaded: ' .. record.date)
+        assert(notice and notice ~= '', 'Declined matching must keep the manual search hint')
+    end
+end
+function cases.exact_dates_take_priority_over_a_nearby_release()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+    s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+    s.emit('file-loaded')
+    s.respond(1, {animes = {
+        {type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'},
+        {type = 'tvseries', animeTitle = 'Fixture series remake', bangumiId = '43'},
+    }})
+    s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+        episodeId = 420003, airDate = '2026-07-17'}}}})
+    assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/bangumi/43', 1, true),
+        'Nearby dates must wait for other candidates to be checked for an exact date')
+    s.respond(3, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+        episodeId = 430003, airDate = '2026-07-20'}}}})
+    assert(s.request_args[4] and s.request_args[4][#s.request_args[4]]:find('/comment/430003?', 1, true),
+        'An exact date must win even when a nearby candidate arrived first')
+end
+function cases.nearby_date_ambiguity_across_releases_requires_manual_selection()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+    s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+    local notice
+    s.env.show_message = function(message) notice = message end
+    s.emit('file-loaded')
+    s.respond(1, {animes = {
+        {type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'},
+        {type = 'tvseries', animeTitle = 'Fixture series remake', bangumiId = '43'},
+    }})
+    s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+        episodeId = 420003, airDate = '2026-07-17'}}}})
+    s.respond(3, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+        episodeId = 430003, airDate = '2026-07-18'}}}})
+    assert(#s.requests == 3, 'Two corroborated nearby releases must not silently select either one')
+    assert(notice and notice ~= '', 'Ambiguous releases must still offer manual matching')
+end
+function cases.nearby_date_ambiguity_within_one_release_requires_manual_selection()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+    s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+    s.emit('file-loaded')
+    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+    s.respond(2, {bangumi = {episodes = {
+        {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420003, airDate = '2026-07-17'},
+        {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420033, airDate = '2026-07-18'},
+    }}})
+    assert(#s.requests == 2, 'Duplicate episode numbers with nearby dates must not select by response order')
+end
+function cases.ambiguous_exact_dates_block_a_nearby_match_in_the_same_release()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+    s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+    s.emit('file-loaded')
+    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+    s.respond(2, {bangumi = {episodes = {
+        {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420003, airDate = '2026-07-20'},
+        {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420033, airDate = '2026-07-20'},
+        {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420333, airDate = '2026-07-17'},
+    }}})
+    assert(#s.requests == 2, 'A nearby episode must not override unresolved exact-date matches')
+end
+function cases.ambiguous_exact_release_blocks_a_later_nearby_release()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+    s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+    s.emit('file-loaded')
+    s.respond(1, {animes = {
+        {type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'},
+        {type = 'tvseries', animeTitle = 'Fixture series remake', bangumiId = '43'},
+    }})
+    s.respond(2, {bangumi = {episodes = {
+        {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420003, airDate = '2026-07-20'},
+        {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420033, airDate = '2026-07-20'},
+    }}})
+    s.respond(3, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+        episodeId = 430003, airDate = '2026-07-17'}}}})
+    assert(#s.requests == 3, 'Another nearby release must not override ambiguous exact-date matches')
+end
+function cases.incomplete_release_details_cannot_establish_a_unique_nearby_match()
+    for _, failed in ipairs({true, false}) do
+        local s = sandbox(true)
+        s.set_history({show_danmaku = true})
+        s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+        s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+        s.emit('file-loaded')
+        s.respond(1, {animes = {
+            {type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'},
+            {type = 'tvseries', animeTitle = 'Fixture series remake', bangumiId = '43'},
+        }})
+        s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+            episodeId = 420003, airDate = '2026-07-17'}}}})
+        if failed then s.requests[3](false, {status = 22, stdout = ''}, 'controlled request failure'); s.advance(0.1)
+        else s.respond(3, {}) end
+        assert(#s.requests == 3, 'Failed or invalid release details must not be treated as a ruled-out candidate')
+    end
+end
+function cases.nearby_fallback_waits_for_all_provider_searches()
+    for _, failed in ipairs({true, false}) do
+        local s = sandbox(true)
+        s.env.options.api_server = 'http://first.example.test,http://second.example.test'
+        s.set_history({show_danmaku = true})
+        s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+        s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+        s.emit('file-loaded')
+        assert(#s.requests == 2, 'Both configured providers must be searched')
+        s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+        s.respond(3, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+            episodeId = 420003, airDate = '2026-07-17'}}}})
+        assert(#s.requests == 3, 'A nearby result must wait for the slower provider')
+        if failed then
+            s.requests[2](false, {status = 22, stdout = ''}, 'controlled request failure'); s.advance(0.1)
+            assert(#s.requests == 3, 'A failed provider leaves uniqueness unconfirmed')
+        else
+            s.respond(2, {animes = {}})
+            assert(s.request_args[4] and s.request_args[4][#s.request_args[4]]:find('/comment/420003?', 1, true),
+                'A successful empty provider response permits the single corroborated nearby result')
+        end
+    end
+end
+function cases.stalled_release_details_finish_with_a_manual_hint()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+    s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+    local notice
+    s.env.show_message = function(message) notice = message end
+    s.emit('file-loaded')
+    s.respond(1, {animes = {
+        {type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'},
+        {type = 'tvseries', animeTitle = 'Fixture series remake', bangumiId = '43'},
+    }})
+    s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+        episodeId = 420003, airDate = '2026-07-17'}}}})
+    s.advance(16)
+    assert(notice and notice ~= '', 'Stalled release details must eventually offer manual matching')
+    assert(#s.requests == 3, 'A timed-out release must leave nearby uniqueness unconfirmed')
+    s.respond(3, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+        episodeId = 430003, airDate = '2026-07-20'}}}})
+    assert(#s.requests == 3, 'A late response after the deadline must not start comment loading')
+end
+function cases.nearby_candidate_ids_are_scoped_to_provider_and_release()
+    for _, multiple_providers in ipairs({false, true}) do
+        local s = sandbox(true)
+        s.set_history({show_danmaku = true})
+        s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+        s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+        local notice
+        s.env.show_message = function(message) notice = message end
+        if multiple_providers then s.env.options.api_server = 'http://first.example.test,http://second.example.test' end
+        s.emit('file-loaded')
+        local first = {type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}
+        local second = {type = 'tvseries', animeTitle = 'Fixture series remake', bangumiId = multiple_providers and '42' or '43'}
+        local response = function(date) return {bangumi = {episodes = {{episodeNumber = '3',
+            episodeTitle = '第3话 Confirmed episode', episodeId = 10002, airDate = date}}}} end
+        if multiple_providers then
+            s.respond(1, {animes = {first}})
+            s.respond(2, {animes = {second}})
+            s.respond(3, response('2026-07-17'))
+            s.respond(4, response('2026-07-18'))
+        else
+            s.respond(1, {animes = {first, second}})
+            s.respond(2, response('2026-07-17'))
+            s.respond(3, response('2026-07-18'))
+        end
+        assert(#s.requests == (multiple_providers and 4 or 3),
+            'Deployment-local episode IDs must not collapse different releases or providers')
+        assert(notice and notice ~= '', 'Conflicting identities must require manual selection')
+    end
+end
+function cases.duplicate_nearby_records_in_one_release_are_not_ambiguous()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+    s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+    s.emit('file-loaded')
+    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+    local episode = {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+        episodeId = 420003, airDate = '2026-07-17'}
+    s.respond(2, {bangumi = {episodes = {episode, episode}}})
+    assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
+        'Repeated records for one provider/release/episode must still be one candidate')
+end
+function cases.malformed_candidate_entries_finish_with_a_manual_hint()
+    for _, stage in ipairs({'anime', 'missing-id', 'episode'}) do
+        local s = sandbox(true)
+        s.set_history({show_danmaku = true})
+        s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+        local notice
+        s.env.show_message = function(message) notice = message end
+        s.emit('file-loaded')
+        local anime = {type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}
+        if stage == 'anime' then
+            s.respond(1, {animes = {false}})
+        elseif stage == 'missing-id' then
+            anime.bangumiId = nil
+            s.respond(1, {animes = {anime}})
+        else
+            s.respond(1, {animes = {anime}})
+            s.respond(2, {bangumi = {episodes = {false}}})
+        end
+        s.advance(16)
+        assert(notice and notice ~= '', 'Malformed ' .. stage .. ' entries must finish with manual matching')
+        assert(#s.requests == (stage == 'episode' and 2 or 1), 'Malformed entries must not load comments')
+    end
+end
+function cases.exact_match_survives_an_incomplete_candidate_scan()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+    s.emit('file-loaded')
+    s.respond(1, {animes = {
+        {type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'},
+        {type = 'tvseries', animeTitle = 'Fixture series remake', bangumiId = '43'},
+    }})
+    s.respond(2, {})
+    s.respond(3, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+        episodeId = 430003, airDate = '2026-07-20'}}}})
+    assert(s.request_args[4] and s.request_args[4][#s.request_args[4]]:find('/comment/430003?', 1, true),
+        'An incomplete scan only blocks weaker nearby dates, not a known exact match')
+end
+function cases.release_detail_deadlines_do_not_survive_file_unload()
+    local s = sandbox(true)
+    s.set_history({show_danmaku = true})
+    s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+    local notices = 0
+    s.env.show_message = function() notices = notices + 1 end
+    s.emit('file-loaded')
+    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+    s.emit('on_unload')
+    local previous_notices = notices
+    s.advance(16)
+    s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
+        episodeId = 420003, airDate = '2026-07-20'}}}})
+    assert(notices == previous_notices and #s.requests == 2,
+        'Unloaded episode deadlines and late detail responses must not affect the next file')
+end
 function cases.batch_release_uses_episode_number_when_titles_are_translated()
     local s = sandbox(true)
     s.set_history({show_danmaku = true})

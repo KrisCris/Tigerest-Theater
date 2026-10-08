@@ -228,9 +228,30 @@ local function broadcast_date(value)
     return type(value) == 'string' and value:match('^(%d%d%d%d%-%d%d%-%d%d)') or nil
 end
 
+local function broadcast_day(value)
+    local date = broadcast_date(value)
+    if not date then return nil end
+    local year, month, day = date:match('^(%d+)%-(%d+)%-(%d+)$')
+    year, month, day = tonumber(year), tonumber(month), tonumber(day)
+    if year < 1 or month < 1 or month > 12 then return nil end
+    local leap = year % 4 == 0 and (year % 100 ~= 0 or year % 400 == 0)
+    local month_days = {31, leap and 29 or 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+    if day < 1 or day > month_days[month] then return nil end
+    -- Civil days avoid timezone/DST shifts and Windows' pre-1970 os.time limit.
+    local previous_year = year - 1
+    local ordinal = 365 * previous_year + math.floor(previous_year / 4)
+        - math.floor(previous_year / 100) + math.floor(previous_year / 400) + day
+    for index = 1, month - 1 do ordinal = ordinal + month_days[index] end
+    return ordinal
+end
+
 local function episode_title(value)
     return tostring(value or ''):gsub('^第%s*%d+%s*话%s*', ''):gsub('^第%s*%d+%s*集%s*', '')
         :gsub('[%s%p]', '')
+end
+
+local function valid_api_id(value)
+    return type(value) == 'number' or (type(value) == 'string' and value ~= '')
 end
 
 local function match_episode(anime, episode_num, premiere_date, expected_title, fallback, api_server, callback)
@@ -239,34 +260,38 @@ local function match_episode(anime, episode_num, premiere_date, expected_title, 
     local args = make_danmaku_request_args("GET", url)
 
     if args == nil then
-        callback(nil)
+        callback(nil, nil, true)
         return
     end
 
-    call_cmd_async(args, function(error, json)
+    parallel_requests({api_server}, function() return args end, function(_, error, json)
         if error then
             msg.error(error)
-            callback(nil)
+            callback(nil, nil, true)
             return
         end
 
         local data = utils.parse_json(json)
-        if not data or not data.bangumi or not data.bangumi.episodes then
+        if type(data) ~= 'table' or type(data.bangumi) ~= 'table'
+            or type(data.bangumi.episodes) ~= 'table' then
             msg.info("无结果")
-            callback(nil)
+            callback(nil, nil, true)
             return
         end
 
-        local dated_episodes, titled_episodes = {}, {}
+        local dated_episodes, titled_episodes, nearby_episodes = {}, {}, {}
+        local expected_day = broadcast_day(premiere_date)
+        local malformed_episode = false
         for _, episode in ipairs(data.bangumi.episodes) do
-            local ep_num = tonumber(episode.episodeNumber)
-            local date_matches = premiere_date and broadcast_date(episode.airDate) == premiere_date
-            local number_matches = not premiere_date and ep_num == tonumber(episode_num)
+            local valid = type(episode) == 'table'
+            local ep_num = valid and tonumber(episode.episodeNumber)
+            local date_matches = valid and premiere_date and broadcast_date(episode.airDate) == premiere_date
+            local number_matches = valid and not premiere_date and ep_num == tonumber(episode_num)
             -- When trying a lower-ranked title without dates, require corroborating
             -- episode text if Emby supplied it (e.g. an original and its remake).
-            local title_matches = not fallback or expected_title == ''
-                or jaro_winkler(expected_title, episode_title(episode.episodeTitle)) >= 0.85
-            if ep_num and episode.episodeId then
+            local title_matches = valid and (not fallback or expected_title == ''
+                or jaro_winkler(expected_title, episode_title(episode.episodeTitle)) >= 0.85)
+            if ep_num and valid_api_id(episode.episodeId) then
                 if date_matches then
                     dated_episodes[#dated_episodes + 1] = episode
                     if expected_title ~= '' and episode_title(episode.episodeTitle) == expected_title then
@@ -275,7 +300,15 @@ local function match_episode(anime, episode_num, premiere_date, expected_title, 
                 elseif number_matches and title_matches then
                     callback(episode)
                     return
+                elseif expected_day and ep_num == tonumber(episode_num) and expected_title ~= ''
+                    and jaro_winkler(expected_title, episode_title(episode.episodeTitle)) >= 0.85 then
+                    local air_day = broadcast_day(episode.airDate)
+                    if air_day and math.abs(expected_day - air_day) <= 7 then
+                        nearby_episodes[#nearby_episodes + 1] = episode
+                    end
                 end
+            else
+                malformed_episode = true
             end
         end
 
@@ -292,8 +325,9 @@ local function match_episode(anime, episode_num, premiere_date, expected_title, 
         end
         if numbered_count == 1 then callback(numbered_episode); return end
         if #dated_episodes == 1 then callback(dated_episodes[1]); return end
-        callback(nil)
-    end)
+        -- Unresolved exact-date ambiguity cannot be replaced by a weaker date.
+        callback(nil, nearby_episodes, #dated_episodes > 0 or malformed_episode)
+    end, nil, {per_request_timeout = 15})
 end
 
 local function match_anime()
@@ -316,14 +350,36 @@ local function match_anime()
     local cancel_fn = nil
     local searches_finished = false
     local pending_candidates = 0
+    local nearby_candidates = {}
+    local fallback_uncertain = false
     local premiere_date, expected_title = nil, ''
     if mp.get_property_bool('user-data/tigerest/emby/valid', false) then
         premiere_date = broadcast_date(mp.get_property_native('user-data/tigerest/emby/premiere-date'))
         expected_title = episode_title(mp.get_property_native('user-data/tigerest/emby/episode-name'))
     end
 
+    local function accept_episode(anime, episode, server)
+        matched = true
+        DANMAKU.anime = anime.animeTitle
+        DANMAKU.episode = episode.episodeTitle
+        msg.info('匹配剧集: ' .. anime.animeTitle .. ' - ' .. episode.episodeTitle)
+        set_episode_id(episode.episodeId, nil, server)
+        if cancel_fn then pcall(cancel_fn) end
+    end
+
     local function finish_unmatched()
         if searches_finished and pending_candidates == 0 and not matched then
+            -- Wait for every release/server to finish: an exact date wins,
+            -- and nearby dates are usable only with one corroborated episode.
+            local selected, count = nil, 0
+            for _, candidate in pairs(nearby_candidates) do
+                selected, count = candidate, count + 1
+            end
+            if count == 1 and not fallback_uncertain then
+                msg.info('Matched episode number/title with broadcast date within seven days')
+                accept_episode(selected.anime, selected.episode, selected.server)
+                return
+            end
             msg.info('没有找到对应剧集的弹幕')
             show_message('未找到对应剧集的弹幕，可在弹幕菜单中手动匹配', 5)
         end
@@ -351,17 +407,25 @@ local function match_anime()
     local function per_response(server, err, out)
         if matched then return end
         if err then
+            fallback_uncertain = true
             msg.debug(("search anime failed for %s: %s"):format(server, tostring(err)))
             return
         end
         local data = utils.parse_json(out)
-        if not data or not data.animes then
+        if type(data) ~= 'table' or type(data.animes) ~= 'table' then
+            fallback_uncertain = true
             return
         end
         local local_candidates = {}
         for _, anime in ipairs(data.animes) do
-            if anime.type == anime_type and title_score(anime.animeTitle) >= 0.75 then
-                table.insert(local_candidates, anime)
+            if type(anime) ~= 'table' then
+                fallback_uncertain = true
+            elseif anime.type == anime_type and title_score(anime.animeTitle) >= 0.75 then
+                if valid_api_id(anime.bangumiId) then
+                    table.insert(local_candidates, anime)
+                else
+                    fallback_uncertain = true
+                end
             end
         end
         table.sort(local_candidates, function(a, b)
@@ -376,16 +440,18 @@ local function match_anime()
                 finish_unmatched()
                 return
             end
-            match_episode(anime, episode_num, premiere_date, expected_title, index > 1, server, function(episode)
+            match_episode(anime, episode_num, premiere_date, expected_title, index > 1, server, function(episode, nearby, uncertain)
+                fallback_uncertain = fallback_uncertain or uncertain
                 if episode and not matched then
-                    matched = true
                     pending_candidates = pending_candidates - 1
-                    DANMAKU.anime = anime.animeTitle
-                    DANMAKU.episode = episode.episodeTitle
-                    msg.info('匹配剧集: ' .. anime.animeTitle .. ' - ' .. episode.episodeTitle)
-                    set_episode_id(episode.episodeId, nil, server)
-                    if cancel_fn then pcall(cancel_fn) end
+                    accept_episode(anime, episode, server)
                     return
+                end
+                for _, candidate in ipairs(nearby or {}) do
+                    -- Custom providers allocate deployment-local IDs. Keep their
+                    -- candidates separate; repeat records within one release dedupe.
+                    local key = server .. '\0' .. tostring(anime.bangumiId) .. '\0' .. tostring(candidate.episodeId)
+                    nearby_candidates[key] = {anime = anime, episode = candidate, server = server}
                 end
                 try_candidate(index + 1)
             end)
