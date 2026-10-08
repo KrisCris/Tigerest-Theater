@@ -73,6 +73,21 @@ jobs:
         cmake --build build --target install
     - name: Run unit tests
       run: |
+        # Release builds outside Applications show LetsMove's modal install
+        # prompt before the QML/WebEngine page exists. Suppress it on this
+        # runner only, restoring the previous preference after the tests.
+        DOMAIN=top.tigerest.theater
+        KEY=moveToApplicationsFolderAlertSuppress
+        PREVIOUS=$(defaults read "$DOMAIN" "$KEY" 2>/dev/null || true)
+        restore_install_prompt() {
+          if [ -n "$PREVIOUS" ]; then
+            defaults write "$DOMAIN" "$KEY" -bool "$PREVIOUS"
+          else
+            defaults delete "$DOMAIN" "$KEY" 2>/dev/null || true
+          fi
+        }
+        trap restore_install_prompt EXIT
+        defaults write "$DOMAIN" "$KEY" -bool true
         ctest --test-dir build --output-on-failure
 
     - name: Sign and create dmg
