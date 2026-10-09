@@ -33,6 +33,10 @@ withBrowser(routes,async({evaluate,call})=>{
   gallery.enter=function(generation){enter.call(this,generation);this.animations.forEach(animation=>{animation.pause();animation.currentTime=0;});};
   gallery.animateText=function(...args){animateText.apply(this,args);this.textAnimations.forEach(animation=>{animation.pause();animation.currentTime=0;});};
   await gallery.start({});
+  // Synthetic pointer events do not establish CSS :hover. Actual gallery
+  // focus keeps its automatic carousel paused during manual-selection checks.
+  gallery.hero.focus({preventScroll:true});
+  check(gallery.root.contains(document.activeElement),'manual-selection fixture has actual gallery focus');
   check(gallery.root.dataset.style==='cinema'&&!document.querySelector('.tg-home-style-button'),'chosen cinema design replaces the comparison controls and old style preference');
   check(getComputedStyle(document.querySelector('.skinHeader')).display==='none'&&getComputedStyle(document.querySelector('.mainDrawer')).display==='none','original chrome hidden only on the new home');
   check(document.querySelectorAll('.tg-library').length===8,'all seven accessible libraries plus favorites');
@@ -106,7 +110,7 @@ withBrowser(routes,async({evaluate,call})=>{
  }).toString()+')('+JSON.stringify(embedded)+')');
  console.log('home gallery interaction checks:',result);
  await evaluate('new Promise(r=>setTimeout(r,1600))');
- await evaluate('gallery.cards[0].item.Name="这是一个用于验证窄屏排版的较长作品标题，标题和简介应始终留在海报内";gallery.cards[0].item.Overview="主角们在各自的故事中相遇，面对新的选择，逐渐发现彼此的秘密与梦想。".repeat(8);gallery.select(0,false);new Promise(r=>setTimeout(r,1500))');
+ await evaluate('gallery.hero.focus({preventScroll:true});gallery.cards[0].item.Name="这是一个用于验证窄屏排版的较长作品标题，标题和简介应始终留在海报内";gallery.cards[0].item.Overview="主角们在各自的故事中相遇，面对新的选择，逐渐发现彼此的秘密与梦想。".repeat(8);gallery.select(0,false);new Promise(r=>setTimeout(r,1500))');
  const directory=path.join(root,'build/home-exploration-2026-10-09');fs.mkdirSync(directory,{recursive:true});
  for(const [width,height,label] of [[1440,900,'wide'],[900,700,'compact'],[390,844,'phone'],[844,390,'landscape'],[320,480,'short-phone'],[568,320,'short-landscape']]){
   await call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
