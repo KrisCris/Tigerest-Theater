@@ -15,7 +15,7 @@
     .tg-home-host { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
     .tg-home { --home-height: 650px; box-sizing: border-box; height: var(--home-height); min-height: 380px; padding: 18px 28px 22px;
         display: grid; grid-template-columns: clamp(160px,19vw,280px) minmax(0,1fr); grid-template-rows: minmax(0,1fr) 158px;
-        gap: 20px 24px; position: relative; isolation: isolate; color: #f4f2ed; text-align: left; }
+        gap: 20px 24px; position: relative; isolation: isolate; overflow: hidden; color: #f4f2ed; text-align: left; }
     .tg-home *, .tg-home *::before, .tg-home *::after { box-sizing: border-box; }
     .tg-home button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
     .tg-home button:focus-visible { outline: 2px solid #efc36e; outline-offset: -4px; }
@@ -34,14 +34,23 @@
     .tg-library.is-selected .tg-library-index { color: #f0c879; }
     .tg-home-stage { grid-column: 2; grid-row: 1; position: relative; min-width: 0; min-height: 0; overflow: hidden; border-radius: 22px; background: #171a21; }
     .tg-home-hero { position: absolute; inset: 0; border: 0; border-radius: inherit; width: 100%; height: 100%; overflow: hidden;
-        background: radial-gradient(ellipse at 75% 30%,#3e394b,#151920 70%); text-align: left; padding: 0; opacity: 0; transform: scale(1.025);
-        transition: opacity .65s ease, transform .95s cubic-bezier(.2,.7,.2,1); }
-    .tg-entered.tg-ready .tg-home-hero { opacity: 1; transform: scale(1); }
+        background: radial-gradient(ellipse at 75% 30%,#3e394b,#151920 70%); text-align: left; padding: 0; opacity: 0;
+        transition: opacity .35s ease; }
+    .tg-entered.tg-ready .tg-home-hero { opacity: 1; }
+    .tg-hero-images { position: absolute; inset: 0; opacity: 0; transform: translate3d(0,28px,0) scale(1.2); transform-origin: 65% 40%; transition: opacity .9s ease,transform 1.6s cubic-bezier(.14,.75,.2,1); }
+    .tg-entered.tg-ready .tg-hero-images { opacity: 1; transform: none; }
     .tg-home-hero:disabled { cursor: default; }
     .tg-poster-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transform: scale(1.035); transition: opacity .6s,transform 6.5s linear; }
     .tg-poster-image.is-visible { opacity: 1; transform: scale(1); }
     .tg-hero-shade { position: absolute; inset: 0; background: linear-gradient(0deg,#080a10f5, #080a1080 25%,transparent 67%),linear-gradient(90deg,#080a1030,transparent 75%); }
-    .tg-hero-content { position: absolute; left: clamp(20px,3vw,48px); right: 36px; bottom: 34px; display: flex; flex-direction: column; gap: 10px; }
+    .tg-hero-copy { position: absolute; left: clamp(20px,3vw,48px); right: 36px; bottom: 34px; display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr); gap: clamp(24px,4vw,90px); align-items: end; }
+    .tg-hero-copy.tg-no-overview { grid-template-columns: minmax(0,1fr); }
+    .tg-hero-content { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+    .tg-hero-content > *, .tg-hero-overview { opacity: 0; }
+    .tg-text-ready .tg-hero-content > *, .tg-text-ready .tg-hero-overview { opacity: 1; }
+    .tg-hero-overview { margin: 0 0 5px; color: #dedbd5; font-size: clamp(13px,.8vw,17px); line-height: 1.85; text-shadow: 0 2px 8px #000a; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .tg-hero-overview[hidden] { display: none; }
+    @media (max-width:1000px) { .tg-hero-copy { grid-template-columns: minmax(0,1fr); gap: 12px; }.tg-hero-overview { font-size: 12px; line-height: 1.65; -webkit-line-clamp: 2; } }
     .tg-hero-kicker { font-size: 11px; letter-spacing: .13em; color: #f5d99a; }
     .tg-hero-title { font-size: clamp(24px,3.1vw,48px); font-weight: 650; line-height: 1.18; max-width: 1000px; text-shadow: 0 3px 20px #0009; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .tg-hero-subtitle { color: #d8d6d0; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
@@ -73,7 +82,7 @@
         .tg-library-index { font-size: 8px; margin-top: 4px; }
         .tg-home-stage { grid-column: 1; grid-row: 2; border-radius: 16px; }
         .tg-home-rail { grid-column: 1; grid-row: 3; }
-        .tg-hero-content { left: 20px; right: 20px; bottom: 24px; }
+        .tg-hero-copy { left: 20px; right: 20px; bottom: 24px; }
         .tg-hero-title { font-size: 27px; }
         .tg-hero-subtitle { font-size: 11px; }
         .tg-cover { height: 100px; flex-basis: 160px; }
@@ -83,7 +92,7 @@
         .tg-library { height: 84px; padding: 10px 14px; }
         .tg-library-name { font-size: 18px; }
         .tg-cover { height: 78px; }
-        .tg-hero-content { bottom: 18px; gap: 6px; }
+        .tg-hero-copy { bottom: 18px; gap: 8px; }.tg-hero-content { gap: 6px; }
         .tg-hero-title { font-size: 24px; }
         .tg-hero-action { display: none; }
     }
@@ -94,7 +103,7 @@
     .tg-home-scenery { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .16; z-index: -2; pointer-events: none;
         mask-image: linear-gradient(0deg,transparent,#000 35%,#000 80%,transparent); transition: opacity .8s; }
     .tg-home::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 80% 5%,#87705512,transparent 55%); }
-    .tg-home-nav { gap: 16px; }
+    .tg-home-nav { gap: 16px; transform-origin: 50% 40px; }
     .tg-library-list { gap: 14px; scrollbar-width: none; }
     .tg-library-list::-webkit-scrollbar { display: none; }
     .tg-library { border-radius: 6px 22px 6px 6px; border-color: #ffffff08; padding: 18px 22px; background: #11141b; height: clamp(92px,calc((var(--home-height) - 106px)/4),320px); }
@@ -107,10 +116,10 @@
     .tg-library.is-selected::before { transform: scaleY(1); }
     .tg-library.is-selected { border-color: #cda76875; box-shadow: 0 12px 35px #0006; }
     .tg-home-stage { border-radius: 8px 8px 0 0; background: transparent; }
-    .tg-home-hero { background: radial-gradient(ellipse at 75% 30%,#34334170,#12141a00 75%); transform: scale(1.07); transition: opacity .8s ease,transform 1.6s cubic-bezier(.12,.7,.2,1); }
+    .tg-home-hero { background: radial-gradient(ellipse at 75% 30%,#34334170,#12141a00 75%); }
     .tg-poster-image { mask-image: linear-gradient(0deg,transparent,#000 20%,#000 96%); transform: scale(1.08); transition: opacity .65s,transform 8s linear; }
     .tg-hero-shade { background: linear-gradient(0deg,#0b0d12,#0b0d12b0 20%,transparent 60%),linear-gradient(90deg,#0b0d1240,transparent 65%); }
-    .tg-hero-content { left: clamp(22px,3.2vw,50px); right: 42px; bottom: 34px; gap: 12px; }
+    .tg-hero-copy { left: clamp(22px,3.2vw,50px); right: 42px; bottom: 34px; }.tg-hero-content { gap: 12px; }
     .tg-hero-title { font-size: clamp(30px,4.1vw,68px); font-weight: 750; letter-spacing: -.025em; line-height: 1.18; }
     .tg-hero-kicker { font-size: 11px; letter-spacing: .16em; }
     .tg-hero-subtitle { font-size: 13px; color: #bcbab3; }
@@ -124,94 +133,34 @@
     .tg-cover.is-selected { border-color: #d9b273; box-shadow: 0 0 22px #c7a56d18; }
     .tg-cover-label { font-size: 12px; }
     @media (max-width:680px) {
-        .tg-home { padding: 10px 12px 18px; grid-template-columns: minmax(0,1fr); grid-template-rows: 105px minmax(220px,1fr) 154px; gap: 13px; }
+        .tg-home { padding: 10px 12px 18px; min-height: 533px; grid-template-columns: minmax(0,1fr); grid-template-rows: 105px minmax(220px,1fr) 154px; gap: 13px; }
         .tg-home-nav { gap: 5px; }.tg-library-list { gap: 10px; }.tg-library { height: 78px; width: 146px; padding: 10px 12px; border-radius: 4px 14px 4px 4px; }
         .tg-library-name { font-size: 19px; }.tg-library.is-selected .tg-library-label { transform: none; }
-        .tg-hero-content { left: 18px; right: 18px; bottom: 20px; gap: 9px; }.tg-hero-title { font-size: 32px; }.tg-hero-subtitle { font-size: 11px; }
+        .tg-hero-copy { left: 18px; right: 18px; bottom: 20px; gap: 10px; }.tg-hero-content { gap: 9px; }.tg-hero-title { font-size: 32px; }.tg-hero-subtitle { font-size: 11px; }
         .tg-hero-action { padding: 8px 12px; font-size: 11px; margin-top: 6px; }.tg-hero-ordinal { top: 18px; right: 18px; font-size: 9px; }
         .tg-home-rail { padding-top: 8px; gap: 8px; }.tg-cover { height: 96px; flex-basis: 170px; }
+    }
+    @media (max-width:680px) and (max-height:600px) {
+        .tg-hero-copy { bottom: 16px; gap: 8px; }.tg-hero-content { gap: 8px; }.tg-hero-title { font-size: 26px; }
+        .tg-hero-kicker, .tg-hero-action { display: none; }
     }
     @media (min-width:681px) and (max-height:520px) {
         .tg-home { padding: 8px 20px 14px; grid-template-rows: minmax(140px,1fr) 128px; gap: 12px 20px; }
         .tg-library { height: 84px; padding: 10px 14px; }.tg-library-name { font-size: 19px; }.tg-cover { height: 74px; }
-        .tg-home-rail { padding-top: 6px; gap: 8px; }.tg-hero-content { bottom: 18px; gap: 6px; }.tg-hero-title { font-size: 27px; }.tg-hero-action { display:none; }
+        .tg-home-rail { padding-top: 6px; gap: 8px; }.tg-hero-copy { bottom: 18px; gap: 8px; }.tg-hero-content { gap: 6px; }.tg-hero-title { font-size: 27px; }.tg-hero-action { display:none; }
+        .tg-hero-overview { -webkit-line-clamp: 1; font-size: 11px; }
+        .tg-hero-kicker { display: none; }
     }
-    .tg-home-styles { display: flex; gap: 2px; margin-left: auto; padding: 3px; border: 1px solid #ffffff17; border-radius: 3px; background: #0b0d1260; }
-    .tg-home-style-button { border: 0; padding: 4px 10px; background: transparent; font-size: 12px !important; color: #bcb7ae !important; white-space: nowrap; border-radius: 2px; }
-    .tg-home-style-button[aria-pressed="true"] { background: #d1b48324; color: #e7c688 !important; }
     .tg-rail-heading { height: 28px; }
     .tg-rail-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .tg-rail-counter { flex: 0 0 auto; }
     .tg-home[data-style="cinema"] .tg-cover { height: 130px; flex-basis: 88px; }
     .tg-home[data-style="cinema"] .tg-cover-label { font-size: 10px; left: 8px; right: 8px; bottom: 10px; }
-    .tg-home[data-style="pulse"] { background: #0a0c14; gap: 20px 28px; grid-template-columns: clamp(160px,17vw,340px) minmax(0,1fr); }
-    .tg-home[data-style="pulse"]::before { background: linear-gradient(115deg,#39276324,transparent 45%),linear-gradient(0deg,#082b363b,transparent 60%); }
-    .tg-home[data-style="pulse"] .tg-home-scenery { opacity: .12; mix-blend-mode: screen; }
-    .tg-home[data-style="pulse"] .tg-home-eyebrow { color: #9aa9be; }
-    .tg-home[data-style="pulse"] .tg-library { border-radius: 0; clip-path: polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,18px 100%,0 calc(100% - 18px)); background: #151724; border-color: #788fa53b; }
-    .tg-home[data-style="pulse"] .tg-library::after { background: linear-gradient(90deg,#121524d9,#12152420); }
-    .tg-home[data-style="pulse"] .tg-library.is-selected { border-color: #5adfeb; box-shadow: inset 0 0 0 1px #5adfeb50; }
-    .tg-home[data-style="pulse"] .tg-library::before { background: #67edff; top: 0; bottom: 0; width: 4px; }
-    .tg-home[data-style="pulse"] .tg-library-index { color: #afc3d6; }
-    .tg-home[data-style="pulse"] .tg-library.is-selected .tg-library-index { color: #75edee; }
-    .tg-home[data-style="pulse"] .tg-home-stage { border-radius: 0; clip-path: polygon(26px 0,100% 0,100% calc(100% - 26px),calc(100% - 26px) 100%,0 100%,0 26px); }
-    .tg-home[data-style="pulse"] .tg-poster-image { mask-image: linear-gradient(0deg,transparent,#000 24%,#000 100%); }
-    .tg-home[data-style="pulse"] .tg-hero-shade { background: linear-gradient(0deg,#0a0c14,#0a0c14b8 20%,transparent 65%); }
-    .tg-home[data-style="pulse"] .tg-hero-title { font-weight: 800; font-size: clamp(34px,4.5vw,74px); letter-spacing: -.04em; }
-    .tg-home[data-style="pulse"] .tg-hero-kicker { color: #75edee; }
-    .tg-home[data-style="pulse"] .tg-hero-action { background: #65e8ef; border: 0; color: #09141c; font-weight: 650; padding: 12px 22px; clip-path: polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,9px 100%,0 calc(100% - 9px)); }
-    .tg-home[data-style="pulse"] .tg-hero-action::after { color: #09141c; }
-    .tg-home[data-style="pulse"] .tg-hero-ordinal { color: #75edee; border-color: #75edee; }
-    .tg-home[data-style="pulse"] .tg-home-rail { border-color: #5bdde943; }
-    .tg-home[data-style="pulse"] .tg-cover { border-radius: 0; clip-path: polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%); }
-    .tg-home[data-style="pulse"] .tg-cover.is-selected { border-color: #66ebf3; box-shadow: inset 0 0 0 1px #66ebf36b; }
-    .tg-home[data-style="pulse"] .tg-cover.is-selected::before { background: #66ebf3; left: 0; right: 0; }
-    .tg-home[data-style="pulse"] .tg-home-style-button[aria-pressed="true"] { background: #5adfeb22; color: #75edee !important; }
-    .tg-home[data-style="gallery"] { background: #e9e5dc; color: #242b32; padding: 24px 30px; gap: 24px 34px; grid-template-columns: clamp(150px,16vw,360px) minmax(0,1fr); }
-    .tg-home[data-style="gallery"]::before { background: linear-gradient(135deg,#f9f5ed90,transparent 70%); }
-    .tg-home[data-style="gallery"] .tg-home-scenery { opacity: .06; }
-    .tg-home[data-style="gallery"] .tg-home-eyebrow { color: #707063; letter-spacing: .12em; }
-    .tg-home[data-style="gallery"] .tg-library { border-radius: 0; box-shadow: none; height: clamp(92px,calc((var(--home-height) - 138px)/4),300px); border: 0; color: #f3eee3; }
-    .tg-home[data-style="gallery"] .tg-library.is-selected { box-shadow: inset 0 0 0 2px #b3925e; }
-    .tg-home[data-style="gallery"] .tg-library-name { font-size: clamp(20px,2vw,30px); font-family: Georgia,'Noto Serif SC','Songti SC',serif; letter-spacing: .07em; font-weight: 550; }
-    .tg-home[data-style="gallery"] .tg-library img { filter: saturate(.75); }
-    .tg-home[data-style="gallery"] .tg-home-stage { background: #ddd8cd; border-radius: 0; }
-    .tg-home[data-style="gallery"] .tg-home-hero { color: #242b32; transform: scale(1.025); background: #ddd8cd; }
-    .tg-home[data-style="gallery"].tg-entered.tg-ready .tg-home-hero { transform: scale(1); }
-    .tg-home[data-style="gallery"] .tg-poster-image { width: 66%; mask-image: none; object-position: center; object-fit: contain; padding: 20px 30px; background: #1c2025; }
-    .tg-home[data-style="gallery"] .tg-hero-shade { background: linear-gradient(90deg,transparent 65%,#e2ddd2 66%); }
-    .tg-home[data-style="gallery"] .tg-hero-content { left: 66%; right: 0; top: 76px; bottom: 28px; padding: 22px 28px; gap: 17px; justify-content: center; }
-    .tg-home[data-style="gallery"] .tg-hero-title { font: 500 clamp(23px,2.5vw,40px)/1.35 Georgia,'Noto Serif SC','Songti SC',serif; letter-spacing: .04em; text-shadow: none; -webkit-line-clamp: 4; }
-    .tg-home[data-style="gallery"] .tg-hero-kicker { color: #8a734d; font-size: 10px; line-height: 1.7; }
-    .tg-home[data-style="gallery"] .tg-hero-subtitle { color: #746f64; font-size: 11px; white-space: normal; line-height: 1.8; }
-    .tg-home[data-style="gallery"] .tg-hero-action { border: 0; border-bottom: 1px solid #92836b; padding: 8px 0; background: transparent; border-radius: 0; color: #373d3d; }
-    .tg-home[data-style="gallery"] .tg-hero-action::after { color: #8a734d; }
-    .tg-home[data-style="gallery"] .tg-hero-ordinal { color: #7e725e; border-color: #b6a98f; }
-    .tg-home[data-style="gallery"] .tg-home-rail { border-color: #b6aa923d; }
-    .tg-home[data-style="gallery"] .tg-rail-title { color: #555b53; }.tg-home[data-style="gallery"] .tg-rail-counter { color: #817661; }
-    .tg-home[data-style="gallery"] .tg-cover { border-radius: 0; color: #fff; border: 0; }
-    .tg-home[data-style="gallery"] .tg-cover.is-selected { box-shadow: inset 0 0 0 2px #ae8d52; }
-    .tg-home[data-style="gallery"] .tg-home-styles { background: #ded6c740; border-color: #b9ac9140; }
-    .tg-home[data-style="gallery"] .tg-home-style-button { color: #777163 !important; }
-    .tg-home[data-style="gallery"] .tg-home-style-button[aria-pressed="true"] { background: #ad916d25; color: #6b5735 !important; }
-    @media (max-width:900px) { .tg-home[data-style="gallery"] .tg-hero-content { padding: 12px 18px; top: 48px; gap: 12px; } }
     @media (max-width:680px) {
-        .tg-home[data-style="pulse"], .tg-home[data-style="gallery"] { padding: 10px 12px 18px; grid-template-columns: minmax(0,1fr); grid-template-rows: 105px minmax(220px,1fr) 154px; gap: 13px; }
-        .tg-home[data-style="gallery"] .tg-library { height: 78px; }.tg-home[data-style="gallery"] .tg-library-name { font-size: 18px; }
-        .tg-home[data-style="pulse"] .tg-hero-title { font-size: 34px; }
-        .tg-home[data-style="gallery"] .tg-poster-image { width: 100%; padding: 0; object-fit: cover; object-position: center 20%; }
-        .tg-home[data-style="gallery"] .tg-hero-content { top: auto; left: 0; right: 0; bottom: 0; padding: 24px 20px; gap: 8px; }
-        .tg-home[data-style="gallery"] .tg-hero-shade { background: linear-gradient(0deg,#e5dfd4,#e5dfd4d4 28%,transparent 65%); }
-        .tg-home[data-style="gallery"] .tg-hero-title { font-size: 28px; -webkit-line-clamp: 2; }
-        .tg-home[data-style="gallery"] .tg-hero-action { display: none; }
-        .tg-home-styles { gap: 0; padding: 2px; }.tg-home-style-button { padding: 4px 5px; font-size: 10px !important; }.tg-rail-counter { display: none; }
+        .tg-rail-counter { display: none; }
         .tg-home[data-style="cinema"] .tg-cover { height: 98px; flex-basis: 70px; }
     }
     @media (min-width:681px) and (max-height:520px) {
-        .tg-home[data-style="pulse"], .tg-home[data-style="gallery"] { padding: 8px 20px 14px; grid-template-rows: minmax(140px,1fr) 128px; gap: 12px 20px; }
-        .tg-home[data-style="gallery"] .tg-library { height: 84px; }.tg-home[data-style="gallery"] .tg-hero-content { top: 30px; padding: 10px 18px; bottom: 10px; gap: 8px; }
-        .tg-home[data-style="gallery"] .tg-hero-title { font-size: 23px; -webkit-line-clamp: 2; }.tg-home[data-style="pulse"] .tg-hero-title { font-size: 30px; }
-        .tg-home[data-style="gallery"] .tg-hero-action { display: none; }
         .tg-home[data-style="cinema"] .tg-cover { height: 76px; flex-basis: 54px; }
     }
     `;
@@ -222,33 +171,32 @@
     }
     function Gallery(host, options) {
         this.host = host; this.options = options; this.generation = 0; this.selection = 0;
-        this.cache = new Map(); this.animations = []; this.listeners = []; this.timer = null;
+        this.cache = new Map(); this.animations = []; this.textAnimations = []; this.listeners = []; this.timer = null;
         if (!document.getElementById(styleId)) { const style = element('style', ''); style.id = styleId; style.textContent = css; document.head.append(style); }
         host.classList.add('tg-home-host');
         host.replaceChildren();
-        this.root = element('section', 'tg-home'); this.root.setAttribute('aria-label', '媒体首页');
+        this.root = element('section', 'tg-home'); this.root.setAttribute('aria-label', '媒体首页'); this.root.dataset.style = 'cinema';
         this.scenery = element('img', 'tg-home-scenery'); this.scenery.alt = '';
         this.nav = element('nav', 'tg-home-nav'); this.nav.setAttribute('aria-label', '媒体库');
         this.libraryList = element('div', 'tg-library-list');
         this.nav.append(element('p', 'tg-home-eyebrow', 'YOUR LIBRARY / 我的媒体'), this.libraryList);
         this.stage = element('div', 'tg-home-stage'); this.hero = element('button', 'tg-home-hero'); this.hero.type = 'button';
         this.heroImages = element('div', 'tg-hero-images');
-        const content = element('div', 'tg-hero-content');
+        const content = this.heroContent = element('div', 'tg-hero-content');
         this.kicker = element('span', 'tg-hero-kicker'); this.title = element('span', 'tg-hero-title'); this.subtitle = element('span', 'tg-hero-subtitle');
         content.append(this.kicker, this.title, this.subtitle, element('span', 'tg-hero-action', '查看作品'));
+        this.overview = element('span', 'tg-hero-overview'); this.overview.hidden = true;
+        this.heroCopy = element('div', 'tg-hero-copy tg-no-overview'); this.heroCopy.append(content, this.overview);
         this.ordinal = element('span', 'tg-hero-ordinal');
-        this.hero.append(this.heroImages, element('span', 'tg-hero-shade'), content, this.ordinal);
+        this.hero.append(this.heroImages, element('span', 'tg-hero-shade'), this.heroCopy, this.ordinal);
         this.status = element('div', 'tg-home-status'); this.message = element('span', '', '正在载入媒体库…');
         this.retry = element('button', 'tg-home-retry', '重试'); this.retry.type = 'button'; this.retry.hidden = true;
         this.status.append(this.message, this.retry); this.stage.append(this.hero, this.status);
         this.rail = element('section', 'tg-home-rail'); const heading = element('div', 'tg-rail-heading');
         this.railTitle = element('span', 'tg-rail-title', '最近入库'); this.counter = element('span', 'tg-rail-counter');
-        this.styleSwitch = element('div', 'tg-home-styles'); this.styleSwitch.setAttribute('role', 'group'); this.styleSwitch.setAttribute('aria-label', '首页风格');
-        [['cinema','沉浸影院'],['pulse','锋芒舞台'],['gallery','光影画廊']].forEach(([id,name]) => { const button = element('button', 'tg-home-style-button', name); button.type = 'button'; button.dataset.style = id; this.styleSwitch.append(button); });
-        heading.append(this.railTitle, this.styleSwitch, this.counter); this.coverList = element('div', 'tg-cover-list'); this.coverList.setAttribute('aria-label', '最近入库作品');
+        heading.append(this.railTitle, this.counter); this.coverList = element('div', 'tg-cover-list'); this.coverList.setAttribute('aria-label', '最近入库作品');
         this.rail.append(heading, this.coverList); this.root.append(this.scenery, this.nav, this.stage, this.rail); host.append(this.root);
         const listen = (node, event, fn) => { node.addEventListener(event, fn); this.listeners.push(() => node.removeEventListener(event, fn)); };
-        listen(this.styleSwitch, 'click', event => { const button = event.target.closest('.tg-home-style-button'); if (button) this.setStyle(button.dataset.style); });
         listen(this.libraryList, 'pointerover', event => {
             if (event.pointerType === 'touch') return;
             const button = event.target.closest('.tg-library');
@@ -272,24 +220,9 @@
         this.resize = () => this.root.style.setProperty('--home-height', Math.max(320, window.innerHeight - this.host.getBoundingClientRect().top - 8) + 'px');
         listen(window, 'resize', this.resize);
         this.resizeObserver = new ResizeObserver(this.resize); this.resizeObserver.observe(host);
-        let style = 'cinema'; try { style = localStorage.getItem('tigerest-home-style') || style; } catch (error) {}
-        this.setStyle(style, false);
-    }
-    Gallery.prototype.setStyle = function (style, animate = true) {
-        if (!['cinema','pulse','gallery'].includes(style)) style = 'cinema';
-        this.root.dataset.style = style;
-        this.styleSwitch.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.style === style)));
-        try { localStorage.setItem('tigerest-home-style', style); } catch (error) {}
+        try { localStorage.removeItem('tigerest-home-style'); } catch (error) {}
         this.resize();
-        if (this.cards?.length && this.valid()) {
-            this.coverList.querySelectorAll('.tg-cover').forEach((button, index) => {
-                const image = button.querySelector('img');
-                if (image) image.src = this.data.artwork(this.cards[index].item, style === 'cinema' ? 'poster' : 'cover');
-            });
-            this.select(this.index, false);
-        }
-        if (animate && this.valid()) { this.root.classList.remove('tg-entered'); this.enter(this.generation); }
-    };
+    }
     Gallery.prototype.valid = function (generation = this.generation) {
         return this.active && generation === this.generation && identity(this.options.apiProvider()) === this.session;
     };
@@ -337,25 +270,55 @@
     Gallery.prototype.enter = function (generation) {
         this.animations.forEach(animation => animation.cancel());
         const entrance = this.entrance = (this.entrance || 0) + 1;
-        const reveal = () => { if (this.valid(generation) && entrance === this.entrance) this.root.classList.add('tg-entered'); };
+        const reveal = () => { if (this.valid(generation) && entrance === this.entrance) { this.root.classList.add('tg-entered'); this.animateText(); } };
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !this.nav.animate) { reveal(); return; }
-        const pulse = this.root.dataset.style === 'pulse', gallery = this.root.dataset.style === 'gallery';
         this.animations = [
+            // Move the whole column outside the viewport; its scrolling list
+            // otherwise clips most of a card's long flight before it is visible.
+            this.nav.animate([
+                { transform: 'translate3d(-44px,calc(-125vh - 100%),0) rotate(-12deg) scale(.8)', opacity: 0, offset: 0, easing: 'cubic-bezier(.45,0,.1,1)' },
+                { transform: 'translate3d(0,38px,0) rotate(2.4deg) scale(1.025)', opacity: 1, offset: .68, easing: 'ease-out' },
+                { transform: 'translate3d(0,-14px,0) rotate(-.75deg) scale(.992)', opacity: 1, offset: .85, easing: 'ease-out' },
+                { transform: 'none', opacity: 1, offset: 1 }
+            ], { duration: 1380, fill: 'backwards' }),
             ...Array.from(this.libraryList.children, (button, index) => button.animate([
-                { transform: 'translateY(calc(-100vh - 100%)) rotate(' + (pulse ? '-11' : gallery ? '0' : '-5') + 'deg)', opacity: 0 },
-                { transform: 'translateY(0) rotate(0)', opacity: 1 }
-            ], { duration: pulse ? 640 : gallery ? 950 : 780, delay: Math.min(index, 3) * 70, fill: 'backwards', easing: 'cubic-bezier(.16,1,.3,1)' })),
-            this.rail.animate([{ transform: 'translateX(calc(100vw + 100%))', opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }], { duration: pulse ? 820 : gallery ? 1100 : 940, delay: 100, fill: 'backwards', easing: 'cubic-bezier(.16,1,.3,1)' })
+                { transform: 'translate3d(0,-64px,0) rotate(-3deg) scale(.94)', opacity: 0, offset: 0, easing: 'cubic-bezier(.2,.8,.2,1)' },
+                { transform: 'translate3d(0,10px,0) rotate(.8deg) scale(1.01)', opacity: 1, offset: .7, easing: 'ease-out' },
+                { transform: 'none', opacity: 1, offset: 1 }
+            ], { duration: 740, delay: 420 + Math.min(index, 4) * 120, fill: 'backwards' })),
+            this.rail.animate([
+                { transform: 'translate3d(calc(130vw + 100%),0,0) skewX(-16deg) scale(.87)', opacity: 0, offset: 0, easing: 'cubic-bezier(.48,0,.1,1)' },
+                { transform: 'translate3d(-46px,0,0) skewX(7deg) scale(1.03)', opacity: 1, offset: .64, easing: 'ease-out' },
+                { transform: 'translate3d(18px,0,0) skewX(-2deg) scale(.995)', opacity: 1, offset: .84, easing: 'ease-out' },
+                { transform: 'none', opacity: 1, offset: 1 }
+            ], { duration: 1460, delay: 200, fill: 'backwards' })
         ];
         Promise.all(this.animations.map(animation => animation.finished)).then(reveal).catch(() => {});
     };
     Gallery.prototype.finishEntrance = function () {
         this.animations.forEach(animation => { if (animation.playState === 'running') animation.finish(); });
-        if (this.valid()) this.root.classList.add('tg-entered');
+        if (this.valid()) { this.root.classList.add('tg-entered'); this.animateText(); }
+    };
+    Gallery.prototype.cancelText = function () {
+        this.textAnimations.forEach(animation => animation.cancel()); this.textAnimations = [];
+        this.root.classList.remove('tg-text-ready');
+    };
+    Gallery.prototype.animateText = function (selection = this.selection) {
+        if (!this.valid() || selection !== this.selection || !this.cards?.[this.index] || !this.root.classList.contains('tg-entered') || this.root.classList.contains('tg-text-ready')) return;
+        this.root.classList.add('tg-text-ready');
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !this.heroContent.animate) return;
+        const nodes = [...this.heroContent.children, ...(!this.overview.hidden ? [this.overview] : [])];
+        this.textAnimations = nodes.map((node, index) => node.animate([
+            { opacity: 0, transform: 'translate3d(-52px,30px,0)', offset: 0, easing: 'cubic-bezier(.2,.8,.2,1)' },
+            { opacity: 1, transform: 'translate3d(3px,-2px,0)', offset: .8, easing: 'ease-out' },
+            { opacity: 1, transform: 'none', offset: 1 }
+        ], { duration: index === 1 ? 760 : 620, delay: 160 + index * 140, fill: 'both' }));
     };
     Gallery.prototype.clear = function () {
+        this.cancelText();
         ++this.selection; this.root.classList.remove('tg-ready'); this.hero.disabled = true;
         this.cards = []; this.index = 0; this.heroImages.replaceChildren(); this.title.textContent = ''; this.subtitle.textContent = '';
+        this.overview.textContent = ''; this.overview.hidden = true; this.heroCopy.classList.add('tg-no-overview');
         this.scenery.removeAttribute('src'); this.ordinal.textContent = '';
         this.coverList.replaceChildren(); this.counter.textContent = '';
     };
@@ -376,7 +339,7 @@
             if (!cards.length) { this.showStatus(library.kind === 'favorites' ? '还没有收藏作品。' : '这个媒体库还没有可展示的作品。'); return; }
             this.coverList.replaceChildren(...cards.map((card, index) => {
                 const button = element('button', 'tg-cover'); button.type = 'button'; button.dataset.itemId = card.item.Id; button.dataset.index = index;
-                const url = this.data.artwork(card.item, this.root.dataset.style === 'cinema' ? 'poster' : 'cover');
+                const url = this.data.artwork(card.item, 'poster');
                 if (url) { const image = element('img', ''); image.src = url; image.alt = ''; image.loading = 'lazy'; image.draggable = false; button.append(image); }
                 button.append(element('span', 'tg-cover-label', card.item.Name)); button.setAttribute('aria-label', '查看作品：' + card.item.Name); return button;
             }));
@@ -385,8 +348,16 @@
     };
     Gallery.prototype.select = function (index, scroll) {
         const card = this.cards?.[index]; if (!card || !this.valid()) return;
+        this.cancelText();
+        this.heroImages.querySelectorAll('img').forEach(image => image.classList.remove('is-visible'));
         this.index = index; const selection = ++this.selection;
         this.title.textContent = card.item.Name || '未命名作品';
+        // Decode HTML entities after removing markup; the detached textarea
+        // treats the remaining content as text and never renders media tags.
+        const plain = document.createElement('textarea'); plain.innerHTML = String(card.item.Overview || '').replace(/<[^>]*>/g, ' ');
+        this.overview.textContent = plain.value.replace(/\s+/g, ' ').trim();
+        this.overview.hidden = !this.overview.textContent;
+        this.heroCopy.classList.toggle('tg-no-overview', this.overview.hidden);
         this.kicker.textContent = this.selectedLibrary.Name + ' / 最近入库';
         const episode = card.latestEpisode;
         this.subtitle.textContent = [card.item.ProductionYear, episode ? '最新入库 · S' + (episode.ParentIndexNumber || 1) + ':E' + (episode.IndexNumber || '?') + ' ' + (episode.Name || '') : '', card.addedAt ? '入库 ' + card.addedAt.slice(0, 10) : ''].filter(Boolean).join('  ·  ');
@@ -396,16 +367,20 @@
         const covers = this.coverList.querySelectorAll('.tg-cover');
         covers.forEach((button, i) => { button.classList.toggle('is-selected', index === i); button.setAttribute('aria-current', index === i ? 'true' : 'false'); });
         if (scroll && covers[index]) this.coverList.scrollTo({ left: covers[index].offsetLeft - this.coverList.offsetLeft - 3, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-        const url = this.data.artwork(card.item, this.root.dataset.style === 'gallery' ? 'poster' : 'hero');
-        if (!url) { this.heroImages.replaceChildren(); this.scenery.removeAttribute('src'); return; }
-        this.scenery.src = this.data.artwork(card.item, 'hero') || url;
+        this.animateText(selection);
+        const url = this.data.artwork(card.item, 'hero');
+        const scenery = element('img', 'tg-home-scenery'); scenery.alt = '';
+        this.scenery.replaceWith(scenery); this.scenery = scenery;
+        if (!url) { this.heroImages.replaceChildren(); return; }
+        this.scenery.src = url;
         const image = element('img', 'tg-poster-image'); image.alt = ''; image.draggable = false;
         image.onload = () => {
             if (!this.valid() || selection !== this.selection) { image.remove(); return; }
             this.heroImages.querySelectorAll('img').forEach(prior => { if (prior !== image) prior.remove(); });
             requestAnimationFrame(() => { if (this.valid() && selection === this.selection) image.classList.add('is-visible'); });
         };
-        image.onerror = () => image.remove(); image.src = url; this.heroImages.append(image);
+        image.onerror = () => { image.remove(); if (this.valid() && selection === this.selection) this.heroImages.replaceChildren(); };
+        image.src = url; this.heroImages.append(image);
     };
     Gallery.prototype.open = function (card) { if (card && this.valid()) this.options.router.showItem(card.item, this.api.serverId()); };
     Gallery.prototype.scrollToBeginning = function () { this.host.scrollTop = 0; this.libraryList.scrollTop = 0; this.libraryList.scrollLeft = 0; this.coverList.scrollLeft = 0; };

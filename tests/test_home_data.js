@@ -67,10 +67,12 @@ test('favorite series outside the first page can still be the most recently upda
  const cards=await new Home(api).load({kind:'favorites'});assert.equal(cards[0].item.Id,'favorite-100');
 });
 test('episode metadata failure retains usable covers and correct series destinations',async()=>{
- const Home=dataSource(),api=client([episode('ep','series','2026-10-09')]);const original=api.getItems;
+ const item=episode('ep','series','2026-10-09');item.Overview='Only this episode: a plot twist';
+ const Home=dataSource(),api=client([item]);const original=api.getItems;
  api.getItems=async(user,query,signal)=>{if(query.Ids)throw Error('metadata unavailable');return original(user,query,signal);};
  const cards=await new Home(api).load({Id:'library',CollectionType:'tvshows'});
  assert.equal(cards[0].item.Id,'series');assert.equal(cards[0].item.Name,'Series series');
+ assert.equal(cards[0].item.Overview,undefined,'do not present an episode plot as the series synopsis');
 });
 test('many newly ingested episodes from one series do not hide the next work',async()=>{
  const Home=dataSource(),api=client([]),items=Array.from({length:401},(_,i)=>episode('a-'+i,'a','2026-10-09')).concat(episode('b-1','b','2026-10-01'));

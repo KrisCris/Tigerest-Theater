@@ -13,8 +13,7 @@
             Id: episode.SeriesId, Type: 'Series', Name: episode.SeriesName || episode.Name,
             ImageTags: episode.SeriesPrimaryImageTag ? { Primary: episode.SeriesPrimaryImageTag } : {},
             ParentBackdropItemId: episode.ParentBackdropItemId,
-            ParentBackdropImageTags: episode.ParentBackdropImageTags,
-            Overview: episode.Overview
+            ParentBackdropImageTags: episode.ParentBackdropImageTags
         };
     }
     function HomeData(api) { this.api = api; }
