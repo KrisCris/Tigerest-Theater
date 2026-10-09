@@ -431,6 +431,72 @@ async function main() {
     player.finished.emit();
     preparationInstance.destroy();
 
+    // Emby 4.10 onPlaybackStopped synchronously destroys the player when
+    // playNext:false leaves no next player. Native END_FILE arrives afterward.
+    const originalEvents = preparationInstance.events;
+    preparationInstance.events = {
+        trigger(target, name, args) {
+            originalEvents.trigger(target, name, args);
+            if (name === 'stopped') target.destroy();
+        },
+    };
+    for (const completionSignal of ['stopped', 'error', 'finished']) {
+        player.stop = () => undefined;
+        await preparationInstance.play(options);
+        let completed = false;
+        const stopped = preparationInstance.stop(true).then(() => {completed = true;});
+        await flush();
+        assert.strictEqual(completed, false, 'SDK cleanup cannot acknowledge native completion');
+        assert.strictEqual(player.stopped.handlers.size, 1,
+            'SDK destroy removed the independent native stop completion listener');
+        assert.strictEqual(player.error.handlers.size, 1,
+            'SDK destroy removed the independent native error completion listener');
+        for (const name of signalNames.filter(name => name !== 'stopped' && name !== 'error'))
+            assert.strictEqual(player[name].handlers.size, 0, 'SDK destroy still releases UI signal ' + name);
+        const loadsBeforeReplay = loads;
+        const replay = preparationInstance.play(options);
+        await flush();
+        assert.strictEqual(loads, loadsBeforeReplay, 'a new play bypassed the pending native stop');
+        player[completionSignal].emit('native file ended');
+        if (completionSignal === 'finished') {
+            // PlayerComponent emits finished then stopped for native EOF.
+            await flush();
+            assert.strictEqual(completed, false, 'EOF bypassed the native stopped completion barrier');
+            assert.strictEqual(loads, loadsBeforeReplay, 'EOF started replacement before native stopped');
+            player.stopped.emit();
+        }
+        await stopped;
+        await replay;
+        assert.strictEqual(completed, true, completionSignal + ' did not settle stop after SDK destroy');
+        assert.strictEqual(preparationInstance._sessionActive, true, 'SDK cleanup blocked subsequent playback');
+        for (const name of signalNames)
+            assert.strictEqual(player[name].handlers.size, 1, 'completion leaked a temporary ' + name + ' connection');
+        player.finished.emit();
+        for (const name of signalNames)
+            assert.strictEqual(player[name].handlers.size, 0, 'SDK final cleanup leaked ' + name);
+        assert.strictEqual(timers.size, 0, 'native completion retained a stop timeout');
+    }
+
+    // A command error and a missing END_FILE also release their private
+    // listeners, even though SDK destruction already removed ordinary ones.
+    player.stop = () => { throw new Error('native stop command rejected'); };
+    await preparationInstance.play(options);
+    await assert.rejects(preparationInstance.stop(true), /native stop command rejected/);
+    for (const name of signalNames)
+        assert.strictEqual(player[name].handlers.size, 0, 'command error leaked ' + name);
+    assert.strictEqual(timers.size, 0, 'command error retained the stop timeout');
+    await assert.rejects(preparationInstance.play(options), /native stop command rejected/);
+    player.stop = () => undefined;
+    await preparationInstance.play(options);
+    const destroyedTimeout = preparationInstance.stop(true);
+    const destroyedRejected = assert.rejects(destroyedTimeout, /未能完成停止/);
+    await fireNextTimer();
+    await destroyedRejected;
+    for (const name of signalNames)
+        assert.strictEqual(player[name].handlers.size, 0, 'SDK-destroyed timeout leaked ' + name);
+    assert.strictEqual(timers.size, 0, 'SDK-destroyed timeout retained its timer');
+    preparationInstance.events = originalEvents;
+
     console.log('player lifecycle: all checks passed');
 }
 

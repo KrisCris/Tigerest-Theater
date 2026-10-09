@@ -413,20 +413,42 @@
                 // Qt's command callback acknowledges stop, but END_FILE (and Mac
                 // native VO teardown) can happen later. Wait for its stopped signal.
                 this._nativeStopPromise = new Promise((resolve, reject) => {
-                    const timer = setTimeout(() => {
-                        this._completeNativeStop = null;
-                        reject(new Error('mpv 未能完成停止播放'));
-                    }, 15000);
-                    this._completeNativeStop = () => {
+                    const player = window.api.player;
+                    const connected = [];
+                    let settled = false;
+                    const cleanup = () => {
                         clearTimeout(timer);
-                        this._completeNativeStop = null;
+                        for (const signal of connected) signal.disconnect(complete);
+                        if (this._completeNativeStop === complete) this._completeNativeStop = null;
+                    };
+                    const complete = () => {
+                        if (settled) return;
+                        settled = true;
+                        cleanup();
                         resolve();
                     };
-                    try { window.api.player.stop(); }
-                    catch (error) {
-                        clearTimeout(timer);
-                        this._completeNativeStop = null;
+                    const fail = error => {
+                        if (settled) return;
+                        settled = true;
+                        cleanup();
                         reject(error);
+                    };
+                    const timer = setTimeout(() => {
+                        fail(new Error('mpv 未能完成停止播放'));
+                    }, 15000);
+                    this._completeNativeStop = complete;
+                    try {
+                        // Emby's synchronous stopped handler can destroy the
+                        // player before native END_FILE arrives. These temporary
+                        // connections survive removal of ordinary UI listeners.
+                        for (const signal of [player.stopped, player.error]) {
+                            signal.connect(complete);
+                            connected.push(signal);
+                        }
+                        player.stop();
+                    }
+                    catch (error) {
+                        fail(error);
                     }
                 });
             }
