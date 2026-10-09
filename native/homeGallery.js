@@ -236,6 +236,7 @@
         this.showStatus('正在载入媒体库…');
         if (!this.api || !this.api.getCurrentUserId()) { this.showStatus('请先登录服务器。'); return; }
         this.data = new window.TigerestHomeData(this.api);
+        this.order = window.TigerestHomeData.normalizeOrder(window.jmpInfo?.settings?.home?.displayOrder);
         if (options.signal) {
             if (options.signal.aborted) { this.stop(); return; }
             options.signal.addEventListener('abort', () => { if (generation === this.generation) this.stop(); }, { once: true, signal: this.abort.signal });
@@ -335,10 +336,10 @@
         const generation = this.generation, signal = this.requestAbort.signal;
         this.selectedLibrary = library; this.clear();
         this.libraryList.querySelectorAll('.tg-library').forEach(button => { const selected = button.dataset.libraryId === id; button.classList.toggle('is-selected', selected); button.setAttribute('aria-current', selected ? 'true' : 'false'); });
-        this.railTitle.textContent = library.Name + ' / 最近入库'; this.showStatus('正在载入作品…');
+        this.railTitle.textContent = library.Name + ' / ' + window.TigerestHomeData.orders[this.order]; this.showStatus('正在载入作品…');
         try {
             const cached = this.cache.get(id);
-            const cards = !refresh && cached && Date.now() - cached.at < 60000 ? cached.cards : await this.data.load(library, signal);
+            const cards = !refresh && cached && Date.now() - cached.at < 60000 ? cached.cards : await this.data.load(library, signal, this.order);
             if (!this.valid(generation) || signal.aborted) return;
             this.cache.set(id, { cards, at: Date.now() }); this.cards = cards;
             if (!cards.length) { this.showStatus(library.kind === 'favorites' ? '还没有收藏作品。' : '这个媒体库还没有可展示的作品。'); return; }
@@ -363,7 +364,7 @@
         this.overview.textContent = plain.value.replace(/\s+/g, ' ').trim();
         this.overview.hidden = !this.overview.textContent;
         this.heroCopy.classList.toggle('tg-no-overview', this.overview.hidden);
-        this.kicker.textContent = this.selectedLibrary.Name + ' / 最近入库';
+        this.kicker.textContent = this.selectedLibrary.Name + ' / ' + window.TigerestHomeData.orders[this.order];
         const episode = card.latestEpisode;
         this.subtitle.textContent = [card.item.ProductionYear, episode ? '最新入库 · S' + (episode.ParentIndexNumber || 1) + ':E' + (episode.IndexNumber || '?') + ' ' + (episode.Name || '') : '', card.addedAt ? '入库 ' + card.addedAt.slice(0, 10) : ''].filter(Boolean).join('  ·  ');
         this.hero.setAttribute('aria-label', '查看作品：' + this.title.textContent); this.hero.disabled = false;

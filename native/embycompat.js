@@ -237,7 +237,7 @@
             return SettingsView;
         };
         defineModule('tigerest/settings-view.js', settingsViewDependencies, createSettingsView());
-        for (const section of ['main', 'audio', 'video', 'subtitles', 'mpv', 'danmaku', 'other'])
+        for (const section of ['main', 'home', 'audio', 'video', 'subtitles', 'mpv', 'danmaku', 'other'])
             defineModule(`tigerest/settings-${section}-view.js`, settingsViewDependencies, createSettingsView(section));
 
         defineModule('tigerest/mpv-video.js', [
