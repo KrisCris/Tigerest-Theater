@@ -77,6 +77,14 @@ target_link_libraries(test_windowmanager jmp_core Qt6::Test)
 target_include_directories(test_windowmanager PRIVATE ${TEST_INCLUDE_DIRS})
 target_compile_definitions(test_windowmanager PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_windowmanager COMMAND test_windowmanager)
+add_executable(test_window_chrome test_window_chrome.cpp)
+target_link_libraries(test_window_chrome PRIVATE Qt6::Quick Qt6::Test)
+target_compile_definitions(test_window_chrome PRIVATE SOURCE_ROOT="${CMAKE_SOURCE_DIR}" TEST_QML_IMPORTS="${CMAKE_BINARY_DIR}/output/qml")
+qt_add_resources(test_window_chrome window_chrome_test_icons
+  PREFIX "/images"
+  BASE "${CMAKE_SOURCE_DIR}/resources/images"
+  FILES "${CMAKE_SOURCE_DIR}/resources/images/icon.png")
+add_test(NAME test_window_chrome COMMAND test_window_chrome)
 if(WIN32)
   add_test(NAME test_windowmanager_opengl COMMAND test_windowmanager
     testNativeFullscreenKeepsWindowsComposition)

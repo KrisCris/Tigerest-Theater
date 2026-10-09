@@ -20,6 +20,21 @@ Window
   minimumHeight: 120
   visible: true
   color: "#000000"
+  readonly property bool customTitleBarEnabled: components.system.isWindows
+  flags: customTitleBarEnabled ? Qt.Window | Qt.FramelessWindowHint |
+                                Qt.WindowSystemMenuHint | Qt.WindowMinimizeButtonHint |
+                                Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint : Qt.Window
+  readonly property int chromeHeight: windowChrome.barHeight
+
+  WindowChrome {
+    id: windowChrome
+    objectName: "windowChrome"
+    hostWindow: mainWindow
+    videoActive: mainWindow.nativeVideoVisible
+    enabled: mainWindow.customTitleBarEnabled
+    anchors.fill: parent
+    z: 1000
+  }
 
   // Properties previously from KonvergoWindow
   property bool webDesktopMode: true
@@ -250,11 +265,15 @@ Window
       components.window.setFullScreen(fullscreen)
     }
 
-    width: mainWindow.contentItem.width
-    height: mainWindow.contentItem.height
+    // Keep native GPU-Next's child HWND clear of the QML resize handles.
+    width: mainWindow.contentItem.width - windowChrome.resizeInset * 2
+    height: mainWindow.contentItem.height - mainWindow.chromeHeight - windowChrome.resizeInset
     anchors.left: mainWindow.contentItem.left
     anchors.right: mainWindow.contentItem.right
+    anchors.leftMargin: windowChrome.resizeInset
+    anchors.rightMargin: windowChrome.resizeInset
     anchors.top: mainWindow.contentItem.top
+    anchors.topMargin: mainWindow.chromeHeight
 
     Component.onCompleted: {
       console.log("MpvVideoItem size:", width, "x", height, "visible:", visible)
@@ -268,7 +287,8 @@ Window
     id: web
     objectName: "web"
     width: mainWindow.width
-    height: mainWindow.height
+    y: mainWindow.chromeHeight
+    height: mainWindow.height - mainWindow.chromeHeight
     z: 100
     visible: video.nativeGpuNext || !mainWindow.nativeVideoVisible || !mainWindow.useUoscPlaybackUi
     enabled: !mainWindow.nativeVideoVisible || !mainWindow.useUoscPlaybackUi

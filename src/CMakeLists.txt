@@ -167,10 +167,13 @@ endif()
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/ui/webview.qml
   PROPERTIES QT_RESOURCE_ALIAS webview.qml
 )
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/ui/WindowChrome.qml
+  PROPERTIES QT_RESOURCE_ALIAS WindowChrome.qml
+)
 qt_add_qml_module(${MAIN_TARGET}
   URI Konvergo
   VERSION 1.0
-  QML_FILES ${CMAKE_CURRENT_SOURCE_DIR}/ui/webview.qml
+  QML_FILES ${CMAKE_CURRENT_SOURCE_DIR}/ui/webview.qml ${CMAKE_CURRENT_SOURCE_DIR}/ui/WindowChrome.qml
   NO_RESOURCE_TARGET_PATH
 )
 
