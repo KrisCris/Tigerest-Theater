@@ -17,8 +17,10 @@ const {connect,run,delay}=require('./cdp.cjs');
   await c.call('Page.navigate',{url:'https://appassets.androidplatform.net/assets/playback-controls-fixture.html'});
   const wait=async(expression,message=expression)=>{for(let n=0;n<100;n++){if(await c.evaluate(expression))return;await delay(150);}throw Error(message);};
   await wait('!!window.api && location.pathname==="/assets/playback-controls-fixture.html"');
+  assert.equal(await c.evaluate('api.window.isFullScreen()'),false,'browsing keeps the system bars');
   await c.evaluate(`api.player.load('http://127.0.0.1:${port}/media.mp4',{autoplay:true},{type:'video',metadata:{Name:'控制栏验收'}})`);
   await wait('api.system.debugInformation().then(d=>d.videoVisible && !d.controls.loading)');
+  assert.equal(await c.evaluate('api.window.isFullScreen()'),true,'native video playback uses immersive mode');
   const info=()=>c.evaluate('api.system.debugInformation()');
   const show=async()=>{let d=await info();if(!d.controlsVisible){run('shell','input','tap',String(d.width/2|0),String(d.height/2|0));await wait('api.system.debugInformation().then(d=>d.controlsVisible)');}return info();};
   const tap=async(label,long=false)=>{const d=await info(),b=d.controls.buttons.find(x=>x.label===label);assert.ok(b,'visible native button: '+label);const x=(b.left+b.right)/2|0,y=(b.top+b.bottom)/2|0;if(long)run('shell','input','swipe',String(x),String(y),String(x),String(y),'900');else run('shell','input','tap',String(x),String(y));await delay(250);};
@@ -67,8 +69,9 @@ const {connect,run,delay}=require('./cdp.cjs');
   await c.evaluate(`api.player.load('http://127.0.0.1:${port}/media.mp4',{autoplay:true},{type:'video',metadata:{Name:'下一集验收'}})`);await delay(600);
   assert.ok((await info()).width>(await info()).height,'episode transition retains system lock');
   await c.evaluate('api.player.stop()');await delay(500);assert.ok((await info()).width>(await info()).height,'browse remains landscape under system lock');
+  assert.equal((await info()).fullscreen,false,'leaving playback restores browsing system bars');
   run('shell','settings','put','system','accelerometer_rotation','1');await delay(350);assert.equal((await info()).requestedOrientation,-1,'unlock returns direction control to Android');
-  const result={passed:true,touchLock:true,backBlocked:true,longPressUnlock:true,directEpisodeButtons:true,nativeEpisodeSelection:true,systemLandscapeLock:true,episodeAndBrowseLock:true,fixtureMedia:true};
+  const result={passed:true,touchLock:true,backBlocked:true,longPressUnlock:true,directEpisodeButtons:true,nativeEpisodeSelection:true,systemLandscapeLock:true,episodeAndBrowseLock:true,browsingSystemBars:true,fixtureMedia:true};
   fs.writeFileSync(path.resolve(__dirname,'../test-artifacts/playback-controls-results.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
  }finally{
   if(c){

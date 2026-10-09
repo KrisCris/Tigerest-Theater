@@ -372,7 +372,10 @@ void MpvVideoItem::noteNativeHostPointerActivity(const QPointF& position)
         return;
     m_nativeCursorPosition = position;
     m_nativeCursorInsideHost = true;
-    m_nativeHostWindow->unsetCursor();
+    // Unsetting a child window's cursor inherits its parent (or leaves an
+    // already-unset native cursor untouched). A resize/link cursor from the
+    // page must never carry into the video surface.
+    m_nativeHostWindow->setCursor(QCursor(Qt::ArrowCursor));
     m_nativeCursorIdleTimer.start();
 #else
     Q_UNUSED(position);

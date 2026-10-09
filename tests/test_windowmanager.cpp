@@ -5,6 +5,7 @@
 #include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QScopeGuard>
+#include <thread>
 #include "Paths.h"
 #include "core/ProfileManager.h"
 #include "settings/SettingsComponent.h"
@@ -50,6 +51,8 @@ private slots:
   void testNativeVideoAnchorDoesNotPaintOverScene();
   void testNativeHostTracksMainWindowLifecycle();
   void testNativePlaybackHidesActualWindowsCursor();
+  void testNativePlaybackNormalizesActualWindowsCursor_data();
+  void testNativePlaybackNormalizesActualWindowsCursor();
   void testNativeFullscreenKeepsWindowsComposition_data();
   void testNativeFullscreenKeepsWindowsComposition();
 #endif
@@ -248,6 +251,117 @@ void TestWindowManager::testEndingNativePlaybackRestoresWebCursorControl()
 }
 
 #if defined(Q_OS_WIN)
+void TestWindowManager::testNativePlaybackNormalizesActualWindowsCursor_data()
+{
+  QTest::addColumn<int>("pageCursor");
+  QTest::newRow("page-resize-cursor") << int(Qt::SizeHorCursor);
+  QTest::newRow("page-link-cursor") << int(Qt::PointingHandCursor);
+}
+
+void TestWindowManager::testNativePlaybackNormalizesActualWindowsCursor()
+{
+  if (!qEnvironmentVariableIsSet("TIGEREST_TEST_NATIVE_CURSOR"))
+    QSKIP("Opt-in pointer integration requires exclusive use of the desktop");
+  if (QGuiApplication::platformName() != QStringLiteral("windows"))
+    QSKIP("Requires an actual Windows pointer and native GPU-Next window");
+  QFETCH(int, pageCursor);
+  const QPoint originalPointer = QCursor::pos();
+  const auto restorePointer = qScopeGuard([&] { QCursor::setPos(originalPointer); });
+  QQuickWindow window;
+  window.setFlag(Qt::WindowStaysOnTopHint, true);
+  window.setGeometry(150, 150, 640, 420);
+  window.setCursor(QCursor(Qt::CursorShape(pageCursor)));
+  PlayerComponent player;
+  MpvVideoItem item(window.contentItem());
+  item.setPosition(QPointF(40, 40));
+  item.setSize(QSizeF(560, 340));
+  item.setPlayerComponent(&player);
+  QWindow* host = item.m_nativeHostWindow;
+  QVERIFY(host);
+  window.show();
+  QTRY_VERIFY(host->isVisible());
+  player.setVolume(0);
+  const QVariant loaded = item.commandBlocking(QStringList{"loadfile", "av://lavfi:testsrc2=size=320x180:rate=30"});
+  QVERIFY(loaded.metaType() != QMetaType::fromType<ErrorReturn>());
+  const auto stop = qScopeGuard([&] { player.stop(); item.setVisible(false); window.hide(); });
+  QTRY_VERIFY_WITH_TIMEOUT(item.getProperty("vo-configured").toBool(), 10000);
+  QTRY_VERIFY_WITH_TIMEOUT(item.getProperty("playback-time").toDouble() > 0.1, 10000);
+
+  const auto currentCursor = [] {
+    CURSORINFO cursor{sizeof(CURSORINFO)};
+    return GetCursorInfo(&cursor) ? cursor.hCursor : HCURSOR(nullptr);
+  };
+  const HCURSOR pageHandle = LoadCursor(nullptr, pageCursor == int(Qt::SizeHorCursor) ? IDC_SIZEWE : IDC_HAND);
+  const HCURSOR arrow = LoadCursor(nullptr, IDC_ARROW);
+  QPoint controlledPosition;
+  QTimer pointerKeeper;
+  connect(&pointerKeeper, &QTimer::timeout, [&] { QCursor::setPos(controlledPosition); });
+  const auto movePointer = [&](const QPoint& position) {
+    controlledPosition = position;
+    QCursor::setPos(position);
+  };
+  movePointer(window.mapToGlobal(QPoint(20, 20)));
+  pointerKeeper.start(20);
+  QTRY_VERIFY(!item.m_nativeCursorInsideHost);
+  QTRY_COMPARE(currentCursor(), pageHandle);
+
+  if (pageCursor == int(Qt::SizeHorCursor)) {
+    // Exercise a real non-client resize, whose cursor is owned by Windows
+    // rather than by the page or the embedded mpv renderer.
+    pointerKeeper.stop();
+    const HWND mainHwnd = reinterpret_cast<HWND>(window.winId());
+    RECT frame{};
+    QVERIFY(GetWindowRect(mainHwnd, &frame));
+    const POINT border{frame.right - 2, (frame.top + frame.bottom) / 2};
+    QVERIFY(SetCursorPos(border.x, border.y));
+    QTest::qWait(100);
+    QCOMPARE(SendMessage(mainHwnd, WM_NCHITTEST, 0, MAKELPARAM(border.x, border.y)), LRESULT(HTRIGHT));
+    QTRY_COMPARE(currentCursor(), LoadCursor(nullptr, IDC_SIZEWE));
+    const int widthBeforeResize = window.width();
+    // A native sizing loop can block Qt's event loop; release from another
+    // thread so even a failed assertion cannot leave the mouse button down.
+    std::thread resizeRelease([border] {
+      Sleep(100);
+      SetCursorPos(border.x + 40, border.y);
+      Sleep(100);
+      INPUT release{};
+      release.type = INPUT_MOUSE;
+      release.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+      SendInput(1, &release, sizeof(INPUT));
+    });
+    const auto joinResize = qScopeGuard([&] { if (resizeRelease.joinable()) resizeRelease.join(); });
+    INPUT press{};
+    press.type = INPUT_MOUSE;
+    press.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+    QCOMPARE(SendInput(1, &press, sizeof(INPUT)), UINT(1));
+    QTest::qWait(350);
+    QTRY_VERIFY(window.width() > widthBeforeResize);
+    QTRY_COMPARE(currentCursor(), LoadCursor(nullptr, IDC_SIZEWE));
+    pointerKeeper.start(20);
+  }
+
+  movePointer(host->mapToGlobal(QPoint(100, 100)));
+  QTRY_VERIFY(item.m_nativeCursorInsideHost);
+  QTRY_COMPARE_WITH_TIMEOUT(currentCursor(), arrow, 1500);
+  QTRY_COMPARE_WITH_TIMEOUT(host->cursor().shape(), Qt::BlankCursor, 5000);
+  QTRY_VERIFY(currentCursor() != arrow && currentCursor() != pageHandle);
+  movePointer(host->mapToGlobal(QPoint(120, 100)));
+  QTRY_COMPARE_WITH_TIMEOUT(currentCursor(), arrow, 1500);
+
+  // Returning to an underlying page control must restore that control's own
+  // cursor, including the horizontal-resize cursor that preceded playback.
+  movePointer(window.mapToGlobal(QPoint(20, 20)));
+  QTRY_VERIFY(!item.m_nativeCursorInsideHost);
+  QTRY_COMPARE(currentCursor(), pageHandle);
+  QTest::qWait(3200);
+  QCOMPARE(currentCursor(), pageHandle);
+  movePointer(host->mapToGlobal(QPoint(100, 100)));
+  QTRY_COMPARE_WITH_TIMEOUT(currentCursor(), arrow, 1500);
+  item.setVisible(false);
+  QTRY_COMPARE(currentCursor(), pageHandle);
+  QVERIFY(!QGuiApplication::overrideCursor());
+}
+
 void TestWindowManager::testNativePlaybackHidesActualWindowsCursor()
 {
   if (!qEnvironmentVariableIsSet("TIGEREST_TEST_NATIVE_CURSOR"))

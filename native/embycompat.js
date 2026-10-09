@@ -127,6 +127,9 @@
             const enterFullscreen = async (api, signal) => {
                 const session = [api.serverId(), api.getCurrentUserId()].join('|'), epoch = fullscreenEpoch;
                 await window.initCompleted;
+                // Android browsing keeps its system bars. Native video playback
+                // owns immersive mode and restores the bars when it ends.
+                if (window.tigerestAndroidApi || window.api?.system?.isAndroid) return;
                 if (signal?.aborted || epoch !== fullscreenEpoch || fullscreenSessions.has(session)) return;
                 if (window.api?.window?.setFullScreen) {
                     let pending = fullscreenPending.get(session);

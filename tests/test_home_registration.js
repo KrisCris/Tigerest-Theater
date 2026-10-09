@@ -32,6 +32,22 @@ test('native fullscreen is requested once per login session and can be reset on 
  await enter(api);address='http://192.168.0.2';await enter(api);assert.deepEqual(fullscreen,[true]);context.TigerestHomeReset();await enter(api);assert.deepEqual(fullscreen,[true,true]);
  const abort=new AbortController();abort.abort();context.TigerestHomeReset();await enter(api,abort.signal);assert.equal(fullscreen.length,2);
 });
+
+test('Android login and home re-entry keep system bars visible instead of requesting desktop fullscreen',async()=>{
+ for(const bridgeOnly of [false,true]) {
+  const {registrations,calls,context}=modules(),fullscreen=[];
+  let initialized;context.initCompleted=new Promise(resolve=>initialized=resolve);
+  function Base(view){this.view=view;}Base.prototype.onTemplateLoaded=function(){};
+  const api={serverId:()=> 'server',getCurrentUserId:()=> 'user'};
+  const Controller=registrations.get('home/hometab.js').factory({default:Base},{default:{currentApiClient:()=>api}},{default:{}}).default;
+  new Controller({classList:{remove(){}},removeAttribute(){}},{},{}).onTemplateLoaded();
+  const enter=calls[0][2].enterFullscreen,pending=enter(api);
+  context.api={system:{isAndroid:!bridgeOnly},window:{setFullScreen:async value=>fullscreen.push(value)}};
+  if(bridgeOnly)context.tigerestAndroidApi=context.api;
+  initialized();await pending;context.TigerestHomeReset();await enter(api);
+  assert.deepEqual(fullscreen,[],'mobile home does not hide status and navigation bars');
+ }
+});
 test('logout during a pending fullscreen request cannot mark the next login as already entered',async()=>{
  const {registrations,calls,context}=modules();let requests=0,release;
  context.api={window:{setFullScreen:()=>{requests++;return requests===1?new Promise(resolve=>release=resolve):Promise.resolve();}}};
