@@ -51,6 +51,8 @@ Windows 上 Gradle/JUnit 对中文路径的类发现有问题，脚本创建 ASC
 
 调试版包名是 `top.tigerest.theater.debug`，与正式版 `top.tigerest.theater` 分开保存数据。设备测试使用本机 HTTP 夹具、`adb reverse` 与调试 WebView 的 CDP；不会向生产评论／消息接口写入。Node.js 24+ 可运行以下脚本；通过环境变量 `ADB`、`ANDROID_SERIAL` 指定设备。
 
+调试启动参数 `url` 会保存到该调试版的服务器地址。HTTP 夹具关闭后，保存的 `127.0.0.1:PORT` 会无法连接；覆盖安装 APK 仍保留此地址。将调试版交给用户预览前，必须通过应用的服务器连接页恢复真实地址，并核对保存值及真实页面加载；安装成功不能代替这项检查。不要清除正式版数据，也不要在报告中输出登录凭据。
+
 ```powershell
 adb install --no-incremental -r android/app/build/outputs/apk/debug/app-debug.apk
 adb install -r -t android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk

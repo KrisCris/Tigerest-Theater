@@ -10,7 +10,7 @@
         else if (box.right > frame.right) list.scrollLeft += box.right - frame.right;
     }
     const css = `
-    body.tg-home-active .skinHeader, body.tg-home-active .mainDrawer, body.tg-home-active .appFooter { display: none !important; }
+    body.tg-home-active .skinHeader, body.tg-home-active .mainDrawer, body.tg-home-active .appFooter, body.tg-home-active .appfooter { display: none !important; }
     body.tg-home-active .view-home-home { left: 0 !important; right: 0 !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
     .tg-home-host { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
     .tg-home { --home-height: 650px; box-sizing: border-box; height: var(--home-height); min-height: 380px; padding: 18px 28px 22px;
