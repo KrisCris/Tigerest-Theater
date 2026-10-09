@@ -4,9 +4,9 @@
 
 媒体库来自你连接的 Emby Server，账号和内容权限由服务器提供。本项目提供客户端，不包含影视资源，也不会自动开通服务器访问权限。
 
-## 当前正式版：V2.5.1（Windows / Android）
+## 当前正式版：V2.5.1（Windows / Android / Mac）
 
-Windows 和 Android 更新至 [V2.5.1](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.5.1)；Apple Silicon Mac 继续使用 V2.5.0。本次 Windows 请手动下载安装包，完全退出客户端后安装。新增更新下载续传、进度感知重试与 Windows 网络运行库修复；弹幕不再依赖日期，在对应作品和季度内优先匹配唯一集标题，未命中标题时按集数匹配。现有功能包括：
+Windows、Android 和 Apple Silicon Mac 更新至 [V2.5.1](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.5.1)。本次 Windows 请手动下载安装包，完全退出客户端后安装。新增更新下载续传、进度感知重试与 Windows 网络运行库修复；弹幕不再依赖日期，在对应作品和季度内优先匹配唯一集标题，未命中标题时按集数匹配。Mac 补充版本支持“第二期／第2期”等季度名称。现有功能包括：
 
 - **沉浸式首页：** 媒体库入口、轮播大海报和作品列表，按最新一集入库时间排序；独立标题与简介动效、登录自动全屏，适配自己的服务器与账号权限。
 - **Windows 窗口与播放：** 自绘细顶栏，全屏隐藏；记住面板和滚轮调整的音量，切集保持当前音量；原生播放画面鼠标闲置约 3 秒隐藏，移动恢复。
@@ -21,11 +21,11 @@ Windows 和 Android 更新至 [V2.5.1](https://github.com/Tigerest/Tigerest-Thea
 | Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-x64.exe) | 完全退出客户端（含托盘）后按向导覆盖更新 |
 | Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-x64.zip) | 完全退出后解压替换程序，升级时保留 `data` |
 | Android 15+，arm64-v8a / x86_64 | [APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-android.apk) | 沿用正式签名，覆盖升级保留登录与设置；详见 [安卓说明](android/README.md) |
-| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-arm64.dmg) | 退出旧版后将应用拖入「应用程序」替换 |
+| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-arm64.dmg) | 退出旧版后将应用拖入「应用程序」替换 |
 
 基础包已包含 MPV 和所需运行库。Windows RIFE 的大型 AI 组件使用独立扩展，在客户端设置中下载或离线导入；已有扩展及模型可继续使用。下载文件可用 [SHA-256 清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-SHA256SUMS.txt) 核验。
 
-Windows 安装包未做 Authenticode 签名；Mac 使用 ad-hoc 签名，尚未经过 Apple 公证。确认下载来源后，Mac 可在「系统设置 → 隐私与安全性」中允许打开。当前正式发行的 Mac 安装包仅支持 Apple Silicon，仍使用 [2.5.0 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-SHA256SUMS.txt)。
+Windows 安装包未做 Authenticode 签名；Mac 使用 ad-hoc 签名，尚未经过 Apple 公证。确认下载来源后，Mac 可在「系统设置 → 隐私与安全性」中允许打开。当前正式发行的 Mac 安装包仅支持 Apple Silicon。
 
 Android 首次播放会展示手势教程：双击播放／暂停，左右滑动快进／快退，左侧上下调整本次播放亮度，右侧上下调整媒体音量；长按空白画面临时至少 2 倍速，松手恢复原速度，原速度高于 2 倍时保持原速度。可从播放器「更多 → 手势教程」重看。Android 暂不提供桌面 RIFE、离线下载、后台持续播放或画中画。
 
@@ -35,7 +35,7 @@ Android 首次播放会展示手势教程：双击播放／暂停，左右滑动
 
 「立即更新」会在应用内下载并检查文件长度及 SHA-256。安卓随后打开系统安装器，首次需允许“大河影院”安装应用；Windows 安装版启动升级向导。Windows 便携版打开 ZIP，退出客户端后替换程序并保留 `data`；Mac 打开 DMG，退出后将应用替换到「应用程序」。系统要求的确认仍需完成。下载可取消、失败可重试，暂时无法联网不会阻止使用客户端。
 
-本次 Windows 请手动升级至 V2.5.1；安装修复版后，后续更新可继续使用内置下载。Android 可在应用内升级至 V2.5.1，Mac 当前安装包仍为 V2.5.0。V2.4.1 及更早版本需先手动安装；相同版本不显示更新红点。
+本次 Windows 请手动升级至 V2.5.1；安装修复版后，后续更新可继续使用内置下载。Android 和 Mac 可在应用内下载 V2.5.1。V2.4.1 及更早版本需先手动安装；相同版本不显示更新红点。
 
 2.5.1 增加桌面和 Android 下载断点续传：暂停或退出后保留进度，断流时自动重新连接；连续五次重试没有新进度才提示失败。Windows 包同时修复下载运行库。旧版内置下载反复失败时，请手动安装修复版一次。详细改动见 [2.5.1 说明](docs/releases/2026-10-09-v2.5.1.md)。
 
@@ -178,7 +178,7 @@ Windows 安装版日志位于 `%LOCALAPPDATA%\Tigerest Theater\profiles\<profile
 
 ## 验证范围
 
-V2.5.1 的 [发布验证清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-RELEASE-MANIFEST.json) 记录 Windows／Android 的构建提交、包摘要、测试与未测范围。本次 Windows CTest 72 项、Android JVM 111 项通过，弹幕和 Android 下载使用隔离夹具验证，未执行新的生产视频或真机安装验收。
+V2.5.1 的 [发布验证清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-RELEASE-MANIFEST.json) 分别记录各平台的构建提交、包摘要、测试与未测范围。Windows CTest 72 项、Android JVM 111 项通过；Mac 补充版本 CTest 42 项通过，包含 67 个弹幕运行时用例，并完成签名及运行库审计。验证使用隔离夹具，未执行新的生产视频或真机安装验收；详见 [Mac 2.5.1 验证记录](docs/verification/2026-10-10-macos-2.5.1.md)。
 
 V2.5.0 的 [发布验证清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-RELEASE-MANIFEST.json) 记录各平台准确构建提交、包摘要、测试结果与未测范围。Windows 验证独立运行库启动、原生窗口和播放；Android 验证原生按钮、误触拦截、选集和系统横屏锁；Mac 由 Apple Silicon CI 构建、测试、签名并审计 DMG。
 
@@ -186,7 +186,7 @@ Mac 尚未完成实体设备播放验收。Android 折叠屏实测使用 Android
 
 ## 源码构建
 
-参见 [Windows 构建说明](dev/windows/README.md)、[macOS 构建说明](dev/macos/README.md) 和 [Android 构建说明](android/README.md)。本次 Windows／Android 发布标签为 `v2.5.1`，Mac 二进制仍使用 `v2.5.0`；准确构建来源见发布验证清单和对应源码附件。主分支可能继续更新。RIFE 组件来源、校验与第三方许可见对应构建文档及包内许可证。开发构建需使用匹配的固定播放运行库。
+参见 [Windows 构建说明](dev/windows/README.md)、[macOS 构建说明](dev/macos/README.md) 和 [Android 构建说明](android/README.md)。本次发布为 `v2.5.1`；Mac 包补充发布，其构建提交与原 Windows／Android 标签提交分别记录，准确来源见发布验证清单和 Mac 对应源码附件。主分支可能继续更新。RIFE 组件来源、校验与第三方许可见对应构建文档及包内许可证。开发构建需使用匹配的固定播放运行库。
 
 本项目为非官方 Emby 客户端，与 Emby LLC 无隶属关系。
 
