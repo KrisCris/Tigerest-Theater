@@ -26,6 +26,8 @@
 
 Windows 原生检查按 `dev/windows/TESTING.md` 在同一 PowerShell 调用加载 `Enter-TestEnvironment.ps1`；必需的 MPV、RIFE、Qt 与平台插件预检通过。部署器对可选的 NMEA 定位插件提示缺少 Qt6SerialPort；不涉及此次首页/WebEngine 功能。
 
+最终 Windows 暂存包在移除 Qt 环境覆盖、PATH 仅含 Windows 系统目录的环境中重新启动，正常载入真实首页；Android 重新加载后确认触屏规则及遮底来自打包注入代码。两端均无遗留浮层；原 enter/animateText 函数体与基线逐字比较一致。
+
 ## 实际服务器与设备
 
 Windows 1280×684 窗口、2560×1440 全屏；Android Xiaomi 折叠手机，CSS 760×850。真实服务器读取与导航验证了：首页 24 项、作品详情、海报返回原媒体夹、原首页入场、查看更多、收藏同页进入与返回、浮层清理。真实首个媒体夹续看数为 0，因此实际验证了近期入库补足 24 项；有续看记录、分页和去重由夹具覆盖。
