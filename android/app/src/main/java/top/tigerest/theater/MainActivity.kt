@@ -114,7 +114,9 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
                 if(video.visibility == View.VISIBLE && playbackTouchLocked) { controls.showUnlock(); return }
                 if(video.visibility == View.VISIBLE) { model.player.dispatch("stop",JSONArray()); endPlaybackSession() }
                 else if(model.player.state.active && model.player.isVideo()) { video.visibility = View.VISIBLE; setPlaybackScreenAwake(true); setFullscreen(true); controls.showControls() }
-                else if(web.canGoBack()) web.goBack() else finish()
+                else web.evaluateJavascript("Boolean(window.TigerestHomeMotion && window.TigerestHomeMotion.handleNativeBack())") { handled ->
+                    if(handled != "true") { if(web.canGoBack()) web.goBack() else finish() }
+                }
             } })
             if(BuildConfig.DEBUG && intent.hasExtra("url")) { val url = intent.getStringExtra("url")!!; model.settings.set("main","userWebClient",url); webHost.open(url) }
             else if(savedInstanceState != null) { webHost.restore(savedInstanceState) }

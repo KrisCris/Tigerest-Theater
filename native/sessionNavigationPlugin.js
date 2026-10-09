@@ -12,6 +12,7 @@ class SessionNavigationPlugin {
 
         appRouter.logout = this.logoutHook;
         pageJs.handleRoute = this.handleRouteHook;
+        this.disposeHomeMotion = window.TigerestHomeMotion?.attach({router: appRouter, pageJs, manager: connectionManager, viewManager});
     }
 
     isDownloadedContent(params) {
@@ -25,6 +26,7 @@ class SessionNavigationPlugin {
     onLogout(apiClient) {
         window.TigerestCommunityReset?.();
         window.TigerestHomeReset?.();
+        window.TigerestHomeMotion?.reset();
         const selectServerPath = '/startup/selectserver.html';
         const finishLogout = () => this.originalLogout.call(this.appRouter, apiClient);
 
@@ -54,6 +56,7 @@ class SessionNavigationPlugin {
     }
 
     destroy() {
+        this.disposeHomeMotion?.();
         if (this.appRouter.logout === this.logoutHook) {
             this.appRouter.logout = this.originalLogout;
         }

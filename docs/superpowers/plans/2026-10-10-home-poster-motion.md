@@ -78,3 +78,5 @@
 - 基线：`codex/release-2.5.1` 的 `577b02c`，新工作树 `C:/A/tigerest-home-motion`，分支 `codex/home-poster-motion`；Node 首页/设置基线 24/24 通过。
 - 用户已明确授权实装试用；本计划记录具体实现步骤并连续执行，不重复申请方案确认。
 - Task 1: 完成。新排序/设置测试最初 8 项失败；实现后与现有首页/设置测试共 34/34 通过。续看按 work 去重，收藏剧集按父作品资格过滤，缺少续看服务退到近期入库。原近期入库测试明确指定 recent 模式。
+- Task 2: 完成。真实路由上下文/硬件返回测试 8 项，触屏 Gallery 交互 8 项及原 Gallery 多尺寸回归通过。触屏测试先在旧代码复现首击直接跳转，再验证两次点按；原 enter/animateText 保持不变。
+- Task 3 细化：导航上下文留在 homeMotion.js；截图与动画渲染隔离到 homeTransitions.js，便于独立验证失败清理，不改变既定交互与时序。
