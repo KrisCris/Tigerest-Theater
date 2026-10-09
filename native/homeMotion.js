@@ -18,14 +18,23 @@
     const matchesEntry = () => entry && entry.account === account() && String(current().params?.id || '') === String(entry.itemId);
     const matchesLibrary = () => libraryContext && libraryContext.account === account() && path() === libraryContext.path;
     function itemFromCard(card) {
+        const list = card?.closest('.itemsContainer'), item = list?.getItemFromElement?.(card);
+        if (item) return item;
         const id = card?.dataset.id || card?.dataset.itemId;
         if (id) return {Id: id};
-        const list = card?.closest('.itemsContainer');
-        return list?.getItemFromElement?.(card) || null;
+        return null;
     }
     function visibleRoot() {
         return Array.from(document.querySelectorAll('.mainAnimatedPage,.page')).filter(node =>
             !node.classList.contains('hide') && node.getBoundingClientRect().width > 0).at(-1) || document;
+    }
+    function currentLibrary() {
+        if (matchesLibrary()) return libraryContext.library;
+        const root=visibleRoot(), params=current().params||{};
+        if (root.matches?.('.view-item-item') || document.body.classList.contains('tg-home-active')) return null;
+        if (params.tab==='favorites' || /[?&]tab=favorites(?:&|$)/.test(path())) return {Id:'tigerest-favorites',kind:'favorites'};
+        const id=params.topParentId||params.parentId;
+        return id ? {Id:id,Type:'CollectionFolder'} : null;
     }
     async function prepareLibraryPoster(id, signal, presentationKey) {
         const until = Date.now() + 1600;
@@ -83,7 +92,7 @@
             return null;
         }
         const card = Array.from(root.querySelectorAll('.card,[data-id],[data-item-id]')).find(node => String(itemFromCard(node)?.Id) === String(id));
-        return card?.querySelector('img.cardImage,img,.cardImageContainer') || (card?.matches('.cardImageContainer') ? card : null);
+        return card?.querySelector('img.cardImage') || card?.querySelector('img') || card?.querySelector('.cardImageContainer') || (card?.matches('.cardImageContainer') ? card : null);
     }
     const motion = {
         get entry() { return entry; },
@@ -110,8 +119,8 @@
                         }, navigate, direction: 'return'});
                     if (ticket === revision && returning.account === account()) {
                         entry = null;
-                        libraryContext = {library: returning.library, path: returning.libraryPath, account: returning.account,
-                            favoritesReturn: fromHome ? 'pop' : returning.favoritesReturn};
+                        libraryContext = returning.homeOwned ? {library: returning.library, path: returning.libraryPath, account: returning.account,
+                            favoritesReturn: fromHome ? 'pop' : returning.favoritesReturn} : null;
                     }
                     return;
                 }
@@ -136,10 +145,11 @@
             const showItem = function (item, ...args) {
                 const pending = pressedPoster;
                 const resolved = typeof item === 'object' ? item : pending?.item;
+                const library = pending && currentLibrary();
                 if (!motion.busy && resolved && ['Movie','Series','Video'].includes(resolved.Type)
-                    && pending?.id === String(resolved.Id) && (typeof item === 'object' || String(item) === pending.id) && Date.now() - pending.at < 2000 && matchesLibrary()) {
+                    && pending?.id === String(resolved.Id) && (typeof item === 'object' || String(item) === pending.id) && Date.now() - pending.at < 2000 && library) {
                     pressedPoster = null;
-                    return motion.openItem({card: {item: resolved}, library: libraryContext.library, source: pending.node,
+                    return motion.openItem({card: {item: resolved}, library, source: pending.node,
                         origin: 'library', navigate: () => originals.showItem.call(router, item, ...args)});
                 }
                 return originals.showItem.call(router, item, ...args);
@@ -147,7 +157,7 @@
             const capture = event => {
                 const node = event.target.closest?.('.cardImageContainer,.cardOverlayContainer,img.cardImage');
                 const card = node?.closest('.card,[data-id]'), item = itemFromCard(card);
-                if (item && !motion.busy) pressedPoster = {id: String(item.Id), item, node: card.querySelector('img.cardImage,img,.cardImageContainer') || node, at: Date.now()};
+                if (item && !motion.busy) pressedPoster = {id: String(item.Id), item, node: card.querySelector('img.cardImage') || card.querySelector('img') || card.querySelector('.cardImageContainer') || node, at: Date.now()};
             };
             document.addEventListener('pointerdown', capture, true);
             router.back = back; router.goHome = home; router.showItem = showItem;
@@ -163,7 +173,8 @@
             if (motion.busy) return;
             if (!bindings) return navigate();
             const previous = entry, ticket = ++revision;
-            entry = {itemId: card.item.Id, presentationKey: card.item.PresentationUniqueKey, library, account: account(), origin, favoritesReturn: libraryContext?.favoritesReturn,
+            entry = {itemId: card.item.Id, presentationKey: card.item.PresentationUniqueKey, library, account: account(), origin,
+                homeOwned: origin === 'home' || !!matchesLibrary(), favoritesReturn: libraryContext?.favoritesReturn,
                 libraryPath: origin === 'home' ? libraryUrl(library) : path()};
             try {
                 return await effect('poster', {source, itemId: card.item.Id, findTarget: () => posterNode(card.item.Id, true), navigate, direction: 'enter'});

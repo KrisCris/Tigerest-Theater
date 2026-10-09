@@ -231,9 +231,9 @@
         });
         listen(this.coverList, 'pointerover', event => {
             if (event.pointerType === 'touch') return;
-            const button = event.target.closest('.tg-cover'); if (button && !button.contains(event.relatedTarget)) this.select(Number(button.dataset.index), false);
+            const button = event.target.closest('.tg-cover'); if (button && !button.contains(event.relatedTarget) && Number(button.dataset.index) !== this.index) this.select(Number(button.dataset.index), false);
         });
-        listen(this.coverList, 'focusin', event => { const button = event.target.closest('.tg-cover'); if (button) { this.finishEntrance(); reveal(this.coverList, button); this.select(Number(button.dataset.index), false); } });
+        listen(this.coverList, 'focusin', event => { const button = event.target.closest('.tg-cover'); if (button) { this.finishEntrance(); reveal(this.coverList, button); if (Number(button.dataset.index) !== this.index) this.select(Number(button.dataset.index), false); } });
         listen(this.retry, 'click', () => this.selectedLibrary ? this.preview(this.selectedLibrary.Id, true) : this.start({}));
         this.resize = () => this.root.style.setProperty('--home-height', Math.max(320, window.innerHeight - this.host.getBoundingClientRect().top - 8) + 'px');
         listen(window, 'resize', this.resize);

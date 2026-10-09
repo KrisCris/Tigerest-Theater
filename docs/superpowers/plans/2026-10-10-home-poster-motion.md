@@ -86,3 +86,6 @@
 - 最新用户调整：当前聚焦作品/媒体夹触屏首击直接进入，切换项才先选择。3 个新增组件断言先失败后通过，Android 真实 touch 首击/双击验证通过。
 - PC 返回重影：真实旧页面和半透明缩小副本同时可见，遮底用例先失败；修复 homeReturn/library 退场层后真实 PC 中间帧确认背景不透明。原 Gallery enter/animateText 关键帧未改。
 - Task 4: Windows 构建部署、8/8 CTest、11 项 QtWebEngine 触屏夹具；Android 111 项单元测试、lint、APK 对齐及转场/触屏夹具通过。真实服务器 Windows 窗口/全屏与 Android 完整路线通过，390px/760px 详情布局无溢出。证据与范围见 docs/verification/2026-10-10-home-motion.md。
+- 最新用户授权扩展：将 0.2～0.3s 点击前背景准备移到预热缓存，媒体夹直达详情也应用同一海报动画。新增 homeBackdrop.js 异步缩图/后台合成，以及当前页单份 DOM/位图缓存；Android 非 origin-clean 应用内图使用已缩小图的主线程兼容路径。
+- 缓存回归：13 场景，含内容/resize/身份失效、短入场动画完成、慢解码首段响应、跨域图和 CSS 海报源遮盖；当前聚焦海报不重建背景、无变化的 class 写入不丢缓存。相关断言均先失败后修复。
+- 缓存独立审查：两项 Important 已复现并修复；allSettled 关闭并发迟到位图，预热等待短 WAAPI 完成并支持取消/超时。共享 Node 47/47、Windows CTest 9/9、Android 111 单测/lint/构建及实际触屏/硬件返回通过。包及测量更新见 verification 文档。

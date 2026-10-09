@@ -1,11 +1,64 @@
 (function () {
     'use strict';
+    window.TigerestHomeTransitions?.dispose?.();
     let active = null, last = null;
     const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const box = node => node?.getBoundingClientRect();
     const usable = node => { const b = box(node); return node?.isConnected && b?.width > 1 && b.height > 1; };
     const page = () => Array.from(document.querySelectorAll('.mainAnimatedPage,.page')).filter(node =>
         !node.classList.contains('hide') && usable(node) && getComputedStyle(node).visibility !== 'hidden').at(-1);
+    let cached=null,warming=null,warmTimer=null,epoch=0,observer=null;
+    const motionPreference=window.matchMedia('(prefers-reduced-motion: reduce)');
+    const backgroundRoot=()=>document.body.classList.contains('tg-home-active')?document.querySelector('.tg-home-host'):page();
+    const stamp=()=>[innerWidth,innerHeight,location.href,document.body.className.split(/\s+/).filter(n=>n&&n!=='tigerest-motion-busy').sort().join(' '),document.body.style.cssText].join('|');
+    const rasterRoot=()=>document.body.classList.contains('tg-home-active')?backgroundRoot():document.body;
+    const cacheReady=()=>!!cached&&cached.root===backgroundRoot()&&cached.epoch===epoch&&cached.stamp===stamp();
+    function invalidate(schedule=true){
+        ++epoch;cached?.bitmap.close();cached?.wrapper?.remove();cached=null;warming?.controller.abort();warming=null;
+        clearTimeout(warmTimer);warmTimer=null;
+        if(schedule&&!active&&!reduced())warmTimer=setTimeout(()=>prewarm(),180);
+    }
+    function changes(records){
+        if(active)return;
+        const root=backgroundRoot();
+        if(records.some(m=>!(m.type==='attributes'&&m.oldValue===m.target.getAttribute(m.attributeName))&&
+            !m.target.closest?.('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache')&&
+            (root?.contains(m.target)||m.target.matches?.('.mainAnimatedPage,.page,.skinHeader,.backdropContainer,.backgroundContainer'))))invalidate();
+    }
+    function settled(root,signal){
+        const animations=(root.getAnimations?.({subtree:true})||[]).filter(a=>
+            (a.playState==='running'||a.pending)&&a.effect?.getComputedTiming().endTime<=2500);
+        if(!animations.length)return Promise.resolve(true);
+        return new Promise(resolve=>{
+            let done=false;
+            const finish=value=>{if(done)return;done=true;clearTimeout(timer);signal.removeEventListener('abort',abort);resolve(value);};
+            const abort=()=>finish(false),timer=setTimeout(abort,3000);
+            signal.addEventListener('abort',abort,{once:true});
+            Promise.all(animations.map(a=>a.finished.catch(()=>{}))).then(()=>finish(!signal.aborted));
+        });
+    }
+    function prewarm(){
+        changes(observer?.takeRecords()||[]);
+        if(active||reduced()||!window.TigerestHomeBackdrop||!backgroundRoot())return Promise.resolve(false);
+        if(cacheReady())return Promise.resolve(true);
+        if(cached)invalidate(false);
+        if(warming)return warming.promise;
+        const controller=new AbortController(),task={controller,root:backgroundRoot(),epoch,stamp:stamp()};
+        warming=task;
+        task.promise=settled(task.root,controller.signal).then(ready=>ready&&!controller.signal.aborted
+            ?window.TigerestHomeBackdrop.build(rasterRoot(),controller.signal):null).then(result=>{
+            if(!result)return false;
+            if(controller.signal.aborted||task.epoch!==epoch||task.root!==backgroundRoot()||task.stamp!==stamp()){result.bitmap.close();return false;}
+            const warmJob={},light=frozen(warmJob),wrapper=document.createElement('div');
+            wrapper.className='tigerest-motion-cache';wrapper.inert=true;wrapper.setAttribute('aria-hidden','true');
+            // Attach once offscreen so stylesheet parsing/layout also happens
+            // before a click. Consume this single snapshot during the transition.
+            Object.assign(wrapper.style,{position:'fixed',inset:'0',opacity:'0',pointerEvents:'none',zIndex:'-2147483000',contain:'layout paint'});
+            wrapper.append(light);document.body.append(wrapper);sync(warmJob);light.getBoundingClientRect();
+            cached={...result,root:task.root,epoch,stamp:task.stamp,light,wrapper,copies:warmJob.copies};return true;
+        }).catch(()=>false).finally(()=>{if(warming===task)warming=null;});
+        return task.promise;
+    }
     const style = document.createElement('style');
     style.id = 'tigerest-home-motion-style';
     style.textContent = `
@@ -37,6 +90,7 @@
     }
     function animate(job, node, frames, options) {
         if (!node || job.signal.aborted) return Promise.resolve();
+        job.metric.firstAnimationMs??=performance.now()-job.start;
         const a = node.animate(frames, {...options, fill: 'both'}); job.animations.push(a);
         return a.finished.catch(() => {});
     }
@@ -67,14 +121,16 @@
     }
     async function run(kind, perform) {
         if (active) return;
+        changes(observer?.takeRecords()||[]);
         ensureStyle();
         const controller = new AbortController(), job = {controller, signal: controller.signal, animations: [], layers: [], held: [], canvases: [], frames: [], metric: {kind, surfaces: []}};
         active = job; document.body.classList.add('tigerest-motion-busy');
-        const start = performance.now(), tick = t => { job.frames.push(t); if (!job.signal.aborted) job.frame = requestAnimationFrame(tick); };
+        const start = job.start = performance.now(), tick = t => { job.metric.firstFrameMs??=Math.max(0,t-start);job.frames.push(t); if (!job.signal.aborted) job.frame = requestAnimationFrame(tick); };
         job.frame = requestAnimationFrame(tick);
         try { return await perform(job); }
         finally {
             clean(job);
+            invalidate();
             const intervals = job.frames.slice(1).map((t,i) => t - job.frames[i]), sorted = [...intervals].sort((a,b) => a-b);
             last = {...job.metric, totalMs: performance.now()-start, interrupted: job.signal.aborted,
                 medianIntervalMs: sorted[Math.floor(sorted.length/2)] || 0, p95IntervalMs: sorted[Math.floor(sorted.length*.95)] || 0};
@@ -108,27 +164,32 @@
             }
         }
         const originals = [originalRoot,...originalRoot.querySelectorAll('*')], copies = [copyRoot,...copyRoot.querySelectorAll('*')];
+        job.copies=new Map(originals.map((node,i)=>[node,copies[i]]));
         const scrolls = [];
         originals.forEach((node,i) => {
             const clone = copies[i];
             if (clone !== body && !body.contains(clone)) return;
-            if (node.closest('.tigerest-motion-layer,.tigerest-motion-poster') || node.matches('script,iframe,object,embed,audio,video')) { clone.remove(); return; }
+            if (node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache') || node.matches('script,iframe,object,embed,audio,video')) { clone.remove(); return; }
             if (node.matches('.mainAnimatedPage.hide,.page.hide')) { clone.remove(); return; }
             const r = box(node);
             if (r.width && r.height && r.bottom >= 0 && r.top <= innerHeight) {
                 const computed = getComputedStyle(node);
                 for (const property of ['opacity','transform','filter']) clone.style[property] = computed[property];
             }
-            if (node.tagName === 'IMG') { clone.removeAttribute('srcset'); clone.src = node.currentSrc || node.src; clone.loading = 'eager'; }
+            if (node.tagName === 'IMG') {
+                clone.removeAttribute('srcset');
+                if(r.width&&r.height&&r.bottom>=0&&r.top<=innerHeight&&r.right>=0&&r.left<=innerWidth){clone.src=node.currentSrc||node.src;clone.loading='eager';}
+                else clone.removeAttribute('src');
+            }
             for (const attr of Array.from(clone.attributes)) if (/^on/i.test(attr.name)) clone.removeAttribute(attr.name);
-            if (node.scrollLeft || node.scrollTop) scrolls.push([clone,node.scrollLeft,node.scrollTop]);
+            if (node.scrollLeft || node.scrollTop) {scrolls.push([clone,node.scrollLeft,node.scrollTop]);clone.setAttribute('data-tigerest-scroll',JSON.stringify([node.scrollLeft,node.scrollTop]));}
         });
         Object.assign(html.style,{display:'block',width:innerWidth+'px',height:innerHeight+'px',overflow:'hidden'});
         Object.assign(body.style,{width:innerWidth+'px',height:innerHeight+'px',pointerEvents:'none'});
         const computed = getComputedStyle(document.documentElement);
         for (const name of computed) if (name.startsWith('--')) html.style.setProperty(name,computed.getPropertyValue(name));
         document.querySelectorAll('style,link[rel="stylesheet"]').forEach(node => {
-            if (node === style || node.closest('.tigerest-motion-layer')) return;
+            if (node === style || node.closest('.tigerest-motion-layer,.tigerest-motion-cache')) return;
             if (home && node.tagName === 'LINK') return;
             const copy = node.cloneNode(true);
             if (copy.tagName === 'STYLE') copy.textContent = copy.textContent.replace(/:root\b/g,'.tigerest-motion-html');
@@ -141,34 +202,39 @@
         job.syncs ||= []; job.syncs.push(() => scrolls.forEach(([n,x,y]) => { n.scrollLeft=x; n.scrollTop=y; }));
         return host;
     }
-    function heavy(job) {
-        const scale = Math.min(1,240/innerWidth), canvas = document.createElement('canvas');
-        canvas.width = Math.min(240,Math.round(innerWidth*scale)); canvas.height = Math.round(innerHeight*scale);
-        const ctx = canvas.getContext('2d'); ctx.scale(scale,scale); ctx.fillStyle='#0b0d12'; ctx.fillRect(0,0,innerWidth,innerHeight);
-        const root = document.body.classList.contains('tg-home-active') ? document.querySelector('.tg-home-host') || document.body : document.body;
-        for (const node of [root,...root.querySelectorAll('*')]) {
-            if (node.closest('.tigerest-motion-layer,.tigerest-motion-poster,[data-tigerest-poster-held]')) continue;
-            const r = box(node); if (!r.width || !r.height || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
-            const s = getComputedStyle(node); if (s.display==='none' || s.visibility==='hidden' || +s.opacity===0) continue;
-            ctx.save();ctx.globalAlpha=+s.opacity;
-            if (s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'transparent') {ctx.fillStyle=s.backgroundColor;ctx.fillRect(r.x,r.y,r.width,r.height);}
-            if (node.tagName==='IMG' && node.complete && node.naturalWidth) {
-                const factor=Math.max(r.width/node.naturalWidth,r.height/node.naturalHeight);
-                ctx.beginPath();ctx.rect(r.x,r.y,r.width,r.height);ctx.clip();
-                ctx.drawImage(node,r.x+(r.width-node.naturalWidth*factor)/2,r.y+(r.height-node.naturalHeight*factor)/2,node.naturalWidth*factor,node.naturalHeight*factor);
-            } else if (node.childElementCount===0 && node.textContent.trim()) {
-                ctx.fillStyle=s.color;ctx.font=s.font || '16px sans-serif';ctx.textBaseline='top';ctx.fillText(node.textContent.trim().slice(0,100),r.x,r.y,r.width);
-            }
-            ctx.restore();
+    function outgoing(job,blur=true,source=null){
+        if(cacheReady()&&cached.light){
+            const light=cached.light;cached.light=null;cached.wrapper.remove();
+            if(!blur){light.style.filter='none';light.style.transform='none';}
+            const held=source&&cached.copies.get(source);if(held)held.style.visibility='hidden';
+            const scrolls=Array.from(light.shadowRoot.querySelectorAll('[data-tigerest-scroll]'));
+            job.syncs||=[];job.syncs.push(()=>scrolls.forEach(n=>{const [x,y]=JSON.parse(n.getAttribute('data-tigerest-scroll'));n.scrollLeft=x;n.scrollTop=y;}));
+            job.metric.lightCacheHit=true;return light;
         }
-        const result=document.createElement('canvas');result.width=canvas.width;result.height=canvas.height;
-        const blur=result.getContext('2d');blur.filter='blur(5px)';blur.drawImage(canvas,0,0);canvas.width=canvas.height=1;
-        job.canvases.push(result);job.metric.surfaces.push({width:result.width,height:result.height,blur:5});
-        return result;
+        job.metric.lightCacheHit=false;return frozen(job,blur);
     }
-    function scene(job) {
+    function scene(job,source=false,poster=null) {
         const group=document.createElement('div');group.className='tigerest-motion-scene';
-        const light=frozen(job), bitmap=heavy(job);group.append(light,bitmap);return {group,bitmap};
+        const light=source?outgoing(job,true,poster):frozen(job);group.append(light);return {group,bitmap:null};
+    }
+    async function bitmap(job,view,source=false){
+        let result=source&&cacheReady()?cached:null,owned=false;
+        if(source){job.metric.cacheHit=!!result;job.metric.syncRasterMs=0;}
+        if(!result&&source&&warming){await warming.promise;if(cacheReady()){result=cached;job.metric.cacheHit=true;}}
+        if(!result&&!job.signal.aborted){
+            // Yield the first frame before even collecting a cold raster plan.
+            await new Promise(resolve=>requestAnimationFrame(resolve));
+            if(job.signal.aborted)return;
+            result=await window.TigerestHomeBackdrop?.build(rasterRoot(),job.signal);owned=true;
+        }
+        if(!result)return;
+        if(job.signal.aborted){if(owned)result.bitmap.close();return;}
+        const canvas=document.createElement('canvas');canvas.width=result.width;canvas.height=result.height;
+        canvas.getContext('2d').drawImage(result.bitmap,0,0);
+        if(owned)result.bitmap.close();
+        job.canvases.push(canvas);job.metric.surfaces.push({width:canvas.width,height:canvas.height,blur:5});
+        (job.metric.backgroundPhases||=[]).push({captureMs:result.captureMs,resizeMs:result.resizeMs,rasterMs:result.rasterMs,rasterThread:result.rasterThread});
+        view.bitmap=canvas;view.group.append(canvas);
     }
     function sync(job) { job.syncs?.forEach(fn => fn()); }
     async function simple(job,navigate) {
@@ -179,7 +245,10 @@
     }
     const transitions = {
         get busy() { return !!active; }, get last() { return last; },
-        cancel(reason = 'reset') { if (active) { const job=active;job.controller.abort(reason);clean(job); } },
+        get cacheState(){changes(observer?.takeRecords()||[]);return {ready:cacheReady(),warming:!!warming,bytes:cacheReady()?cached.width*cached.height*4:0};},
+        prewarm,invalidate,
+        cancel(reason = 'reset') { invalidate(false);if (active) { const job=active;job.controller.abort(reason);clean(job); } },
+        dispose(){transitions.cancel();observer?.disconnect();window.removeEventListener('resize',onResize);document.removeEventListener('scroll',onScroll,true);document.removeEventListener('load',onLoad,true);document.removeEventListener('viewshow',onView,true);motionPreference.removeEventListener('change',onPreference);},
         poster(options) { return run('poster',async job => {
             const source=options.source, artwork=url(source);
             if (reduced() || !usable(source) || !artwork) return simple(job,options.navigate);
@@ -187,12 +256,12 @@
             const floating=document.createElement('div');floating.className='tigerest-motion-poster';floating.setAttribute('aria-hidden','true');
             Object.assign(floating.style,{left:from.x+'px',top:from.y+'px',width:from.width+'px',height:from.height+'px',backgroundImage:'url('+JSON.stringify(artwork)+')',borderRadius:getComputedStyle(source).borderRadius});
             job.layers.push(floating);document.body.append(floating);hold(job,source);
-            const fromScene=scene(job), cover=layer(job), veil=document.createElement('div');veil.className='tigerest-motion-veil';veil.append(fromScene.group);cover.append(veil);sync(job);
+            const fromScene=scene(job,true,source), cover=layer(job), veil=document.createElement('div');veil.className='tigerest-motion-veil';veil.append(fromScene.group);cover.append(veil);sync(job);
             job.metric.prepareMs=performance.now()-begin;
             const soft='cubic-bezier(.4,0,.6,1)';
             // Reach an opaque blur before changing the real page. Slow routes stay covered.
             await Promise.all([animate(job,veil,[{opacity:0},{opacity:1}],{duration:210,easing:soft}),
-                animate(job,fromScene.bitmap,[{opacity:0,offset:0},{opacity:0,offset:.25},{opacity:1,offset:1}],{duration:210,easing:soft})]);
+                (async()=>{await bitmap(job,fromScene,true);await animate(job,fromScene.bitmap,[{opacity:0},{opacity:1}],{duration:Math.max(80,210-(performance.now()-job.start)),easing:soft});})()]);
             if (job.signal.aborted && job.signal.reason !== 'resize') return;
             const result=await options.navigate();
             if (job.signal.aborted) return result;
@@ -212,7 +281,7 @@
             }
             if(job.signal.aborted)return result;
             const to=box(target);hold(job,target);
-            const toScene=scene(job);veil.append(toScene.group);sync(job);
+            const toScene=scene(job);await bitmap(job,toScene);if(job.signal.aborted)return result;veil.append(toScene.group);sync(job);
             const duration=720;
             const transform = rect => `translate3d(${rect.x-from.x}px,${rect.y-from.y}px,0) scale(${rect.width/from.width},${rect.height/from.height})`;
             const fly = async () => {
@@ -227,7 +296,7 @@
             await Promise.all([
                 fly(),
                 animate(job,toScene.group,[{opacity:0,offset:0},{opacity:0,offset:.16},{opacity:1,offset:.48},{opacity:1,offset:1}],{duration,easing:'linear'}),
-                ...[fromScene.bitmap,toScene.bitmap].map(node=>animate(job,node,[{opacity:1,offset:0},{opacity:1,offset:.56,easing:soft},{opacity:0,offset:.88},{opacity:0,offset:1}],{duration,easing:'linear'})),
+                ...[fromScene.bitmap,toScene.bitmap].filter(Boolean).map(node=>animate(job,node,[{opacity:1,offset:0},{opacity:1,offset:.56,easing:soft},{opacity:0,offset:.88},{opacity:0,offset:1}],{duration,easing:'linear'})),
                 animate(job,veil,[{opacity:1,offset:0},{opacity:1,offset:.7,easing:soft},{opacity:0,offset:1}],{duration,easing:'linear'})
             ]);
             const landing=box(floating), actual=box(target);
@@ -236,7 +305,7 @@
         }); },
         library({gallery,navigate,samePage = false}) { return run('library',async job => {
             if (reduced() || !gallery?.active) return simple(job,navigate);
-            const cover=layer(job), copy=frozen(job,false);cover.style.background='#0b0d12';cover.append(copy);sync(job);
+            const cover=layer(job), copy=outgoing(job,false);cover.style.background='#0b0d12';cover.append(copy);sync(job);
             const shadow=copy.shadowRoot;
             const nav=shadow.querySelector('.tg-home-nav'), rail=shadow.querySelector('.tg-home-rail'), stage=shadow.querySelector('.tg-home-stage');
             const accelerated='cubic-bezier(.65,0,.85,.25)';
@@ -257,7 +326,7 @@
         }); },
         homeReturn({navigate,findGallery}) { return run('homeReturn',async job => {
             if (reduced()) return simple(job,navigate);
-            const cover=layer(job),copy=frozen(job,false);cover.style.background='#0b0d12';cover.append(copy);sync(job);
+            const cover=layer(job),copy=outgoing(job,false);cover.style.background='#0b0d12';cover.append(copy);sync(job);
             await animate(job,copy,[{opacity:1,transform:'none'},{opacity:0,transform:'scale(.82)'}],{duration:320,easing:'cubic-bezier(.6,0,.8,.4)'});
             if (job.signal.aborted && job.signal.reason !== 'resize') return;
             cover.style.background='#0b0d12';const result=await navigate();
@@ -270,6 +339,13 @@
             return result;
         }); }
     };
-    window.addEventListener('resize',()=>transitions.cancel('resize'));
+    const onResize=()=>{transitions.cancel('resize');invalidate();},onScroll=event=>{if(!active&&(event.target===document||backgroundRoot()?.contains(event.target)))invalidate();},onLoad=event=>{if(!active&&event.target.tagName==='IMG'&&!event.target.closest('.tigerest-motion-cache'))invalidate();},onView=()=>{if(!active)invalidate();},onPreference=()=>invalidate();
+    function observe(){
+        observer=new MutationObserver(changes);observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeOldValue:true,attributeFilter:['src','class','style','hidden']});
+        document.addEventListener('scroll',onScroll,true);document.addEventListener('load',onLoad,true);document.addEventListener('viewshow',onView,true);invalidate();
+    }
+    window.addEventListener('resize',onResize);
+    motionPreference.addEventListener('change',onPreference);
     window.TigerestHomeTransitions=transitions;
+    if(document.body)observe();else document.addEventListener('DOMContentLoaded',observe,{once:true});
 }());

@@ -8,6 +8,7 @@ const routes={
 };
 for(const name of ['anime','movies','series','favorites'])routes['/art/'+name+'.png']={type:'image/png',path:path.join(root,'native/home-art',name+'.png')};
 withBrowser(routes,async({evaluate,call})=>{
+ await call('Emulation.setFocusEmulationEnabled',{enabled:true});
  // The animation contract must not depend on the runner's accessibility
  // preference. Reduced motion is verified separately below.
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
@@ -61,6 +62,9 @@ withBrowser(routes,async({evaluate,call})=>{
   check(Number(getComputedStyle(gallery.title).opacity)===0,'a carousel change resets the independent title entrance');
   await wait(()=>Number(getComputedStyle(gallery.title).opacity)>.95);
   check(gallery.title.textContent==='较早作品','carousel text ends on the selected work');
+  const selectedCover=document.querySelector('.tg-cover.is-selected'),selection=gallery.selection,sceneryBeforeFocus=gallery.scenery;
+  selectedCover.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,pointerType:'mouse'}));selectedCover.focus({preventScroll:true});
+  check(gallery.selection===selection&&gallery.scenery===sceneryBeforeFocus,'hovering or focusing the current cover preserves its scene and transition cache');
   check(gallery.overview.hidden,'a work without an overview has no empty summary block');
   const create=document.createElement.bind(document);
   document.createElement=function(tag,...args){const node=create(tag,...args);if(tag==='img')Object.defineProperty(node,'src',{set(){},configurable:true});return node;};
