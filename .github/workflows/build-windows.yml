@@ -68,6 +68,12 @@ jobs:
         }
         Expand-Archive -LiteralPath $archive -DestinationPath webengine-runtime
         "TIGEREST_WEBENGINE_RUNTIME=$($PWD.Path)/webengine-runtime" >> $env:GITHUB_ENV
+    - name: Prepare release-pinned Windows TLS runtime
+      shell: pwsh
+      run: |
+        python dev/windows/tls/prepare_openssl_runtime.py --output build/openssl-runtime
+        if ($LASTEXITCODE -ne 0) { throw 'Verified OpenSSL runtime preparation failed' }
+        "TIGEREST_OPENSSL_RUNTIME_DIR=$($PWD.Path)/build/openssl-runtime" >> $env:GITHUB_ENV
     - name: Prepare release-pinned RIFE playback kernels
       env:
         GH_TOKEN: ${{ github.token }}

@@ -233,195 +233,195 @@ local function normalize_danmaku_response(d)
     return d
 end
 
+-- Match the work and season before using episode titles or numbers.
+local function match_text(value)
+    local text = tostring(value or ''):lower():gsub('½', '1/2')
+    text = text:gsub('[%s%p]', '')
+    for char in ('，。！？；：、·「」『』“”‘’（）【】《》〈〉—…　'):gmatch('[%z\1-\127\194-\244][\128-\191]*') do
+        text = text:gsub(char, '')
+    end
+    return text
+end
+
 local function episode_title(value)
-    return tostring(value or ''):gsub('^第%s*%d+%s*话%s*', ''):gsub('^第%s*%d+%s*集%s*', '')
-        :gsub('[%s%p]', '')
+    local text = tostring(value or ''):gsub('^第%s*%d+%s*话%s*', ''):gsub('^第%s*%d+%s*話%s*', '')
+        :gsub('^第%s*%d+%s*集%s*', '')
+    text = match_text(text)
+    if text:match('^episode%d+$') or text:match('^ep%d+$') or text:match('^%d+$') then return '' end
+    return text
 end
 
 local function valid_api_id(value)
     return type(value) == 'number' or (type(value) == 'string' and value ~= '')
 end
 
-local function match_episode(anime, episode_num, api_server, callback)
-    local url = api_server .. "/api/v2/bangumi/" .. anime.bangumiId
-    local args = make_danmaku_request_args("GET", url)
-    if args == nil then callback({}, true); return end
+local function credit_episode(episode)
+    local text = episode_title(episode.episodeTitle)
+    return text == 'op' or text == 'ed' or text == 'opening' or text == 'ending'
+        or text:match('^op%d+') or text:match('^ed%d+') or text:match('^ncop') or text:match('^nced')
+        or text:match('^opopening') or text:match('^edending') or text:match('^optheme') or text:match('^edtheme')
+        or text:match('^openingtheme') or text:match('^endingtheme') or text:match('^openingcredits')
+        or text:match('^endingcredits') or text:match('^musicvideo') or text:match('^片头曲')
+        or text:match('^片尾曲') or text:match('^主题曲') or text:match('^主題曲')
+end
 
+local function work_title_and_season(value)
+    local title = match_text(value)
+    local words = {'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'}
+    -- Longer numeric ordinals must precede their shorter suffixes (11th/1th).
+    for index = 99, 1, -1 do
+        local chinese = number_to_chinese(index)
+        local suffixes = {'第' .. index .. '季', '第' .. chinese .. '季', '第' .. index .. '期', '第' .. chinese .. '期',
+            '第' .. index .. '部', '第' .. chinese .. '部',
+            'season' .. index, 's' .. index, string.format('s%02d', index), index .. 'stseason', index .. 'ndseason',
+            index .. 'rdseason', index .. 'thseason'}
+        if words[index] then suffixes[#suffixes + 1] = words[index] .. 'season' end
+        for _, suffix in ipairs(suffixes) do
+            if #title > #suffix and title:sub(-#suffix) == suffix then
+                return title:sub(1, #title - #suffix), index
+            end
+        end
+    end
+    return title
+end
+
+local function match_episode(anime, episode_num, expected_title, api_server, callback)
+    local url = api_server .. '/api/v2/bangumi/' .. anime.bangumiId
+    local args = make_danmaku_request_args('GET', url)
+    if not args then callback({}, true); return end
     parallel_requests({api_server}, function() return args end, function(_, error, json)
-        if error then
-            msg.error(error)
-            callback({}, true)
-            return
-        end
+        if error then msg.error(error); callback({}, true); return end
         local data = utils.parse_json(json)
-        if type(data) ~= 'table' or type(data.bangumi) ~= 'table'
-            or type(data.bangumi.episodes) ~= 'table' then
-            msg.info("无结果")
-            callback({}, true)
-            return
+        if type(data) ~= 'table' or type(data.bangumi) ~= 'table' or type(data.bangumi.episodes) ~= 'table' then
+            callback({}, true); return
         end
-
-        local candidates, incomplete, excluded_credits = {}, false, 0
+        local titled, numbered, seen = {}, {}, {}
+        local excluded_credits, malformed = 0, false
         for _, episode in ipairs(data.bangumi.episodes) do
             local valid = type(episode) == 'table'
             local number = valid and tonumber(episode.episodeNumber)
-            if number and valid_api_id(episode.episodeId)
-                and type(episode.episodeTitle) == 'string' and episode.episodeTitle:match('%S') then
-                -- Catalog and Emby dates often differ. A regular episode must
-                -- have the requested number; dates cannot select another one.
-                if number == tonumber(episode_num) then candidates[#candidates + 1] = episode end
-            elseif valid and type(episode.episodeNumber) == 'string'
-                and episode.episodeNumber:match('^[cC]%d+$') then
+            if valid and (credit_episode(episode) or (type(episode.episodeNumber) == 'string'
+                and episode.episodeNumber:match('^[cC]%d+$'))) then
                 excluded_credits = excluded_credits + 1
-            else
-                incomplete = true
-            end
+            elseif number and number >= 0 and number < math.huge and valid_api_id(episode.episodeId)
+                and type(episode.episodeTitle) == 'string' and episode.episodeTitle:match('%S') then
+                local id = tostring(episode.episodeId)
+                if not seen[id] then
+                    seen[id] = true
+                    if expected_title ~= '' and episode_title(episode.episodeTitle) == expected_title then
+                        titled[#titled + 1] = episode
+                    end
+                    if number == tonumber(episode_num) then numbered[#numbered + 1] = episode end
+                end
+            else malformed = true end
         end
-        msg.debug(('Auto-match catalog: numbered=%d credits_excluded=%d incomplete=%s')
-            :format(#candidates, excluded_credits, tostring(incomplete)))
-        callback(candidates, incomplete)
+        -- An ambiguous title stays ambiguous; the number cannot undo title priority.
+        local by_title = #titled > 0
+        local supported = by_title and titled or numbered
+        msg.debug(('Auto-match release: titles=%d numbers=%d credits_excluded=%d incomplete=%s')
+            :format(#titled, #numbered, excluded_credits, tostring(malformed)))
+        callback(supported, malformed, by_title)
     end, nil, {per_request_timeout = 15})
 end
 
 local function match_anime()
-    local anime_type = "tvseries"
+    local anime_type = 'tvseries'
     local title, season_num, episode_num = parse_title()
-    if not episode_num then
-        msg.info("无法解析剧集信息")
-        return
-    end
-
-    if title:match("OVA") or title:match("OAD") then
-        anime_type = "ova"
-    end
-
-    -- 并发搜索各提供方，再按作品、单集标题和稳定 ID 排序相同集号的候选。
+    if not title or not episode_num then msg.info('无法解析剧集信息'); return end
+    if title:match('OVA') or title:match('OAD') then anime_type = 'ova' end
     local encoded_query = url_encode(title)
     local servers = get_api_server_list(options.api_server)
-
-    local matched = false
-    local cancel_fn = nil
-    local searches_finished = false
-    local pending_candidates = 0
-    local episode_candidates = {}
-    local fallback_uncertain = false
+    local searches_finished, pending_candidates, matched = false, 0, false
+    local candidates, incomplete = {}, false
     local expected_title = ''
     if mp.get_property_bool('user-data/tigerest/emby/valid', false) then
         expected_title = episode_title(mp.get_property_native('user-data/tigerest/emby/episode-name'))
     end
 
-    local function accept_episode(anime, episode, server)
-        matched = true
-        DANMAKU.anime = anime.animeTitle
-        DANMAKU.episode = episode.episodeTitle
-        msg.info('匹配剧集: ' .. anime.animeTitle .. ' - ' .. episode.episodeTitle)
-        set_episode_id(episode.episodeId, nil, server)
-        if cancel_fn then pcall(cancel_fn) end
-    end
-
-    local function finish_unmatched()
-        if searches_finished and pending_candidates == 0 and not matched then
-            -- Rank available candidates after the release/provider scan. A missing
-            -- alternative no longer vetoes a usable match; the OSD lets users
-            -- verify it and manual selection can correct the saved match.
-            local selected, count = nil, 0
-            for _, candidate in pairs(episode_candidates) do
-                count = count + 1
-                if not selected or candidate.series_score > selected.series_score
-                    or (candidate.series_score == selected.series_score and candidate.episode_score > selected.episode_score)
-                    or (candidate.series_score == selected.series_score and candidate.episode_score == selected.episode_score
-                        and candidate.key < selected.key) then
-                    selected = candidate
-                end
-            end
-            if selected then
-                msg.info(('Auto-match selected ranked regular episode: candidates=%d alternatives_incomplete=%s')
-                    :format(count, tostring(fallback_uncertain)))
-                accept_episode(selected.anime, selected.episode, selected.server)
-                return
-            end
-            msg.info('没有找到对应剧集的弹幕')
-            show_message('未找到对应剧集的弹幕，可在弹幕菜单中手动匹配', 5)
-        end
-    end
-
     local function title_score(anime_title)
-        local target_title = title:gsub('½', '1/2')
-        if tonumber(season_num) and tonumber(season_num) > 1 then
-            target_title = target_title .. ' 第' .. number_to_chinese(season_num) .. '季'
-        end
-        anime_title = tostring(anime_title or ''):gsub('½', '1/2')
-            :gsub('^%s*(.-)%s*$', '%1'):gsub('%s*%(.-%)%s*$', ''):gsub('%s*【.-】.*$', '')
-        if anime_title:match('第一[季部]') and tonumber(season_num) == 1 then
-            target_title = target_title .. ' 第一季'
-        end
-        return math.min(1, jaro_winkler(target_title, anime_title))
+        local raw = tostring(anime_title or ''):gsub('^%s*(.-)%s*$', '%1')
+            :gsub('%s*%(.-%)%s*$', ''):gsub('%s*【.-】.*$', '')
+        local base, query_season = work_title_and_season(title)
+        local candidate, explicit_season = work_title_and_season(raw)
+        if base == '' or candidate == '' then return nil end
+        local special = raw:lower():find('ova', 1, true) or raw:lower():find('oad', 1, true)
+            or raw:lower():find('special', 1, true) or raw:find('特别篇', 1, true) or raw:find('特別篇', 1, true)
+            or raw:find('番外', 1, true)
+        local season = tonumber(season_num)
+        if query_season and season and season > 0 and query_season ~= season then return nil end
+        if season == 0 and not special then return nil end
+        if season and season > 0 and special and not title:lower():find('ova', 1, true)
+            and not title:lower():find('oad', 1, true) then return nil end
+        if explicit_season and season and explicit_season ~= season then return nil end
+        if season and season > 1 and explicit_season ~= season then return nil end
+        local special_title = match_text(raw:gsub('[oO][vV][aA]', ''):gsub('[oO][aA][dD]', '')
+            :gsub('[sS][pP][eE][cC][iI][aA][lL]', ''):gsub('特别篇', ''):gsub('特別篇', ''):gsub('番外', ''))
+        local score = ((explicit_season and base == candidate) or (season == 0 and special_title == base)) and 1
+            or math.min(1, jaro_winkler(base, candidate))
+        return score >= 0.85 and score or nil
     end
 
-    local function build_args(server)
-        local url = server .. "/api/v2/search/anime"
-        local full_url = url .. "?keyword=" .. encoded_query
-        return make_danmaku_request_args("GET", full_url)
+    local function finish()
+        if not searches_finished or pending_candidates ~= 0 or matched then return end
+        local best_score, best_title, supported = -1, false, {}
+        for _, candidate in pairs(candidates) do
+            if candidate.score > best_score or (candidate.score == best_score and candidate.by_title and not best_title) then
+                best_score, best_title, supported = candidate.score, candidate.by_title, {candidate}
+            elseif candidate.score == best_score and candidate.by_title == best_title then
+                supported[#supported + 1] = candidate
+            end
+        end
+        if #supported == 1 then
+            local selected = supported[1]
+            matched = true
+            DANMAKU.anime, DANMAKU.episode = selected.anime.animeTitle, selected.episode.episodeTitle
+            msg.info(('Auto-match selected regular episode: by_title=%s alternatives_incomplete=%s')
+                :format(tostring(selected.by_title), tostring(incomplete)))
+            set_episode_id(selected.episode.episodeId, nil, selected.server)
+        else
+            msg.info('没有找到唯一对应剧集的弹幕')
+            show_message('未找到唯一对应剧集的弹幕，可在弹幕菜单中手动匹配', 5)
+        end
     end
 
     local function per_response(server, err, out)
-        if matched then return end
-        if err then
-            fallback_uncertain = true
-            msg.debug(("search anime failed for %s: %s"):format(server, tostring(err)))
-            return
-        end
+        if err then incomplete = true; return end
         local data = utils.parse_json(out)
-        if type(data) ~= 'table' or type(data.animes) ~= 'table' then
-            fallback_uncertain = true
-            return
-        end
-        local local_candidates = {}
+        if type(data) ~= 'table' or type(data.animes) ~= 'table' then incomplete = true; return end
+        local works, seen = {}, {}
         for _, anime in ipairs(data.animes) do
-            if type(anime) ~= 'table' then
-                fallback_uncertain = true
-            elseif anime.type == anime_type and title_score(anime.animeTitle) >= 0.75 then
-                if valid_api_id(anime.bangumiId) then
-                    table.insert(local_candidates, anime)
-                else
-                    fallback_uncertain = true
+            if type(anime) ~= 'table' then incomplete = true
+            elseif anime.type == anime_type then
+                local score = title_score(anime.animeTitle)
+                if score then
+                    if valid_api_id(anime.bangumiId) then
+                        local id = tostring(anime.bangumiId)
+                        if not seen[id] then seen[id] = true; works[#works + 1] = {anime = anime, score = score} end
+                    else incomplete = true end
                 end
             end
         end
-        table.sort(local_candidates, function(a, b)
-            return title_score(a.animeTitle) > title_score(b.animeTitle)
-        end)
-        if #local_candidates == 0 then return end
+        table.sort(works, function(a, b) return a.score > b.score end)
+        if #works == 0 then return end
         pending_candidates = pending_candidates + 1
         local function try_candidate(index)
-            local anime = local_candidates[index]
-            if matched or not anime then
-                pending_candidates = pending_candidates - 1
-                finish_unmatched()
-                return
-            end
-            match_episode(anime, episode_num, server, function(episodes, uncertain)
-                fallback_uncertain = fallback_uncertain or uncertain
-                for _, candidate in ipairs(episodes) do
-                    -- Custom providers allocate deployment-local IDs. Keep their
-                    -- candidates separate; repeat records within one release dedupe.
-                    local key = server .. '\0' .. tostring(anime.bangumiId) .. '\0' .. tostring(candidate.episodeId)
-                    episode_candidates[key] = {anime = anime, episode = candidate, server = server, key = key,
-                        series_score = title_score(anime.animeTitle),
-                        episode_score = expected_title ~= '' and math.min(1, jaro_winkler(expected_title, episode_title(candidate.episodeTitle))) or 0}
+            local work = works[index]
+            if not work then pending_candidates = pending_candidates - 1; finish(); return end
+            match_episode(work.anime, episode_num, expected_title, server, function(episodes, uncertain, by_title)
+                incomplete = incomplete or uncertain
+                for _, episode in ipairs(episodes) do
+                    -- IDs are deployment-local: only duplicate rows from this release/provider collapse.
+                    local key = server .. '\0' .. tostring(work.anime.bangumiId) .. '\0' .. tostring(episode.episodeId)
+                    candidates[key] = {anime = work.anime, episode = episode, server = server, score = work.score, by_title = by_title}
                 end
                 try_candidate(index + 1)
             end)
         end
         try_candidate(1)
     end
-
-    local function final_cb()
-        searches_finished = true
-        finish_unmatched()
-    end
-
-    cancel_fn = parallel_requests(servers, build_args, per_response, final_cb, { concurrency = 5, per_request_timeout = 15 })
+    parallel_requests(servers, function(server)
+        return make_danmaku_request_args('GET', server .. '/api/v2/search/anime?keyword=' .. encoded_query)
+    end, per_response, function() searches_finished = true; finish() end, {concurrency = 5, per_request_timeout = 15})
 end
 
 -- 执行哈希匹配获取弹幕
@@ -447,8 +447,7 @@ local function match_file(file_path, file_name, callback)
 
     if hash then msg.info('hash:', hash) end
 
-    -- Without a real content hash, validate the work and regular episode number
-    -- in its catalog rather than trusting a filename-only upstream match.
+    -- Without a real content hash, use the known work/season/episode and title.
     if not hash and mp.get_property_bool('user-data/tigerest/emby/valid', false) then
         match_anime()
         return

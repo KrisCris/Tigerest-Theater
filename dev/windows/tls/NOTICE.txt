@@ -1,0 +1,17 @@
+Tigerest Theater Windows TLS runtime
+
+OpenSSL 3.5.9, copyright (c) 1998-2026 The OpenSSL Project Authors.
+Unmodified amd64 libssl-3.dll and libcrypto-3.dll from CPython 3.13.16's
+official Windows embeddable archive. OpenSSL is licensed under Apache-2.0;
+see LICENSE.OpenSSL.txt. Python's complete bundled notices are retained in
+LICENSE.Python.txt. No Python interpreter is shipped by this main-app runtime.
+Qt's amd64 aliases libssl-3-x64.dll and libcrypto-3-x64.dll contain exactly
+the upstream DLL bytes; libcrypto-3.dll is also retained for SSL's import name.
+
+Binary provenance, published archive SHA256, individual hashes and license
+source are recorded in runtime-lock.json.
+https://www.python.org/downloads/release/python-31316/
+https://github.com/openssl/openssl/tree/openssl-3.5.9
+
+The Qt OpenSSL backend is copied from the matching Qt installation and is
+covered by the application's separately supplied Qt license notices.

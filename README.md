@@ -4,9 +4,9 @@
 
 媒体库来自你连接的 Emby Server，账号和内容权限由服务器提供。本项目提供客户端，不包含影视资源，也不会自动开通服务器访问权限。
 
-## 当前正式版：V2.5.0
+## 当前正式版：V2.5.1（Windows / Android）
 
-Windows、Android 和 Apple Silicon Mac 更新至 [V2.5.0](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.5.0)。本次更新包括：
+Windows 和 Android 更新至 [V2.5.1](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.5.1)；Apple Silicon Mac 继续使用 V2.5.0。本次 Windows 请手动下载安装包，完全退出客户端后安装。新增更新下载续传、进度感知重试与 Windows 网络运行库修复；弹幕不再依赖日期，在对应作品和季度内优先匹配唯一集标题，未命中标题时按集数匹配。现有功能包括：
 
 - **沉浸式首页：** 媒体库入口、轮播大海报和作品列表，按最新一集入库时间排序；独立标题与简介动效、登录自动全屏，适配自己的服务器与账号权限。
 - **Windows 窗口与播放：** 自绘细顶栏，全屏隐藏；记住面板和滚轮调整的音量，切集保持当前音量；原生播放画面鼠标闲置约 3 秒隐藏，移动恢复。
@@ -18,14 +18,14 @@ Windows、Android 和 Apple Silicon Mac 更新至 [V2.5.0](https://github.com/Ti
 
 | 平台 | 下载 | 安装 |
 | --- | --- | --- |
-| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-x64.exe) | 完全退出客户端（含托盘）后按向导覆盖更新 |
-| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-x64.zip) | 完全退出后解压替换程序，升级时保留 `data` |
-| Android 15+，arm64-v8a / x86_64 | [APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-android.apk) | 沿用正式签名，覆盖升级保留登录与设置；详见 [安卓说明](android/README.md) |
+| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-x64.exe) | 完全退出客户端（含托盘）后按向导覆盖更新 |
+| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-x64.zip) | 完全退出后解压替换程序，升级时保留 `data` |
+| Android 15+，arm64-v8a / x86_64 | [APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-android.apk) | 沿用正式签名，覆盖升级保留登录与设置；详见 [安卓说明](android/README.md) |
 | macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-arm64.dmg) | 退出旧版后将应用拖入「应用程序」替换 |
 
-基础包已包含 MPV 和所需运行库。Windows RIFE 的大型 AI 组件使用独立扩展，在客户端设置中下载或离线导入；已有扩展及模型可继续使用。下载文件可用 [SHA-256 清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-SHA256SUMS.txt) 核验。
+基础包已包含 MPV 和所需运行库。Windows RIFE 的大型 AI 组件使用独立扩展，在客户端设置中下载或离线导入；已有扩展及模型可继续使用。下载文件可用 [SHA-256 清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-SHA256SUMS.txt) 核验。
 
-Windows 安装包未做 Authenticode 签名；Mac 使用 ad-hoc 签名，尚未经过 Apple 公证。确认下载来源后，Mac 可在「系统设置 → 隐私与安全性」中允许打开。当前正式发行的 Mac 安装包仅支持 Apple Silicon。
+Windows 安装包未做 Authenticode 签名；Mac 使用 ad-hoc 签名，尚未经过 Apple 公证。确认下载来源后，Mac 可在「系统设置 → 隐私与安全性」中允许打开。当前正式发行的 Mac 安装包仅支持 Apple Silicon，仍使用 [2.5.0 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-SHA256SUMS.txt)。
 
 Android 首次播放会展示手势教程：双击播放／暂停，左右滑动快进／快退，左侧上下调整本次播放亮度，右侧上下调整媒体音量；长按空白画面临时至少 2 倍速，松手恢复原速度，原速度高于 2 倍时保持原速度。可从播放器「更多 → 手势教程」重看。Android 暂不提供桌面 RIFE、离线下载、后台持续播放或画中画。
 
@@ -35,7 +35,9 @@ Android 首次播放会展示手势教程：双击播放／暂停，左右滑动
 
 「立即更新」会在应用内下载并检查文件长度及 SHA-256。安卓随后打开系统安装器，首次需允许“大河影院”安装应用；Windows 安装版启动升级向导。Windows 便携版打开 ZIP，退出客户端后替换程序并保留 `data`；Mac 打开 DMG，退出后将应用替换到「应用程序」。系统要求的确认仍需完成。下载可取消、失败可重试，暂时无法联网不会阻止使用客户端。
 
-V2.4.2 起可在应用内检查并升级至 V2.5.0。V2.4.1 及更早版本需先手动安装新版；相同版本不显示更新红点。
+本次 Windows 请手动升级至 V2.5.1；安装修复版后，后续更新可继续使用内置下载。Android 可在应用内升级至 V2.5.1，Mac 当前安装包仍为 V2.5.0。V2.4.1 及更早版本需先手动安装；相同版本不显示更新红点。
+
+2.5.1 增加桌面和 Android 下载断点续传：暂停或退出后保留进度，断流时自动重新连接；连续五次重试没有新进度才提示失败。Windows 包同时修复下载运行库。旧版内置下载反复失败时，请手动安装修复版一次。详细改动见 [2.5.1 说明](docs/releases/2026-10-09-v2.5.1.md)。
 
 ## 客户端设置
 
@@ -143,7 +145,7 @@ M 系列 Mac 的模型与补帧插件随基础包提供，推理使用 macOS 自
 ## 桌面主要功能
 
 - **媒体库与原生播放：** 浏览、搜索、播放队列、音轨与字幕切换，观看进度回传；Windows 提供原生 GPU-Next 与 Render API 兼容后端。
-- **弹幕：** 新配置默认加载，保留已有明确关闭的选择。支持自动匹配、搜索、加载以及字号、透明度、速度、区域等调整。优先使用共享匹配和已保存的手动选择；自动检索按作品、季及正片集号匹配，多候选按作品和单集标题排序，不使用首播日期选集或否决结果。跨季连续编号与分季编号之间的对应关系使用共享规则或手动选择。保留历史来源的屏蔽状态和时间偏移。
+- **弹幕：** 新配置默认加载，保留已有明确关闭的选择。支持自动匹配、搜索、加载以及字号、透明度、速度、区域等调整。自动识别依据作品、季度和集数，不再使用首播日期确认；在对应作品与季度内，真实集标题唯一匹配时优先按标题定位，不匹配时按集数识别。多个同等候选保留手动选择。保留历史来源的屏蔽状态和时间偏移。
 - **画质预设：** 默认 Anime AA、真人影视、激进测试 Anime4K 三档，可从播放菜单选择，或使用 `Alt+1`～`Alt+3`。`Alt+1` 恢复当前默认画质，切档保留正在运行的 RIFE 滤镜及播放时钟；未开启补帧时不会自动添加。
 - **播放操作：** 内置 uosc 控制栏、中文字体和插件设置。MPV 控制台可在设置中开启，重启后生效。
 - **MPV 配置：** 可选大河内置或系统配置；Windows 读取 `%APPDATA%\mpv`，Mac 读取 `~/.config/mpv` 或 `~/Library/Application Support/mpv`。
@@ -176,13 +178,15 @@ Windows 安装版日志位于 `%LOCALAPPDATA%\Tigerest Theater\profiles\<profile
 
 ## 验证范围
 
+V2.5.1 的 [发布验证清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-RELEASE-MANIFEST.json) 记录 Windows／Android 的构建提交、包摘要、测试与未测范围。本次 Windows CTest 72 项、Android JVM 111 项通过，弹幕和 Android 下载使用隔离夹具验证，未执行新的生产视频或真机安装验收。
+
 V2.5.0 的 [发布验证清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-RELEASE-MANIFEST.json) 记录各平台准确构建提交、包摘要、测试结果与未测范围。Windows 验证独立运行库启动、原生窗口和播放；Android 验证原生按钮、误触拦截、选集和系统横屏锁；Mac 由 Apple Silicon CI 构建、测试、签名并审计 DMG。
 
 Mac 尚未完成实体设备播放验收。Android 折叠屏实测使用 Android 16，Android 15、x86_64 和 16 KB 页设备尚未实机验收；二进制对齐检查不能代替实际设备运行。网页及播放队列夹具验证与生产服务验证分别记录。首页、标题栏的验证范围见 [首页验证](docs/verification/2026-10-09-home-gallery.md) 和 [Windows 顶栏验证](docs/verification/2026-10-09-window-chrome.md)。
 
 ## 源码构建
 
-参见 [Windows 构建说明](dev/windows/README.md)、[macOS 构建说明](dev/macos/README.md) 和 [Android 构建说明](android/README.md)。本次发布标签为 `v2.5.0`；准确构建来源见发布验证清单和对应源码附件。主分支可能继续更新。RIFE 组件来源、校验与第三方许可见对应构建文档及包内许可证。开发构建需使用匹配的固定播放运行库。
+参见 [Windows 构建说明](dev/windows/README.md)、[macOS 构建说明](dev/macos/README.md) 和 [Android 构建说明](android/README.md)。本次 Windows／Android 发布标签为 `v2.5.1`，Mac 二进制仍使用 `v2.5.0`；准确构建来源见发布验证清单和对应源码附件。主分支可能继续更新。RIFE 组件来源、校验与第三方许可见对应构建文档及包内许可证。开发构建需使用匹配的固定播放运行库。
 
 本项目为非官方 Emby 客户端，与 Emby LLC 无隶属关系。
 
