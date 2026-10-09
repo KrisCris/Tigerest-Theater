@@ -102,6 +102,7 @@
              * @type {int}
              */
             this._volume = 100;
+            this._volumeInitialized = false;
             /**
              * @type {boolean}
              */
@@ -117,6 +118,8 @@
             this._sessionActive = false;
             this._sessionId = 0;
             this._nativeStopRequested = false;
+            this._nativeStopPromise = null;
+            this._completeNativeStop = null;
             this._windowSessionActive = false;
             this._startupTimer = null;
             this._errorHandling = false;
@@ -162,7 +165,17 @@
                 }
             };
 
-            this.onStopped = () => console.log('[MPV Signal] stopped');
+            this.onStopped = () => {
+                console.log('[MPV Signal] stopped');
+                this._completeNativeStop?.();
+            };
+            this.onNativeError = (error) => {
+                // END_FILE_ERROR has already ended the native file. Desktop
+                // emits error without stopped; do not wait on an idle-core stop.
+                this._nativeStopRequested = true;
+                this._completeNativeStop?.();
+                this.onError(error);
+            };
             this.onSubtitleStreamRequested = (index) => this.setSubtitleStreamIndex(Number(index));
             this.onBuffering = (percent) => console.log(`[MPV Signal] buffering: ${percent}`);
             this.onStateChanged = (newState, oldState) => console.log(`[MPV Signal] stateChanged: ${oldState} -> ${newState}`);
@@ -170,6 +183,14 @@
             this.onWindowVisible = (visible) => console.log(`[MPV Signal] windowVisible: ${visible}`);
             this.onVideoRectangleChanged = () => console.log('[MPV Signal] onVideoRecangleChanged');
             this.onMetadata = (meta) => console.log(`[MPV Signal] onMetaData: ${meta?.Name || meta?.name || 'media'}`);
+            this.onVolumeChanged = (value) => {
+                const volume = Number(value);
+                if (!this._volumeInitialized || !Number.isFinite(volume) || volume < 0) return;
+                const changed = this._volume !== volume;
+                this._volume = volume;
+                this.saveVolume(volume / 100);
+                if (changed) this.events.trigger(this, 'volumechange');
+            };
 
             /**
              * @private
@@ -192,9 +213,6 @@
                     this._started = true;
 
                     this.loading.hide();
-
-                    const volume = this.getSavedVolume() * 100;
-                    this.setVolume(volume, false);
 
                     this.setPlaybackRate(this.getPlaybackRate());
 
@@ -292,6 +310,11 @@
         }
 
         async play(options) {
+            const previousStop = this._nativeStopPromise;
+            if (previousStop) {
+                try { await previousStop; }
+                finally { if (this._nativeStopPromise === previousStop) this._nativeStopPromise = null; }
+            }
             this.clearStartupTimer();
             this.loading.hide();
             this._started = false;
@@ -301,6 +324,7 @@
             this._sessionActive = true;
             this._sessionId += 1;
             this._nativeStopRequested = false;
+            this._nativeStopPromise = null;
             this._errorHandling = false;
 
             if (!this._windowSessionActive && window.api.window) {
@@ -380,13 +404,41 @@
         }
 
         requestNativeStop() {
-            if (this._nativeStopRequested) return;
+            if (this._nativeStopRequested) return this._nativeStopPromise || Promise.resolve();
             this._nativeStopRequested = true;
-            window.api.player.stop();
+            if (window.api.system?.isAndroid) {
+                // Android delivers cancellation signals before this bridge reply.
+                this._nativeStopPromise = Promise.resolve(window.api.player.stop());
+            } else {
+                // Qt's command callback acknowledges stop, but END_FILE (and Mac
+                // native VO teardown) can happen later. Wait for its stopped signal.
+                this._nativeStopPromise = new Promise((resolve, reject) => {
+                    const timer = setTimeout(() => {
+                        this._completeNativeStop = null;
+                        reject(new Error('mpv 未能完成停止播放'));
+                    }, 15000);
+                    this._completeNativeStop = () => {
+                        clearTimeout(timer);
+                        this._completeNativeStop = null;
+                        resolve();
+                    };
+                    try { window.api.player.stop(); }
+                    catch (error) {
+                        clearTimeout(timer);
+                        this._completeNativeStop = null;
+                        reject(error);
+                    }
+                });
+            }
+            this._nativeStopPromise.catch(error => console.error('[MPV] stop failed:', error));
+            return this._nativeStopPromise;
         }
 
         getSavedVolume() {
-            return this.appSettings.get('volume') || 1;
+            const saved = this.appSettings.get('volume');
+            if (saved == null || saved === '') return 1;
+            const volume = Number(saved);
+            return Number.isFinite(volume) && volume >= 0 ? volume : 1;
         }
 
 
@@ -497,6 +549,13 @@
 
                 console.log('[MPV] Mapped audio index:', this._audioTrackIndexToSetOnPlaying, '->', audioRelIndex);
 
+                // Restore once, before autoplay can produce audio. Subsequent
+                // episodes retain mpv's live volume, including UOSC changes
+                // whose web-channel notification may still be queued.
+                if (!this._volumeInitialized) {
+                    this.setVolume(this.getSavedVolume() * 100, false);
+                    this._volumeInitialized = true;
+                }
                 player.load(val,
                     { startMilliseconds: ms, autoplay: true },
                     streamdata,
@@ -615,14 +674,15 @@
         }
 
         stop(destroyPlayer) {
-            this.requestNativeStop();
+            const stopped = this._sessionActive || this._currentSrc
+                ? this.requestNativeStop()
+                : this._nativeStopPromise || Promise.resolve();
             this.onEndedInternal({playNext: false, resetPlayQueue: true});
             this.removeMediaDialog();
 
-            if (destroyPlayer) {
-                this.destroy();
-            }
-            return Promise.resolve();
+            return stopped.finally(() => {
+                if (destroyPlayer) this.destroy();
+            });
         }
 
         removeMediaDialog() {
@@ -667,7 +727,7 @@
             player.subtitleStreamRequested?.disconnect(this.onSubtitleStreamRequested);
             this._duration = undefined;
             player.updateDuration.disconnect(this.onDuration);
-            player.error.disconnect(this.onError);
+            player.error.disconnect(this.onNativeError);
             player.paused.disconnect(this.onPause);
             player.bufferedRangesUpdated.disconnect(this.onBufferedRangesUpdated);
             player.buffering.disconnect(this.onBuffering);
@@ -676,6 +736,7 @@
             player.windowVisible.disconnect(this.onWindowVisible);
             player.onVideoRecangleChanged.disconnect(this.onVideoRectangleChanged);
             player.onMetaData.disconnect(this.onMetadata);
+            player.volumeChanged?.disconnect(this.onVolumeChanged);
         }
 
         /**
@@ -724,7 +785,7 @@
                     player.stopped.connect(this.onStopped);
                     player.subtitleStreamRequested?.connect(this.onSubtitleStreamRequested);
                     player.updateDuration.connect(this.onDuration);
-                    player.error.connect(this.onError);
+                    player.error.connect(this.onNativeError);
                     player.paused.connect(this.onPause);
                     player.bufferedRangesUpdated.connect(this.onBufferedRangesUpdated);
                     player.buffering.connect(this.onBuffering);
@@ -733,6 +794,7 @@
                     player.windowVisible.connect(this.onWindowVisible);
                     player.onVideoRecangleChanged.connect(this.onVideoRectangleChanged);
                     player.onMetaData.connect(this.onMetadata);
+                    player.volumeChanged?.connect(this.onVolumeChanged);
                 }
 
                 if (options.fullscreen) {
@@ -940,14 +1002,14 @@
     }
 
     saveVolume(value) {
-        if (value) {
+        if (Number.isFinite(value) && value >= 0) {
             this.appSettings.set('volume', value);
         }
     }
 
     setVolume(val, save = true) {
         val = Number(val);
-        if (!isNaN(val)) {
+        if (Number.isFinite(val) && val >= 0) {
             this._volume = val;
             if (save) {
                 this.saveVolume(val / 100);

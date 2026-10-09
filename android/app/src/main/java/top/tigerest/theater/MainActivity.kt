@@ -1,11 +1,14 @@
 package top.tigerest.theater
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.database.ContentObserver
 import android.graphics.Color
 import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
@@ -46,6 +49,12 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     private var safeContent = Pane(0,0,0,0)
     var fullscreen = false; private set
     private var beforePlaybackFullscreen: Boolean? = null
+    var playbackTouchLocked: Boolean
+        get() = model.playbackTouchLocked
+        set(value) { model.playbackTouchLocked = value }
+    private val rotationObserver = object: ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) { syncSystemRotation() }
+    }
     private val webFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val uris = result.data?.let { data -> data.clipData?.let { clip -> Array(clip.itemCount) { clip.getItemAt(it).uri } } ?: data.data?.let { arrayOf(it) } }
         webFileCallback?.onReceiveValue(uris); webFileCallback = null
@@ -57,6 +66,8 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     } } }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        syncSystemRotation()
+        contentResolver.registerContentObserver(Settings.System.getUriFor(Settings.System.ACCELEROMETER_ROTATION),false,rotationObserver)
         window.setDecorFitsSystemWindows(false)
         window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS }
         window.isNavigationBarContrastEnforced = false
@@ -80,7 +91,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
                 setPlaybackScreenAwake(shown); setFullscreen(shown)
                 if(shown) controls.showControls()
                 if(!shown) controls.playbackHidden()
-                if(!shown && !model.player.state.active) { danmaku.clear(); beforePlaybackFullscreen = null }
+                if(!shown && !model.player.state.active) { danmaku.clear(); beforePlaybackFullscreen = null; controls.unlockTouch() }
             }
             model.player.itemChanged = { item ->
                 val episode = if(item.has("IndexNumber")) "S${item.optInt("ParentIndexNumber",1)} E${item.optInt("IndexNumber")}" else ""
@@ -100,6 +111,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
             } }
             getSystemService(DisplayManager::class.java).registerDisplayListener(this,android.os.Handler(mainLooper))
             onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true) { override fun handleOnBackPressed() {
+                if(video.visibility == View.VISIBLE && playbackTouchLocked) { controls.showUnlock(); return }
                 if(video.visibility == View.VISIBLE) { model.player.dispatch("stop",JSONArray()); endPlaybackSession() }
                 else if(model.player.state.active && model.player.isVideo()) { video.visibility = View.VISIBLE; setPlaybackScreenAwake(true); setFullscreen(true); controls.showControls() }
                 else if(web.canGoBack()) web.goBack() else finish()
@@ -107,6 +119,13 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
             if(BuildConfig.DEBUG && intent.hasExtra("url")) { val url = intent.getStringExtra("url")!!; model.settings.set("main","userWebClient",url); webHost.open(url) }
             else if(savedInstanceState != null) { webHost.restore(savedInstanceState) }
             else webHost.openSaved()
+            if(model.player.state.active && model.player.isVideo()) {
+                video.visibility = View.VISIBLE; setPlaybackScreenAwake(true); setFullscreen(true)
+                val item = model.player.currentItem()
+                val episode = if(item.has("IndexNumber")) "S${item.optInt("ParentIndexNumber",1)} E${item.optInt("IndexNumber")}" else ""
+                controls.setTitle(listOf(item.optString("SeriesName"),episode,item.optString("Name")).filter { it.isNotBlank() }.joinToString(" · "))
+                controls.showControls()
+            }
         } catch(error: Exception) {
             DiagnosticsLog.app.record("error","Activity initialization failed: ${error.javaClass.simpleName}")
             setContentView(TextView(this).apply { setTextColor(Color.WHITE); setBackgroundColor(Color.rgb(16,16,16)); textSize = 18f; gravity = Gravity.CENTER; text = "客户端初始化失败\n${error.message}" })
@@ -114,6 +133,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
         }
     }
     fun input(action: String) { bridge.emit("input","hostInput",JSONArray().put(JSONArray().put(action))) }
+    fun selectPlaylistItem(id: String) { bridge.emit("input","playlistItemRequested",JSONArray().put(id)) }
     fun bitrate(value: Long) { bridge.emit("player","streamingBitrateRequested",JSONArray().put(value)) }
     fun subtitle(index: Int) { bridge.emit("player","subtitleStreamRequested",JSONArray().put(index)) }
     private fun bounds(value: Pane) = JSONObject().put("left",value.left).put("top",value.top).put("right",value.right).put("bottom",value.bottom)
@@ -121,6 +141,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
         .put("danmakuMotionFrames",overlay.motionFrames).put("danmakuPosition",overlay.renderedPosition)
         .put("windowBrightness",controls.windowBrightness()).put("effectiveBrightness",controls.effectiveBrightness()).put("mediaVolume",controls.mediaVolume())
         .put("fullscreen",fullscreen).put("pane",bounds(currentPane)).put("safeContent",bounds(safeContent)).put("videoBounds",bounds(Pane(video.left,video.top,video.right,video.bottom))).put("controls",controls.diagnostics(video.left,video.top))
+        .put("requestedOrientation",requestedOrientation).put("displayRotation",display?.rotation ?: 0).put("automaticRotation",Settings.System.getInt(contentResolver,Settings.System.ACCELEROMETER_ROTATION,1) != 0)
     fun loading(active: Boolean) { if(::progress.isInitialized) progress.visibility = if(active) View.VISIBLE else View.GONE }
     fun webError(message: String) { loading(false); notify(message) }
     fun notify(message: String) { if(!isFinishing) Toast.makeText(this,message,Toast.LENGTH_LONG).show() }
@@ -137,7 +158,17 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     }
     fun setPlaybackScreenAwake(active: Boolean) { if(active) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     fun beginPlaybackSession() { if(beforePlaybackFullscreen == null) beforePlaybackFullscreen = false; setPlaybackScreenAwake(true); setFullscreen(true) }
-    fun endPlaybackSession() { beforePlaybackFullscreen?.let { setFullscreen(it) }; beforePlaybackFullscreen = null; setPlaybackScreenAwake(false) }
+    fun endPlaybackSession() { beforePlaybackFullscreen?.let { setFullscreen(it) }; beforePlaybackFullscreen = null; setPlaybackScreenAwake(false); if(::controls.isInitialized) controls.unlockTouch() }
+    private fun syncSystemRotation() {
+        val automatic = Settings.System.getInt(contentResolver,Settings.System.ACCELEROMETER_ROTATION,1) != 0
+        val rotation = display?.rotation ?: 0
+        val reverse = rotation >= 2
+        val direction = if(resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            if(reverse) ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else if(reverse) ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        val requested = model.rotation.update(automatic,direction)
+        if(requestedOrientation != requested) requestedOrientation = requested
+    }
     fun setFullscreen(enabled: Boolean) {
         fullscreen = enabled
         window.insetsController?.let { controller -> controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE; if(enabled) controller.hide(WindowInsets.Type.systemBars()) else controller.show(WindowInsets.Type.systemBars()) }
@@ -172,13 +203,13 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
         val js = "window.tigerestWindowMetrics=$value;if(document.documentElement)document.documentElement.dataset.tigerestWindow=window.innerWidth<600?'compact':window.innerWidth<840?'medium':'expanded';window.dispatchEvent(new CustomEvent('tigerest-window-changed',{detail:window.tigerestWindowMetrics}));"
         webHost.view.evaluateJavascript(js,null)
     }
-    override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig); root.requestApplyInsets(); updateWindowMetrics(); if(::overlay.isInitialized) overlay.rebuild(); if(::controls.isInitialized) controls.refreshMetrics() }
+    override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig); syncSystemRotation(); root.requestApplyInsets(); updateWindowMetrics(); if(::overlay.isInitialized) overlay.rebuild(); if(::controls.isInitialized) controls.refreshMetrics() }
     override fun onDisplayAdded(displayId: Int) { updateWindowMetrics() }
     override fun onDisplayRemoved(displayId: Int) { updateWindowMetrics() }
-    override fun onDisplayChanged(displayId: Int) { updateWindowMetrics() }
-    override fun onResume() { super.onResume(); DiagnosticsLog.app.record("info","Activity resumed"); updates.resumed(this) }
+    override fun onDisplayChanged(displayId: Int) { syncSystemRotation(); updateWindowMetrics() }
+    override fun onResume() { super.onResume(); syncSystemRotation(); DiagnosticsLog.app.record("info","Activity resumed"); updates.resumed(this) }
     override fun onPause() { DiagnosticsLog.app.record("info","Activity paused"); if(::controls.isInitialized) controls.cancelGesture(); updates.paused(this); super.onPause() }
-    override fun onStop() { super.onStop(); DiagnosticsLog.app.record("info","Activity stopped"); if(::webHost.isInitialized) { controls.playbackHidden();model.player.background() } }
+    override fun onStop() { super.onStop(); DiagnosticsLog.app.record("info","Activity stopped"); if(::webHost.isInitialized) { controls.playbackHidden();if(!isChangingConfigurations) model.player.background() } }
     override fun onSaveInstanceState(outState: Bundle) { if(::webHost.isInitialized) webHost.view.saveState(outState); super.onSaveInstanceState(outState) }
-    override fun onDestroy() { if(updates.engine.changed === updateListener) updates.engine.changed = {}; updates.paused(this); getSystemService(DisplayManager::class.java).unregisterDisplayListener(this); webFileCallback?.onReceiveValue(null); if(::bridge.isInitialized) bridge.close(); if(::webHost.isInitialized) webHost.close(); super.onDestroy() }
+    override fun onDestroy() { contentResolver.unregisterContentObserver(rotationObserver); if(updates.engine.changed === updateListener) updates.engine.changed = {}; updates.paused(this); getSystemService(DisplayManager::class.java).unregisterDisplayListener(this); webFileCallback?.onReceiveValue(null); if(::bridge.isInitialized) bridge.close(); if(::webHost.isInitialized) webHost.close(); super.onDestroy() }
 }

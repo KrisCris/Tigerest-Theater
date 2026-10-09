@@ -77,9 +77,23 @@ class inputPlugin {
             };
             this.streamingBitrateSignal.connect(this.onStreamingBitrateRequested);
 
+            const selectPlaylistItem = (id) => {
+                const player = playbackManager._currentPlayer;
+                const playlist = playbackManager._playQueueManager?.getPlaylist() || [];
+                if (!player || typeof id !== 'string' || !playlist.some(item => item.PlaylistItemId === id)) return;
+                Promise.resolve().then(() => playbackManager.setCurrentPlaylistItem(id, player)).catch(error => {
+                    console.error('PlayerMedia: episode selection failed:', error);
+                });
+            };
+            if (api.system.isAndroid && api.input.playlistItemRequested) {
+                api.input.playlistItemRequested.connect(selectPlaylistItem);
+            }
+
             api.input.hostInput.connect((actions) => {
                 actions.forEach(action => {
-                    if (action === 'shuffle') {
+                    if (typeof action === 'string' && action.startsWith('playlist-item:')) {
+                        selectPlaylistItem(action.slice('playlist-item:'.length));
+                    } else if (action === 'shuffle') {
                         playbackManager.setQueueShuffleMode('Shuffle');
                     } else if (action === 'sorted') {
                         playbackManager.setQueueShuffleMode('Sorted');
@@ -106,19 +120,32 @@ class inputPlugin {
                 });
             });
 
-            const updateQueueState = function() {
+            let lastQueueSnapshot = '';
+            const updateQueueState = function(force = false) {
                 try {
                     if (!api || !api.player) {
                         return;
                     }
 
-                    const playlist = playbackManager._playQueueManager?.getPlaylist();
-                    if (!playlist || !Array.isArray(playlist)) {
-                        return;
+                    const rawPlaylist = playbackManager._playQueueManager?.getPlaylist();
+                    const playlist = Array.isArray(rawPlaylist) ? rawPlaylist : [];
+
+                    if (typeof api.player.setWebPlaylist === 'function') {
+                        // Emby owns the streams and queue order. Native controls need
+                        // only identity and labels, not full media/source metadata.
+                        const items = playlist.map(({PlaylistItemId, Id, Name, IndexNumber, ParentIndexNumber}) =>
+                            ({PlaylistItemId, Id, Name, IndexNumber, ParentIndexNumber}));
+                        const currentId = playbackManager.getCurrentPlaylistItemId() || '';
+                        const snapshot = JSON.stringify([items, currentId]);
+                        if (force === true || snapshot !== lastQueueSnapshot) {
+                            lastQueueSnapshot = snapshot;
+                            api.player.setWebPlaylist(items, currentId);
+                        }
                     }
 
                     const currentIndex = playbackManager._playQueueManager?.getCurrentPlaylistIndex();
                     if (currentIndex === undefined || currentIndex === null || currentIndex < 0) {
+                        api.player.notifyQueueChange(false, false);
                         return;
                     }
 
@@ -220,6 +247,9 @@ class inputPlugin {
 
             window.Events.on(playbackManager, 'playbackstart', (e, player) => {
                 if (!player) return;
+                // The native playing signal can precede Emby's playbackstart.
+                // Publish here as well, after Emby has established queue identity.
+                updateQueueState(true);
 
                 const state = playbackManager.getPlayerState();
                 if (state && state.NowPlayingItem) {
@@ -239,6 +269,7 @@ class inputPlugin {
 
                 let lastDuration = 0;
                 const checkDuration = function() {
+                    updateQueueState();
                     const duration = playbackManager.duration();
                     if (duration && duration !== lastDuration) {
                         lastDuration = duration;
@@ -246,6 +277,9 @@ class inputPlugin {
                         api.player.notifyDurationChange(durationMs);
                     }
                 };
+                if (this.durationCheckInterval) clearInterval(this.durationCheckInterval);
+                checkDuration();
+                this.durationCheckInterval = setInterval(checkDuration, 1000);
 
                 if (player !== this.attachedPlayer) {
                     if (this.attachedPlayer) {
@@ -275,7 +309,7 @@ class inputPlugin {
                 window.Events.on(player, 'playing', () => {
                     api.player.notifyPlaybackState('Playing');
 
-                    updateQueueState();
+                    updateQueueState(true);
 
                     api.player.notifyRateChange(1.0);
 

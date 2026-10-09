@@ -27,7 +27,7 @@
   };
   const notifications={
    player:'playing paused finished canceled stopped error stateChanged videoPlaybackActive windowVisible updateDuration playbackRateChanged positionUpdate onVideoRecangleChanged onMetaData bufferedRangesUpdated buffering streamingBitrateRequested subtitleStreamRequested webPlaylistChanged',
-   settings:'sectionValueUpdate groupUpdate',system:'serverConnectivityResult appUpdateChanged',window:'fullScreenSwitched',input:'hostInput volumeChanged rateChanged positionSeek',danmaku:'status sourcesChanged',
+   settings:'sectionValueUpdate groupUpdate',system:'serverConnectivityResult appUpdateChanged',window:'fullScreenSwitched',input:'hostInput playlistItemRequested volumeChanged rateChanged positionSeek',danmaku:'status sourcesChanged',
   };
   const api={};
   for(const [component,names]of Object.entries(operations)){api[component]={};for(const name of names.split(' '))api[component][name]=method(component,name);}

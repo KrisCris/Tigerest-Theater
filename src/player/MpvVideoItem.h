@@ -6,6 +6,7 @@
 #include <QPointF>
 #include <QPointer>
 #include <QString>
+#include <QTimer>
 #include <Qt>
 
 class PlayerComponent;
@@ -66,6 +67,11 @@ private:
     void scheduleNativeHostWindowUpdate();
     void updateNativeHostWindow();
     void syncFullscreenToMpv();
+    void restoreNativeHostCursor();
+    void noteNativeHostPointerActivity(const QPointF& position);
+#if defined(Q_OS_WIN)
+    void trackNativeHostCursor();
+#endif
     void sendMousePosition(const QPointF& position);
     void togglePause();
     QString mouseButtonName(Qt::MouseButton button) const;
@@ -81,6 +87,12 @@ private:
     bool m_nativeGpuNext = false;
     bool m_nativeHostUpdatePending = false;
     QWindow* m_nativeHostWindow = nullptr;
+#if defined(Q_OS_WIN)
+    QTimer m_nativeCursorIdleTimer;
+    QTimer m_nativeCursorTrackingTimer;
+    QPointF m_nativeCursorPosition;
+    bool m_nativeCursorInsideHost = false;
+#endif
     QPointer<QQuickWindow> m_trackedWindow;
     QPointer<QScreen> m_trackedScreen;
     MpvController* m_initializedController = nullptr;

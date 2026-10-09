@@ -69,7 +69,7 @@ local function update_button()
 	mp.commandv('script-message-to', 'uosc', 'set-button', 'filters', filters_payload)
 
 	local diagnostics_payload = utils.format_json({
-		icon = 'monitoring',
+		icon = 'assessment',
 		tooltip = '播放诊断（打开后按 2 查看完整帧处理流程）',
 		command = 'script-binding stats/display-stats-toggle',
 	})

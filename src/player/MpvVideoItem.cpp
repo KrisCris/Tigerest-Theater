@@ -13,6 +13,9 @@
 #include <QTimer>
 #include <QWindow>
 #include <QWheelEvent>
+#if defined(Q_OS_WIN)
+#include <qt_windows.h>
+#endif
 
 namespace
 {
@@ -56,6 +59,20 @@ MpvVideoItem::MpvVideoItem(QQuickItem *parent)
     }
 #endif
     setNativeVideoOutput(m_nativeGpuNext);
+#if defined(Q_OS_WIN)
+    m_nativeCursorIdleTimer.setSingleShot(true);
+    m_nativeCursorIdleTimer.setInterval(3000);
+    connect(&m_nativeCursorIdleTimer, &QTimer::timeout, this, [this]() {
+        if (m_nativeGpuNext && m_nativeHostWindow && m_nativeHostWindow->isVisible() &&
+            m_nativeCursorInsideHost)
+            m_nativeHostWindow->setCursor(QCursor(Qt::BlankCursor));
+    });
+    // Once GPU-Next creates its own child HWND, its thread receives pointer
+    // events directly. Track actual pointer positions over that host subtree.
+    m_nativeCursorTrackingTimer.setInterval(100);
+    connect(&m_nativeCursorTrackingTimer, &QTimer::timeout,
+            this, &MpvVideoItem::trackNativeHostCursor);
+#endif
 
     if (!m_nativeGpuNext) {
         // Critical: Render-API integration requires vo=libmpv.
@@ -70,6 +87,7 @@ MpvVideoItem::MpvVideoItem(QQuickItem *parent)
 
 MpvVideoItem::~MpvVideoItem()
 {
+    restoreNativeHostCursor();
     // QQuickItem emits window/visibility changes while its base destructor
     // detaches the item. Our members and MpvAbstractItem's controller have
     // already been destroyed by then, so stop callbacks into this subclass.
@@ -252,6 +270,9 @@ bool MpvVideoItem::eventFilter(QObject* watched, QEvent* event)
     case QEvent::KeyRelease:
         keyReleaseEvent(static_cast<QKeyEvent*>(event));
         return true;
+    case QEvent::Hide:
+        restoreNativeHostCursor();
+        break;
     default:
         break;
     }
@@ -266,6 +287,7 @@ void MpvVideoItem::updateNativeHostWindow()
 
     QQuickWindow* parentWindow = window();
     if (!parentWindow) {
+        restoreNativeHostCursor();
         m_nativeHostWindow->hide();
         return;
     }
@@ -291,12 +313,70 @@ void MpvVideoItem::updateNativeHostWindow()
         m_nativeHostWindow->show();
         m_nativeHostWindow->raise();
         m_nativeHostWindow->requestActivate();
+#if defined(Q_OS_WIN)
+        if (!m_nativeCursorTrackingTimer.isActive())
+            m_nativeCursorTrackingTimer.start();
+#endif
     } else {
         // This is intentionally synchronous with QML's visible binding.  mpv
         // can finish tearing down its own child later without touching the
         // WebEngine surface that is about to become visible again.
+        restoreNativeHostCursor();
+#if defined(Q_OS_WIN)
+        m_nativeCursorTrackingTimer.stop();
+#endif
         m_nativeHostWindow->hide();
     }
+}
+
+#if defined(Q_OS_WIN)
+void MpvVideoItem::trackNativeHostCursor()
+{
+    if (!m_nativeGpuNext || !m_nativeHostWindow || !m_nativeHostWindow->isVisible()) {
+        restoreNativeHostCursor();
+        m_nativeCursorTrackingTimer.stop();
+        return;
+    }
+    const QPoint globalPosition = QCursor::pos();
+    const HWND host = reinterpret_cast<HWND>(m_nativeHostWindow->winId());
+    POINT nativePosition{};
+    if (!GetCursorPos(&nativePosition)) {
+        restoreNativeHostCursor();
+        return;
+    }
+    const HWND pointerWindow = WindowFromPoint(nativePosition);
+    if (pointerWindow != host && !IsChild(host, pointerWindow)) {
+        restoreNativeHostCursor();
+        return;
+    }
+    noteNativeHostPointerActivity(m_nativeHostWindow->mapFromGlobal(globalPosition));
+}
+#endif
+
+void MpvVideoItem::restoreNativeHostCursor()
+{
+#if defined(Q_OS_WIN)
+    m_nativeCursorIdleTimer.stop();
+    m_nativeCursorInsideHost = false;
+    if (m_nativeHostWindow)
+        m_nativeHostWindow->unsetCursor();
+#endif
+}
+
+void MpvVideoItem::noteNativeHostPointerActivity(const QPointF& position)
+{
+#if defined(Q_OS_WIN)
+    if (!m_nativeGpuNext || !m_nativeHostWindow || !m_nativeHostWindow->isVisible())
+        return;
+    if (m_nativeCursorInsideHost && position == m_nativeCursorPosition)
+        return;
+    m_nativeCursorPosition = position;
+    m_nativeCursorInsideHost = true;
+    m_nativeHostWindow->unsetCursor();
+    m_nativeCursorIdleTimer.start();
+#else
+    Q_UNUSED(position);
+#endif
 }
 
 void MpvVideoItem::initializeController()
@@ -353,6 +433,11 @@ void MpvVideoItem::initializeController()
         const int voResult = setPropertyBlocking(QStringLiteral("vo"), QStringLiteral("gpu-next"));
         setPropertyBlocking(QStringLiteral("input-vo-keyboard"), true);
         setPropertyBlocking(QStringLiteral("input-cursor"), true);
+#if defined(Q_OS_WIN)
+        // Input can arrive at either the Qt host or mpv's child HWND. Keep a
+        // single local cursor owner for both; UOSC still receives pointer input.
+        setPropertyBlocking(QStringLiteral("cursor-autohide"), QStringLiteral("no"));
+#endif
         if (widResult < 0 || voResult < 0) {
             qCritical() << "Unable to initialize native gpu-next embedding; wid="
                         << widResult << "vo=" << voResult;

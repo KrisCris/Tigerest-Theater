@@ -115,11 +115,11 @@ public:
   // script so UOSC can update its selected state.
   Q_INVOKABLE void notifyStreamingBitrateResult(qint64 bitrate, bool success, const QString& message);
 
-  // 0-100 volume 0=mute and 100=normal
-  // Ignored if no audio output active (e.g. when no file is playing).
-  Q_INVOKABLE virtual void setVolume(int volume);
-  // Returns 0 if no audio output active.
-  Q_INVOKABLE virtual int volume();
+  // MPV software volume in percent: 0=silence and 100=normal.
+  // Can be restored before loading a media file.
+  Q_INVOKABLE virtual void setVolume(double volume);
+  // Returns 0 if MPV is unavailable.
+  Q_INVOKABLE virtual double volume();
 
   // Ignored if no audio output active.
   Q_INVOKABLE virtual void setMuted(bool muted);

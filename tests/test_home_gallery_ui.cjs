@@ -68,10 +68,18 @@ withBrowser(routes,async({evaluate,call})=>{
   check(requests.at(-1).user==='two','new account uses own API identity');
   const image=document.querySelector('.tg-library img');await wait(()=>image.complete);
   check(image.naturalWidth>0,'packaged category artwork loads in this browser');
+  // Pin the entrance before its first visible frame. Keyboard navigation must
+  // reveal layout content even when a background compositor holds its timeline.
+  gallery.animations.forEach(animation=>{animation.pause();animation.currentTime=0;});
   const lastLibrary=document.querySelector('[data-library-id="library6"]');lastLibrary.focus({preventScroll:true});
-  check(document.querySelector('.tg-library-list').scrollTop>0||document.querySelector('.tg-library-list').scrollLeft>0,'keyboard focus reveals a library outside the list viewport');
-  await wait(()=>document.querySelectorAll('.tg-cover').length===24);document.querySelectorAll('.tg-cover')[23].focus({preventScroll:true});
-  check(document.querySelector('.tg-cover-list').scrollLeft>0,'keyboard focus reveals a cover outside the carousel viewport');
+  const libraryFrame=gallery.libraryList.getBoundingClientRect(),focusedLibrary=lastLibrary.getBoundingClientRect();
+  check(gallery.libraryList.scrollTop>0||gallery.libraryList.scrollLeft>0,'keyboard focus reveals a library outside the list viewport: '+JSON.stringify({frame:libraryFrame.toJSON(),item:focusedLibrary.toJSON(),scrollTop:gallery.libraryList.scrollTop,scrollLeft:gallery.libraryList.scrollLeft,active:document.activeElement?.dataset.libraryId,animations:gallery.animations.map(a=>a.playState)}));
+  check(focusedLibrary.top>=libraryFrame.top-1&&focusedLibrary.bottom<=libraryFrame.bottom+1&&focusedLibrary.left>=libraryFrame.left-1&&focusedLibrary.right<=libraryFrame.right+1,'focused library is fully inside its list viewport');
+  check(focusedLibrary.top>=0&&focusedLibrary.bottom<=innerHeight&&focusedLibrary.left>=0&&focusedLibrary.right<=innerWidth,'keyboard focus removes the offscreen entrance transform');
+  await wait(()=>document.querySelectorAll('.tg-cover').length===24);const lastCover=document.querySelectorAll('.tg-cover')[23];lastCover.focus({preventScroll:true});
+  const coverFrame=gallery.coverList.getBoundingClientRect(),focusedCover=lastCover.getBoundingClientRect();
+  check(gallery.coverList.scrollLeft>0,'keyboard focus reveals a cover outside the carousel viewport');
+  check(focusedCover.left>=coverFrame.left-1&&focusedCover.right<=coverFrame.right+1&&focusedCover.top>=coverFrame.top-1&&focusedCover.bottom<=coverFrame.bottom+1,'focused cover is fully inside the carousel viewport');
   const views=api.getUserViews;api.getUserViews=async()=>{throw Error('offline');};
   await gallery.start({});check(document.querySelector('.tg-home-retry').hidden===false,'library failure exposes retry');
   api.getUserViews=views;document.querySelector('.tg-home-retry').click();await wait(()=>document.querySelector('.tg-cover'));

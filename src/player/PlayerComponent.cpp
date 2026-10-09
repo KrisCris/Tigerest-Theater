@@ -400,6 +400,7 @@ void PlayerComponent::initializeMpv()
   //   throw FatalException(tr("Failed to initialize mpv."));
 
   mpv_observe_property(m_mpv->mpv(), 0, "pause", MPV_FORMAT_FLAG);
+  mpv_observe_property(m_mpv->mpv(), 0, "volume", MPV_FORMAT_DOUBLE);
   mpv_observe_property(m_mpv->mpv(), 0, "core-idle", MPV_FORMAT_FLAG);
   mpv_observe_property(m_mpv->mpv(), 0, "cache-buffering-state", MPV_FORMAT_INT64);
   mpv_observe_property(m_mpv->mpv(), 0, "playback-time", MPV_FORMAT_DOUBLE);
@@ -1190,6 +1191,10 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
         }
 #endif
       }
+      else if (strcmp(prop->name, "volume") == 0 && prop->format == MPV_FORMAT_DOUBLE && prop->data)
+      {
+        emit volumeChanged(*static_cast<double*>(prop->data));
+      }
       else if (strcmp(prop->name, "core-idle") == 0 && prop->format == MPV_FORMAT_FLAG)
       {
         m_playbackActive = !*static_cast<int*>(prop->data);
@@ -1327,6 +1332,24 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     case MPV_EVENT_CLIENT_MESSAGE:
     {
       auto *msg = static_cast<mpv_event_client_message*>(event->data);
+      if (msg->num_args == 2 && strcmp(msg->args[0], "tigerest-playlist-item") == 0)
+      {
+        const QString itemId = QString::fromUtf8(msg->args[1]);
+        // Use the queue identity, not the media Id: one episode can occur more
+        // than once in an Emby queue. Reject selections from an outdated menu.
+        if (!itemId.isEmpty() && itemId != m_currentWebPlaylistItemId)
+        {
+          for (const auto& item : m_webPlaylist)
+          {
+            if (item.toMap().value(QStringLiteral("PlaylistItemId")).toString() == itemId)
+            {
+              InputComponent::Get().sendAction(QStringLiteral("playlist-item:") + itemId);
+              break;
+            }
+          }
+        }
+        break;
+      }
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
       if(msg->num_args>=1&&strcmp(msg->args[0],"tigerest-rife-toggle-pause")==0) {
         togglePause();
@@ -1954,18 +1977,17 @@ void PlayerComponent::setAudioDevice(const QString& name)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void PlayerComponent::setVolume(int volume)
+void PlayerComponent::setVolume(double volume)
 {
   if (!m_mpv) {
     qWarning() << "PlayerComponent::setVolume: mpv not initialized yet";
     return;
   }
-  // Will fail if no audio output opened (i.e. no file playing)
   m_mpv->setProperty( "volume", volume);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-int PlayerComponent::volume()
+double PlayerComponent::volume()
 {
   if (!m_mpv) {
     qWarning() << "PlayerComponent::volume: mpv not initialized yet";
@@ -1973,7 +1995,7 @@ int PlayerComponent::volume()
   }
   QVariant volume = m_mpv->getProperty( "volume");
   if (volume.isValid())
-    return volume.toInt();
+    return volume.toDouble();
   return 0;
 }
 
@@ -3024,6 +3046,32 @@ void PlayerComponent::setWebPlaylist(const QVariantList& playlist, const QString
 {
   m_webPlaylist = playlist;
   m_currentWebPlaylistItemId = currentItemId;
+  if (m_mpv)
+  {
+    QJsonArray items;
+    for (const auto& entry : playlist)
+    {
+      const auto item = entry.toMap();
+      if (item.value(QStringLiteral("PlaylistItemId")).toString().isEmpty())
+        continue;
+      QJsonObject lean;
+      // UOSC needs names and queue identities, never stream URLs or paths.
+      for (const auto& key : {QStringLiteral("PlaylistItemId"), QStringLiteral("Id"),
+                             QStringLiteral("Name"), QStringLiteral("IndexNumber"),
+                             QStringLiteral("ParentIndexNumber")})
+      {
+        if (item.contains(key))
+          lean.insert(key, QJsonValue::fromVariant(item.value(key)));
+      }
+      items.append(lean);
+    }
+    const QJsonObject data{{QStringLiteral("currentItemId"), currentItemId},
+                           {QStringLiteral("items"), items}};
+    // Queue updates can arrive while the macOS native VO is tearing down.
+    // Publish asynchronously so the Qt UI never waits for that transition.
+    m_mpv->setPropertyAsync("user-data/tigerest/web-playlist",
+                            QString::fromUtf8(QJsonDocument(data).toJson(QJsonDocument::Compact)));
+  }
   emit webPlaylistChanged(playlist, currentItemId);
 }
 

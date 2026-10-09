@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 #include <QProcess>
 #include <QTemporaryDir>
+#include <QScopeGuard>
 #include <MpvController>
 #include "player/interpolation/MpvPollAccess.h"
 #include "player/interpolation/windows/RifePlaybackCoordinator.h"
@@ -24,6 +25,32 @@ private slots:
         QVERIFY(fixture.isValid());Paths::setConfigDir(fixture.path());Paths::setCacheDir(fixture.filePath("cache"));
         ProfileManager::Get().setActiveProfile(ProfileManager::createProfile("Native lifecycle boundaries"));
         QVERIFY(SettingsComponent::Get().componentInitialize());
+    }
+    void nativeVolumeChangesAreObserved(){
+        QObject owner;
+        auto* controller=new MpvController(&owner);
+        controller->init();
+        QVERIFY(controller->mpv());
+        const auto cleanup=qScopeGuard([&]{
+            mpv_set_wakeup_callback(controller->mpv(),nullptr,nullptr);
+            mpv_terminate_destroy(controller->mpv());
+        });
+        PlayerComponent player;
+        player.setMpvController(controller);
+        player.setNativeVideoOutput(true);
+        player.initializeMpv();
+        QSignalSpy changes(&player,&PlayerComponent::volumeChanged);
+        QVERIFY(controller->setProperty("volume",23.5)>=0);
+        QTRY_VERIFY(changes.size()>0);
+        QTRY_COMPARE(changes.last().at(0).toDouble(),23.5);
+        changes.clear();
+        QVERIFY(controller->setProperty("volume",0.0)>=0);
+        QTRY_VERIFY(changes.size()>0);
+        QCOMPARE(changes.last().at(0).toDouble(),0.0);
+        player.setVolume(18.25);
+        QCOMPARE(controller->getProperty("volume").toDouble(),18.25);
+        QCOMPARE(player.volume(),18.25);
+        // No media, production credentials, or user progress is involved.
     }
     void replacementDoesNotFinishOnSupersededNativeStart(){
         PlayerComponent player;player.m_inPlayback=true;player.m_replacementPending=true;

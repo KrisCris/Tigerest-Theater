@@ -28,6 +28,15 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
     private var touching = false
     private var safeInsets = EdgeInsets()
     private var menuOpen = false
+    private var unlockingTouch = false
+    private val previous = button("上一集") { episodeQueue().previousId?.let(activity::selectPlaylistItem) }
+    private val next = button("下一集") { episodeQueue().nextId?.let(activity::selectPlaylistItem) }
+    private val episodes = button("选集") { episodeMenu() }
+    private val unlock = button("长按解锁") { showUnlock() }.apply {
+        visibility = View.GONE
+        contentDescription = "长按解除防误触锁"
+        setOnLongClickListener { unlockTouch(); true }
+    }
     private val loadingLabel = TextView(activity).apply {
         setTextColor(Color.WHITE); textSize = 14f; gravity = Gravity.CENTER
     }
@@ -60,9 +69,16 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         if(text.isNotEmpty() && !touching) handler.postDelayed(hideFeedback,1000)
     })
     private val hide = Runnable { if(!dragging && !touching && !menuOpen && hasWindowFocus() && !player.state.paused) setControlsVisible(false) }
-    private fun setControlsVisible(shown: Boolean) { header.visibility = if(shown) View.VISIBLE else View.GONE; controls.visibility = header.visibility }
+    private fun setControlsVisible(shown: Boolean) { header.visibility = if(shown && !activity.playbackTouchLocked) View.VISIBLE else View.GONE; controls.visibility = header.visibility }
     private fun scheduleHide() { handler.removeCallbacks(hide); if(!player.state.paused && !dragging && !touching && !menuOpen) handler.postDelayed(hide,3500) }
-    fun showControls() { setControlsVisible(true); updateLoadingIndicator(); scheduleHide() }
+    fun showControls() { if(activity.playbackTouchLocked) { setControlsVisible(false); showUnlock() } else { setControlsVisible(true); updateLoadingIndicator(); scheduleHide() } }
+    fun showUnlock() { unlock.visibility = if(activity.playbackTouchLocked) View.VISIBLE else View.GONE }
+    private fun lockTouch() {
+        cancelGesture(); handler.removeCallbacks(hide); handler.removeCallbacks(hideFeedback); gestureFeedback.visibility = View.GONE
+        activity.playbackTouchLocked = true; setControlsVisible(false); showUnlock()
+        unlock.announceForAccessibility("防误触已开启，长按解锁")
+    }
+    fun unlockTouch() { activity.playbackTouchLocked = false; unlock.visibility = View.GONE; if(player.state.active) showControls() }
     fun controlsVisible() = controls.visibility == View.VISIBLE
     fun playbackStarted() { post { if(player.state.active && player.isVideo()) gestures.playbackStarted() } }
     fun cancelGesture() { touching = false; gestures.cancelTouch() }
@@ -99,14 +115,22 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         header.layoutParams = (header.layoutParams as LayoutParams).apply { height = dp(64)+value.top }
         header.setPadding(value.left+dp(8),value.top+dp(8),value.right+dp(8),dp(8))
         controls.setPadding(value.left+dp(12),dp(8),value.right+dp(12),value.bottom+dp(8))
+        if(unlock.parent != null) unlock.layoutParams = (unlock.layoutParams as LayoutParams).apply { leftMargin=value.left+dp(8); topMargin=value.top; bottomMargin=value.bottom }
     }
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if(activity.playbackTouchLocked) {
+            if(event.actionMasked == MotionEvent.ACTION_DOWN) unlockingTouch = event.x >= unlock.left && event.x <= unlock.right && event.y >= unlock.top && event.y <= unlock.bottom
+            val handled = if(unlockingTouch) super.dispatchTouchEvent(event) else { showUnlock(); true }
+            if(event.actionMasked in listOf(MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL)) unlockingTouch = false
+            return handled
+        }
         if(event.actionMasked == MotionEvent.ACTION_DOWN) { touching = true; handler.removeCallbacks(hide) }
         val handled = super.dispatchTouchEvent(event)
         if(event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) { touching = false; scheduleHide(); if(gestureFeedback.visibility==View.VISIBLE) handler.postDelayed(hideFeedback,1000) }
         return handled
     }
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if(activity.playbackTouchLocked) { showUnlock(); return true }
         val edge=dp(24)
         val allowed=event.x>safeInsets.left+edge && event.x<width-safeInsets.right-edge && event.y>safeInsets.top+edge && event.y<height-safeInsets.bottom-edge &&
             (!controlsVisible() || event.y>header.bottom && event.y<controls.top)
@@ -123,14 +147,18 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         if(!dragging) { seek.max = (duration/1000).toInt().coerceAtLeast(1); seek.progress = (position/1000).toInt() }
         if(!dragging) time.text = "${format(position)} / ${format(duration)}   ${player.state.speed}×"
         pause.text = if(player.state.paused) "播放" else "暂停"
+        val queue = episodeQueue()
+        previous.isEnabled = queue.previousId != null; next.isEnabled = queue.nextId != null; episodes.isEnabled = queue.items.isNotEmpty()
+        previous.alpha = if(previous.isEnabled) 1f else .35f; next.alpha = if(next.isEnabled) 1f else .35f; episodes.alpha = if(episodes.isEnabled) 1f else .35f
         handler.postDelayed(this,400)
     } }
     init {
         isClickable = true
-        setOnClickListener { if(controls.visibility == View.VISIBLE) { handler.removeCallbacks(hide); setControlsVisible(false) } else showControls() }
+        setOnClickListener { if(activity.playbackTouchLocked) showUnlock() else if(controls.visibility == View.VISIBLE) { handler.removeCallbacks(hide); setControlsVisible(false) } else showControls() }
         header = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL; background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(0xd0101010.toInt(),0x10101010)) }
         header.addView(button("返回") { player.dispatch("stop",JSONArray()); activity.endPlaybackSession() })
         header.addView(title,LinearLayout.LayoutParams(0,LayoutParams.MATCH_PARENT,1f))
+        header.addView(button("防误触") { lockTouch() })
         addView(header,LayoutParams(LayoutParams.MATCH_PARENT,dp(64),Gravity.TOP))
         controls.addView(time); controls.addView(seek,LinearLayout.LayoutParams(-1,dp(48)))
         seek.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
@@ -143,24 +171,39 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         transport.addView(pause,LinearLayout.LayoutParams(dp(96),dp(48)).apply { leftMargin = dp(12); rightMargin = dp(12) })
         transport.addView(button("+10 秒") { skip(10000) })
         controls.addView(transport)
+        val episodeActions = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
+        for(action in listOf(previous,episodes,next)) episodeActions.addView(action,LinearLayout.LayoutParams(0,dp(48),1f))
+        controls.addView(episodeActions)
         val actions = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
         for(action in listOf(button("弹幕") { danmakuMenu() },button("倍速") { speedMenu() },button("更多") { moreMenu() })) actions.addView(action,LinearLayout.LayoutParams(0,dp(48),1f))
         controls.addView(actions); addView(controls,LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.WRAP_CONTENT,Gravity.BOTTOM))
         addView(loadingIndicator,LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT,Gravity.CENTER))
         addView(gestureFeedback,LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT,Gravity.CENTER))
         addView(danmakuStatus,LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.WRAP_CONTENT,Gravity.TOP).apply { topMargin=dp(76);leftMargin=dp(16);rightMargin=dp(16) })
+        addView(unlock,LayoutParams(LayoutParams.WRAP_CONTENT,dp(48),Gravity.START or Gravity.CENTER_VERTICAL).apply { leftMargin=dp(8) })
+        setControlsVisible(!activity.playbackTouchLocked)
+        showUnlock()
         applySafeInsets(safeInsets)
     }
     private fun skip(delta: Long) { val duration = player.dispatch("getDuration",JSONArray()) as Long; player.dispatch("seekTo",JSONArray().put((player.state.positionMs+delta).coerceIn(0,duration.coerceAtLeast(0)))) }
     private fun speedMenu() { val values = doubleArrayOf(.5,.75,1.0,1.25,1.5,1.75,2.0,2.5,3.0,4.0); AlertDialog.Builder(activity).setTitle("播放速度").setSingleChoiceItems(values.map { "$it×" }.toTypedArray(),values.indexOfFirst { kotlin.math.abs(it-player.state.speed)<.01 }) { dialog,index -> player.dispatch("setPlaybackRate",JSONArray().put(values[index]*1000)); dialog.dismiss() }.show() }
     private fun moreMenu() {
-        AlertDialog.Builder(activity).setTitle("播放选项").setItems(arrayOf("音轨","字幕","字幕偏移","画质","前一集","下一集","播放器设置","手势教程")) { _,index -> when(index) {
+        AlertDialog.Builder(activity).setTitle("播放选项").setItems(arrayOf("音轨","字幕","字幕偏移","画质","播放器设置","手势教程")) { _,index -> when(index) {
             0 -> tracks("audio"); 1 -> tracks("sub"); 2 -> subtitleOffset()
             3 -> { val rates = longArrayOf(0,4000000,8000000,15000000,25000000,40000000); AlertDialog.Builder(activity).setTitle("播放画质").setItems(arrayOf("自动","4 Mbps","8 Mbps","15 Mbps","25 Mbps","40 Mbps")) { _,choice -> activity.bitrate(rates[choice]) }.show() }
-            4 -> activity.input("previous"); 5 -> activity.input("next")
-            6 -> { player.dispatch("pause",JSONArray()); activity.showWebSettings() }
-            7 -> gestures.showTutorial()
+            4 -> { player.dispatch("pause",JSONArray()); activity.showWebSettings() }
+            5 -> gestures.showTutorial()
         } }.show()
+    }
+    private fun episodeQueue() = EpisodeQueue.from(player.dispatch("getWebPlaylist",JSONArray()) as JSONArray,player.dispatch("getCurrentWebPlaylistItemId",JSONArray()) as String)
+    private fun episodeMenu() {
+        val queue = episodeQueue()
+        if(queue.items.isEmpty()) { activity.notify("当前播放队列没有可选剧集"); return }
+        menuOpen = true; handler.removeCallbacks(hide)
+        AlertDialog.Builder(activity).setTitle("选集").setSingleChoiceItems(queue.items.map { it.label }.toTypedArray(),queue.currentIndex) { dialog,index ->
+            if(queue.items[index].id != episodeQueue().items.getOrNull(episodeQueue().currentIndex)?.id) activity.selectPlaylistItem(queue.items[index].id)
+            dialog.dismiss()
+        }.setNegativeButton("取消",null).create().apply { setOnDismissListener { menuOpen=false; scheduleHide() }; show() }
     }
     private fun dp(value: Int) = (value*resources.displayMetrics.density).toInt()
     private fun button(label: String,action: () -> Unit) = Button(activity).apply {
@@ -174,7 +217,7 @@ class VideoControls(private val activity: MainActivity,private val player: Playb
         val buttons = JSONArray()
         fun visit(view: View) { if(view is Button && view.isShown) buttons.put(rect(view).put("label",view.text)); if(view is android.view.ViewGroup) for(i in 0 until view.childCount) visit(view.getChildAt(i)) }
         visit(this)
-        return JSONObject().put("header",rect(header)).put("bottom",rect(controls)).put("seek",rect(seek)).put("buttons",buttons).put("dragging",dragging).put("time",time.text).put("gesture",if(gestureFeedback.isShown) gestureFeedback.text else "")
+        return JSONObject().put("header",rect(header)).put("bottom",rect(controls)).put("seek",rect(seek)).put("buttons",buttons).put("dragging",dragging).put("time",time.text).put("gesture",if(gestureFeedback.isShown) gestureFeedback.text else "").put("touchLocked",activity.playbackTouchLocked)
             .put("loading",loadingIndicator.isShown).put("opening",player.state.opening).put("speed",player.state.speed).put("temporarySpeed",player.temporarySpeedActive)
     }
     fun setTitle(value: String) { title.text = value }

@@ -50,20 +50,22 @@ async function main() {
         'playing', 'positionUpdate', 'finished', 'canceled', 'stopped',
         'updateDuration', 'error', 'paused', 'bufferedRangesUpdated',
         'buffering', 'stateChanged', 'videoPlaybackActive', 'windowVisible',
-        'onVideoRecangleChanged', 'onMetaData',
+        'onVideoRecangleChanged', 'onMetaData', 'volumeChanged',
     ];
     const player = Object.fromEntries(signalNames.map(name => [name, new Signal()]));
     let nativeStops = 0;
     let loads = 0;
     let nextLoadResult = true;
     let lastSeekMilliseconds = null;
+    let nativeVolume = 100;
+    const volumesAtLoad = [];
     Object.assign(player, {
-        load(...args) { loads += 1; args.at(-1)(nextLoadResult); },
-        stop() { nativeStops += 1; },
+        load(...args) { loads += 1; volumesAtLoad.push(nativeVolume); args.at(-1)(nextLoadResult); },
+        stop() { nativeStops += 1; player.stopped.emit(); },
         seekTo(milliseconds) { lastSeekMilliseconds = milliseconds; },
         getPosition() { return Promise.resolve(23456); },
         setVideoRectangle() {},
-        setVolume() {},
+        setVolume(value) { nativeVolume = value; },
         setPlaybackRate() {},
         notifyRateChange() {},
         setSubtitleStream() {},
@@ -121,13 +123,14 @@ async function main() {
     vm.runInContext(source, context, {filename: 'mpvVideoPlayer.js'});
 
     const Player = context.window._mpvVideoPlayer;
+    const savedSettings = new Map([['volume', 0.28]]);
     const instance = new Player({
         events: {trigger(target, name, args) { triggered.push({target, name, args}); }},
         loading,
         appRouter: {showVideoOsd() {}},
         globalize: {translate(value) { return value; }},
         appHost: {},
-        appSettings: {get() { return 1; }, set() {}},
+        appSettings: {get(key) { return savedSettings.get(key); }, set(key, value) { savedSettings.set(key, value); }},
         confirm: async () => { throw new Error('declined'); },
         dashboard: {default: {setBackdropTransparency() {}}},
     });
@@ -140,6 +143,8 @@ async function main() {
     };
 
     await instance.play(options);
+    assert.ok(Math.abs(volumesAtLoad[0] - 28) < 1e-8,
+        'remembered volume must be restored before autoplay can emit its first audio');
     assert.strictEqual(loads, 1);
     assert.strictEqual(windowBegins, 1);
     assert.deepStrictEqual(windowActions.slice(0, 2), ['begin', 'playback-fullscreen'],
@@ -151,6 +156,15 @@ async function main() {
         assert.strictEqual(player[name].handlers.size, 1, `${name} was not connected exactly once`);
 
     instance.onPlaying();
+    nativeVolume = 23.5; // UOSC modifies the native core before sending its observation.
+    player.volumeChanged.emit(23.5);
+    assert.strictEqual(instance.getVolume(), 23.5, 'UOSC volume did not reach the web player');
+    assert.strictEqual(savedSettings.get('volume'), 0.235, 'UOSC volume was not persisted');
+    const volumeEvents = triggered.filter(event => event.name === 'volumechange').length;
+    player.volumeChanged.emit(NaN);
+    player.volumeChanged.emit(-1);
+    assert.strictEqual(instance.getVolume(), 23.5, 'invalid native volume changed the remembered value');
+    assert.strictEqual(triggered.filter(event => event.name === 'volumechange').length, volumeEvents);
     assert.strictEqual(timers.size, 0, 'startup watchdog was not cleared by playing');
     player.positionUpdate.emit(12345);
     player.updateDuration.emit(90000);
@@ -175,6 +189,7 @@ async function main() {
     assert.strictEqual(triggered.filter(event => event.name === 'stopped').length, 1, 'cancel cleanup was not idempotent');
 
     await instance.play(options);
+    assert.strictEqual(volumesAtLoad[1], 23.5, 'switching episodes restored an older louder volume');
     assert.strictEqual(loads, 2);
     assert.strictEqual(windowBegins, 2);
     for (const name of signalNames)
@@ -187,8 +202,14 @@ async function main() {
     assert.strictEqual(nativeStops, 0, 'natural completion issued a duplicate stop during signal cleanup');
     assert.strictEqual(windowEnds, 2, 'natural completion did not end the window session');
     assert.strictEqual(videoDialog, null, 'natural completion left the media container mounted');
+    nativeVolume = 0;
+    player.volumeChanged.emit(0);
+    assert.strictEqual(savedSettings.get('volume'), 0, 'zero volume was not persisted');
 
     await instance.play(options);
+    assert.strictEqual(volumesAtLoad[2], 0, 'zero volume was treated as an absent setting');
+    instance.onPlaying();
+    assert.strictEqual(nativeVolume, 0, 'playing restored full volume over remembered silence');
     assert.strictEqual(loads, 3);
     assert.strictEqual(windowBegins, 3);
     await instance.stop(false);
@@ -247,12 +268,15 @@ async function main() {
         appRouter: {showVideoOsd() {}},
         globalize: {translate(value) { return value; }},
         appHost: {},
-        appSettings: {get() { return 1; }, set() {}},
+        appSettings: {get(key) { return savedSettings.get(key); }, set(key, value) { savedSettings.set(key, value); }},
         confirm: async () => { throw new Error('declined'); },
         dashboard: {default: {setBackdropTransparency() {}}},
     });
     const fullscreenCountBeforeWindowedPlayback = fullscreenRequests.length;
     await nonFullscreenInstance.play({...options, fullscreen: false});
+    assert.strictEqual(nativeVolume, 0, 'a new player session lost the persisted zero volume');
+    nonFullscreenInstance.setVolume(0);
+    assert.strictEqual(savedSettings.get('volume'), 0, 'web volume controls cannot save zero');
     assert.strictEqual(fullscreenRequests.length, fullscreenCountBeforeWindowedPlayback,
         'fullscreen=false unexpectedly requested system fullscreen');
     await nonFullscreenInstance.stop(false);
@@ -356,6 +380,56 @@ async function main() {
     assert.strictEqual(nativeStops, stopsBeforeStuckPreparation + 1,
         'a stale native elapsed value allowed an unlimited preparation hold');
     await preparationInstance.stop(true);
+
+    // Emby unbinds its stopped handler, awaits stop(false), then rebinds and
+    // loads the selected episode. Resolving early lets an old cancel end it.
+    for (const android of [true, false]) {
+        context.window.api.system = {isAndroid: android};
+        let finishNativeStop, completed = false;
+        player.stop = () => android ? new Promise(resolve => {finishNativeStop = resolve;}) : undefined;
+        await preparationInstance.play(options);
+        const stopped = preparationInstance.stop(false).then(() => {completed = true;});
+        await flush();
+        assert.strictEqual(completed, false, `${android ? 'Android' : 'desktop'} stop resolved before native completion`);
+        player.canceled.emit();
+        player.stopped.emit();
+        finishNativeStop?.(true);
+        await stopped;
+        await preparationInstance.play(options);
+        assert.strictEqual(preparationInstance._sessionActive, true, 'old stop ended the selected episode');
+        player.finished.emit();
+    }
+    preparationInstance.destroy();
+
+    // Native END_FILE_ERROR ends playback without emitting stopped on desktop.
+    // It must not arm a stop barrier that prevents every later play request.
+    context.window.api.system = {isAndroid:false};
+    player.stop = () => assert.fail('native error already ended the file; do not stop the idle core again');
+    await preparationInstance.play(options);
+    player.error.emit('unplayable URL');
+    await flush();
+    assert.strictEqual(preparationInstance._nativeStopPromise, null);
+    await preparationInstance.play(options);
+    assert.strictEqual(preparationInstance._sessionActive,true,'a native error permanently blocked playback recovery');
+    player.finished.emit();
+    preparationInstance.destroy();
+
+    const idleInstance = new Player({loading, events:{trigger(){}}, appSettings:{get(){},set(){}},
+        dashboard:{default:{setBackdropTransparency(){}}}});
+    await idleInstance.stop(true); // A never-started native core has no END_FILE to await.
+
+    player.stop = () => undefined;
+    await preparationInstance.play(options);
+    const timedStop = preparationInstance.stop(true);
+    const rejectedStop = assert.rejects(timedStop,/未能完成停止/);
+    await fireNextTimer();
+    await rejectedStop;
+    for (const name of signalNames) assert.strictEqual(player[name].handlers.size,0,'timeout still releases '+name);
+    await assert.rejects(preparationInstance.play(options),/未能完成停止/);
+    await preparationInstance.play(options);
+    assert.strictEqual(preparationInstance._sessionActive,true,'a failed stop promise is cleared for subsequent recovery');
+    player.finished.emit();
+    preparationInstance.destroy();
 
     console.log('player lifecycle: all checks passed');
 }

@@ -1,7 +1,13 @@
 #include <QtTest/QtTest>
 #include <MpvAbstractItem>
+#include <MpvController>
 #include <QGuiApplication>
 #include <QQuickWindow>
+#include <QTemporaryDir>
+#include <QScopeGuard>
+#include "Paths.h"
+#include "core/ProfileManager.h"
+#include "settings/SettingsComponent.h"
 #if defined(Q_OS_WIN)
 #include <qt_windows.h>
 #endif
@@ -25,8 +31,10 @@ void clearOverrideCursor()
 class TestWindowManager : public QObject
 {
   Q_OBJECT
+  QTemporaryDir fixture;
 
 private slots:
+  void initTestCase();
   void cleanup();
   void testMovingToAnotherScreenRefreshesPlaybackPolicy();
   void testFullscreenStateIsIndependentFromRestoreVisibility();
@@ -41,10 +49,20 @@ private slots:
   void testPlaybackInheritsHostFullscreen();
   void testNativeVideoAnchorDoesNotPaintOverScene();
   void testNativeHostTracksMainWindowLifecycle();
+  void testNativePlaybackHidesActualWindowsCursor();
   void testNativeFullscreenKeepsWindowsComposition_data();
   void testNativeFullscreenKeepsWindowsComposition();
 #endif
 };
+
+void TestWindowManager::initTestCase()
+{
+  QVERIFY(fixture.isValid());
+  Paths::setConfigDir(fixture.path());
+  Paths::setCacheDir(fixture.filePath("cache"));
+  ProfileManager::Get().setActiveProfile(ProfileManager::createProfile("Window lifecycle fixture"));
+  QVERIFY(SettingsComponent::Get().componentInitialize());
+}
 
 void TestWindowManager::cleanup()
 {
@@ -230,6 +248,66 @@ void TestWindowManager::testEndingNativePlaybackRestoresWebCursorControl()
 }
 
 #if defined(Q_OS_WIN)
+void TestWindowManager::testNativePlaybackHidesActualWindowsCursor()
+{
+  if (!qEnvironmentVariableIsSet("TIGEREST_TEST_NATIVE_CURSOR"))
+    QSKIP("Opt-in pointer integration requires exclusive use of the desktop");
+  if (QGuiApplication::platformName() != QStringLiteral("windows"))
+    QSKIP("Requires an actual Windows pointer and native GPU-Next window");
+  const QPoint originalPointer = QCursor::pos();
+  const auto restorePointer = qScopeGuard([&] { QCursor::setPos(originalPointer); });
+  QQuickWindow window;
+  window.setFlag(Qt::WindowStaysOnTopHint, true);
+  window.setGeometry(150, 150, 640, 360);
+  PlayerComponent player;
+  MpvVideoItem item(window.contentItem());
+  item.setSize(QSizeF(640, 360));
+  item.setPlayerComponent(&player);
+  QWindow* host = item.m_nativeHostWindow;
+  QVERIFY(host);
+  window.show();
+  QTRY_VERIFY(host->isVisible());
+  player.setVolume(0);
+  const QVariant loaded = item.commandBlocking(QStringList{"loadfile", "av://lavfi:testsrc2=size=320x180:rate=30"});
+  QVERIFY(loaded.metaType() != QMetaType::fromType<ErrorReturn>());
+  const auto stop = qScopeGuard([&] { player.stop(); item.setVisible(false); window.hide(); });
+  QTRY_VERIFY_WITH_TIMEOUT(item.getProperty("vo-configured").toBool(), 10000);
+  QTRY_VERIFY_WITH_TIMEOUT(item.getProperty("playback-time").toDouble() > 0.1, 10000);
+
+  // Own the test pointer for each short idle interval so other desktop input
+  // cannot accidentally turn this into the correctly-visible outside case.
+  QPoint controlledPosition;
+  QTimer pointerKeeper;
+  connect(&pointerKeeper, &QTimer::timeout, [&] { QCursor::setPos(controlledPosition); });
+  const auto movePointer = [&](const QPoint& position) {
+    controlledPosition = position;
+    QCursor::setPos(position);
+  };
+  movePointer(host->mapToGlobal(QPoint(100, 100)));
+  pointerKeeper.start(20);
+  QTRY_VERIFY(item.m_nativeCursorInsideHost);
+  QTRY_COMPARE(host->cursor().shape(), Qt::ArrowCursor);
+  QTRY_COMPARE_WITH_TIMEOUT(host->cursor().shape(), Qt::BlankCursor, 15000);
+  const auto currentCursor = [] {
+    CURSORINFO cursor{sizeof(CURSORINFO)};
+    return GetCursorInfo(&cursor) ? cursor.hCursor : HCURSOR(nullptr);
+  };
+  QTRY_VERIFY_WITH_TIMEOUT(currentCursor() != LoadCursor(nullptr, IDC_ARROW), 1500);
+  movePointer(host->mapToGlobal(QPoint(120, 100)));
+  QTRY_COMPARE(host->cursor().shape(), Qt::ArrowCursor);
+  QTRY_COMPARE(currentCursor(), LoadCursor(nullptr, IDC_ARROW));
+  QTRY_COMPARE_WITH_TIMEOUT(host->cursor().shape(), Qt::BlankCursor, 15000);
+  movePointer(window.mapToGlobal(QPoint(-20, -20)));
+  QTRY_COMPARE(host->cursor().shape(), Qt::ArrowCursor);
+  QTest::qWait(3200);
+  QCOMPARE(host->cursor().shape(), Qt::ArrowCursor);
+  movePointer(host->mapToGlobal(QPoint(100, 100)));
+  QTRY_COMPARE_WITH_TIMEOUT(host->cursor().shape(), Qt::BlankCursor, 15000);
+  item.setVisible(false);
+  QCOMPARE(host->cursor().shape(), Qt::ArrowCursor);
+  QVERIFY(!QGuiApplication::overrideCursor());
+}
+
 void TestWindowManager::testNativeVideoAnchorDoesNotPaintOverScene()
 {
   if (QGuiApplication::platformName() != QStringLiteral("windows"))

@@ -447,6 +447,7 @@ require('lib/utils')
 require('lib/text')
 require('lib/ass')
 require('lib/menus')
+local emby_playlist = require('lib/emby_playlist')
 
 -- Determine path to ziggy
 do
@@ -963,15 +964,24 @@ end)
 bind_command('stream-quality', open_stream_quality_menu)
 bind_command('open-file', open_open_file_menu)
 bind_command('shuffle', function() set_state('shuffle', not state.shuffle) end)
+local open_emby_playlist = create_self_updating_menu_opener({
+	title = t('Playlist'),
+	type = 'emby-playlist',
+	list_prop = emby_playlist.property,
+	serializer = emby_playlist.serialize,
+	on_activate = function(event) emby_playlist.select(event.value) end,
+})
 bind_command('items', function()
-	if state.has_playlist then
+	if emby_playlist.read() then
+		open_emby_playlist()
+	elseif state.has_playlist then
 		mp.command('script-binding uosc/playlist')
 	else
 		mp.command('script-binding uosc/open-file')
 	end
 end)
-bind_command('next', function() navigate_item(1) end)
-bind_command('prev', function() navigate_item(-1) end)
+bind_command('next', function() if not emby_playlist.navigate(1) then navigate_item(1) end end)
+bind_command('prev', function() if not emby_playlist.navigate(-1) then navigate_item(-1) end end)
 bind_command('next-file', function() navigate_directory(1) end)
 bind_command('prev-file', function() navigate_directory(-1) end)
 bind_command('first', function()

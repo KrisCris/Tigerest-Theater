@@ -73,10 +73,14 @@ target_compile_definitions(test_displaymanager PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_displaymanager COMMAND test_displaymanager)
 
 add_executable(test_windowmanager test_windowmanager.cpp)
+qt_add_resources(test_windowmanager "test_windowmanager_resources"
+  PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
+  FILES "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
 target_link_libraries(test_windowmanager jmp_core Qt6::Test)
 target_include_directories(test_windowmanager PRIVATE ${TEST_INCLUDE_DIRS})
 target_compile_definitions(test_windowmanager PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_windowmanager COMMAND test_windowmanager)
+if(WIN32)
 add_executable(test_window_chrome test_window_chrome.cpp)
 target_link_libraries(test_window_chrome PRIVATE Qt6::Quick Qt6::Test)
 target_compile_definitions(test_window_chrome PRIVATE SOURCE_ROOT="${CMAKE_SOURCE_DIR}" TEST_QML_IMPORTS="${CMAKE_BINARY_DIR}/output/qml")
@@ -85,10 +89,10 @@ qt_add_resources(test_window_chrome window_chrome_test_icons
   BASE "${CMAKE_SOURCE_DIR}/resources/images"
   FILES "${CMAKE_SOURCE_DIR}/resources/images/icon.png")
 add_test(NAME test_window_chrome COMMAND test_window_chrome)
-if(WIN32)
   add_test(NAME test_windowmanager_opengl COMMAND test_windowmanager
     testNativeFullscreenKeepsWindowsComposition)
   set_tests_properties(test_windowmanager_opengl PROPERTIES ENVIRONMENT "QSG_RHI_BACKEND=opengl")
+  set_tests_properties(test_windowmanager test_windowmanager_opengl PROPERTIES RUN_SERIAL TRUE)
 endif()
 if(APPLE)
   # Native macOS maximize/fullscreen transitions are asynchronous and can be
@@ -129,6 +133,17 @@ target_include_directories(test_mpv_console PRIVATE ${TEST_INCLUDE_DIRS})
 target_compile_definitions(test_mpv_console PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_mpv_console COMMAND test_mpv_console)
 
+add_executable(test_emby_uosc_playlist test_emby_uosc_playlist.cpp)
+qt_add_resources(test_emby_uosc_playlist "test_emby_uosc_playlist_resources"
+  PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
+  FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
+        "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
+target_link_libraries(test_emby_uosc_playlist jmp_core Qt6::Test)
+target_include_directories(test_emby_uosc_playlist PRIVATE ${TEST_INCLUDE_DIRS})
+target_compile_definitions(test_emby_uosc_playlist PRIVATE ${TEST_COMPILE_DEFS})
+add_test(NAME test_emby_uosc_playlist COMMAND test_emby_uosc_playlist)
+set_tests_properties(test_emby_uosc_playlist PROPERTIES TIMEOUT 30 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
   add_test(NAME test_macos_rife_runtime_pin COMMAND "${Python3_EXECUTABLE}" -B -X utf8
@@ -156,6 +171,7 @@ if(WIN32)
     target_compile_definitions(test_rife_player_playback PRIVATE ${TEST_COMPILE_DEFS})
     add_dependencies(test_rife_player_playback tigerest_rife_vs)
     add_test(NAME test_rife_player_lifecycle COMMAND test_rife_player_playback
+      nativeVolumeChangesAreObserved
       replacementDoesNotFinishOnSupersededNativeStart
       preparationPauseReportsBufferingUntilUserPauses
       stopCancelsPreparationBeforeNativeEndFileArrives
@@ -515,6 +531,8 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_player_lifecycle.js)
   add_test(NAME test_stream_quality
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_stream_quality.js)
+  add_test(NAME test_android_playlist
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_android_playlist.cjs)
   add_test(NAME test_session_navigation
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_session_navigation.js)
   add_test(NAME test_web_appearance

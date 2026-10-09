@@ -13,7 +13,7 @@
     body.tg-home-active .skinHeader, body.tg-home-active .mainDrawer, body.tg-home-active .appFooter, body.tg-home-active .appfooter { display: none !important; }
     body.tg-home-active .view-home-home { left: 0 !important; right: 0 !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
     .tg-home-host { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
-    .tg-home { --home-height: 650px; box-sizing: border-box; height: var(--home-height); min-height: 380px; padding: 18px 28px 22px;
+    .tg-home { --home-height: 650px; --home-safe-height: calc(var(--tgs-safe-top,0px) + var(--tgs-safe-bottom,0px)); box-sizing: border-box; height: var(--home-height); min-height: calc(380px + var(--home-safe-height)); padding: 18px 28px 22px;
         display: grid; grid-template-columns: clamp(160px,19vw,280px) minmax(0,1fr); grid-template-rows: minmax(0,1fr) 158px;
         gap: 20px 24px; position: relative; isolation: isolate; overflow: hidden; color: #f4f2ed; text-align: left; }
     .tg-home *, .tg-home *::before, .tg-home *::after { box-sizing: border-box; }
@@ -88,7 +88,7 @@
         .tg-cover { height: 100px; flex-basis: 160px; }
     }
     @media (min-width: 681px) and (max-height: 520px) {
-        .tg-home { min-height: 320px; padding: 8px 20px 14px; grid-template-rows: minmax(140px,1fr) 116px; gap: 12px 16px; }
+        .tg-home { min-height: calc(320px + var(--home-safe-height)); padding: 8px 20px 14px; grid-template-rows: minmax(140px,1fr) 116px; gap: 12px 16px; }
         .tg-library { height: 84px; padding: 10px 14px; }
         .tg-library-name { font-size: 18px; }
         .tg-cover { height: 78px; }
@@ -98,7 +98,8 @@
     }
     @media (prefers-reduced-motion: reduce) { .tg-home *, .tg-home *::before { animation: none !important; transition: none !important; transform: none !important; } }
     /* A continuous cinema composition, with navigation floating over its atmosphere. */
-    .tg-home { padding: 10px 24px 24px; gap: 22px 34px; grid-template-columns: clamp(160px,18vw,380px) minmax(0,1fr); grid-template-rows: minmax(0,1fr) 196px;
+    /* The host/background fills the window; the composition keeps its normal gutters beyond Android system insets. */
+    .tg-home { padding: calc(10px + var(--tgs-safe-top,0px)) calc(24px + var(--tgs-safe-right,0px)) calc(24px + var(--tgs-safe-bottom,0px)) calc(24px + var(--tgs-safe-left,0px)); gap: 22px 34px; grid-template-columns: clamp(160px,18vw,380px) minmax(0,1fr); grid-template-rows: minmax(0,1fr) 196px;
         background: linear-gradient(90deg,#0b0d12eb, #0b0d1200 45%); }
     .tg-home-scenery { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .16; z-index: -2; pointer-events: none;
         mask-image: linear-gradient(0deg,transparent,#000 35%,#000 80%,transparent); transition: opacity .8s; }
@@ -133,7 +134,7 @@
     .tg-cover.is-selected { border-color: #d9b273; box-shadow: 0 0 22px #c7a56d18; }
     .tg-cover-label { font-size: 12px; }
     @media (max-width:680px) {
-        .tg-home { padding: 10px 12px 18px; min-height: 533px; grid-template-columns: minmax(0,1fr); grid-template-rows: 105px minmax(220px,1fr) 154px; gap: 13px; }
+        .tg-home { padding: calc(10px + var(--tgs-safe-top,0px)) calc(12px + var(--tgs-safe-right,0px)) calc(18px + var(--tgs-safe-bottom,0px)) calc(12px + var(--tgs-safe-left,0px)); min-height: calc(533px + var(--home-safe-height)); grid-template-columns: minmax(0,1fr); grid-template-rows: 105px minmax(220px,1fr) 154px; gap: 13px; }
         .tg-home-nav { gap: 5px; }.tg-library-list { gap: 10px; }.tg-library { height: 78px; width: 146px; padding: 10px 12px; border-radius: 4px 14px 4px 4px; }
         .tg-library-name { font-size: 19px; }.tg-library.is-selected .tg-library-label { transform: none; }
         .tg-hero-copy { left: 18px; right: 18px; bottom: 20px; gap: 10px; }.tg-hero-content { gap: 9px; }.tg-hero-title { font-size: 32px; }.tg-hero-subtitle { font-size: 11px; }
@@ -145,7 +146,7 @@
         .tg-hero-kicker, .tg-hero-action { display: none; }
     }
     @media (min-width:681px) and (max-height:520px) {
-        .tg-home { padding: 8px 20px 14px; grid-template-rows: minmax(140px,1fr) 128px; gap: 12px 20px; }
+        .tg-home { padding: calc(8px + var(--tgs-safe-top,0px)) calc(20px + var(--tgs-safe-right,0px)) calc(14px + var(--tgs-safe-bottom,0px)) calc(20px + var(--tgs-safe-left,0px)); grid-template-rows: minmax(140px,1fr) 128px; gap: 12px 20px; }
         .tg-library { height: 84px; padding: 10px 14px; }.tg-library-name { font-size: 19px; }.tg-cover { height: 74px; }
         .tg-home-rail { padding-top: 6px; gap: 8px; }.tg-hero-copy { bottom: 18px; gap: 8px; }.tg-hero-content { gap: 6px; }.tg-hero-title { font-size: 27px; }.tg-hero-action { display:none; }
         .tg-hero-overview { -webkit-line-clamp: 1; font-size: 11px; }
@@ -296,7 +297,11 @@
         Promise.all(this.animations.map(animation => animation.finished)).then(reveal).catch(() => {});
     };
     Gallery.prototype.finishEntrance = function () {
-        this.animations.forEach(animation => { if (animation.playState === 'running') animation.finish(); });
+        // Keyboard focus needs the final layout now, including when a background
+        // compositor has paused an entrance. Remove effects before measuring the
+        // scrolling viewport, rather than comparing rotated/offscreen bounds.
+        this.entrance = (this.entrance || 0) + 1;
+        this.animations.forEach(animation => animation.cancel()); this.animations = [];
         if (this.valid()) { this.root.classList.add('tg-entered'); this.animateText(); }
     };
     Gallery.prototype.cancelText = function () {

@@ -118,7 +118,14 @@ class PlaybackController(private val context: Context, private val settings: Set
         state.speed,clockEpoch)
     fun tracks(): JSONArray = runCatching { JSONArray(MPVLib.getPropertyString("track-list") ?: "[]") }.getOrDefault(JSONArray())
     fun isVideo() = video
-    private fun emit(name: String,vararg args: Any?) { val array = JSONArray(); args.forEach { array.put(it ?: JSONObject.NULL) }; main.post { signal(name,array) } }
+    fun currentItem(): JSONObject = metadata.optJSONObject("metadata") ?: JSONObject()
+    private fun emit(name: String,vararg args: Any?) {
+        val generation = state.generation
+        val array = JSONArray(); args.forEach { array.put(it ?: JSONObject.NULL) }
+        // A following load can begin before this queued notification is delivered.
+        // An old cancellation must never end the replacement episode in Emby.
+        main.post { if(!destroyed && generation == state.generation) signal(name,array) }
+    }
     private fun setTrack(type: String, value: Any) {
         if (type == "sid" && value.toString().startsWith("#,")) MPVLib.command(arrayOf("sub-add",value.toString().removePrefix("#,"),"select"))
         else MPVLib.setPropertyString(type,PlaybackContract.track(value.toString()))
@@ -135,7 +142,7 @@ class PlaybackController(private val context: Context, private val settings: Set
                 audio = args.opt(3) ?: 1; subtitle = args.opt(4) ?: -1; startMs = options.optDouble("startMilliseconds",0.0)
                 endTemporarySpeed()
                 val generation = state.begin(url); starts.add(generation); durationMs = 0; clockEpoch++
-                currentId = metadata.optJSONObject("metadata")?.optString("Id") ?: ""
+                currentId = EpisodeQueue.currentIdFor(queued,metadata.optJSONObject("metadata") ?: JSONObject())
                 val headers = metadata.optJSONObject("headers") ?: JSONObject()
                 val fields = headers.keys().asSequence().map { key -> require(key == "User-Agent" || key == "Referer") { "不支持的媒体请求头" }; val value = headers.getString(key); require(!value.contains('\n') && !value.contains('\r')); "$key: $value" }.toList()
                 MPVLib.setPropertyString("http-header-fields",fields.joinToString(","))
