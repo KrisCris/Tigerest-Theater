@@ -82,6 +82,19 @@ private slots:
     QCOMPARE(actions[1][0].toStringList(),QStringList{"playlist-item:queue-3"});
     controller->command(QStringList{"script-binding","uosc/items"});
     QTRY_COMPARE_WITH_TIMEOUT(controller->getProperty("user-data/uosc/menu/type").toString(),QString("emby-playlist"),3000);
+    // Menu type is published before layout/font initialization and the deferred
+    // forced key bindings. Wait until mpv can actually dispatch both menu keys.
+    const auto menuKeysAreActive = [&] {
+      QStringList pending{"UP", "ENTER"};
+      for (const auto& entry : controller->getProperty("input-bindings").toList()) {
+        const auto binding = entry.toMap();
+        if (binding.value("owner").toString() == QString("uosc") &&
+            binding.value("priority", -1).toInt() >= 0)
+          pending.removeAll(binding.value("key").toString());
+      }
+      return pending.isEmpty();
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(menuKeysAreActive(),3000);
     controller->command(QStringList{"keypress","UP"});
     controller->command(QStringList{"keypress","ENTER"});
     QTRY_COMPARE_WITH_TIMEOUT(actions.size(),3,3000);

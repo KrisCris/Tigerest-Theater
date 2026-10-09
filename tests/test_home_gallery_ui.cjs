@@ -8,6 +8,9 @@ const routes={
 };
 for(const name of ['anime','movies','series','favorites'])routes['/art/'+name+'.png']={type:'image/png',path:path.join(root,'native/home-art',name+'.png')};
 withBrowser(routes,async({evaluate,call})=>{
+ // The animation contract must not depend on the runner's accessibility
+ // preference. Reduced motion is verified separately below.
+ await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
  const result=await evaluate('('+ (async function(embedded){
   const check=(value,message)=>{if(!value)throw Error(message);};
   const wait=async(fn)=>{for(let i=0;i<400;i++){if(fn())return;await new Promise(r=>setTimeout(r,10));}throw Error('condition timeout: '+JSON.stringify({visibility:document.visibilityState,animations:window.gallery?.animations.map(a=>({state:a.playState,time:a.currentTime}))}));};
@@ -24,6 +27,11 @@ withBrowser(routes,async({evaluate,call})=>{
    },getImageUrl:()=>location.origin+'/poster.svg'};
   localStorage.setItem('tigerest-home-style','gallery');
   window.gallery=new TigerestHomeGallery(document.getElementById('home'),{apiProvider:()=>api,router:{showItem:(item,server)=>opened.push({item,server}),showFavorites:()=>opened.push({favorite:true})},artBase:embedded?undefined:location.origin+'/art'});
+  // Hold the actual browser timelines so slow startup cannot finish the
+  // entrance before its ordering assertions inspect it.
+  const enter=gallery.enter,animateText=gallery.animateText;
+  gallery.enter=function(generation){enter.call(this,generation);this.animations.forEach(animation=>{animation.pause();animation.currentTime=0;});};
+  gallery.animateText=function(...args){animateText.apply(this,args);this.textAnimations.forEach(animation=>{animation.pause();animation.currentTime=0;});};
   await gallery.start({});
   check(gallery.root.dataset.style==='cinema'&&!document.querySelector('.tg-home-style-button'),'chosen cinema design replaces the comparison controls and old style preference');
   check(getComputedStyle(document.querySelector('.skinHeader')).display==='none'&&getComputedStyle(document.querySelector('.mainDrawer')).display==='none','original chrome hidden only on the new home');
@@ -31,9 +39,16 @@ withBrowser(routes,async({evaluate,call})=>{
   check(document.querySelector('.tg-library').textContent.includes('我的媒体库 1'),'actual library name');
   check(!document.querySelector('.tg-home').classList.contains('tg-entered'),'poster waits for both entrance groups');
   check(Number(getComputedStyle(gallery.title).opacity)===0,'title stays hidden during the flying lists');
+  const railEntrance=gallery.animations.find(animation=>animation.effect.target===gallery.rail);
+  check(railEntrance&&gallery.animations.some(animation=>animation.effect.target===gallery.nav),'both entrance groups animate');
+  gallery.animations.filter(animation=>animation!==railEntrance).forEach(animation=>animation.finish());
+  await Promise.resolve();await Promise.resolve();
+  check(!gallery.root.classList.contains('tg-entered'),'finishing the media list alone cannot reveal the poster');
+  railEntrance.finish();
   await wait(()=>document.querySelector('.tg-home').classList.contains('tg-entered'));
   check(document.querySelector('.tg-home').classList.contains('tg-ready'),'poster reveals after content and entrances');
   check(Number(getComputedStyle(gallery.title).opacity)===0,'title enters separately after the poster begins revealing');
+  gallery.enter=enter;gallery.animateText=animateText;gallery.textAnimations.forEach(animation=>animation.play());
   await wait(()=>Number(getComputedStyle(gallery.title).opacity)>.95);
   check(gallery.overview.textContent==='这是作品简介。 用于预览剧情，人物相遇 & 故事开始。'&&!gallery.overview.querySelector('*'),'overview renders readable plain text');
   document.querySelectorAll('.tg-cover')[1].dispatchEvent(new PointerEvent('pointerover',{bubbles:true,pointerType:'mouse'}));
