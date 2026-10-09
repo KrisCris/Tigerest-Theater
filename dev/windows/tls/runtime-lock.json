@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "architecture": "amd64",
+  "opensslVersion": "3.5.9",
+  "binarySource": "CPython 3.13.16 official Windows embeddable package",
+  "hashOrigin": "Archive hash published by python.org; member hashes verified from that archive",
+  "releasePage": "https://www.python.org/downloads/release/python-31316/",
+  "archive": {
+    "file": "python-3.13.16-embed-amd64.zip",
+    "url": "https://www.python.org/ftp/python/3.13.16/python-3.13.16-embed-amd64.zip",
+    "size": 11439094,
+    "sha256": "97dae5274cc54867065e8d5a3226e48c35017ed332a0fdb0e27d5b5821961297"
+  },
+  "licenseSource": "https://github.com/openssl/openssl/blob/openssl-3.5.9/LICENSE.txt",
+  "files": {
+    "libssl-3-x64.dll": {
+      "member": "libssl-3.dll",
+      "size": 1308920,
+      "sha256": "8957182a9c385bfd9f3f790921de2ddc614cf91f99edbed4e9e5446a46504e32"
+    },
+    "libcrypto-3-x64.dll": {
+      "member": "libcrypto-3.dll",
+      "size": 6021880,
+      "sha256": "75495fe0e079ab00d49be740d3c710a0b94e3f74f9648cb7cc9f768fc7f52319"
+    },
+    "libcrypto-3.dll": {
+      "member": "libcrypto-3.dll",
+      "size": 6021880,
+      "sha256": "75495fe0e079ab00d49be740d3c710a0b94e3f74f9648cb7cc9f768fc7f52319"
+    },
+    "LICENSE.Python.txt": {
+      "member": "LICENSE.txt",
+      "size": 33861,
+      "sha256": "62bec384df47b0328307db41455ff6ea2559e5546b394ac69148561b21703120"
+    },
+    "LICENSE.OpenSSL.txt": {
+      "size": 10175,
+      "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+    }
+  }
+}

@@ -10,6 +10,12 @@ elseif(WIN32)
   file(TO_CMAKE_PATH "${TIGEREST_WEBENGINE_RUNTIME}" TIGEREST_WEBENGINE_RUNTIME)
   include("${CMAKE_SOURCE_DIR}/CMakeModules/ValidateWindowsWebEngine.cmake")
   tigerest_validate_webengine("${TIGEREST_WEBENGINE_RUNTIME}" "${Qt6Core_VERSION}" "${CMAKE_SOURCE_DIR}")
+  set(TIGEREST_OPENSSL_RUNTIME_DIR "$ENV{TIGEREST_OPENSSL_RUNTIME_DIR}" CACHE PATH
+      "Directory containing release-pinned Windows OpenSSL DLLs and licenses")
+  file(TO_CMAKE_PATH "${TIGEREST_OPENSSL_RUNTIME_DIR}" TIGEREST_OPENSSL_RUNTIME_DIR)
+  include("${CMAKE_SOURCE_DIR}/CMakeModules/DeployWindowsOpenSSL.cmake")
+  tigerest_validate_openssl("${TIGEREST_OPENSSL_RUNTIME_DIR}" "${QTROOT}"
+                           "${CMAKE_SOURCE_DIR}/dev/windows/tls/runtime-lock.json")
   set(TIGEREST_MPV_RUNTIME_DIR "$ENV{TIGEREST_MPV_RUNTIME_DIR}" CACHE PATH
       "Directory containing both release-pinned RIFE-capable Windows mpv DLLs")
   file(TO_CMAKE_PATH "${TIGEREST_MPV_RUNTIME_DIR}" TIGEREST_MPV_RUNTIME_DIR)

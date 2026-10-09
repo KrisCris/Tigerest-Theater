@@ -30,6 +30,14 @@ if not defined TIGEREST_WEBENGINE_RUNTIME (
     exit /b 1
 )
 
+REM === Prepare pinned TLS runtime ===
+if not defined TIGEREST_OPENSSL_RUNTIME_DIR set "TIGEREST_OPENSSL_RUNTIME_DIR=%DEPS_DIR%\openssl-runtime"
+python "%~dp0tls\prepare_openssl_runtime.py" --output "%TIGEREST_OPENSSL_RUNTIME_DIR%"
+if errorlevel 1 (
+    echo ERROR: Verified OpenSSL runtime preparation failed.
+    exit /b 1
+)
+
 REM === Check Visual Studio ===
 if not defined VCVARS (
     echo ERROR: vcvars64.bat not found
@@ -76,6 +84,7 @@ cmake -GNinja ^
     -DVCREDIST_EXE="%DEPS_CMAKE%/vc_redist.x64.exe" ^
     -DTIGEREST_MPV_RUNTIME_DIR="%TIGEREST_MPV_RUNTIME_DIR%" ^
     -DTIGEREST_WEBENGINE_RUNTIME="%TIGEREST_WEBENGINE_RUNTIME%" ^
+    -DTIGEREST_OPENSSL_RUNTIME_DIR="%TIGEREST_OPENSSL_RUNTIME_DIR%" ^
     -DCHECK_FOR_UPDATES=ON ^
     -DUSE_STATIC_MPVQT=ON ^
     "%PROJECT_ROOT%"

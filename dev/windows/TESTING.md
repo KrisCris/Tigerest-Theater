@@ -4,17 +4,17 @@
 
 ```powershell
 . ./dev/windows/Enter-TestEnvironment.ps1
-ctest --test-dir build --output-on-failure --timeout 90
+ctest --test-dir build --output-on-failure --timeout 180
 ```
 
 使用其他构建目录：
 
 ```powershell
 . ./dev/windows/Enter-TestEnvironment.ps1 -BuildDirectory 'D:/build/tigerest'
-ctest --test-dir 'D:/build/tigerest' --output-on-failure --timeout 90
+ctest --test-dir 'D:/build/tigerest' --output-on-failure --timeout 180
 ```
 
-脚本从 CMakeCache 读取 Qt、MPV 和工具路径，检查 DLL、`qwindows.dll` 和 `qoffscreen.dll`，设置 PATH、QT_PLUGIN_PATH、QT_QPA_PLATFORM_PLUGIN_PATH 和 Qt 控制台日志。缺失文件时直接报错，停止测试；不要靠反复启动程序查缺哪一个 DLL，也不要修改用户已安装播放器解决测试环境问题。
+脚本从 CMakeCache 读取 Qt、MPV 和工具路径，检查 DLL、`qwindows.dll` 和 `qoffscreen.dll`，设置 PATH、QT_PLUGIN_PATH、QT_QPA_PLATFORM_PLUGIN_PATH 和 Qt 控制台日志。缺失文件时直接报错，停止测试；不要靠反复启动程序查缺哪一个 DLL，也不要修改用户已安装播放器解决测试环境问题。更新器回归包含真实的 2／5／10／20／30 秒重试等待，整套测试的单项超时应保留 180 秒。
 
 无窗口的单项策略测试可以额外设置 `QT_QPA_PLATFORM=offscreen`；真正的窗口、WebEngine、播放测试使用默认 Windows 平台，不要把 offscreen 留给整套测试。Qt GUI 测试需要文字报告时加 `-o 路径,txt`，避免把无 stdout 误判为未执行：
 

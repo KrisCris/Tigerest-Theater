@@ -50,8 +50,16 @@ withBrowser({
  await evaluate('TigerestUpdate.check()');assert.deepEqual(await evaluate('calls.at(-1)'),['checkForUpdates',true]);
  await evaluate(`emit({status:'available',manual:true});document.querySelector('[data-update-action=download]').click()`);
  assert.deepEqual(await evaluate('calls.at(-1)'),['downloadAppUpdate']);
- await evaluate(`emit({status:'downloading',received:512});`);
+ await evaluate(`emit({status:'downloading',received:512,speed:2048});`);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog progress").value'),50);
+ assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("2.0 KB/s")'),'download speed is visible');
+ await evaluate(`emit({retrying:true,retryAttempt:2,retryLimit:5,retryDelay:5});`);
+ assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("第 2/5 次")'),'native retry budget is visible');
+ await evaluate(`emit({platform:'android',retrying:false});`);
+ assert.equal(await evaluate('document.querySelector("[data-update-action=cancel]").textContent'),'暂停下载','Android keeps a paused partial');
+ await evaluate(`emit({status:'available',resumable:true,retrying:false});`);
+ assert.equal(await evaluate('document.querySelector("[data-update-action=download]").textContent'),'继续下载');
+ await evaluate(`emit({status:'downloading',resumable:false,retrying:false});`);
  await evaluate(`emit({status:'ready',received:1024});`);
  assert.deepEqual(await evaluate('calls.at(-1)'),['installAppUpdate',true],'one click downloads then opens installer');
  await evaluate(`emit({status:'ready',error:'系统安装已取消'});`);

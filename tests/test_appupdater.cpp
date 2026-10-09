@@ -1,13 +1,17 @@
 #include <QtTest>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QCryptographicHash>
 #include <QTemporaryDir>
 #include <QTimer>
 #include "system/AppUpdater.h"
 
 // Network I/O is the external boundary. The real updater still owns request
 // policy, parsing, state transitions, filesystem writes and digest validation.
-struct Response { QByteArray bytes; int status = 200; QUrl redirect; bool held = false; };
+struct Response { QByteArray bytes; int status = 200; QUrl redirect; bool held = false;
+  QList<QPair<QByteArray, QByteArray>> headers;
+  QNetworkReply::NetworkError error = QNetworkReply::NoError;
+};
 class FixtureReply : public QNetworkReply
 {
 public:
@@ -15,11 +19,12 @@ public:
   {
     setRequest(request); setUrl(request.url()); setOperation(QNetworkAccessManager::GetOperation);
     setAttribute(QNetworkRequest::HttpStatusCodeAttribute, response.status);
+    for (const auto& header : response.headers) setRawHeader(header.first, header.second);
     if (!response.redirect.isEmpty()) setAttribute(QNetworkRequest::RedirectionTargetAttribute, response.redirect);
     open(QIODevice::ReadOnly | QIODevice::Unbuffered);
     if (!response.held) QTimer::singleShot(0, this, [this] { complete(); });
   }
-  void complete() { if (isFinished()) return; emit readyRead(); setFinished(true); emit finished(); }
+  void complete() { if (isFinished()) return; emit readyRead(); if (m_response.error != NoError) setError(m_response.error, "Interrupted by fixture"); setFinished(true); emit finished(); }
   void abort() override { setError(OperationCanceledError, "Canceled"); setFinished(true); emit finished(); }
   qint64 bytesAvailable() const override { return m_response.bytes.size() - m_offset + QIODevice::bytesAvailable(); }
 protected:
@@ -33,10 +38,12 @@ class FixtureNetwork : public QNetworkAccessManager
 public:
   QList<Response> responses;
   QList<QUrl> requests;
+  QList<QNetworkRequest> requestDetails;
 protected:
   QNetworkReply* createRequest(Operation, const QNetworkRequest& request, QIODevice*) override
   {
     requests.append(request.url());
+    requestDetails.append(request);
     return new FixtureReply(request, responses.isEmpty() ? Response{{}, 503} : responses.takeFirst(), this);
   }
 };
@@ -48,6 +55,166 @@ class TestAppUpdater : public QObject
 {
   Q_OBJECT
 private slots:
+  void repeatedPrefixesDoNotRefillRetryBudget_data()
+  {
+    QTest::addColumn<QByteArray>("etag");
+    QTest::newRow("missing-etag") << QByteArray();
+    QTest::newRow("weak-etag") << QByteArray("W/\"asset\"");
+    QTest::newRow("ignored-range") << QByteArray("\"asset\"");
+  }
+  void repeatedPrefixesDoNotRefillRetryBudget()
+  {
+    QFETCH(QByteArray, etag);
+    QTemporaryDir dir; FixtureNetwork network;
+    network.responses = {{metadata()},
+      {"ab", 200, {}, false, {{"ETag", etag}}, QNetworkReply::RemoteHostClosedError},
+      {"a", 200, {}, false, {{"ETag", etag}}, QNetworkReply::RemoteHostClosedError},
+      {"ab", 200, {}, false, {{"ETag", etag}}, QNetworkReply::RemoteHostClosedError}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available"); updater.download();
+    QTRY_VERIFY_WITH_TIMEOUT(network.requests.size() >= 4, 10000);
+    QCOMPARE(updater.state().value("retryAttempt").toInt(), 3);
+    updater.cancel();
+  }
+  void progressRefillsRetryBudgetAndCompletesAfterRepeatedDisconnects()
+  {
+    QTemporaryDir dir; FixtureNetwork network;
+    auto releases = QJsonDocument::fromJson(metadata()).array();
+    auto release = releases.first().toObject(); auto assets = release.value("assets").toArray(); auto asset = assets.first().toObject();
+    asset["size"] = 8;
+    asset["digest"] = "sha256:" + QString::fromLatin1(QCryptographicHash::hash("abcdefgh", QCryptographicHash::Sha256).toHex());
+    assets[0] = asset; release["assets"] = assets; releases[0] = release;
+    network.responses = {{QJsonDocument(releases).toJson()},
+      {"a", 200, {}, false, {{"ETag", "\"asset\""}}, QNetworkReply::RemoteHostClosedError},
+      {"b", 206, {}, false, {{"ETag", "\"asset\""}, {"Content-Range", "bytes 1-7/8"}}, QNetworkReply::RemoteHostClosedError},
+      {"c", 206, {}, false, {{"ETag", "\"asset\""}, {"Content-Range", "bytes 2-7/8"}}, QNetworkReply::RemoteHostClosedError},
+      {"d", 206, {}, false, {{"ETag", "\"asset\""}, {"Content-Range", "bytes 3-7/8"}}, QNetworkReply::RemoteHostClosedError},
+      {"e", 206, {}, false, {{"ETag", "\"asset\""}, {"Content-Range", "bytes 4-7/8"}}, QNetworkReply::RemoteHostClosedError},
+      {"f", 206, {}, false, {{"ETag", "\"asset\""}, {"Content-Range", "bytes 5-7/8"}}, QNetworkReply::RemoteHostClosedError},
+      {"g", 206, {}, false, {{"ETag", "\"asset\""}, {"Content-Range", "bytes 6-7/8"}}, QNetworkReply::RemoteHostClosedError},
+      {"h", 206, {}, false, {{"ETag", "\"asset\""}, {"Content-Range", "bytes 7-7/8"}}}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available"); updater.download();
+    QTRY_VERIFY_WITH_TIMEOUT(updater.state().value("status") == "ready" || updater.state().value("status") == "error", 30000);
+    QCOMPARE(updater.state().value("status").toString(), "ready");
+    QCOMPARE(network.requests.size(), 9);
+    QCOMPARE(network.requestDetails.last().rawHeader("Range"), QByteArray("bytes=7-"));
+    QCOMPARE(updater.state().value("received").toLongLong(), 8);
+  }
+  void synchronousPauseDoesNotStartAnOrphanRequest()
+  {
+    QTemporaryDir dir; FixtureNetwork network; network.responses = {{metadata()}, {"abc"}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
+    connect(&updater, &AppUpdater::changed, &updater, [&](const QVariantMap& state) {
+      if (state.value("status") == "downloading") updater.cancel();
+    });
+    updater.download(); QCOMPARE(network.requests.size(), 1);
+    QCOMPARE(updater.state().value("status").toString(), "available");
+  }
+  void completedPackageCanBeReusedWhileFirstInstanceIsOpen()
+  {
+    QTemporaryDir dir; FixtureNetwork firstNetwork, secondNetwork;
+    firstNetwork.responses = {{metadata()}, {"abc"}}; secondNetwork.responses = {{metadata()}};
+    AppUpdater first("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("a.json"), &firstNetwork, {});
+    AppUpdater second("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("b.json"), &secondNetwork, {});
+    first.check(true, true); QTRY_COMPARE(first.state().value("status").toString(), "available"); first.download();
+    QTRY_COMPARE(first.state().value("status").toString(), "ready");
+    second.check(true, true); QTRY_COMPARE(second.state().value("status").toString(), "available"); second.download();
+    QCOMPARE(second.state().value("status").toString(), "ready"); QCOMPARE(secondNetwork.requests.size(), 1);
+  }
+  void retryBudgetStopsAfterConsecutiveAttemptsWithoutProgress()
+  {
+    QTemporaryDir dir; FixtureNetwork network;
+    network.responses = {{metadata()}, {{}, 503}, {{}, 503}, {{}, 503}, {{}, 503}, {{}, 503}, {{}, 503}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available"); updater.download();
+    QTRY_COMPARE_WITH_TIMEOUT(updater.state().value("status").toString(), "error", 80000);
+    QCOMPARE(network.requests.size(), 7); QCOMPARE(updater.state().value("retryAttempt").toInt(), 5);
+    QVERIFY(!updater.state().value("installAfterDownload").toBool());
+  }
+  void cacheLockPreventsConcurrentWriters()
+  {
+    QTemporaryDir dir;
+    FixtureNetwork firstNetwork, secondNetwork;
+    firstNetwork.responses = {{metadata()}, {"a", 200, {}, true, {{"ETag", "\"asset\""}}}};
+    secondNetwork.responses = {{metadata()}};
+    AppUpdater first("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("locked"), dir.filePath("a.json"), &firstNetwork, {});
+    AppUpdater second("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("locked"), dir.filePath("b.json"), &secondNetwork, {});
+    first.check(true, true); QTRY_COMPARE(first.state().value("status").toString(), "available"); first.download();
+    second.check(true, true); QTRY_COMPARE(second.state().value("status").toString(), "available"); second.download();
+    QCOMPARE(second.state().value("status").toString(), "error");
+    QCOMPARE(secondNetwork.requests.size(), 1);
+    first.cancel();
+  }
+  void verifiedCachedPackageSurvivesRestartWithoutRedownload()
+  {
+    QTemporaryDir dir; FixtureNetwork network; network.responses = {{metadata()}, {"abc"}};
+    {
+      AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+      updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
+      updater.download(); QTRY_COMPARE(updater.state().value("status").toString(), "ready");
+    }
+    network.responses = {{metadata()}};
+    AppUpdater restarted("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    restarted.check(true, true); QTRY_COMPARE(restarted.state().value("status").toString(), "available");
+    restarted.download(); QCOMPARE(restarted.state().value("status").toString(), "ready");
+    QCOMPARE(network.requests.size(), 3);
+  }
+  void interruptedTransferResumesExactRangeAndVerifies()
+  {
+    QTemporaryDir dir; FixtureNetwork network;
+    network.responses = {{metadata()}, {"a", 200, {}, false, {{"ETag", "\"asset-v1\""}, {"Content-Length", "3"}}, QNetworkReply::RemoteHostClosedError},
+      {"bc", 206, {}, false, {{"ETag", "\"asset-v1\""}, {"Content-Range", "bytes 1-2/3"}, {"Content-Length", "2"}}}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
+    updater.download(); QTRY_COMPARE_WITH_TIMEOUT(updater.state().value("status").toString(), "ready", 5000);
+    QCOMPARE(network.requestDetails.size(), 3);
+    QCOMPARE(network.requestDetails.last().rawHeader("Range"), QByteArray("bytes=1-"));
+    QCOMPARE(network.requestDetails.last().rawHeader("If-Range"), QByteArray("\"asset-v1\""));
+    QCOMPARE(updater.state().value("received").toLongLong(), 3);
+  }
+  void restartKeepsPartialAndIgnoredRangeRestartsSafely()
+  {
+    QTemporaryDir dir; FixtureNetwork network;
+    network.responses = {{metadata()}, {"a", 200, {}, true, {{"ETag", "\"asset-v1\""}, {"Content-Length", "3"}}}};
+    {
+      AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+      updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
+      updater.download(); FixtureReply *reply = nullptr;
+      // The metadata reply is deleteLater'd before QTRY returns; locate the pending package reply.
+      for (auto *item : network.findChildren<QNetworkReply*>()) if (!item->isFinished()) reply = static_cast<FixtureReply*>(item);
+      QVERIFY(reply); emit reply->readyRead();
+      QCOMPARE(updater.state().value("received").toLongLong(), 1);
+      updater.cancel(); QCOMPARE(updater.state().value("received").toLongLong(), 1);
+    }
+    network.responses = {{metadata()}, {"abc", 200, {}, false, {{"ETag", "\"asset-v2\""}, {"Content-Length", "3"}}}};
+    AppUpdater restarted("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    restarted.check(true, true); QTRY_COMPARE(restarted.state().value("status").toString(), "available");
+    QCOMPARE(restarted.state().value("received").toLongLong(), 1);
+    restarted.download(); QTRY_COMPARE(restarted.state().value("status").toString(), "ready");
+    QCOMPARE(network.requestDetails.last().rawHeader("Range"), QByteArray("bytes=1-"));
+    QCOMPARE(restarted.state().value("received").toLongLong(), 3);
+  }
+  void invalidRangeNeverAppendsAndCancellationStopsRetry()
+  {
+    QTemporaryDir dir; FixtureNetwork network;
+    network.responses = {{metadata()}, {"a", 200, {}, false, {{"ETag", "\"asset-v1\""}}, QNetworkReply::RemoteHostClosedError},
+      {"bc", 206, {}, false, {{"ETag", "\"asset-v1\""}, {"Content-Range", "bytes 0-1/3"}}}, {"abc"}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available"); updater.download();
+    QTRY_COMPARE_WITH_TIMEOUT(updater.state().value("status").toString(), "ready", 5000);
+    QCOMPARE(network.requestDetails.size(), 4);
+    QVERIFY(network.requestDetails.last().rawHeader("Range").isEmpty());
+    network.responses = {{metadata()}, {"a", 200, {}, false, {{"ETag", "\"asset-v1\""}}, QNetworkReply::RemoteHostClosedError}};
+    AppUpdater other("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("other"), dir.filePath("other-skip.json"), &network, {});
+    other.check(true, true); QTRY_COMPARE(other.state().value("status").toString(), "available"); other.download();
+    QTRY_VERIFY(other.state().value("retrying").toBool());
+    other.cancel(); const auto count = network.requests.size();
+    QTest::qWait(1200); QCOMPARE(network.requests.size(), count);
+    QCOMPARE(other.state().value("received").toLongLong(), 1);
+    QVERIFY(!other.state().value("installAfterDownload").toBool());
+  }
   void automaticCheckRunsOnceAndManualBypassesDisabled()
   {
     QTemporaryDir dir; FixtureNetwork network; network.responses = {{metadata()}};
