@@ -377,13 +377,51 @@ function cases.explicit_off_is_preserved()
     assert(#s.requests == 0 and not s.env.ENABLED, 'Explicitly disabled danmaku must not issue requests')
     assert(s.history().show_danmaku == false, 'Explicitly disabled preference must survive loading')
 end
-function cases.premiere_date_resolves_remake_and_split_episode_numbers()
+function cases.conflicting_premiere_date_cannot_replace_the_requested_episode()
+    for _, date in ipairs({'2026-10-15T00:00:00.0000000Z', '', 'invalid', '1989-04-15'}) do
+        local s = sandbox(true)
+        s.props['user-data/tigerest/emby/series-name'] = '转生成为魔剑了'
+        s.props['user-data/tigerest/emby/season-number'] = 2
+        s.props['user-data/tigerest/emby/episode-number'] = 2
+        s.props['user-data/tigerest/emby/episode-name'] = '让·杜比很优秀'
+        s.props['user-data/tigerest/emby/premiere-date'] = date
+        s.emit('file-loaded')
+        assert(s.request_args[1] and s.request_args[1][#s.request_args[1]]:find('/search/anime?', 1, true),
+            'Streams without a real hash must query the catalog regardless of their premiere date')
+        s.respond(1, {animes = {
+            {type = 'tvseries', animeTitle = '转生成为魔剑', bangumiId = '16785'},
+            {type = 'tvseries', animeTitle = '转生成为魔剑 第二期', bangumiId = '17789'},
+        }})
+        for request = 2, 3 do
+            local url = s.request_args[request] and s.request_args[request][#s.request_args[request]] or ''
+            if url:find('/bangumi/17789', 1, true) then
+                s.respond(request, {bangumi = {episodes = {
+                    {episodeId = 177890003, episodeNumber = '3', episodeTitle = '第3话 不死族很耐打', airDate = '2026-10-15T00:00:00'},
+                    {episodeId = 177890002, episodeNumber = '2', episodeTitle = '第2话 让·杜比很优秀', airDate = '2026-10-08T00:00:00'},
+                }}})
+            else
+                assert(url:find('/bangumi/16785', 1, true), 'Both real season catalogs must be checked')
+                s.respond(request, {bangumi = {episodes = {
+                    {episodeId = 167850002, episodeNumber = '2', episodeTitle = '第2话 去了冒险者公会后遇见可怕考官', airDate = '2022-10-05T00:00:00'},
+                }}})
+            end
+        end
+        assert(s.request_args[4] and s.request_args[4][#s.request_args[4]]:find('/comment/177890002?', 1, true),
+            'S02E02 must load episode 177890002 regardless of its Emby date: ' .. date)
+        s.respond(4, {count = 1, comments = {{p = '10,1,16777215', m = 'Second episode'}}})
+        assert(s.props['user-data/uosc_danmaku/has-danmaku'], 'The correct episode must reach comment rendering')
+    end
+end
+
+function cases.cumulative_episode_numbers_require_explicit_mapping()
     local s = sandbox(true)
     s.set_history({show_danmaku = true})
     s.props['user-data/tigerest/emby/series-name'] = '乱马½'
     s.props['user-data/tigerest/emby/episode-number'] = 25
     s.props['user-data/tigerest/emby/episode-name'] = '修行与大餐'
     s.props['user-data/tigerest/emby/premiere-date'] = '2026-10-04T00:00:00.0000000Z'
+    local notice
+    s.env.show_message = function(message) notice = message end
     s.emit('file-loaded')
     s.respond(1, {animes = {
         {type = 'tvseries', animeTitle = '乱马1/2', bangumiId = '4576'},
@@ -393,16 +431,14 @@ function cases.premiere_date_resolves_remake_and_split_episode_numbers()
         {episodeNumber = '1', episodeTitle = '第1话 从中国来的那个家伙', episodeId = 45760001, airDate = '1989-04-15T00:00:00'},
     }}})
     assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/bangumi/19972', 1, true),
-        'A title candidate without the matching broadcast date must not end matching')
+        'A release without E25 must not end the search for the requested number')
     s.respond(3, {bangumi = {episodes = {
         {episodeNumber = '1', episodeTitle = '第1话 修行DEディナー', episodeId = 199720001, airDate = '2026-10-04T00:00:00'},
     }}})
-    assert(s.request_args[4] and s.request_args[4][#s.request_args[4]]:find('/comment/199720001?', 1, true),
-        'The episode air date must resolve cumulative Emby E25 to the matching release E1')
-    s.respond(4, {count = 1, comments = {{p = '10,1,16777215', m = 'Correct release'}}})
-    assert(s.props['user-data/uosc_danmaku/has-danmaku'], 'Resolved release must automatically render')
+    assert(#s.requests == 3, 'A matching date cannot remap cumulative Emby E25 to release E1')
+    assert(notice and notice:find('手动匹配', 1, true), 'Missing cumulative numbers must offer manual matching')
 end
-function cases.unmatched_episode_is_visible_and_does_not_load_wrong_remake()
+function cases.missing_episode_is_visible_without_loading_a_different_number()
     local s = sandbox(true)
     s.set_history({show_danmaku = true})
     s.props['user-data/tigerest/emby/premiere-date'] = '2026-10-04T00:00:00Z'
@@ -411,13 +447,13 @@ function cases.unmatched_episode_is_visible_and_does_not_load_wrong_remake()
     s.emit('file-loaded')
     s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
     s.respond(2, {bangumi = {episodes = {
-        {episodeNumber = '3', episodeTitle = 'Wrong release', episodeId = 420003, airDate = '1989-04-15T00:00:00'},
+        {episodeNumber = '4', episodeTitle = 'Other episode', episodeId = 420004, airDate = '2026-10-04T00:00:00'},
     }}})
     s.advance(1)
-    assert(#s.requests == 2, 'A conflicting air date must not fetch the same-numbered wrong episode')
+    assert(#s.requests == 2, 'An exact date cannot substitute E4 for the missing E3')
     assert(notice and notice ~= '', 'Unmatched episodes must report a visible result instead of silently stopping')
 end
-function cases.nearby_dates_match_a_corroborated_episode_within_one_week()
+function cases.date_boundaries_do_not_change_the_requested_episode()
     for _, dates in ipairs({
         {'2026-07-20', '2026-07-17'}, -- The reported production failure.
         {'2026-08-03', '2026-07-27'}, -- Seven days, crossing a month.
@@ -437,7 +473,7 @@ function cases.nearby_dates_match_a_corroborated_episode_within_one_week()
             {episodeNumber = '3', episodeTitle = '第3话 被怀疑是私生子 还要陪她去初次冒险', episodeId = 420003, airDate = dates[2]},
         }}})
         assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
-            'A corroborated E3 within seven days must load E3 instead of the nearby E4: ' .. dates[1])
+            'The requested E3 must load instead of E4 regardless of date boundaries: ' .. dates[1])
         s.respond(3, {count = 1, comments = {{p = '10,1,16777215', m = 'Matched without manual search'}}})
         assert(s.props['user-data/uosc_danmaku/has-danmaku'], 'The first automatic match must render its comments')
     end
@@ -482,7 +518,7 @@ function cases.credit_tracks_do_not_change_deterministic_regular_episode_ranking
         'Equal regular candidates use a stable identity tie-break without selecting the credit track')
 end
 
-function cases.nearby_dates_decline_out_of_range_or_unconfirmed_episodes()
+function cases.distant_dates_do_not_veto_the_correct_episode_number()
     for _, record in ipairs({
         {date = '2026-07-12', number = '3', title = 'Confirmed episode'}, -- Eight days before.
         {date = '2026-07-28', number = '3', title = 'Confirmed episode'}, -- Eight days after.
@@ -499,11 +535,16 @@ function cases.nearby_dates_decline_out_of_range_or_unconfirmed_episodes()
         s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
         s.respond(2, {bangumi = {episodes = {{episodeNumber = record.number,
             episodeTitle = '第' .. record.number .. '话 ' .. record.title, episodeId = 420003, airDate = record.date}}}})
-        assert(#s.requests == 2, 'An unconfirmed or out-of-range episode must not be loaded: ' .. record.date)
-        assert(notice and notice ~= '', 'Declined matching must keep the manual search hint')
+        if record.number == '3' then
+            assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
+                'A distant date must not veto the requested E3: ' .. record.date)
+        else
+            assert(#s.requests == 2, 'Date or title similarity cannot substitute the wrong episode number')
+            assert(notice and notice ~= '', 'A missing episode number must keep the manual search hint')
+        end
     end
 end
-function cases.generic_episode_titles_match_unique_series_number_and_week()
+function cases.generic_episode_titles_match_the_regular_number_despite_dates()
     for _, expected in ipairs({'', '第8集', '第 8 集', '第8话'}) do
         for _, date in ipairs({'2026-08-21', '2026-08-16', '2026-08-30'}) do
             local s = sandbox(true)
@@ -519,7 +560,7 @@ function cases.generic_episode_titles_match_unique_series_number_and_week()
                 {episodeNumber = '8', episodeTitle = '第8话 时隔十年 小队重聚', episodeId = 196350008, airDate = date},
             }}})
             assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/196350008?', 1, true),
-                'A unique E8 within seven days must load even without a real episode title: ' .. expected .. ' / ' .. date)
+                'The requested E8 must load even without a real episode title: ' .. expected .. ' / ' .. date)
             s.respond(3, {count = 1, comments = {{p = '10,1,16777215', m = 'E8 automatically loaded'}}})
             assert(s.props['user-data/uosc_danmaku/has-danmaku'], 'Generic-title matching must render on the first attempt')
         end
@@ -559,7 +600,7 @@ function cases.regular_episode_ranking_is_independent_of_response_order()
     end
 end
 
-function cases.generic_episode_titles_still_require_correct_number_and_week()
+function cases.generic_episode_titles_require_the_number_without_a_date_limit()
     for _, record in ipairs({
         {date = '2026-07-12', number = '3'}, {date = '2026-07-28', number = '3'},
         {date = '2026-07-17', number = '4'},
@@ -571,7 +612,12 @@ function cases.generic_episode_titles_still_require_correct_number_and_week()
         s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
         s.respond(2, {bangumi = {episodes = {{episodeNumber = record.number,
             episodeTitle = 'Actual story title', episodeId = 420003, airDate = record.date}}}})
-        assert(#s.requests == 2, 'Missing episode text cannot bypass the number or date boundary')
+        if record.number == '3' then
+            assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
+                'Generic episode text must allow the correct number regardless of its date')
+        else
+            assert(#s.requests == 2, 'Generic episode text cannot bypass the requested number')
+        end
     end
 end
 function cases.generic_episode_titles_rank_searchable_series_without_a_uniqueness_veto()
@@ -635,7 +681,7 @@ function cases.generic_episode_titles_keep_a_valid_candidate_when_other_results_
         assert(#s.requests == 2 and notice and notice ~= '', 'Malformed provider titles must finish with a manual hint')
     end
 end
-function cases.exact_dates_take_priority_over_a_nearby_release()
+function cases.exact_dates_cannot_outweigh_a_stronger_work_title()
     local s = sandbox(true)
     s.set_history({show_danmaku = true})
     s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
@@ -648,11 +694,11 @@ function cases.exact_dates_take_priority_over_a_nearby_release()
     s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
         episodeId = 420003, airDate = '2026-07-17'}}}})
     assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/bangumi/43', 1, true),
-        'Nearby dates must wait for other candidates to be checked for an exact date')
+        'Regular candidates must wait for the other release to be ranked')
     s.respond(3, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = '第3话 Confirmed episode',
         episodeId = 430003, airDate = '2026-07-20'}}}})
-    assert(s.request_args[4] and s.request_args[4][#s.request_args[4]]:find('/comment/430003?', 1, true),
-        'An exact date must win even when a nearby candidate arrived first')
+    assert(s.request_args[4] and s.request_args[4][#s.request_args[4]]:find('/comment/420003?', 1, true),
+        'The exact work title must win even when the weaker release has an exact date')
 end
 function cases.nearby_date_ambiguity_across_releases_prefers_the_stronger_work_title()
     local s = sandbox(true)
@@ -676,21 +722,25 @@ function cases.nearby_date_ambiguity_across_releases_prefers_the_stronger_work_t
     assert(notice and notice:find('Fixture series', 1, true) and notice:find('Confirmed episode', 1, true)
         and notice:find('手动纠正', 1, true), 'The selected work, episode and correction hint must appear on OSD')
 end
-function cases.nearby_date_ambiguity_within_one_release_prefers_the_closer_date()
-    local s = sandbox(true)
-    s.set_history({show_danmaku = true})
-    s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
-    s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
-    s.emit('file-loaded')
-    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
-    s.respond(2, {bangumi = {episodes = {
-        {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420003, airDate = '2026-07-17'},
-        {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420033, airDate = '2026-07-18'},
-    }}})
-    assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420033?', 1, true),
-        'Equal work/episode text should use the closer date rather than response order')
+function cases.equal_titles_use_stable_identity_instead_of_date_distance()
+    for _, reversed in ipairs({false, true}) do
+        local s = sandbox(true)
+        s.set_history({show_danmaku = true})
+        s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
+        s.props['user-data/tigerest/emby/episode-name'] = 'Confirmed episode'
+        s.emit('file-loaded')
+        s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+        local episodes = {
+            {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420003, airDate = '2026-07-17'},
+            {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420033, airDate = '2026-07-18'},
+        }
+        if reversed then episodes[1], episodes[2] = episodes[2], episodes[1] end
+        s.respond(2, {bangumi = {episodes = episodes}})
+        assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
+            'Equal text must use stable identity regardless of date distance and response order')
+    end
 end
-function cases.ambiguous_exact_dates_choose_a_stable_regular_match_before_nearby_dates()
+function cases.mixed_dates_choose_a_stable_regular_match()
     local s = sandbox(true)
     s.set_history({show_danmaku = true})
     s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
@@ -703,9 +753,9 @@ function cases.ambiguous_exact_dates_choose_a_stable_regular_match_before_nearby
         {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420333, airDate = '2026-07-17'},
     }}})
     assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
-        'Exact regular matches use a stable identity tie-break and retain priority over nearby dates')
+        'Equal regular matches use a stable identity tie-break regardless of their dates')
 end
-function cases.ambiguous_exact_regular_release_loads_without_querying_a_weaker_release()
+function cases.strong_regular_candidates_survive_an_unavailable_weaker_release()
     local s = sandbox(true)
     s.set_history({show_danmaku = true})
     s.props['user-data/tigerest/emby/premiere-date'] = '2026-07-20T00:00:00Z'
@@ -719,8 +769,11 @@ function cases.ambiguous_exact_regular_release_loads_without_querying_a_weaker_r
         {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420003, airDate = '2026-07-20'},
         {episodeNumber = '3', episodeTitle = '第3话 Confirmed episode', episodeId = 420033, airDate = '2026-07-20'},
     }}})
-    assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
-        'A supported exact-date result should load without a weaker release veto')
+    assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/bangumi/43', 1, true),
+        'Available releases must be checked before selecting the regular episode')
+    s.respond(3, {})
+    assert(s.request_args[4] and s.request_args[4][#s.request_args[4]]:find('/comment/420003?', 1, true),
+        'An unavailable weaker release cannot veto the supported regular episode')
 end
 function cases.incomplete_release_details_do_not_veto_a_supported_nearby_match()
     for _, failed in ipairs({true, false}) do
@@ -897,7 +950,7 @@ function cases.batch_release_uses_episode_number_when_titles_are_translated()
     assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
         'Several episodes sharing an air date must resolve to Emby E3, not the first episode returned')
 end
-function cases.batch_release_prefers_exact_episode_title_for_remapped_number()
+function cases.episode_title_cannot_remap_the_requested_number()
     local s = sandbox(true)
     s.set_history({show_danmaku = true})
     s.props['user-data/tigerest/emby/premiere-date'] = '2026-10-04T00:00:00Z'
@@ -908,8 +961,8 @@ function cases.batch_release_prefers_exact_episode_title_for_remapped_number()
         {episodeNumber = '3', episodeTitle = '第3话 另一集', episodeId = 420003, airDate = '2026-10-04T00:00:00'},
         {episodeNumber = '1', episodeTitle = '第1话 修行与大餐', episodeId = 420001, airDate = '2026-10-04T00:00:00'},
     }}})
-    assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420001?', 1, true),
-        'An exact normalized episode title must identify a remapped episode before relying on its number')
+    assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/420003?', 1, true),
+        'An exact title on E1 cannot override the requested E3')
 end
 function cases.batch_release_without_title_or_number_confirmation_declines()
     local s = sandbox(true)
@@ -955,7 +1008,7 @@ function cases.dated_episode_does_not_offset_ids_across_release_seasons()
     assert(s.request_args[1] and s.request_args[1][#s.request_args[1]]:find('/search/anime?', 1, true),
         'A new dated episode must resolve its release instead of adding an offset to a prior season ID')
 end
-function cases.dated_stream_without_hash_does_not_trust_filename_match()
+function cases.stream_without_hash_does_not_trust_filename_match()
     local s = sandbox(true)
     s.set_history({show_danmaku = true})
     s.env.MD5 = {sum = function() end}
@@ -963,7 +1016,7 @@ function cases.dated_stream_without_hash_does_not_trust_filename_match()
     s.emit('file-loaded')
     s.respond(1, {}) -- The stream range request did not produce a hashable file.
     assert(s.request_args[2] and s.request_args[2][#s.request_args[2]]:find('/search/anime?', 1, true),
-        'A dated stream without a real content hash must validate release dates instead of trusting ambiguous filenames')
+        'A stream without a real content hash must validate the catalog number instead of trusting ambiguous filenames')
 end
 function cases.relay_history_keeps_source_preferences()
     local s = sandbox()
