@@ -1,13 +1,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 function setup(){
  const file=__dirname+'/../native/homeMotion.js';assert.ok(fs.existsSync(file),'shared home motion navigation exists');
- const calls=[],state={params:{},contextPath:'/home'},account={user:'one',server:'server'};
- const router={showItem:async item=>{calls.push(['item',item.Id]);state.params={id:item.Id};state.contextPath='/item?id='+item.Id;},back:()=>calls.push(['back']),goHome:()=>calls.push(['home']),getRouteUrl:item=>'/library?id='+item.Id+'&serverId='+item.ServerId};
- const pageJs={replace:async path=>{calls.push(['replace',path]);state.params={};state.contextPath=path;}};
+ const calls=[],history=['/home'],state={params:{},contextPath:'/home'},account={user:'one',server:'server'};
+ const pop=name=>{calls.push([name]);if(history.length>1)history.pop();state.contextPath=history.at(-1);state.params={};};
+ const router={showItem:async item=>{calls.push(['item',item.Id]);state.params={id:item.Id};state.contextPath='/item?id='+item.Id;history.push(state.contextPath);},back:()=>pop('back'),goHome:()=>{calls.push(['home']);history.push('/home');state.contextPath='/home';},getRouteUrl:item=>'/library?id='+item.Id+'&serverId='+item.ServerId};
+ const pageJs={replace:async path=>{calls.push(['replace',path]);state.params={};state.contextPath=path;history[history.length-1]=path;},back:()=>pop('pageback')};
  const manager={currentApiClient:()=>({getCurrentUserId:()=>account.user,serverId:()=>account.server})};
  const c={console,Date,Promise,URL,URLSearchParams,setTimeout,clearTimeout,AbortController,location:{hash:'#/home'},document:{addEventListener(){},removeEventListener(){}}};c.window=c;
  vm.runInNewContext(fs.readFileSync(file,'utf8'),c);const motion=c.TigerestHomeMotion,originalHome=router.goHome,dispose=motion.attach({router,pageJs,manager,viewManager:{currentViewInfo:()=>state}});
- return {motion,router,pageJs,account,state,calls,dispose,c,originalHome};
+ return {motion,router,pageJs,account,state,calls,dispose,c,originalHome,history};
 }
 const library={Id:'library',Type:'CollectionFolder',CollectionType:'movies'},card={item:{Id:'work',Type:'Movie'}};
 test('a work opened from home returns by replacing detail with its library, then normal home history',async()=>{
@@ -16,7 +17,16 @@ test('a work opened from home returns by replacing detail with its library, then
  await s.router.back();assert.deepEqual(s.calls.at(-1),['back']);assert.equal(s.motion.entry,null);
 });
 test('favorites return through the valid original favorites URL',async()=>{
- const s=setup();await s.motion.openItem({card,library:{Id:'tigerest-favorites',kind:'favorites'},navigate:()=>s.router.showItem(card.item)});await s.router.back();assert.deepEqual(s.calls.at(-1),['replace','/home?tab=favorites']);await s.router.back();assert.deepEqual(s.calls.at(-1),['home']);
+ const s=setup();await s.motion.openItem({card,library:{Id:'tigerest-favorites',kind:'favorites'},navigate:()=>s.router.showItem(card.item)});await s.router.back();assert.deepEqual(s.calls.at(-1),['replace','/home?tab=favorites']);await s.router.back();assert.deepEqual(s.calls.at(-1),['pageback']);assert.deepEqual(s.history,['/home']);
+});
+test('direct Favorites tab return replaces the tab entry instead of pushing another home',async()=>{
+ const s=setup();await s.motion.openLibrary({library:{Id:'favorites',kind:'favorites'},navigate:()=>s.pageJs.replace('/home?tab=favorites')});
+ await s.router.back();assert.deepEqual(s.calls.at(-1),['replace','/home']);assert.deepEqual(s.history,['/home']);
+});
+test('reset during an outstanding library effect cannot restore a new-account return context',async()=>{
+ const s=setup();let release;s.c.TigerestHomeTransitions={library:()=>new Promise(r=>release=r),cancel(){}};
+ const pending=s.motion.openLibrary({library,navigate:()=>{}});s.motion.reset();s.account.user='two';s.state.contextPath='/library';release();await pending;
+ assert.equal(s.motion.handleNativeBack(),false);
 });
 test('return context is invalid after account switching or when a different detail is active',async()=>{
  const s=setup();await s.motion.openItem({card,library,navigate:()=>s.router.showItem(card.item)});s.account.user='two';await s.router.back();assert.deepEqual(s.calls.at(-1),['back']);

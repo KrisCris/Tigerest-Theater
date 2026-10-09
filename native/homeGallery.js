@@ -203,7 +203,11 @@
         heading.append(this.railTitle, this.more, this.counter); this.coverList = element('div', 'tg-cover-list'); this.coverList.setAttribute('aria-label', '首页作品');
         this.rail.append(heading, this.coverList); this.root.append(this.scenery, this.nav, this.stage, this.rail); host.append(this.root);
         const listen = (node, event, fn) => { node.addEventListener(event, fn); this.listeners.push(() => node.removeEventListener(event, fn)); };
-        listen(this.root, 'pointerdown', event => { this.touchPress = event.pointerType === 'touch' ? {node: event.target.closest('.tg-library,.tg-cover'), at: event.timeStamp} : null; });
+        listen(this.root, 'pointerdown', event => {
+            const node = event.target.closest('.tg-library,.tg-cover');
+            this.touchPress = event.pointerType === 'touch' ? {node, at: event.timeStamp,
+                selected: node?.matches('.tg-library') ? node.dataset.libraryId === this.selectedLibrary?.Id : Number(node?.dataset.index) === this.index} : null;
+        });
         listen(this.more, 'click', () => this.openLibrary(this.selectedLibrary));
         listen(this.libraryList, 'pointerover', event => {
             if (event.pointerType === 'touch') return;
@@ -214,13 +218,15 @@
         listen(this.libraryList, 'click', event => {
             const button = event.target.closest('.tg-library'); if (!button || !this.valid()) return;
             const library = this.libraries.find(item => item.Id === button.dataset.libraryId);
-            if (this.isTouchClick(event, button) && this.touchLibrary !== library.Id) { this.preview(library.Id); this.touchLibrary = library.Id; return; }
+            const selected = this.touchPress?.node === button ? this.touchPress.selected : library.Id === this.selectedLibrary?.Id;
+            if (this.isTouchClick(event, button) && !selected) { this.preview(library.Id); return; }
             this.openLibrary(library);
         });
         listen(this.hero, 'click', () => this.open(this.cards?.[this.index]));
         listen(this.coverList, 'click', event => {
             const button = event.target.closest('.tg-cover'); if (!button || !this.valid()) return;
-            if (this.isTouchClick(event, button) && this.touchCard !== button.dataset.itemId) { this.touchCard = button.dataset.itemId; this.select(Number(button.dataset.index), false); return; }
+            const selected = this.touchPress?.node === button ? this.touchPress.selected : Number(button.dataset.index) === this.index;
+            if (this.isTouchClick(event, button) && !selected) { this.select(Number(button.dataset.index), false); return; }
             this.open(this.cards.find(card => card.item.Id === button.dataset.itemId), button.querySelector('img'));
         });
         listen(this.coverList, 'pointerover', event => {
@@ -338,7 +344,8 @@
         ], { duration: index === 1 ? 760 : 620, delay: 160 + index * 140, fill: 'both' }));
     };
     Gallery.prototype.clear = function () {
-        this.touchLibrary = this.touchCard = this.touchPress = null;
+        // Touch focus can preview another library before its click arrives.
+        // Preserve the pointerdown selection snapshot through that preview.
         this.cancelText();
         ++this.selection; this.root.classList.remove('tg-ready'); this.hero.disabled = true;
         this.cards = []; this.index = 0; this.heroImages.replaceChildren(); this.title.textContent = ''; this.subtitle.textContent = '';
@@ -429,6 +436,7 @@
     };
     Gallery.prototype.scrollToBeginning = function () { this.host.scrollTop = 0; this.libraryList.scrollTop = 0; this.libraryList.scrollLeft = 0; this.coverList.scrollLeft = 0; };
     Gallery.prototype.stop = function () {
+        this.touchPress = null;
         this.active = false; ++this.generation; this.abort?.abort(); this.requestAbort?.abort();
         document.body.classList.remove('tg-home-active');
         this.animations.forEach(animation => animation.cancel()); this.animations = [];

@@ -39,7 +39,7 @@
         const favoriteCards = favorites ? await this.loadOrdered(library, signal, 'recent', Infinity) : null;
         const allowed = favoriteCards && new Set(favoriteCards.map(card => card.item.Id));
         const query = {Recursive: true, SortBy: 'DatePlayed,SortName', SortOrder: 'Descending', Limit: 100,
-            Fields: 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating',
+            Fields: 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating,PresentationUniqueKey',
             EnableUserData: true, EnableImageTypes: 'Primary,Backdrop,Thumb', ImageTypeLimit: 1};
         if (!favorites) query.ParentId = library.Id;
         const hasResumeEndpoint = typeof api.getResumableItems === 'function';
@@ -88,7 +88,7 @@
             musicvideos: 'MusicVideo', games: 'Game', playlists: 'Playlist', photos: 'Photo,PhotoAlbum' };
         const query = {
             Recursive: true, SortBy: (order === 'release' ? 'PremiereDate' : order === 'rating' ? 'CommunityRating' : 'DateCreated') + ',SortName', SortOrder: 'Descending', Limit: 100,
-            Fields: 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating',
+            Fields: 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating,PresentationUniqueKey',
             EnableImageTypes: 'Primary,Backdrop,Thumb', ImageTypeLimit: 1,
             IncludeItemTypes: favorites ? 'Series,Movie,Episode,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game' : (types[library.CollectionType] || 'Episode,Movie,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game')
         };

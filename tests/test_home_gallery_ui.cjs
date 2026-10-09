@@ -92,6 +92,7 @@ withBrowser(routes,async({evaluate,call})=>{
   // Pin the entrance before its first visible frame. Keyboard navigation must
   // reveal layout content even when a background compositor holds its timeline.
   gallery.animations.forEach(animation=>{animation.pause();animation.currentTime=0;});
+  if (embedded) await window.api?.window.raiseWindow?.();
   const lastLibrary=document.querySelector('[data-library-id="library6"]');lastLibrary.focus({preventScroll:true});
   const libraryFrame=gallery.libraryList.getBoundingClientRect(),focusedLibrary=lastLibrary.getBoundingClientRect();
   check(gallery.libraryList.scrollTop>0||gallery.libraryList.scrollLeft>0,'keyboard focus reveals a library outside the list viewport: '+JSON.stringify({frame:libraryFrame.toJSON(),item:focusedLibrary.toJSON(),scrollTop:gallery.libraryList.scrollTop,scrollLeft:gallery.libraryList.scrollLeft,active:document.activeElement?.dataset.libraryId,animations:gallery.animations.map(a=>a.playState)}));

@@ -81,3 +81,8 @@
 - Task 2: 完成。真实路由上下文/硬件返回测试 8 项，触屏 Gallery 交互 8 项及原 Gallery 多尺寸回归通过。触屏测试先在旧代码复现首击直接跳转，再验证两次点按；原 enter/animateText 保持不变。
 - Task 3 细化：导航上下文留在 homeMotion.js；截图与动画渲染隔离到 homeTransitions.js，便于独立验证失败清理，不改变既定交互与时序。
 - Task 3: Chromium 集成夹具 10 项通过：异步真实路由等待、CSS 背景海报落位、媒体夹返回、错误/resize 释放、缺图降级及减少动态效果；共享 Node 44/44 通过。窗口与 Android 构建进行中，将补充各自引擎验证。
+- Final review: 3 项 Important 均复现并修复：取消期间的旧导航/账户上下文、同页收藏缺少入场、收藏返回追加历史。新增 3 项 Node 用例和 2 项 UI 用例先失败，修复后 Node 46/46、Chromium UI 12 项通过；无遗留 Minor。
+- 真实 Emby 适配：隐藏的侧海报、虚拟列表无 data-id、合并版本 ID 与首页不同、响应布局延迟均已复现；对应 UI 回归先失败再修复。详情主海报、真实列表 API、PresentationUniqueKey 和飞行末段落点重读完成适配。
+- 最新用户调整：当前聚焦作品/媒体夹触屏首击直接进入，切换项才先选择。3 个新增组件断言先失败后通过，Android 真实 touch 首击/双击验证通过。
+- PC 返回重影：真实旧页面和半透明缩小副本同时可见，遮底用例先失败；修复 homeReturn/library 退场层后真实 PC 中间帧确认背景不透明。原 Gallery enter/animateText 关键帧未改。
+- Task 4: Windows 构建部署、8/8 CTest、11 项 QtWebEngine 触屏夹具；Android 111 项单元测试、lint、APK 对齐及转场/触屏夹具通过。真实服务器 Windows 窗口/全屏与 Android 完整路线通过，390px/760px 详情布局无溢出。证据与范围见 docs/verification/2026-10-10-home-motion.md。

@@ -17,15 +17,20 @@ withBrowser(routes,async({evaluate,call})=>{
   const originalTimings=gallery.animations.map(a=>a.effect.getTiming());
   check(originalTimings.some(a=>a.duration===1380)&&originalTimings.some(a=>a.duration===1460&&a.delay===200),'original entrance keyframes are retained');
   const tap=node=>{node.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:'touch'}));node.click();};
+  tap(gallery.libraryList.querySelector('[data-library-id=zero]'));check(opened.at(-1)==='zero','the currently focused library opens on the first touch');opened.length=0;
   const library=gallery.libraryList.querySelector('[data-library-id=one]');tap(library);check(opened.length===0,'first library touch must not route');await wait(()=>gallery.cards[0]?.item.Id==='one-0');
   check(opened.length===0&&gallery.selectedLibrary.Id==='one','first library touch previews without routing');
   tap(library);check(opened.at(-1)==='one','second library touch opens the selected library');
   const count=opened.length,cover=gallery.coverList.children[1];tap(cover);
   check(opened.length===count&&gallery.index===1,'first poster touch selects without routing');
   tap(cover);check(opened.at(-1)==='one-1'&&opened.length===count+1,'second poster touch opens the selected work');
+  gallery.select(0,false);const beforeCurrent=opened.length;tap(gallery.coverList.children[0]);check(opened.length===beforeCurrent+1&&opened.at(-1)==='one-0','an automatically selected poster opens on the first touch');
+  // Native touch focuses the button before click. Previewing that focus must not
+  // accidentally turn the first tap on another library into direct navigation.
+  const nextLibrary=gallery.libraryList.querySelector('[data-library-id=zero]');nextLibrary.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:'touch'}));nextLibrary.focus();const beforeSwitch=opened.length;nextLibrary.click();check(opened.length===beforeSwitch,'first touch on a different library selects despite the preceding focus event');
   await gallery.preview('zero');gallery.more.click();check(opened.at(-1)==='zero','more follows the currently previewed library');
   check(gallery.more.textContent.includes('查看更多')&&!gallery.root.textContent.includes('再点'),'more is available without a second-tap instruction');
   gallery.coverList.children[0].click();check(opened.at(-1)==='zero-0','mouse and keyboard activation remain immediate');
-  gallery.destroy();return {checks:8,navigation:opened};
- }).toString()+')()');assert.equal(result.checks,8);console.log('touch/gallery checks:',JSON.stringify(result));
+  gallery.destroy();return {checks:11,navigation:opened};
+ }).toString()+')()');assert.equal(result.checks,11);console.log('touch/gallery checks:',JSON.stringify(result));
 },{gpu:true,visible:true}).catch(error=>{console.error(error);process.exitCode=1;});
