@@ -15,6 +15,8 @@ withBrowser(routes,async({evaluate,call})=>{
   const check=(value,message)=>{if(!value)throw Error(message);};
   const wait=async(fn)=>{for(let i=0;i<400;i++){if(fn())return;await new Promise(r=>setTimeout(r,10));}throw Error('condition timeout: '+JSON.stringify({visibility:document.visibilityState,animations:window.gallery?.animations.map(a=>({state:a.playState,time:a.currentTime}))}));};
   check(window.TigerestHomeGallery,'rebuilt gallery is available');
+  // This fixture verifies the Gallery in isolation; actual navigation has its own fixture.
+  window.TigerestHomeMotion=null;
   const opened=[],requests=[];let heldResolve,currentUser='one';
   const api={serverId:()=> 'fixture-server',serverAddress:()=>location.origin,getCurrentUserId:()=>currentUser,
    getUserViews:async()=>({Items:Array.from({length:7},(_,i)=>({Id:'library'+i,Name:'我的媒体库 '+(i+1),CollectionType:i===0?'tvshows':'movies'}))}),

@@ -1037,6 +1037,8 @@ QString SystemComponent::getNativeShellScript()
     ":/web-client/extension/offline.js",
     ":/web-client/extension/homeData.js",
     ":/web-client/extension/homeGallery.js",
+    ":/web-client/extension/homeTransitions.js",
+    ":/web-client/extension/homeMotion.js",
     ":/web-client/extension/embycompat.js"
   };
 

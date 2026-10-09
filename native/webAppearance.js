@@ -623,7 +623,7 @@ function findTigerestPage(start) {
 function animateTigerestPage(page) {
     if (!page) return;
     page.classList.remove(TIGEREST_PAGE_PENDING_CLASS);
-    if (tigerestMotionPreference.matches
+    if (window.TigerestHomeTransitions?.busy || tigerestMotionPreference.matches
         || Date.now() < tigerestSuppressPageAnimationUntil
         || page.classList.contains(TIGEREST_PAGE_ENTER_CLASS)) return;
 
@@ -645,7 +645,7 @@ function animateTigerestPage(page) {
 
 function scheduleTigerestPageAnimation(page) {
     if (!page) return;
-    if (tigerestMotionPreference.matches
+    if (window.TigerestHomeTransitions?.busy || tigerestMotionPreference.matches
         || Date.now() < tigerestSuppressPageAnimationUntil
         || page.classList.contains(TIGEREST_PAGE_ENTER_CLASS)) {
         page.classList.remove(TIGEREST_PAGE_PENDING_CLASS);
