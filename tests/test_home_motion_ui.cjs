@@ -18,16 +18,21 @@ withBrowser(routes,async({evaluate,call,url})=>{
  await evaluate(`window.fixture={state:{params:{},contextPath:'/home'},show(name){document.querySelectorAll('.page').forEach(p=>p.classList.toggle('hide',p.id!==name));this.state.params=name==='detail'?{id:'work'}:{};this.state.contextPath='/'+name;},async route(name,delay=0){await new Promise(r=>setTimeout(r,delay));this.show(name);}};window.router={showItem:()=>fixture.route('detail'),back:()=>fixture.route('home'),goHome:()=>fixture.route('home'),getRouteUrl:()=>'/library'};TigerestHomeMotion.attach({router,pageJs:{replace:()=>fixture.route('library')},manager:{currentApiClient:()=>({serverId:()=> 'fixture',getCurrentUserId:()=> 'user'})},viewManager:{currentViewInfo:()=>fixture.state}});`);
  await evaluate(`const hidden=document.createElement('div');hidden.className='detailImageContainer hide';document.querySelector('#detail').prepend(hidden);`);
  await evaluate(`const card=document.querySelector('#library [data-id]');card.removeAttribute('data-id');card.className='card';const list=document.createElement('div');list.className='virtualItemsContainer itemsContainer';card.replaceWith(list);list.append(card);list._itemSource=Array(80);list.indexOfItemId=()=>-1;list.getItemFromElement=()=>list.mounted?{Id:'grouped-work',Type:'Movie'}:null;list.fetchItems=async(q,signal)=>{window.indexQuery=q;return {Items:Array.from({length:80},(_,i)=>({Id:i===61?'grouped-work':'other-'+i,PresentationUniqueKey:i===61?'same-work':null}))}};list.scrollToIndex=index=>{list.mounted=index===61;};`);
- const begin=()=>evaluate(`window.pending=TigerestHomeMotion.openItem({card:{item:{Id:'work',Type:'Movie',PresentationUniqueKey:'same-work'}},library:{Id:'library',Type:'CollectionFolder'},source:document.querySelector('#source'),navigate:()=>fixture.route('detail',450)});true`);
- await begin();
- await evaluate(`setTimeout(()=>{const n=document.querySelector('#detail .detailImageContainer:not(.hide)');n.style.width='240px';n.style.height='360px';},1100)`);
+ const begin=(holdRoute=false)=>evaluate(`window.pending=TigerestHomeMotion.openItem({card:{item:{Id:'work',Type:'Movie',PresentationUniqueKey:'same-work'}},library:{Id:'library',Type:'CollectionFolder'},source:document.querySelector('#source'),navigate:()=>${holdRoute ? `new Promise(resolve=>{fixture.releaseDetail=()=>fixture.route('detail',450).then(resolve);})` : `fixture.route('detail',450)`}});true`);
+ // Keep the slow route pending until inspected. A wall-clock sample can arrive
+ // after navigation on a loaded runner and confuse that with a missing veil.
+ await begin(true);
  assert.equal(await evaluate('TigerestHomeTransitions.busy'),true);
- await new Promise(r=>setTimeout(r,380));
+ await evaluate(`new Promise((resolve,reject)=>{const deadline=performance.now()+8000;const poll=()=>{if(fixture.releaseDetail)return resolve();if(performance.now()>deadline)return reject(Error('poster never reached navigation'));setTimeout(poll,16);};poll();})`);
  const waiting=await evaluate(`({busy:TigerestHomeTransitions.busy,veil:+getComputedStyle(document.querySelector('.tigerest-motion-veil')).opacity,poster:!!document.querySelector('.tigerest-motion-poster'),old:!document.querySelector('#home').classList.contains('hide')})`);
- assert.ok(waiting.busy&&waiting.poster&&waiting.veil>.99&&waiting.old,'blur remains opaque while the real route loads');
+ assert.ok(waiting.busy&&waiting.poster&&waiting.veil>.99&&waiting.old,'blur remains opaque while the real route loads: '+JSON.stringify(waiting));
+ // Change the responsive target after its flight starts, rather than relying
+ // on a timer measured from an earlier CDP command.
+ await evaluate(`fixture.resizedDuringFlight=false;const target=document.querySelector('#detail .detailImageContainer:not(.hide)');const deadline=performance.now()+8000;const resize=()=>{if(target.hasAttribute('data-tigerest-poster-held')){target.style.width='240px';target.style.height='360px';fixture.resizedDuringFlight=true;}else if(performance.now()<deadline)requestAnimationFrame(resize);};requestAnimationFrame(resize);fixture.releaseDetail();true`);
  await evaluate('pending');
  const landed=await evaluate(`({metric:TigerestHomeTransitions.last,leaks:document.querySelectorAll('.tigerest-motion-layer,[data-tigerest-poster-held]').length,busy:TigerestHomeTransitions.busy,detail:!document.querySelector('#detail').classList.contains('hide')})`);
  assert.ok(landed.detail&&!landed.busy&&landed.leaks===0);assert.ok(landed.metric.landingErrorPx<2,'poster meets the actual background-image detail poster');assert.ok(landed.metric.surfaces.every(s=>s.width<=240));
+ assert.equal(await evaluate('fixture.resizedDuringFlight'),true,'responsive target changed during the poster flight');
  await evaluate('router.back()');assert.equal(await evaluate('fixture.state.contextPath'),'/library');
  assert.ok(await evaluate('TigerestHomeTransitions.last.landingErrorPx<2&&indexQuery.EnableImages===false'),'return locates the work through the real virtual-list API');
  await evaluate('router.back()');assert.equal(await evaluate('fixture.state.contextPath'),'/home');
