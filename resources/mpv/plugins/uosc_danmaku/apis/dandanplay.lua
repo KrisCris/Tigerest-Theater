@@ -271,7 +271,8 @@ local function work_title_and_season(value)
     -- Longer numeric ordinals must precede their shorter suffixes (11th/1th).
     for index = 99, 1, -1 do
         local chinese = number_to_chinese(index)
-        local suffixes = {'第' .. index .. '季', '第' .. chinese .. '季', '第' .. index .. '部', '第' .. chinese .. '部',
+        local suffixes = {'第' .. index .. '季', '第' .. chinese .. '季', '第' .. index .. '期', '第' .. chinese .. '期',
+            '第' .. index .. '部', '第' .. chinese .. '部',
             'season' .. index, 's' .. index, string.format('s%02d', index), index .. 'stseason', index .. 'ndseason',
             index .. 'rdseason', index .. 'thseason'}
         if words[index] then suffixes[#suffixes + 1] = words[index] .. 'season' end

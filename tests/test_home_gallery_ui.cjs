@@ -8,12 +8,15 @@ const routes={
 };
 for(const name of ['anime','movies','series','favorites'])routes['/art/'+name+'.png']={type:'image/png',path:path.join(root,'native/home-art',name+'.png')};
 withBrowser(routes,async({evaluate,call})=>{
+ // Keyboard focus requires an active page even when the native test window is
+ // in the background. Keep the fixture independent of the desktop's focus.
  await call('Emulation.setFocusEmulationEnabled',{enabled:true});
  // The animation contract must not depend on the runner's accessibility
  // preference. Reduced motion is verified separately below.
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
  const result=await evaluate('('+ (async function(embedded){
   const check=(value,message)=>{if(!value)throw Error(message);};
+  check(document.hasFocus(),'keyboard-focus fixture has an active page');
   const wait=async(fn)=>{for(let i=0;i<400;i++){if(fn())return;await new Promise(r=>setTimeout(r,10));}throw Error('condition timeout: '+JSON.stringify({visibility:document.visibilityState,animations:window.gallery?.animations.map(a=>({state:a.playState,time:a.currentTime}))}));};
   check(window.TigerestHomeGallery,'rebuilt gallery is available');
   // This fixture verifies the Gallery in isolation; actual navigation has its own fixture.

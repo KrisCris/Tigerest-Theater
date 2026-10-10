@@ -377,6 +377,34 @@ function cases.explicit_off_is_preserved()
     assert(#s.requests == 0 and not s.env.ENABLED, 'Explicitly disabled danmaku must not issue requests')
     assert(s.history().show_danmaku == false, 'Explicitly disabled preference must survive loading')
 end
+function cases.sword_season_two_ignores_conflicting_missing_and_invalid_dates()
+    for _, date in ipairs({'2026-10-15T00:00:00.0000000Z', '', 'invalid', '1989-04-15'}) do
+        local s = sandbox(true)
+        s.props['user-data/tigerest/emby/series-name'] = '转生成为魔剑了'
+        s.props['user-data/tigerest/emby/season-number'] = 2
+        s.props['user-data/tigerest/emby/episode-number'] = 2
+        s.props['user-data/tigerest/emby/episode-name'] = '让·杜比很优秀'
+        s.props['user-data/tigerest/emby/premiere-date'] = date
+        s.emit('file-loaded')
+        assert(s.request_args[1] and s.request_args[1][#s.request_args[1]]:find('/search/anime?', 1, true),
+            'Emby streams without a real hash must query the catalog regardless of premiere date')
+        s.respond(1, {animes = {
+            {type = 'tvseries', animeTitle = '转生成为魔剑', bangumiId = '16785'},
+            {type = 'tvseries', animeTitle = '转生成为魔剑 第二期', bangumiId = '17789'},
+        }})
+        assert(#s.requests == 2 and s.request_args[2][#s.request_args[2]]:find('/bangumi/17789', 1, true),
+            'The real second-period title must identify season two and exclude season one')
+        s.respond(2, {bangumi = {episodes = {
+            {episodeId = 177890003, episodeNumber = '3', episodeTitle = '第3话 不死族很耐打', airDate = '2026-10-15T00:00:00'},
+            {episodeId = 177890002, episodeNumber = '2', episodeTitle = '第2话 让·杜比很优秀', airDate = '2026-10-08T00:00:00'},
+        }}})
+        assert(s.request_args[3] and s.request_args[3][#s.request_args[3]]:find('/comment/177890002?', 1, true),
+            'S02E02 must load episode 177890002 regardless of its Emby date: ' .. date)
+        s.respond(3, {count = 1, comments = {{p = '10,1,16777215', m = 'Second episode'}}})
+        assert(s.props['user-data/uosc_danmaku/has-danmaku'], 'The correct episode must reach comment rendering')
+    end
+end
+
 function cases.dates_never_gate_a_matching_work_season_and_episode()
     for _, date in ipairs({'1989-04-15', '2026-08-30', '', 'invalid'}) do
         local s = sandbox(true)
@@ -444,7 +472,8 @@ function cases.multi_digit_ordinal_seasons_keep_the_whole_season_number()
 end
 
 function cases.a_query_title_with_its_own_season_keeps_matching_season_evidence()
-    for _, candidate_title in ipairs({'Fixture series 第二季', 'Fixture series Season 2'}) do
+    for _, candidate_title in ipairs({'Fixture series 第二季', 'Fixture series Season 2',
+        'Fixture series 第二期', 'Fixture series 第2期'}) do
         local s = sandbox(true)
         s.props['user-data/tigerest/emby/series-name'] = 'Fixture series 第二季'
         s.props['user-data/tigerest/emby/season-number'] = 2
@@ -461,7 +490,9 @@ end
 function cases.explicit_query_and_candidate_seasons_must_not_conflict()
     for _, pair in ipairs({{'Fixture series 第二季', 'Fixture series 第三季'},
         {'Fixture series 第二季', 'Fixture series'}, {'Fixture series 第三季', 'Fixture series 第三季'},
-        {'Fixture series 第二季', 'Unrelated different work 第二季'}}) do
+        {'Fixture series 第二季', 'Unrelated different work 第二季'},
+        {'Fixture series 第二季', 'Fixture series 第三期'},
+        {'Fixture series 第三期', 'Fixture series 第二期'}}) do
         local s = sandbox(true)
         s.props['user-data/tigerest/emby/series-name'] = pair[1]
         s.props['user-data/tigerest/emby/season-number'] = 2
