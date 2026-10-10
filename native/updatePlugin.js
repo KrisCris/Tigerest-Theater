@@ -44,7 +44,13 @@
           #tigerest-update-button.tg-update-fallback { position:fixed; top:calc(8px + var(--tgs-safe-top,0px)); right:calc(8px + var(--tgs-safe-right,0px)); z-index:9990; color:#eceef2; background:#202020; }
           #tigerest-update-dialog { box-sizing:border-box; width:min(520px,calc(100% - 32px)); max-height:calc(100dvh - 32px); overflow:auto; padding:26px; border:1px solid #514732; border-radius:18px; background:#13161d; color:#eceef2; box-shadow:0 22px 80px #0009; font:15px/1.6 system-ui,sans-serif; color-scheme:dark; }
           #tigerest-update-dialog::backdrop { background:#0008; }
-          #tigerest-update-dialog h2 { margin:0 0 12px; font-size:22px; color:#ffc341; }
+          #tigerest-update-dialog .tg-update-heading { display:flex; align-items:flex-start; gap:12px; margin-bottom:12px; }
+          #tigerest-update-dialog h2 { flex:1; min-width:0; margin:0; font-size:22px; color:#ffc341; }
+          #tigerest-update-dialog .tg-update-links { display:flex; flex-shrink:0; gap:4px; }
+          #tigerest-update-dialog .tg-update-links a { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:9px; color:#adb3bf; text-decoration:none; transition:color .15s,background .15s; }
+          #tigerest-update-dialog .tg-update-links a:hover { color:#ffc341; background:#ffffff0c; }
+          #tigerest-update-dialog .tg-update-links a:focus-visible { outline:2px solid #ffc341; outline-offset:2px; }
+          #tigerest-update-dialog .tg-update-links svg { width:23px; height:23px; pointer-events:none; }
           #tigerest-update-dialog p { white-space:pre-wrap; overflow-wrap:anywhere; margin:10px 0; }
           #tigerest-update-dialog pre { font:inherit; white-space:pre-wrap; overflow-wrap:anywhere; max-height:28vh; overflow:auto; color:#adb3bf; border-top:1px solid #ffffff15; padding-top:12px; }
           #tigerest-update-dialog progress { width:100%; height:9px; accent-color:#ffba27; }
@@ -99,11 +105,26 @@
         dialog = element('dialog'); dialog.id = 'tigerest-update-dialog';
         title = element('h2'); title.id = 'tigerest-update-title';
         dialog.setAttribute('aria-labelledby', title.id);
+        const heading = element('div'); heading.className = 'tg-update-heading';
+        const links = element('nav'); links.className = 'tg-update-links'; links.setAttribute('aria-label','项目与作者');
+        const destinations = [
+            ['GitHub 项目','https://github.com/Tigerest/Tigerest-Theater','<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .75a11.25 11.25 0 0 0-3.56 21.92c.56.1.77-.24.77-.54v-2.1c-3.13.68-3.79-1.33-3.79-1.33-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.69.08-.69 1.13.08 1.72 1.16 1.72 1.16 1 1.72 2.63 1.22 3.27.93.1-.73.39-1.22.71-1.5-2.5-.29-5.13-1.25-5.13-5.56 0-1.23.44-2.23 1.16-3.02-.12-.28-.5-1.43.11-2.98 0 0 .95-.3 3.09 1.15a10.74 10.74 0 0 1 5.62 0c2.15-1.45 3.1-1.15 3.1-1.15.61 1.55.23 2.7.11 2.98.72.79 1.16 1.79 1.16 3.02 0 4.32-2.63 5.27-5.14 5.55.4.35.76 1.03.76 2.08v3.11c0 .3.2.65.77.54A11.25 11.25 0 0 0 12 .75Z"/></svg>'],
+            ['B站主页','https://space.bilibili.com/12562485','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 2 3 4m7-4-3 4M7 20v2m10-2v2"/><rect x="2" y="6" width="20" height="14" rx="4"/><path d="m7 11 2 1m8-1-2 1m-5 4 2 1 2-1"/></svg>']
+        ];
+        for (const [label,url,icon] of destinations) {
+            const link = element('a'); link.href=url; link.target='_blank'; link.rel='noopener noreferrer';
+            link.title=label; link.setAttribute('aria-label',label); link.innerHTML=icon;
+            link.addEventListener('click',event=>{
+                if (api?.system?.openExternalUrl) { event.preventDefault(); api.system.openExternalUrl(url); }
+            });
+            links.appendChild(link);
+        }
+        heading.append(title,links);
         details = element('p'); details.setAttribute('role','status');
         notes = element('pre');
         progress = element('progress'); progress.max = 100; progress.setAttribute('aria-label','更新下载进度');
         actions = element('div'); actions.className = 'tg-update-actions';
-        dialog.append(title, details, progress, notes, actions); document.body.appendChild(dialog);
+        dialog.append(heading, details, progress, notes, actions); document.body.appendChild(dialog);
         dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     }
     function button(label, action, work) {
