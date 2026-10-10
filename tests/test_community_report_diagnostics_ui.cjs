@@ -9,7 +9,7 @@ withBrowser({
 },async({evaluate})=>{
  const result=await evaluate('('+ (async function(){
   const check=(v,m)=>{if(!v)throw Error(m);};
-  const wait=async fn=>{for(let i=0;i<300;i++){if(fn())return;await new Promise(r=>setTimeout(r,10));}throw Error('condition timeout');};
+  const wait=async fn=>{const deadline=performance.now()+8000;while(performance.now()<deadline){if(fn())return;await new Promise(r=>setTimeout(r,10));}throw Error('condition timeout: '+fn.toString()+'; status='+document.querySelector('#tigerest-report-form .tm-status')?.textContent);};
   const click=(label,scope=document)=>{const b=[...scope.querySelectorAll('button')].find(b=>b.textContent===label);check(b,'button '+label);b.click();};
   await wait(()=>window.TigerestCommunityClient&&window.TigerestCommunityMessages);
   const calls=[],scopes=[];let token='fixture-private-token',captureCount=0,snapshotMode='both',reportFailure=0,attachmentStatus=503,holdUpload=false,releaseUpload,holdCapture=false,releaseCapture,scopeFailure=false,scopeVoid=false;
@@ -42,9 +42,9 @@ withBrowser({
   const privateUI=form=>check(!form.textContent.includes('private fixture')&&!form.textContent.includes('fixture-private-token'),'logs and backend details never reach dialog');
   let form=open();const include=form.querySelector('[aria-label="附带诊断日志"]');check(include?.checked,'diagnostics default on');
   check(scopes.some(k=>k&&!k.includes('fixture')),'account scope is initialized as opaque identity before capture');
-  reportFailure=1;submit(form);await wait(()=>form.textContent.includes('网络连接失败'));
+  reportFailure=1;submit(form);await wait(()=>form.textContent.includes('网络连接失败')&&!messages.reportForm.busy);
   check(captureCount===1,'report attempt captures once');check(include.disabled&&form.querySelector('textarea').disabled,'failed attempt keeps immutable captured fields');
-  submit(form);await wait(()=>form.textContent.includes('报错已提交')&&form.textContent.includes('日志附件'));
+  submit(form);await wait(()=>form.textContent.includes('报错已提交')&&form.textContent.includes('日志附件')&&!messages.reportForm.busy);
   check(count('/reports')===2&&count('/reports/saved-report/diagnostics')===1,'POST retries then single attachment PUT');
   const posts=calls.filter(c=>c.p==='/reports');check(posts[0].body===posts[1].body,'report retry preserves request');
   check(captureCount===1,'POST retry does not recapture');privateUI(form);

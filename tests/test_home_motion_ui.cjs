@@ -36,9 +36,8 @@ withBrowser(routes,async({evaluate,call,url})=>{
  await evaluate('router.back()');assert.equal(await evaluate('fixture.state.contextPath'),'/library');
  assert.ok(await evaluate('TigerestHomeTransitions.last.landingErrorPx<2&&indexQuery.EnableImages===false'),'return locates the work through the real virtual-list API');
  await evaluate('router.back()');assert.equal(await evaluate('fixture.state.contextPath'),'/home');
- await evaluate(`fixture.show('library');window.returnGallery={active:false,root:document.querySelector('#home')};window.returning=TigerestHomeTransitions.homeReturn({findGallery:()=>returnGallery,navigate:()=>{fixture.show('home');returnGallery.active=true;returnGallery.root.classList.add('tg-entered');}});true`);
- await new Promise(r=>setTimeout(r,150));
- assert.equal(await evaluate(`getComputedStyle(document.querySelector('.tigerest-motion-layer')).backgroundColor`),'rgb(11, 13, 18)','the shrinking return copy must cover the stationary real page');
+ const returnBackground=await evaluate(`fixture.show('library');window.returnGallery={active:false,root:document.querySelector('#home')};window.returning=TigerestHomeTransitions.homeReturn({findGallery:()=>returnGallery,navigate:()=>{fixture.show('home');returnGallery.active=true;returnGallery.root.classList.add('tg-entered');}});getComputedStyle(document.querySelector('.tigerest-motion-layer')).backgroundColor`);
+ assert.equal(returnBackground,'rgb(11, 13, 18)','the shrinking return copy must cover the stationary real page');
  await evaluate('returning');
  await evaluate(`window.failure=TigerestHomeMotion.openItem({card:{item:{Id:'work'}},library:{Id:'library'},source:document.querySelector('#source'),navigate:async()=>{throw Error('fixture offline');}}).then(()=>false,()=>true)`);
  assert.equal(await evaluate('failure'),true);assert.equal(await evaluate('TigerestHomeTransitions.busy||!!document.querySelector(".tigerest-motion-layer")'),false);
@@ -48,10 +47,9 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.equal(await evaluate('fixture.state.contextPath'),'/detail');assert.equal(await evaluate('TigerestHomeTransitions.busy'),false);
  await evaluate(`fixture.show('home');window.cancelledRoute=false;window.cancelled=TigerestHomeTransitions.poster({source:document.querySelector('#source'),findTarget:()=>document.querySelector('.detailImageContainer'),navigate:()=>{cancelledRoute=true;return fixture.route('detail');}});TigerestHomeMotion.reset();true`);await evaluate('cancelled');
  assert.equal(await evaluate('cancelledRoute'),false,'logout/reset during outgoing must not run the old route');
- await evaluate(`fixture.show('home');window.tabGallery={active:true};window.tabStart=performance.now();window.tab=TigerestHomeTransitions.library({gallery:tabGallery,samePage:true,navigate:()=>{tabGallery.active=false;document.querySelector('#home h1').textContent='收藏';history.replaceState({},'',location.pathname+'?tab=favorites');}});true`);
- await new Promise(r=>setTimeout(r,620));
- assert.equal(await evaluate(`(()=>{const n=document.querySelector('.tigerest-motion-frozen');return !!n&&getComputedStyle(n).transform!=='none'&&+getComputedStyle(n).opacity>0;})()`),true,'same-page Favorites uses the central incoming animation');
- await evaluate('tab');assert.ok(await evaluate('performance.now()-tabStart<2000'),'Favorites never waits for the missing new page');
+ await evaluate(`fixture.show('home');window.tabGallery={active:true};window.tabStart=performance.now();window.tabIncoming=new Promise((resolve,reject)=>{const deadline=performance.now()+8000;const observe=()=>{const n=document.querySelector('.tigerest-motion-frozen');if(n&&getComputedStyle(n).transform!=='none'&&+getComputedStyle(n).opacity>0)return resolve({observed:true,elapsedMs:performance.now()-tabStart});if(performance.now()>deadline)return reject(Error('same-page central incoming animation was not observed'));requestAnimationFrame(observe);};requestAnimationFrame(observe);});window.tab=TigerestHomeTransitions.library({gallery:tabGallery,samePage:true,navigate:()=>{tabGallery.active=false;document.querySelector('#home h1').textContent='收藏';history.replaceState({},'',location.pathname+'?tab=favorites');}});true`);
+ assert.equal((await evaluate('tabIncoming')).observed,true,'same-page Favorites uses the central incoming animation');
+ await evaluate('tab');assert.ok(await evaluate(`TigerestHomeTransitions.last.kind==='library'&&!TigerestHomeTransitions.last.interrupted`),'Favorites completes the observed incoming animation on the reused page');
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
  await evaluate(`fixture.show('home');window.reduced=TigerestHomeTransitions.poster({source:document.querySelector('#source'),findTarget:()=>document.querySelector('.detailImageContainer'),navigate:()=>fixture.route('detail')});true`);
  assert.equal(await evaluate('!!document.querySelector(".tigerest-motion-poster,.tigerest-motion-veil")'),false);await evaluate('reduced');

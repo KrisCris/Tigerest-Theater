@@ -72,6 +72,11 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         };
         await call('Page.navigate',{url});
         for(let i=0;i<100;i++){if(await evaluate('document.readyState==="complete"'))break;await delay(50);}
+        // Native macOS windows launched directly can remain behind the runner's
+        // desktop. Give the fixture a foreground WebContents before testing
+        // animation frames and short asynchronous bridge callbacks.
+        await call('Page.bringToFront');
+        await call('Emulation.setFocusEmulationEnabled',{enabled:true});
         await work({url,call,evaluate,webengine});
     }finally{
         socket?.close();
