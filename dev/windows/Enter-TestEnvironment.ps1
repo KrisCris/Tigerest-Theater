@@ -31,7 +31,14 @@ foreach ($taskDll in @('libmpv-2.dll', 'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Test.dll
         throw "Test dependency missing: $taskDll. Build the native targets and stage the configured runtime before testing."
     }
 }
-$env:PATH = ($taskRuntimePaths -join ';') + ';' + $env:PATH
+# Qt loads OpenSSL dynamically. Tool runtimes (for example Poppler) may ship a
+# different libssl under the same name; combining it with the staged libcrypto
+# can deadlock TLS initialization. Keep those directories out of this process.
+$taskOtherPaths = $env:PATH -split ';' | Where-Object {
+    $_ -and -not ((Test-Path -LiteralPath (Join-Path $_ 'libssl-3-x64.dll')) -or
+                  (Test-Path -LiteralPath (Join-Path $_ 'libcrypto-3-x64.dll')))
+}
+$env:PATH = ($taskRuntimePaths -join ';') + ';' + ($taskOtherPaths -join ';')
 $env:QT_PLUGIN_PATH = Join-Path $taskQt 'plugins'
 $env:QT_QPA_PLATFORM_PLUGIN_PATH = $taskPlatforms
 $env:QT_ASSUME_STDERR_HAS_CONSOLE = '1'

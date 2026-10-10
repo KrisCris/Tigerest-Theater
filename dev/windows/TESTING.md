@@ -36,4 +36,8 @@ node tests/test_community_messages_ui.cjs 'build/output/Tigerest Theater.exe' --
 
 不要额外把 QTWEBENGINEPROCESS_PATH／RESOURCES_PATH／LOCALES_PATH 指向未经部署的 QtWebEngine 构建目录。集成测试使用应用自身的部署资源；混用目录会令页面执行超时，即使旧安装版也会复现。独立发行包冒烟测试应移除工具链 PATH 和 Qt 环境覆盖，确认只靠包内运行库启动。
 
+环境脚本会从当前测试进程的附加 PATH 中排除其他工具自带的 OpenSSL DLL 目录，避免 Qt 混用不同来源的 libssl／libcrypto 后在 TLS 初始化中阻塞；播放器暂存包的运行库目录仍优先保留，不修改系统 PATH。
+
+`test_window_chrome` 的无边框最大化按钮检查会选择可用工作区小于整屏区域的显示器。若所有显示器的工作区都等于整屏，Qt 6.9 Windows 插件会在尺寸事件后把无边框最大化识别为全屏，该单个用例会明确跳过并说明原因；最小化、关闭、全屏、缩放边缘等检查继续执行。发布验证清单必须记录这个跳过项，不能把 CTest 可执行目标全部通过当作所有 Qt 用例均已执行。
+
 `test_webengine_runtime_deployment` 检查缺少同步补丁运行库、版本或 SHA256 不匹配时配置必须失败。`test_webengine_startup` 除软件渲染参数检查外，还使用独立临时配置启动正常硬件加速窗口，确认 D3D11 合成启用且日志实际出现 `D3D11 producer wait: completed=1, reset=0`。该测试不能代替媒体库悬停、滚动时的实际画面检查；不能因软件渲染测试通过就宣称花屏已修复。

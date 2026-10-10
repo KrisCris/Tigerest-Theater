@@ -12,6 +12,7 @@ class TestWindowChrome : public QObject
 private slots:
   void fixedBarAndFullscreen();
   void maximizeRestoreAndClose();
+  void minimizeAndClose();
   void resizeHandlesAndNativeViewport();
   void maximizedDragRestoresUnderPointer();
 };
@@ -25,7 +26,8 @@ static void loadFixture(QQmlComponent& component)
     Window {
       id: host
       width: 640; height: 400
-      flags: Qt.Window | Qt.FramelessWindowHint
+      flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowSystemMenuHint |
+             Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
       title: "Tigerest Theater / 大河影院"
       WindowChrome { id: chrome; objectName: "chrome"; hostWindow: host; videoActive: true; anchors.fill: parent; z: 1000 }
       Rectangle { objectName: "client"; y: chrome.barHeight; width: host.width; height: host.height - y; color: "#232831" }
@@ -86,16 +88,31 @@ void TestWindowChrome::maximizeRestoreAndClose()
   QScopedPointer<QQuickWindow> window(qobject_cast<QQuickWindow*>(component.create()));
   QVERIFY(window);
   auto* maximize = window->findChild<QQuickItem*>("chromeMaximize");
-  auto* minimize = window->findChild<QQuickItem*>("chromeMinimize");
-  auto* close = window->findChild<QQuickItem*>("chromeClose");
   auto* drag = window->findChild<QQuickItem*>("chromeDragArea");
-  QVERIFY(maximize && minimize && close && drag);
+  QVERIFY(maximize && drag);
+  // Qt 6.9's Windows plugin detects fullscreen from native geometry. With no
+  // reserved taskbar area, a settled frameless maximize becomes FullScreen.
+  // Select a screen with a distinct work area without changing desktop settings.
+  QScreen* workAreaScreen = nullptr;
+  for (auto* screen : QGuiApplication::screens()) {
+    if (screen->availableGeometry() != screen->geometry()) {
+      workAreaScreen = screen;
+      break;
+    }
+  }
+  if (!workAreaScreen)
+    QSKIP("Frameless maximize requires a screen with a work area smaller than its fullscreen geometry (Qt 6.9 Windows state detection).");
+  window->setScreen(workAreaScreen);
+  window->setPosition(workAreaScreen->availableGeometry().center() - QPoint(320, 200));
   auto click = [&](QQuickItem* item) {
     QTest::mouseClick(window.data(), Qt::LeftButton, Qt::NoModifier,
                      item->mapToScene(QPointF(item->width()/2, item->height()/2)).toPoint());
   };
   window->showNormal();
   QVERIFY(QTest::qWaitForWindowExposed(window.data()));
+  window->requestActivate();
+  QVERIFY(QTest::qWaitForWindowActive(window.data()));
+  QTRY_COMPARE(window->visibility(), QWindow::Windowed);
   click(maximize);
   QTRY_COMPARE(window->visibility(), QWindow::Maximized);
   QTRY_COMPARE(window->geometry(), window->screen()->availableGeometry());
@@ -105,6 +122,26 @@ void TestWindowChrome::maximizeRestoreAndClose()
   QTest::mouseDClick(window.data(), Qt::LeftButton, Qt::NoModifier,
                      drag->mapToScene(QPointF(120,18)).toPoint());
   QTRY_COMPARE(window->visibility(), QWindow::Maximized);
+}
+
+void TestWindowChrome::minimizeAndClose()
+{
+  QQmlEngine engine;
+  engine.addImportPath(QStringLiteral(TEST_QML_IMPORTS));
+  QQmlComponent component(&engine);
+  loadFixture(component);
+  QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+  QScopedPointer<QQuickWindow> window(qobject_cast<QQuickWindow*>(component.create()));
+  QVERIFY(window);
+  auto* minimize = window->findChild<QQuickItem*>("chromeMinimize");
+  auto* close = window->findChild<QQuickItem*>("chromeClose");
+  QVERIFY(minimize && close);
+  auto click = [&](QQuickItem* item) {
+    QTest::mouseClick(window.data(), Qt::LeftButton, Qt::NoModifier,
+                     item->mapToScene(QPointF(item->width()/2, item->height()/2)).toPoint());
+  };
+  window->showNormal();
+  QVERIFY(QTest::qWaitForWindowExposed(window.data()));
   click(minimize);
   QTRY_COMPARE(window->visibility(), QWindow::Minimized);
   window->showNormal();
