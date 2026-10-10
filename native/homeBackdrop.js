@@ -43,9 +43,12 @@
         if (!window.Worker || !window.OffscreenCanvas || !window.createImageBitmap) return null;
         const begin = performance.now(), scale = Math.min(1,240/innerWidth);
         const width = Math.min(240,Math.round(innerWidth*scale)), height = Math.round(innerHeight*scale), records = [], images = [];
-        for (const node of [root,...root.querySelectorAll('*')]) {
+        // Skip motion layers, the held poster and Emby's hidden cached views as
+        // whole subtrees instead of measuring each of their nodes.
+        const skipped='.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache,[data-tigerest-poster-held],.mainAnimatedPage.hide,.page.hide';
+        const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT,{acceptNode:node=>node.matches(skipped)?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
+        for (let node=root.closest(skipped)?null:root; node; node=walker.nextNode()) {
             if (signal.aborted) return null;
-            if (node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache,[data-tigerest-poster-held]')) continue;
             const r=node.getBoundingClientRect();
             if (!r.width || !r.height || r.bottom<0 || r.top>innerHeight || r.right<0 || r.left>innerWidth) continue;
             const s=getComputedStyle(node);if (s.visibility==='hidden' || s.display==='none' || +s.opacity===0) continue;

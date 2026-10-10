@@ -26,17 +26,29 @@ withBrowser(routes,async({evaluate,call,url})=>{
  await evaluate('libraryRoot.className=libraryRoot.className;true');
  assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),true,'writing an unchanged CSS class cannot discard the prewarmed scene');
  assert.ok(await evaluate('TigerestHomeTransitions.cacheState.ready&&TigerestHomeTransitions.cacheState.bytes<=240*innerHeight/innerWidth*240*4+1000'));
- const hotClickOpacity=await evaluate(`window.press=()=>document.querySelector('#library img').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));press();window.pending=router.showItem('work');getComputedStyle(document.querySelector('.tigerest-motion-layer .tigerest-motion-frozen')).opacity`);
- assert.equal(hotClickOpacity,'0','a cached small background avoids painting the full-size frozen page on the click frame');
+ const hotClickOpacity=await evaluate(`window.press=()=>document.querySelector('#library img').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));press();window.pending=router.showItem('work');({copies:document.querySelectorAll('.tigerest-motion-layer .tigerest-motion-frozen').length,canvas:!!document.querySelector('.tigerest-motion-veil canvas'),lens:!!document.querySelector('.tigerest-motion-lens')})`);
+ assert.deepEqual(hotClickOpacity,{copies:0,canvas:true,lens:false},'a cached small background is the only page surface on the click frame');
  await evaluate('pending');
- const hot=await evaluate('TigerestHomeTransitions.last');assert.equal(hot.kind,'poster','poster clicks in a directly opened library use the shared transition');assert.equal(hot.cacheHit,true);assert.equal(hot.lightCacheHit,true,'the already styled page snapshot is consumed without copying the live page on click');assert.equal(hot.syncRasterMs,0);assert.ok(hot.landingErrorPx<2);
+ const hot=await evaluate('TigerestHomeTransitions.last');assert.equal(hot.kind,'poster','poster clicks in a directly opened library use the shared transition');assert.equal(hot.cacheHit,true);assert.equal(hot.domCopies,0,'neither the old nor the new page is copied for a poster transition');assert.equal(hot.syncRasterMs,0);assert.ok(hot.landingErrorPx<2);
  await evaluate('TigerestHomeTransitions.prewarm()');
- const returnClickVisibility=await evaluate(`window.returnGate=true;window.returning=router.back();window.returnShrinkFrame=motionFrame(()=>{const n=document.querySelector('.tigerest-motion-poster');return n&&n.getBoundingClientRect().width<239.9;});getComputedStyle(document.querySelector('.tigerest-motion-layer .tigerest-motion-frozen').shadowRoot.querySelector('.detailImageContainer')).visibility`);
- assert.equal(returnClickVisibility,'hidden','cached CSS-background posters are hidden under their moving copy');
+ const returnClickVisibility=await evaluate(`window.returnGate=true;window.returning=router.back();window.returnShrinkFrame=motionFrame(()=>{const n=document.querySelector('.tigerest-motion-poster');return n&&n.getBoundingClientRect().width<239.9;});getComputedStyle(document.querySelector('#detail .detailImageContainer')).visibility`);
+ assert.equal(returnClickVisibility,'hidden','CSS-background posters are hidden under their moving copy');
  assert.ok(await evaluate('returnShrinkFrame'),'returning starts by shrinking the detail poster while its destination prepares');
  await evaluate('motionFrame(()=>!!window.releaseReturn)');assert.equal(await evaluate('state.params.id'),'work');
  await evaluate('returnGate=false;releaseReturn();true');
  await evaluate('returning');assert.equal(await evaluate('state.contextPath'),'/tv?topParentId=library');
+ // A prewarm still waiting for a long page entrance must not hold the route:
+ // the click rasters the current frame instead of awaiting that entrance.
+ await evaluate(`TigerestHomeTransitions.invalidate(false);window.longEntrance=document.querySelector('#library h1').animate([{opacity:.5},{opacity:1}],{duration:2000});TigerestHomeTransitions.prewarm();true`);
+ const settleRoute=await evaluate(`(()=>{press();const start=performance.now();window.settlePending=router.showItem('work');return motionFrame(()=>state.params.id==='work'?performance.now()-start:null);})()`);
+ assert.ok(settleRoute<1200,'navigation is not held behind the 2s entrance: '+settleRoute);
+ await evaluate('settlePending');await evaluate('longEntrance.cancel();router.back()');
+ // A return home promotes the prepared offscreen copy instead of re-attaching it.
+ await evaluate('TigerestHomeTransitions.prewarm()');
+ const promoted=await evaluate(`(()=>{const wrapper=document.querySelector('.tigerest-motion-cache');window.homeGallery={active:false,root:document.createElement('div')};window.promotedReturn=TigerestHomeTransitions.homeReturn({findGallery:()=>homeGallery,navigate:()=>{homeGallery.active=true;homeGallery.root.classList.add('tg-entered');}});return {same:!!wrapper&&document.querySelector('.tigerest-motion-layer')===wrapper,connected:!!wrapper?.isConnected,background:wrapper&&getComputedStyle(wrapper).backgroundColor};})()`);
+ assert.deepEqual(promoted,{same:true,connected:true,background:'rgb(11, 13, 18)'},'the snapshot wrapper becomes the opaque return cover in place');
+ await evaluate('promotedReturn');assert.ok(await evaluate('TigerestHomeTransitions.last.lightCacheHit===true&&TigerestHomeTransitions.last.domCopies===0'));
+ assert.equal(await evaluate(`document.querySelectorAll('.tigerest-motion-layer,.tigerest-motion-cache').length`),0);
  await evaluate('TigerestHomeTransitions.prewarm()');
  await evaluate(`document.querySelector('#library h1').textContent='另一媒体夹';true`);
  assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'content changes invalidate the previous background');
@@ -45,21 +57,22 @@ withBrowser(routes,async({evaluate,call,url})=>{
  await evaluate(`new Promise((resolve,reject)=>{const img=document.createElement('img');img.id='cold-backdrop-image';Object.assign(img.style,{position:'fixed',right:'20px',top:'20px'});img.onload=resolve;img.onerror=reject;img.src='/poster.svg';libraryRoot.append(img);})`);
  // Hold actual decoding until motion is observed. The observer runs in the
  // browser, so CDP delivery and runner scheduling cannot miss the click phase.
- const firstPosterFrame=await evaluate(`(()=>{window.originalBitmap=createImageBitmap;window.coldDecoders=[];window.createImageBitmap=(...args)=>new Promise(resolve=>coldDecoders.push(()=>originalBitmap(...args).then(resolve)));TigerestHomeTransitions.invalidate();window.clickedPosterRect=libraryRoot.querySelector('img').getBoundingClientRect().toJSON();press();window.coldStart=performance.now();window.cold=router.showItem('work');window.coldStarted=motionFrame(()=>{const n=document.querySelector('.tigerest-motion-veil'),p=document.querySelector('.tigerest-motion-poster'),rect=p?.getBoundingClientRect();const moved=rect&&Math.max(...['x','y','width','height'].map(k=>Math.abs(rect[k]-clickedPosterRect[k])))>.25;return n&&+getComputedStyle(n).opacity>0&&moved&&coldDecoders.length?{present:true,opacity:+getComputedStyle(n).opacity,old:state.params.topParentId==='library',poster:rect.toJSON(),elapsedMs:performance.now()-coldStart}:null;});return document.querySelector('.tigerest-motion-poster').getBoundingClientRect().toJSON()})()`);
+ const firstPosterFrame=await evaluate(`(()=>{window.originalBitmap=createImageBitmap;window.coldDecoders=[];window.createImageBitmap=(...args)=>new Promise(resolve=>coldDecoders.push(()=>originalBitmap(...args).then(resolve)));TigerestHomeTransitions.invalidate();window.clickedPosterRect=libraryRoot.querySelector('img').getBoundingClientRect().toJSON();press();window.coldStart=performance.now();window.cold=router.showItem('work');window.coldStarted=motionFrame(()=>{const n=document.querySelector('.tigerest-motion-lens'),veil=document.querySelector('.tigerest-motion-veil'),p=document.querySelector('.tigerest-motion-poster'),rect=p?.getBoundingClientRect();const moved=rect&&Math.max(...['x','y','width','height'].map(k=>Math.abs(rect[k]-clickedPosterRect[k])))>.25;return n&&+getComputedStyle(n).opacity>0&&moved&&coldDecoders.length?{present:true,opacity:+getComputedStyle(n).opacity,veil:+getComputedStyle(veil).opacity,copies:document.querySelectorAll('.tigerest-motion-frozen').length,old:state.params.topParentId==='library',poster:rect.toJSON(),elapsedMs:performance.now()-coldStart}:null;});return document.querySelector('.tigerest-motion-poster').getBoundingClientRect().toJSON()})()`);
  const clickedPoster=await evaluate('clickedPosterRect');
  assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(firstPosterFrame[k]-clickedPoster[k])))<1,'the floating poster starts exactly at the clicked poster');
  const started=await evaluate('coldStarted');
  assert.ok(started.present&&started.opacity>0&&started.old,'cold background preparation does not prevent the animation from starting: '+JSON.stringify(started));
+ assert.ok(started.veil===0&&started.copies===0,'a cold click blurs the live page instead of copying it, and keeps the dark veil until the raster covers it: '+JSON.stringify(started));
  const earlyPoster=started.poster;
  assert.ok(Math.abs(earlyPoster.width-clickedPoster.width)>.25||Math.abs(earlyPoster.x-clickedPoster.x)>.25||Math.abs(earlyPoster.y-clickedPoster.y)>.25,'the poster itself moves promptly while the cold background is still preparing');
  await evaluate('window.createImageBitmap=originalBitmap;Promise.all(coldDecoders.map(release=>release()))');
  await evaluate('cold');assert.equal(await evaluate('TigerestHomeTransitions.last.syncRasterMs'),0);await evaluate('router.back()');await evaluate(`document.querySelector('#cold-backdrop-image').remove();TigerestHomeTransitions.prewarm()`);
- // A destination-only decode can outlast the visible flight. It must not hold
- // the poster or keep the revealed page locked, nor attach a late canvas.
+ // A slow destination image decode must not hold the poster, keep the
+ // revealed page locked or attach a late canvas; the destination uses a lens.
  await evaluate(`new Promise(resolve=>{const img=document.createElement('img');img.id='slow-detail-image';Object.assign(img.style,{position:'fixed',right:'30px',bottom:'30px'});img.onload=resolve;img.src='/poster.svg';document.querySelector('#detail').append(img);})`);
  await evaluate('TigerestHomeTransitions.prewarm()');
  await evaluate(`window.destinationDecoders=[];window.createImageBitmap=(node,...args)=>node.closest?.('#detail')?new Promise(resolve=>destinationDecoders.push(()=>originalBitmap(node,...args).then(resolve))):originalBitmap(node,...args);press();window.slowDestination=router.showItem('work');true`);
- await evaluate('slowDestination');assert.ok(await evaluate('destinationDecoders.length>0'),'destination decoding is still held after the visible flight');
+ await evaluate('slowDestination');assert.equal(await evaluate('destinationDecoders.length'),0,'the destination is blurred live; its images are never decoded for the transition');
  assert.equal(await evaluate('TigerestHomeTransitions.busy'),false,'a late destination bitmap cannot keep the finished page locked');
  assert.equal(await evaluate(`document.querySelectorAll('.tigerest-motion-layer,.tigerest-motion-poster,[data-tigerest-poster-held]').length`),0);
  await evaluate('window.createImageBitmap=originalBitmap;Promise.all(destinationDecoders.map(release=>release())).then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))');
@@ -80,5 +93,5 @@ withBrowser(routes,async({evaluate,call,url})=>{
  await evaluate('TigerestHomeMotion.reset()');assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'account reset releases the cached background');
  await evaluate('TigerestHomeTransitions.prewarm()');await call('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'viewport changes cannot use the old background');
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});assert.equal(await evaluate('TigerestHomeTransitions.prewarm()'),false);assert.equal(await evaluate('TigerestHomeTransitions.cacheState.bytes'),0);
- console.log('async background/cache fixture:',JSON.stringify({checks:24,hot,started,foreignMetric}));
+ console.log('async background/cache fixture:',JSON.stringify({checks:29,hot,started,foreignMetric}));
 },{gpu:true,visible:true}).catch(e=>{console.error(e);process.exitCode=1});
