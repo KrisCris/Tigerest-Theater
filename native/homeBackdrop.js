@@ -15,8 +15,19 @@
             }else if(r.text){ctx.fillStyle=r.color;ctx.font=r.font||'16px sans-serif';ctx.textBaseline='top';ctx.fillText(r.text,r.x,r.y,r.w);}
             ctx.restore();
           }
-          const result=new OffscreenCanvas(width,height),blur=result.getContext('2d');
-          blur.filter='blur(5px)';blur.drawImage(canvas,0,0);
+          // Extend edge pixels before blurring, then crop without changing
+          // viewport geometry. Otherwise the blur leaves a translucent border.
+          const pad=16,extended=new OffscreenCanvas(width+pad*2,height+pad*2),edge=extended.getContext('2d');
+          edge.drawImage(canvas,pad,pad);
+          edge.drawImage(canvas,0,0,1,height,0,pad,pad,height);
+          edge.drawImage(canvas,width-1,0,1,height,width+pad,pad,pad,height);
+          edge.drawImage(canvas,0,0,width,1,pad,0,width,pad);
+          edge.drawImage(canvas,0,height-1,width,1,pad,height+pad,width,pad);
+          for(const x of [0,width-1])for(const y of [0,height-1])edge.drawImage(canvas,x,y,1,1,x?width+pad:0,y?height+pad:0,pad,pad);
+          const blurred=new OffscreenCanvas(extended.width,extended.height),blur=blurred.getContext('2d');
+          blur.filter='blur(5px)';blur.drawImage(extended,0,0);
+          const result=new OffscreenCanvas(width,height);
+          result.getContext('2d').drawImage(blurred,pad,pad,width,height,0,0,width,height);
           return result.transferToImageBitmap();
     }
     const workerSource = `${paint.toString()}

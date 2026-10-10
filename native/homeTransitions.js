@@ -65,8 +65,9 @@
       body.tigerest-motion-busy{pointer-events:none!important}
       .tigerest-motion-layer{position:fixed;inset:0;z-index:2147483000;pointer-events:none!important;overflow:hidden;contain:layout paint}
       .tigerest-motion-veil,.tigerest-motion-scene,.tigerest-motion-frozen{position:absolute;inset:0}
-      .tigerest-motion-frozen{filter:blur(7px);transform:scale(1.018);transform-origin:center}
-      .tigerest-motion-scene>canvas{position:absolute;inset:-2%;width:104%;height:104%}
+      .tigerest-motion-veil{background:#0b0d12}
+      .tigerest-motion-frozen{filter:blur(7px)}
+      .tigerest-motion-scene>canvas{position:absolute;inset:0;width:100%;height:100%}
       .tigerest-motion-poster{position:fixed;z-index:2147483001;pointer-events:none;transform-origin:0 0;overflow:hidden;background-size:cover;background-position:center;will-change:transform}
       @media(max-width:900px){
         .view-item-item .detailMainContainer:has(.detailImageContainer-main.detailImageContainer-portrait){display:grid!important;grid-template-columns:clamp(90px,18vw,130px) minmax(0,1fr);gap:12px 18px;align-items:center}
@@ -89,7 +90,7 @@
         });
     }
     function animate(job, node, frames, options) {
-        if (!node || job.signal.aborted) return Promise.resolve();
+        if (!node || job.signal.aborted || job.done) return Promise.resolve();
         job.metric.firstAnimationMs??=performance.now()-job.start;
         const a = node.animate(frames, {...options, fill: 'both'}); job.animations.push(a);
         return a.finished.catch(() => {});
@@ -113,6 +114,8 @@
         job.layers.push(node); document.body.append(node); return node;
     }
     function clean(job) {
+        job.done = true;
+        if(!job.signal.aborted)job.controller.abort('complete');
         job.animations.forEach(a => a.cancel()); job.layers.forEach(n => n.remove());
         job.held.forEach(({node,value}) => { node.style.visibility = value; node.removeAttribute('data-tigerest-poster-held'); });
         job.canvases.forEach(n => { n.width = n.height = 1; });
@@ -125,14 +128,22 @@
         ensureStyle();
         const controller = new AbortController(), job = {controller, signal: controller.signal, animations: [], layers: [], held: [], canvases: [], frames: [], metric: {kind, surfaces: []}};
         active = job; document.body.classList.add('tigerest-motion-busy');
-        const start = job.start = performance.now(), tick = t => { job.metric.firstFrameMs??=Math.max(0,t-start);job.frames.push(t); if (!job.signal.aborted) job.frame = requestAnimationFrame(tick); };
+        const start = job.start = performance.now(), tick = t => {
+            job.metric.firstFrameMs??=Math.max(0,t-start);job.frames.push(t);
+            if (job.poster && job.metric.posterFirstMotionMs === undefined) {
+                const current=box(job.poster),from=job.posterFrom;
+                if (Math.max(...['x','y','width','height'].map(k=>Math.abs(current[k]-from[k])))>.15) job.metric.posterFirstMotionMs=performance.now()-start;
+            }
+            if (!job.signal.aborted) job.frame = requestAnimationFrame(tick);
+        };
         job.frame = requestAnimationFrame(tick);
         try { return await perform(job); }
         finally {
+            const interrupted=job.signal.aborted;
             clean(job);
             invalidate();
             const intervals = job.frames.slice(1).map((t,i) => t - job.frames[i]), sorted = [...intervals].sort((a,b) => a-b);
-            last = {...job.metric, totalMs: performance.now()-start, interrupted: job.signal.aborted,
+            last = {...job.metric, totalMs: performance.now()-start, interrupted,
                 medianIntervalMs: sorted[Math.floor(sorted.length/2)] || 0, p95IntervalMs: sorted[Math.floor(sorted.length*.95)] || 0};
         }
     }
@@ -169,6 +180,10 @@
         originals.forEach((node,i) => {
             const clone = copies[i];
             if (clone !== body && !body.contains(clone)) return;
+            // Stylesheets can declare important entrance animations. A universal
+            // shadow override cannot beat those selectors; freeze each element.
+            clone.style.setProperty('animation','none','important');
+            clone.style.setProperty('transition','none','important');
             if (node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache') || node.matches('script,iframe,object,embed,audio,video')) { clone.remove(); return; }
             if (node.matches('.mainAnimatedPage.hide,.page.hide')) { clone.remove(); return; }
             const r = box(node);
@@ -189,7 +204,7 @@
         const computed = getComputedStyle(document.documentElement);
         for (const name of computed) if (name.startsWith('--')) html.style.setProperty(name,computed.getPropertyValue(name));
         document.querySelectorAll('style,link[rel="stylesheet"]').forEach(node => {
-            if (node === style || node.closest('.tigerest-motion-layer,.tigerest-motion-cache')) return;
+            if (node.closest('.tigerest-motion-layer,.tigerest-motion-cache')) return;
             if (home && node.tagName === 'LINK') return;
             const copy = node.cloneNode(true);
             if (copy.tagName === 'STYLE') copy.textContent = copy.textContent.replace(/:root\b/g,'.tigerest-motion-html');
@@ -215,7 +230,11 @@
     }
     function scene(job,source=false,poster=null) {
         const group=document.createElement('div');group.className='tigerest-motion-scene';
-        const light=source?outgoing(job,true,poster):frozen(job);group.append(light);return {group,bitmap:null};
+        const light=source?outgoing(job,true,poster):frozen(job);
+        // The preblurred bitmap is ready synchronously on a cache hit. Keep the
+        // full-size clone out of the compositor's first paint (especially WebView).
+        if(source&&cacheReady())light.style.opacity='0';
+        group.append(light);return {group,bitmap:null};
     }
     async function bitmap(job,view,source=false){
         let result=source&&cacheReady()?cached:null,owned=false;
@@ -228,7 +247,7 @@
             result=await window.TigerestHomeBackdrop?.build(rasterRoot(),job.signal);owned=true;
         }
         if(!result)return;
-        if(job.signal.aborted){if(owned)result.bitmap.close();return;}
+        if(job.signal.aborted||job.done){if(owned)result.bitmap.close();return;}
         const canvas=document.createElement('canvas');canvas.width=result.width;canvas.height=result.height;
         canvas.getContext('2d').drawImage(result.bitmap,0,0);
         if(owned)result.bitmap.close();
@@ -256,6 +275,12 @@
             const floating=document.createElement('div');floating.className='tigerest-motion-poster';floating.setAttribute('aria-hidden','true');
             Object.assign(floating.style,{left:from.x+'px',top:from.y+'px',width:from.width+'px',height:from.height+'px',backgroundImage:'url('+JSON.stringify(artwork)+')',borderRadius:getComputedStyle(source).borderRadius});
             job.layers.push(floating);document.body.append(floating);hold(job,source);
+            job.poster=floating;job.posterFrom=from;
+            // Start at the exact source rectangle, then lift while the route and
+            // blurred backgrounds prepare. Continue from this transform below.
+            const initialScale=options.direction==='return'?.96:1.09,shift=(1-initialScale)/2;
+            const lift=floating.animate([{transform:'none'},{transform:`translate3d(${from.width*shift}px,${from.height*shift}px,0) scale(${initialScale})`}],{duration:700,easing:'cubic-bezier(.2,.6,.3,1)',fill:'both'});
+            job.animations.push(lift);lift.finished.catch(()=>{});
             const fromScene=scene(job,true,source), cover=layer(job), veil=document.createElement('div');veil.className='tigerest-motion-veil';veil.append(fromScene.group);cover.append(veil);sync(job);
             job.metric.prepareMs=performance.now()-begin;
             const soft='cubic-bezier(.4,0,.6,1)';
@@ -274,18 +299,23 @@
             if (!usable(target)) { job.metric.fallback='missing-target';await animate(job,cover,[{opacity:1},{opacity:0}],{duration:220,easing:soft});return result; }
             // Allow image decoding and responsive layout to finish before reading the landing rectangle.
             if (target.tagName==='IMG' && !target.complete) await wait(job,()=>target.complete,1200);
+            // The real page is fully covered; finish its competing entrance now
+            // so it cannot move the landing rectangle during our poster flight.
+            for (const a of page()?.getAnimations?.()||[]) if (Number.isFinite(a.effect?.getComputedTiming().endTime)) {try{a.finish();}catch{}}
             let prior=box(target), steady=0;
-            for (let i=0;i<18 && steady<5 && !job.signal.aborted;i++) {
+            for (let i=0;i<18 && steady<2 && !job.signal.aborted;i++) {
                 await sleep(job,32); const current=box(target);
                 steady=Math.max(...['x','y','width','height'].map(k=>Math.abs(current[k]-prior[k])))<.5 ? steady+1 : 0;prior=current;
             }
             if(job.signal.aborted)return result;
             const to=box(target);hold(job,target);
-            const toScene=scene(job);await bitmap(job,toScene);if(job.signal.aborted)return result;veil.append(toScene.group);sync(job);
+            const toScene=scene(job);veil.append(toScene.group);sync(job);
             const duration=720;
             const transform = rect => `translate3d(${rect.x-from.x}px,${rect.y-from.y}px,0) scale(${rect.width/from.width},${rect.height/from.height})`;
             const fly = async () => {
-                const a=floating.animate([{transform:'none'},{transform:transform(to)}],{duration,easing:'cubic-bezier(.32,.05,.2,1)',fill:'both'});
+                const lifted=getComputedStyle(floating).transform;floating.style.transform=lifted;lift.cancel();
+                job.metric.posterFlightStartsMs=performance.now()-job.start;
+                const a=floating.animate([{transform:lifted},{transform:transform(to)}],{duration,easing:'cubic-bezier(.32,.05,.2,1)',fill:'both'});
                 job.animations.push(a);a.finished.catch(()=>{});
                 await sleep(job,560);if(job.signal.aborted)return;
                 // Emby can finish responsive layout during the flight. Rejoin its final
@@ -293,6 +323,9 @@
                 const at=getComputedStyle(floating).transform;floating.style.transform=at;a.cancel();
                 await animate(job,floating,[{transform:at},{transform:transform(box(target))}],{duration:160,easing:'cubic-bezier(.2,.6,.3,1)'});
             };
+            // Background work is optional once the visible flight finishes.
+            // Completion aborts it and guards against a late canvas/animation.
+            (async()=>{await bitmap(job,toScene);await animate(job,toScene.bitmap,[{opacity:0},{opacity:1}],{duration:140,easing:soft});})().catch(()=>{});
             await Promise.all([
                 fly(),
                 animate(job,toScene.group,[{opacity:0,offset:0},{opacity:0,offset:.16},{opacity:1,offset:.48},{opacity:1,offset:1}],{duration,easing:'linear'}),
