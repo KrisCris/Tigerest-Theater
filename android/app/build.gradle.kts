@@ -6,8 +6,8 @@ android {
         applicationId = "top.tigerest.theater"
         minSdk = 35
         targetSdk = 36
-        versionCode = 2050000
-        versionName = "2.5.0"
+        versionCode = 2050200
+        versionName = "2.5.2"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -36,6 +36,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.json:json:20250517")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

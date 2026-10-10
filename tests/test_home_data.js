@@ -9,7 +9,8 @@ function dataSource(){
  assert.ok(fs.existsSync(file),'the rebuilt home has a shared server-independent data source');
  const context={URL,AbortController,Date,Promise,Map,Set};context.window=context;
  vm.runInNewContext(fs.readFileSync(file,'utf8'),context);
- return context.TigerestHomeData;
+ // These original checks describe the explicit recent-ingestion mode.
+ return class extends context.TigerestHomeData {load(library,signal,order='recent'){return super.load(library,signal,order);}};
 }
 const episode=(id,series,date)=>({Id:id,Type:'Episode',Name:'Episode '+id,SeriesId:series,SeriesName:'Series '+series,DateCreated:date,IndexNumber:5,ParentIndexNumber:1});
 function client(items,views=[{Id:'my-library',Name:'My own server library',CollectionType:'tvshows'}]){

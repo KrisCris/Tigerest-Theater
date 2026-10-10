@@ -8,7 +8,8 @@ async function connect(){
  if(!pid)throw Error('Android debug client is not running');
  run('forward','tcp:9223','localabstract:webview_devtools_remote_'+pid);
  let page;
- for(let i=0;i<20;i++){
+ // A newly installed WebView can take several seconds to expose its target.
+ for(let i=0;i<100;i++){
   try{const pages=await(await fetch('http://127.0.0.1:9223/json/list',{signal:AbortSignal.timeout(1500)})).json();page=pages.find(p=>p.type==='page');if(page)break;}catch{}
   await delay(100);
  }

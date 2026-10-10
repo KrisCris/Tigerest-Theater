@@ -65,7 +65,7 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
             if(isMain && source.toString().trimEnd('/') in allowed) message.data?.let { bridge.request(it,reply) }
         }
         val bootstrap = JSONObject().put("version",BuildConfig.VERSION_NAME).put("deviceName","${android.os.Build.MODEL} / Android").put("mode","desktop").put("userAgent",view.settings.userAgentString).put("scriptPath","$ASSET_ORIGIN/assets/shared").put("mpvConfigMode","embedded").put("mpvConfigDir","安卓应用内配置").put("settings",settings.values).put("sections",settings.sections).put("settingsDescriptions",settings.descriptions)
-        val nativeFiles = listOf("mpvVideoPlayer.js","mpvAudioPlayer.js","inputPlugin.js","sessionNavigationPlugin.js","communityClient.js","communityMessages.js","communityPlugin.js","connectivityHelper.js","nativeshell.js","offline.js","homeData.js","homeGallery.js","embycompat.js","webAppearance.js","updatePlugin.js")
+        val nativeFiles = listOf("mpvVideoPlayer.js","mpvAudioPlayer.js","inputPlugin.js","sessionNavigationPlugin.js","communityClient.js","communityMessages.js","communityPlugin.js","connectivityHelper.js","nativeshell.js","offline.js","homeData.js","homeGallery.js","homeBackdrop.js","homeTransitions.js","homeMotion.js","embycompat.js","webAppearance.js","updatePlugin.js")
         val injected = StringBuilder("(()=>{if(window!==window.top)return;\nwindow.__tigerestBootstrap=${bootstrap};\n").append(asset("androidBridge.js"))
         for(file in nativeFiles) {
             if(BuildConfig.DEBUG) injected.append("\nconsole.info('TGS phase start $file');")

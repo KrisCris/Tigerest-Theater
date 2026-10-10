@@ -157,6 +157,10 @@
     .tg-rail-counter { flex: 0 0 auto; }
     .tg-home[data-style="cinema"] .tg-cover { height: 130px; flex-basis: 88px; }
     .tg-home[data-style="cinema"] .tg-cover-label { font-size: 10px; left: 8px; right: 8px; bottom: 10px; }
+    .tg-home-more { margin-left: auto; padding: 4px 6px; border: 0; background: transparent; color: #e5ca91 !important; font-size: 11px !important; white-space: nowrap; }
+    .tg-rail-heading { gap: 12px; }
+    .tg-resume-progress { position: absolute; left: 4px; right: 4px; bottom: 3px; height: 2px; z-index: 3; background: #ffffff38; }
+    .tg-resume-progress > i { display: block; height: 100%; background: #e4c376; }
     @media (max-width:680px) {
         .tg-rail-counter { display: none; }
         .tg-home[data-style="cinema"] .tg-cover { height: 98px; flex-basis: 70px; }
@@ -195,9 +199,16 @@
         this.status.append(this.message, this.retry); this.stage.append(this.hero, this.status);
         this.rail = element('section', 'tg-home-rail'); const heading = element('div', 'tg-rail-heading');
         this.railTitle = element('span', 'tg-rail-title', '最近入库'); this.counter = element('span', 'tg-rail-counter');
-        heading.append(this.railTitle, this.counter); this.coverList = element('div', 'tg-cover-list'); this.coverList.setAttribute('aria-label', '最近入库作品');
+        this.more = element('button', 'tg-home-more', '查看更多 →'); this.more.type = 'button';
+        heading.append(this.railTitle, this.more, this.counter); this.coverList = element('div', 'tg-cover-list'); this.coverList.setAttribute('aria-label', '首页作品');
         this.rail.append(heading, this.coverList); this.root.append(this.scenery, this.nav, this.stage, this.rail); host.append(this.root);
         const listen = (node, event, fn) => { node.addEventListener(event, fn); this.listeners.push(() => node.removeEventListener(event, fn)); };
+        listen(this.root, 'pointerdown', event => {
+            const node = event.target.closest('.tg-library,.tg-cover');
+            this.touchPress = event.pointerType === 'touch' ? {node, at: event.timeStamp,
+                selected: node?.matches('.tg-library') ? node.dataset.libraryId === this.selectedLibrary?.Id : Number(node?.dataset.index) === this.index} : null;
+        });
+        listen(this.more, 'click', () => this.openLibrary(this.selectedLibrary));
         listen(this.libraryList, 'pointerover', event => {
             if (event.pointerType === 'touch') return;
             const button = event.target.closest('.tg-library');
@@ -207,16 +218,22 @@
         listen(this.libraryList, 'click', event => {
             const button = event.target.closest('.tg-library'); if (!button || !this.valid()) return;
             const library = this.libraries.find(item => item.Id === button.dataset.libraryId);
-            if (library.kind === 'favorites') (this.options.openFavorites || (() => this.options.router.showFavorites()))();
-            else this.options.router.showItem(library, this.api.serverId());
+            const selected = this.touchPress?.node === button ? this.touchPress.selected : library.Id === this.selectedLibrary?.Id;
+            if (this.isTouchClick(event, button) && !selected) { this.preview(library.Id); return; }
+            this.openLibrary(library);
         });
         listen(this.hero, 'click', () => this.open(this.cards?.[this.index]));
-        listen(this.coverList, 'click', event => { const button = event.target.closest('.tg-cover'); if (button) this.open(this.cards.find(card => card.item.Id === button.dataset.itemId)); });
+        listen(this.coverList, 'click', event => {
+            const button = event.target.closest('.tg-cover'); if (!button || !this.valid()) return;
+            const selected = this.touchPress?.node === button ? this.touchPress.selected : Number(button.dataset.index) === this.index;
+            if (this.isTouchClick(event, button) && !selected) { this.select(Number(button.dataset.index), false); return; }
+            this.open(this.cards.find(card => card.item.Id === button.dataset.itemId), button.querySelector('img'));
+        });
         listen(this.coverList, 'pointerover', event => {
             if (event.pointerType === 'touch') return;
-            const button = event.target.closest('.tg-cover'); if (button && !button.contains(event.relatedTarget)) this.select(Number(button.dataset.index), false);
+            const button = event.target.closest('.tg-cover'); if (button && !button.contains(event.relatedTarget) && Number(button.dataset.index) !== this.index) this.select(Number(button.dataset.index), false);
         });
-        listen(this.coverList, 'focusin', event => { const button = event.target.closest('.tg-cover'); if (button) { this.finishEntrance(); reveal(this.coverList, button); this.select(Number(button.dataset.index), false); } });
+        listen(this.coverList, 'focusin', event => { const button = event.target.closest('.tg-cover'); if (button) { this.finishEntrance(); reveal(this.coverList, button); if (Number(button.dataset.index) !== this.index) this.select(Number(button.dataset.index), false); } });
         listen(this.retry, 'click', () => this.selectedLibrary ? this.preview(this.selectedLibrary.Id, true) : this.start({}));
         this.resize = () => this.root.style.setProperty('--home-height', Math.max(320, window.innerHeight - this.host.getBoundingClientRect().top - 8) + 'px');
         listen(window, 'resize', this.resize);
@@ -227,6 +244,12 @@
     Gallery.prototype.valid = function (generation = this.generation) {
         return this.active && generation === this.generation && identity(this.options.apiProvider()) === this.session;
     };
+    Gallery.prototype.isTouchClick = function (event, button) {
+        const touch = event.pointerType === 'touch' || event.sourceCapabilities?.firesTouchEvents
+            || (this.touchPress?.node === button && event.timeStamp - this.touchPress.at < 1500);
+        this.touchPress = null;
+        return !!touch;
+    };
     Gallery.prototype.start = async function (options = {}) {
         this.stop(); this.active = true; const generation = ++this.generation;
         document.body.classList.add('tg-home-active');
@@ -236,6 +259,7 @@
         this.showStatus('正在载入媒体库…');
         if (!this.api || !this.api.getCurrentUserId()) { this.showStatus('请先登录服务器。'); return; }
         this.data = new window.TigerestHomeData(this.api);
+        this.order = window.TigerestHomeData.normalizeOrder(window.jmpInfo?.settings?.home?.displayOrder);
         if (options.signal) {
             if (options.signal.aborted) { this.stop(); return; }
             options.signal.addEventListener('abort', () => { if (generation === this.generation) this.stop(); }, { once: true, signal: this.abort.signal });
@@ -320,6 +344,8 @@
         ], { duration: index === 1 ? 760 : 620, delay: 160 + index * 140, fill: 'both' }));
     };
     Gallery.prototype.clear = function () {
+        // Touch focus can preview another library before its click arrives.
+        // Preserve the pointerdown selection snapshot through that preview.
         this.cancelText();
         ++this.selection; this.root.classList.remove('tg-ready'); this.hero.disabled = true;
         this.cards = []; this.index = 0; this.heroImages.replaceChildren(); this.title.textContent = ''; this.subtitle.textContent = '';
@@ -335,10 +361,11 @@
         const generation = this.generation, signal = this.requestAbort.signal;
         this.selectedLibrary = library; this.clear();
         this.libraryList.querySelectorAll('.tg-library').forEach(button => { const selected = button.dataset.libraryId === id; button.classList.toggle('is-selected', selected); button.setAttribute('aria-current', selected ? 'true' : 'false'); });
-        this.railTitle.textContent = library.Name + ' / 最近入库'; this.showStatus('正在载入作品…');
+        this.railTitle.textContent = library.Name + ' / ' + window.TigerestHomeData.orders[this.order]; this.showStatus('正在载入作品…');
+        this.more.setAttribute('aria-label', '查看更多：' + library.Name);
         try {
             const cached = this.cache.get(id);
-            const cards = !refresh && cached && Date.now() - cached.at < 60000 ? cached.cards : await this.data.load(library, signal);
+            const cards = !refresh && cached && Date.now() - cached.at < 60000 ? cached.cards : await this.data.load(library, signal, this.order);
             if (!this.valid(generation) || signal.aborted) return;
             this.cache.set(id, { cards, at: Date.now() }); this.cards = cards;
             if (!cards.length) { this.showStatus(library.kind === 'favorites' ? '还没有收藏作品。' : '这个媒体库还没有可展示的作品。'); return; }
@@ -346,7 +373,13 @@
                 const button = element('button', 'tg-cover'); button.type = 'button'; button.dataset.itemId = card.item.Id; button.dataset.index = index;
                 const url = this.data.artwork(card.item, 'poster');
                 if (url) { const image = element('img', ''); image.src = url; image.alt = ''; image.loading = 'lazy'; image.draggable = false; button.append(image); }
-                button.append(element('span', 'tg-cover-label', card.item.Name)); button.setAttribute('aria-label', '查看作品：' + card.item.Name); return button;
+                button.append(element('span', 'tg-cover-label', card.item.Name));
+                if (card.resumeItem) {
+                    const progress = element('span', 'tg-resume-progress'), fill = element('i', '');
+                    fill.style.width = Math.max(0, Math.min(100, Number(card.resumeItem.UserData?.PlayedPercentage) || 0)) + '%';
+                    progress.append(fill); button.append(progress);
+                }
+                button.setAttribute('aria-label', '查看作品：' + card.item.Name); return button;
             }));
             this.status.hidden = true; this.select(0, false); this.root.classList.add('tg-ready');
         } catch (error) { if (this.valid(generation) && !signal.aborted) this.showStatus('作品加载失败，请重试。', true); }
@@ -363,7 +396,7 @@
         this.overview.textContent = plain.value.replace(/\s+/g, ' ').trim();
         this.overview.hidden = !this.overview.textContent;
         this.heroCopy.classList.toggle('tg-no-overview', this.overview.hidden);
-        this.kicker.textContent = this.selectedLibrary.Name + ' / 最近入库';
+        this.kicker.textContent = this.selectedLibrary.Name + ' / ' + window.TigerestHomeData.orders[this.order];
         const episode = card.latestEpisode;
         this.subtitle.textContent = [card.item.ProductionYear, episode ? '最新入库 · S' + (episode.ParentIndexNumber || 1) + ':E' + (episode.IndexNumber || '?') + ' ' + (episode.Name || '') : '', card.addedAt ? '入库 ' + card.addedAt.slice(0, 10) : ''].filter(Boolean).join('  ·  ');
         this.hero.setAttribute('aria-label', '查看作品：' + this.title.textContent); this.hero.disabled = false;
@@ -387,9 +420,23 @@
         image.onerror = () => { image.remove(); if (this.valid() && selection === this.selection) this.heroImages.replaceChildren(); };
         image.src = url; this.heroImages.append(image);
     };
-    Gallery.prototype.open = function (card) { if (card && this.valid()) this.options.router.showItem(card.item, this.api.serverId()); };
+    Gallery.prototype.open = function (card, source) {
+        if (!card || !this.valid() || window.TigerestHomeMotion?.busy) return;
+        source = source || Array.from(this.coverList.children).find(node => node.dataset.itemId === card.item.Id)?.querySelector('img');
+        const navigate = () => this.options.router.showItem({...card.item, ServerId: this.api.serverId()}, this.api.serverId());
+        const result = window.TigerestHomeMotion ? window.TigerestHomeMotion.openItem({gallery: this, card, library: this.selectedLibrary, source, navigate}) : navigate();
+        return Promise.resolve(result).catch(error => console.warn('Tigerest Theater: unable to open home work', error));
+    };
+    Gallery.prototype.openLibrary = function (library) {
+        if (!library || !this.valid() || window.TigerestHomeMotion?.busy) return;
+        const navigate = () => library.kind === 'favorites' ? (this.options.openFavorites || (() => this.options.router.showFavorites()))()
+            : this.options.router.showItem({...library, ServerId: this.api.serverId()}, this.api.serverId());
+        const result = window.TigerestHomeMotion ? window.TigerestHomeMotion.openLibrary({gallery: this, library, navigate}) : navigate();
+        return Promise.resolve(result).catch(error => console.warn('Tigerest Theater: unable to open home library', error));
+    };
     Gallery.prototype.scrollToBeginning = function () { this.host.scrollTop = 0; this.libraryList.scrollTop = 0; this.libraryList.scrollLeft = 0; this.coverList.scrollLeft = 0; };
     Gallery.prototype.stop = function () {
+        this.touchPress = null;
         this.active = false; ++this.generation; this.abort?.abort(); this.requestAbort?.abort();
         document.body.classList.remove('tg-home-active');
         this.animations.forEach(animation => animation.cancel()); this.animations = [];

@@ -10,6 +10,7 @@ const path = require('node:path');
 const net = require('node:net');
 const { randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
+const configVersion=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../resources/settings/settings_description.json'),'utf8')).find(section=>section.section==='__meta__').version;
 
 (async () => {
   assert.ok(process.argv[2], 'Pass the packaged application executable');
@@ -21,7 +22,7 @@ const { setTimeout: delay } = require('node:timers/promises');
   fs.mkdirSync(profile, { recursive: true });
   fs.writeFileSync(path.join(profile, 'profile.json'), JSON.stringify({ name: `BundleTest-${id}` }));
   fs.writeFileSync(path.join(profile, 'Tigerest Theater.conf'), JSON.stringify({
-    version: 10,
+    version: configVersion,
     sections: {
       main: { enableWindowsTrayIcon: false },
       path: { startupurl_desktop: 'about:blank' },

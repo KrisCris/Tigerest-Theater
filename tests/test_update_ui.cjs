@@ -4,8 +4,8 @@ const withBrowser=require('./community_browser.cjs');
 withBrowser({
  '/':{type:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/emby-layout.css"><style>body{margin:0;background:#141414;color:#eee;font:15px system-ui}.skinHeader{background:#171717}.headerTop,.headerLeft,.headerRight{display:flex;align-items:center}.headerTop{padding:10px 20px}.headerLeft{flex:1}.headerRight{margin-left:auto}.headerButton{box-sizing:border-box;min-width:44px;height:44px;border:0;background:transparent;color:inherit;font:inherit;padding:8px;white-space:nowrap}#origin{margin:30px}</style><body><main class="padded-top-page"><button id="origin">客户端设置</button></main><script>
  window.TigerestUpdate?.destroy();delete window.TigerestUpdate;
- window.calls=[];window.listeners=[];window.state={status:'idle',currentVersion:'2.4.1'};
- const system={appUpdateChanged:{connect(fn){listeners.push(fn)},disconnect(fn){listeners=listeners.filter(f=>f!==fn)}},appUpdateState(cb){cb(state)}};
+ window.calls=[];window.externalLinks=[];window.listeners=[];window.state={status:'idle',currentVersion:'2.4.1'};
+ const system={openExternalUrl(url){externalLinks.push(url)},appUpdateChanged:{connect(fn){listeners.push(fn)},disconnect(fn){listeners=listeners.filter(f=>f!==fn)}},appUpdateState(cb){cb(state)}};
  for(const method of ['checkForUpdates','downloadAppUpdate','installAppUpdate','cancelAppUpdate','skipAppUpdate','deferAppUpdate'])system[method]=(...args)=>{const cb=args.pop();calls.push([method,...args]);cb?.()};
  window.apiPromise=Promise.resolve({system});window.emit=next=>{state={...state,...next};for(const fn of listeners)fn(state)};
  </script><script src="/update.js"></script></body>`},
@@ -35,6 +35,12 @@ withBrowser({
  assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog").open'),true,'entry opens the existing release without a second check');
  assert.equal(await evaluate('calls.filter(c=>c[0]==="checkForUpdates").length'),1);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog img")'),null,'release notes rendered as text');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".tg-update-links a")].map(link=>({href:link.href,label:link.getAttribute("aria-label")}))'),[
+  {href:'https://github.com/Tigerest/Tigerest-Theater',label:'GitHub 项目'},
+  {href:'https://space.bilibili.com/12562485',label:'B站主页'}
+ ],'project and creator links remain accessible in the dialog header');
+ await evaluate('document.querySelectorAll(".tg-update-links a").forEach(link=>link.click())');
+ assert.deepEqual(await evaluate('externalLinks'),['https://github.com/Tigerest/Tigerest-Theater','https://space.bilibili.com/12562485'],'links open through the native external browser bridge');
  await evaluate('document.querySelector("[data-update-action=close]").click()');
  assert.equal(await evaluate('document.querySelector("#tigerest-update-button").getAttribute("aria-expanded")'),'false','closed details are announced correctly');
  assert.equal(await evaluate('document.querySelector("[data-update-dot]").hidden'),false,'Later keeps the available update reachable');
@@ -50,8 +56,16 @@ withBrowser({
  await evaluate('TigerestUpdate.check()');assert.deepEqual(await evaluate('calls.at(-1)'),['checkForUpdates',true]);
  await evaluate(`emit({status:'available',manual:true});document.querySelector('[data-update-action=download]').click()`);
  assert.deepEqual(await evaluate('calls.at(-1)'),['downloadAppUpdate']);
- await evaluate(`emit({status:'downloading',received:512});`);
+ await evaluate(`emit({status:'downloading',received:512,speed:2048});`);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog progress").value'),50);
+ assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("2.0 KB/s")'),'download speed is visible');
+ await evaluate(`emit({retrying:true,retryAttempt:2,retryLimit:5,retryDelay:5});`);
+ assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("第 2/5 次")'),'native retry budget is visible');
+ await evaluate(`emit({platform:'android',retrying:false});`);
+ assert.equal(await evaluate('document.querySelector("[data-update-action=cancel]").textContent'),'暂停下载','Android keeps a paused partial');
+ await evaluate(`emit({status:'available',resumable:true,retrying:false});`);
+ assert.equal(await evaluate('document.querySelector("[data-update-action=download]").textContent'),'继续下载');
+ await evaluate(`emit({status:'downloading',resumable:false,retrying:false});`);
  await evaluate(`emit({status:'ready',received:1024});`);
  assert.deepEqual(await evaluate('calls.at(-1)'),['installAppUpdate',true],'one click downloads then opens installer');
  await evaluate(`emit({status:'ready',error:'系统安装已取消'});`);
@@ -74,6 +88,9 @@ withBrowser({
  await evaluate(`new Promise(resolve=>{const js=document.createElement('script');js.src='/android.js';js.onload=resolve;document.head.appendChild(js)})`);
  await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true,'narrow phone fits');
+ await evaluate(`emit({status:'installing'});`);
+ const dialogGeometry=await evaluate(`(()=>{const dialog=document.querySelector('#tigerest-update-dialog'),title=dialog.querySelector('h2').getBoundingClientRect(),links=dialog.querySelector('.tg-update-links').getBoundingClientRect();return {fits:dialog.scrollWidth<=dialog.clientWidth,overlap:title.right>links.left+1,inside:links.right<=dialog.getBoundingClientRect().right}})()`);
+ assert.deepEqual(dialogGeometry,{fits:true,overlap:false,inside:true},'long update status and icons fit the phone dialog without overlap');
  await evaluate('TigerestUpdate.close()');
  const headerGeometry=await evaluate(`(()=>{const left=document.querySelector('.headerLeft').getBoundingClientRect(),right=document.querySelector('.headerRight').getBoundingClientRect();return {width:document.documentElement.scrollWidth,overlap:left.right>right.left+1&&left.top<right.bottom&&left.bottom>right.top}})()`);
  assert.ok(headerGeometry.width<=360,'full phone header fits the actual 360px viewport: '+JSON.stringify(headerGeometry));

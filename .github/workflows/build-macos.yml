@@ -90,6 +90,19 @@ jobs:
         defaults write "$DOMAIN" "$KEY" -bool true
         ctest --test-dir build --output-on-failure
 
+    - name: Preserve failed-build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ matrix.artifact }}-failed-build
+        retention-days: 3
+        path: |
+          build/output/
+          build/tests/
+          build/Testing/Temporary/
+          build/CTestTestfile.cmake
+          build/tests/CTestTestfile.cmake
+
     - name: Sign and create dmg
       run: |
         python3 dev/macos/sign_bundle.py "./build/output/Tigerest Theater.app"

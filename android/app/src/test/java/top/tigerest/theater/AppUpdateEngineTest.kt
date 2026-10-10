@@ -69,7 +69,8 @@ class AppUpdateEngineTest {
         engine.check(true); queue.run()
         source.duringDownload = { engine.cancel() }
         engine.download(); queue.run(); assertEquals("available", engine.snapshot().getString("status"))
-        assertTrue(directory.listFiles()!!.isEmpty())
+        assertEquals("abc", directory.listFiles()!!.single { it.extension == "part" }.readText())
+        assertEquals(3L, engine.snapshot().getLong("received"))
         source.duringDownload = {}
         engine.download(); queue.run(); assertEquals("ready", engine.snapshot().getString("status"))
         assertEquals(3L, engine.snapshot().getLong("received"))

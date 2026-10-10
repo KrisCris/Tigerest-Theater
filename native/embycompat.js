@@ -154,6 +154,7 @@
                 // showFavorites() helper emits /home&tab=favorites, losing the
                 // query parameter and reopening the home tab instead.
                 this.gallery = new window.TigerestHomeGallery(this.view, { apiProvider: () => manager.currentApiClient(), router, enterFullscreen, openFavorites: () => tabs.selectedTabIndex(1) });
+                window.TigerestHomeMotion?.setGallery(this.gallery);
                 BaseTab.prototype.onTemplateLoaded.apply(this, arguments);
             };
             HomeTab.prototype.enableFocusPreview = function () { return false; };
@@ -237,7 +238,7 @@
             return SettingsView;
         };
         defineModule('tigerest/settings-view.js', settingsViewDependencies, createSettingsView());
-        for (const section of ['main', 'audio', 'video', 'subtitles', 'mpv', 'danmaku', 'other'])
+        for (const section of ['main', 'home', 'audio', 'video', 'subtitles', 'mpv', 'danmaku', 'other'])
             defineModule(`tigerest/settings-${section}-view.js`, settingsViewDependencies, createSettingsView(section));
 
         defineModule('tigerest/mpv-video.js', [

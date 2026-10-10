@@ -5,9 +5,29 @@
 #include <QJsonObject>
 #include <QSaveFile>
 #include <QTimer>
-#include <QUuid>
 
 using AppUpdatePolicy::Package;
+
+namespace {
+constexpr int RetryDelays[] = {2000, 5000, 10000, 20000, 30000};
+constexpr int RetryLimit = sizeof(RetryDelays) / sizeof(RetryDelays[0]);
+bool plainPath(const QString& path)
+{
+  const QFileInfo info(path);
+  return !info.isSymLink() && !info.isJunction();
+}
+bool strongEtag(const QByteArray& value)
+{
+  if (value.size() < 2 || value.size() > 512 || !value.startsWith('"') || !value.endsWith('"')) return false;
+  for (int i = 1; i < value.size() - 1; ++i)
+    if (static_cast<unsigned char>(value[i]) < 33 || value[i] == '"' || value[i] == 127) return false;
+  return true;
+}
+QString candidateDirectory(const QString& root, const AppUpdatePolicy::Candidate& candidate)
+{
+  return root + "/" + QString::fromLatin1(candidate.sha256.toHex());
+}
+}
 
 AppUpdater::AppUpdater(const QString& version, Package package, const QString& cacheDirectory,
                        const QString& preferencePath, QNetworkAccessManager* network, Launcher launcher, QObject* parent)
@@ -17,14 +37,16 @@ AppUpdater::AppUpdater(const QString& version, Package package, const QString& c
   m_state = {{"status", "idle"}, {"currentVersion", version}, {"version", ""},
     {"releaseUrl", "https://github.com/Tigerest/Tigerest-Theater/releases"}, {"notes", ""},
     {"size", qint64(0)}, {"received", qint64(0)}, {"error", ""}, {"manual", false}, {"deferred", false}, {"installAfterDownload", false},
+    {"resumable", false}, {"retrying", false}, {"retryAttempt", 0}, {"retryLimit", RetryLimit}, {"retryDelay", 0}, {"speed", qint64(0)},
     {"platform", package == Package::MacArm64 ? "macos" : package == Package::Unsupported ? "unsupported" : "windows"},
     {"installLabel", package == Package::WindowsInstaller ? "安装更新" : package == Package::WindowsPortable ? "打开 ZIP 更新包" : "打开 DMG 更新包"}};
+  m_retryTimer.setSingleShot(true);
+  connect(&m_retryTimer, &QTimer::timeout, this, &AppUpdater::beginDownloadRequest);
 }
 
 AppUpdater::~AppUpdater()
 {
-  // An installer or archive viewer may still be using the verified package.
-  if (m_packageOpened) m_readyPath.clear();
+  // Keep verified packages and resumable data across application restarts.
   clearTransfer();
 }
 
@@ -42,8 +64,9 @@ void AppUpdater::publish(const QString& status, const QString& error)
   emit changed(m_state);
 }
 
-void AppUpdater::clearTransfer()
+void AppUpdater::clearTransfer(bool discard)
 {
+  m_retryTimer.stop();
   if (m_reply)
   {
     auto* reply = m_reply.data();
@@ -52,16 +75,29 @@ void AppUpdater::clearTransfer()
     reply->abort();
     reply->deleteLater();
   }
-  if (m_file.isOpen()) m_file.close();
-  if (!m_file.fileName().isEmpty()) QFile::remove(m_file.fileName());
-  if (!m_readyPath.isEmpty()) QFile::remove(m_readyPath);
-  if (!m_downloadDirectory.isEmpty()) QDir().rmdir(m_downloadDirectory);
+  if (m_file.isOpen())
+  {
+    m_state["received"] = m_file.size();
+    if (!m_file.flush()) discard = true;
+    m_file.close();
+  }
+  if (discard && m_cacheLock)
+  {
+    for (const auto& path : {m_file.fileName(), m_metadataPath, m_readyPath})
+      if (!path.isEmpty() && plainPath(path)) QFile::remove(path);
+    m_state["received"] = qint64(0);
+  }
+  m_state["resumable"] = !discard && strongEtag(m_etag) && m_state.value("received").toLongLong() > 0;
+  m_state["retrying"] = false;
+  m_state["speed"] = qint64(0);
+  m_cacheLock.reset();
   m_file.setFileName(QString());
   m_readyPath.clear();
   m_downloadDirectory.clear();
+  m_metadataPath.clear();
+  m_etag.clear();
   m_packageOpened = false;
   m_metadata.clear();
-  m_state["received"] = qint64(0);
   m_state["installAfterDownload"] = false;
 }
 
@@ -85,6 +121,8 @@ void AppUpdater::check(bool manual, bool enabled)
     return;
   }
   clearTransfer();
+  m_state["received"] = qint64(0);
+  m_state["resumable"] = false;
   m_candidate = {};
   if (m_package == Package::Unsupported)
   {
@@ -92,6 +130,7 @@ void AppUpdater::check(bool manual, bool enabled)
     return;
   }
   publish("checking");
+  if (m_state.value("status") != "checking") return;
   request(QUrl("https://api.github.com/repos/Tigerest/Tigerest-Theater/releases?per_page=30"), true);
 }
 
@@ -103,26 +142,36 @@ void AppUpdater::request(const QUrl& url, bool metadata, int redirects)
   request.setRawHeader("Accept", metadata ? "application/vnd.github+json" : "application/octet-stream");
   request.setRawHeader("Accept-Encoding", "identity");
   if (metadata) request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
+  if (!metadata && m_requestOffset > 0)
+  {
+    request.setRawHeader("Range", "bytes=" + QByteArray::number(m_requestOffset) + "-");
+    request.setRawHeader("If-Range", m_etag);
+  }
   request.setTransferTimeout(30000);
   auto* reply = m_network->get(request);
   m_reply = reply;
   reply->setReadBufferSize(128 * 1024);
   connect(reply, &QIODevice::readyRead, this, [this, reply, metadata] { receive(reply, metadata); });
   connect(reply, &QNetworkReply::finished, this, [this, reply, metadata, redirects] { finish(reply, metadata, redirects); });
-  QTimer::singleShot(metadata ? 30000 : 30 * 60 * 1000, reply, [this, reply] {
-    if (m_reply == reply) fail("更新请求超时，请检查网络后重试。");
+  // Slow downloads may keep making progress indefinitely. Only metadata has
+  // an overall deadline; package transfers use the inactivity timeout above.
+  if (metadata) QTimer::singleShot(30000, reply, [this, reply] {
+    if (m_reply == reply) fail("检查更新超时，请稍后重试。");
   });
 }
 
 void AppUpdater::receive(QNetworkReply* reply, bool metadata)
 {
-  if (m_reply != reply || reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200) return;
+  if (m_reply != reply) return;
+  if (metadata && reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200) return;
+  if (!metadata && !acceptDownloadHeaders(reply)) return;
   const qint64 maximum = metadata ? AppUpdatePolicy::MaximumMetadataBytes : m_candidate.size;
   bool hasLength = false;
   const qint64 contentLength = reply->header(QNetworkRequest::ContentLengthHeader).toLongLong(&hasLength);
-  if (hasLength && (contentLength < 0 || contentLength > maximum || (!metadata && contentLength != maximum)))
+  const qint64 responseSize = metadata ? maximum : maximum - m_requestOffset;
+  if (hasLength && (contentLength < 0 || contentLength > responseSize || (!metadata && contentLength != responseSize)))
   {
-    fail("更新响应大小不符合预期。");
+    fail("更新响应大小不符合预期。", !metadata);
     return;
   }
   while (reply->bytesAvailable() > 0)
@@ -132,7 +181,7 @@ void AppUpdater::receive(QNetworkReply* reply, bool metadata)
     const qint64 received = metadata ? m_metadata.size() : m_file.size();
     if (bytes.size() > maximum - received)
     {
-      fail("更新响应超过允许的大小。");
+      fail("更新响应超过允许的大小。", !metadata);
       return;
     }
     if (metadata) m_metadata.append(bytes);
@@ -140,13 +189,165 @@ void AppUpdater::receive(QNetworkReply* reply, bool metadata)
     {
       if (m_file.write(bytes) != bytes.size())
       {
-        fail("无法写入更新文件，请检查可用空间和目录权限。");
+        fail("无法写入更新文件，请检查可用空间和目录权限。", true);
         return;
       }
       m_state["received"] = m_file.size();
+      m_state["resumable"] = strongEtag(m_etag);
+      m_state["speed"] = (m_file.size() - m_requestOffset) * 1000 / qMax<qint64>(1, m_transferClock.elapsed());
     }
   }
-  if (!metadata) emit changed(m_state);
+  if (!metadata && (!m_progressClock.isValid() || m_progressClock.elapsed() >= 100))
+  { m_progressClock.start(); emit changed(m_state); }
+}
+
+bool AppUpdater::saveDownloadMetadata()
+{
+  if (!strongEtag(m_etag))
+  { QFile::remove(m_metadataPath); return true; }
+  QSaveFile file(m_metadataPath); file.setDirectWriteFallback(false);
+  const auto bytes = QJsonDocument(QJsonObject{{"schemaVersion", 1}, {"url", m_candidate.downloadUrl.toString()},
+    {"sha256", QString::fromLatin1(m_candidate.sha256.toHex())}, {"size", m_candidate.size},
+    {"etag", QString::fromLatin1(m_etag)}}).toJson();
+  return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.commit();
+}
+
+bool AppUpdater::restoreDownloadMetadata()
+{
+  m_etag.clear();
+  if (!plainPath(m_metadataPath)) return false;
+  QFile file(m_metadataPath);
+  if (!file.open(QIODevice::ReadOnly) || file.size() > 16 * 1024) return false;
+  const auto meta = QJsonDocument::fromJson(file.readAll()).object();
+  const auto etag = meta.value("etag").toString().toLatin1();
+  if (meta.value("schemaVersion").toInt() != 1 || meta.value("url").toString() != m_candidate.downloadUrl.toString() ||
+      meta.value("size").toInteger() != m_candidate.size ||
+      meta.value("sha256").toString() != QString::fromLatin1(m_candidate.sha256.toHex()) || !strongEtag(etag)) return false;
+  m_etag = etag;
+  return true;
+}
+
+void AppUpdater::refreshCachedProgress()
+{
+  m_state["received"] = qint64(0); m_state["resumable"] = false;
+  if (!m_candidate.valid() || !plainPath(m_cacheDirectory)) return;
+  const auto directory = candidateDirectory(m_cacheDirectory, m_candidate);
+  const auto partial = directory + "/" + m_candidate.fileName + ".part";
+  if (!plainPath(directory) || !plainPath(partial)) return;
+  m_metadataPath = directory + "/download.json";
+  const auto size = QFileInfo(partial).size();
+  if (size > 0 && size <= m_candidate.size && restoreDownloadMetadata())
+  { m_state["received"] = size; m_state["resumable"] = true; }
+  m_metadataPath.clear(); m_etag.clear();
+}
+
+bool AppUpdater::acceptDownloadHeaders(QNetworkReply* reply)
+{
+  if (m_headersAccepted) return true;
+  const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+  if (status == 416 && m_requestOffset > 0)
+  { restartDownload(); return false; }
+  if (status != 200 && status != 206) return false;
+  const QByteArray etag = reply->rawHeader("ETag");
+  if (status == 206)
+  {
+    const QByteArray expected = "bytes " + QByteArray::number(m_requestOffset) + "-" +
+      QByteArray::number(m_candidate.size - 1) + "/" + QByteArray::number(m_candidate.size);
+    if (m_requestOffset <= 0 || reply->rawHeader("Content-Range") != expected || etag != m_etag || !strongEtag(etag))
+    { restartDownload(); return false; }
+  }
+  else if (m_requestOffset > 0)
+  {
+    // A server may ignore Range or replace the asset. A complete response must
+    // replace the partial file, never be appended to it.
+    if (!m_file.resize(0) || !m_file.seek(0))
+    { fail("无法重置更新文件。", true); return false; }
+    m_requestOffset = 0; m_state["received"] = qint64(0);
+  }
+  const auto encoding = reply->rawHeader("Content-Encoding");
+  if (!encoding.isEmpty() && encoding.toLower() != "identity")
+  { fail("更新服务器返回了不支持的压缩内容。", true); return false; }
+  m_etag = strongEtag(etag) ? etag : QByteArray();
+  if (!saveDownloadMetadata())
+  { fail("无法保存更新续传信息。", true); return false; }
+  m_headersAccepted = true;
+  return true;
+}
+
+void AppUpdater::beginDownloadRequest()
+{
+  if (!m_file.isOpen()) return;
+  if (m_file.size() == m_candidate.size) { completeDownload(); return; }
+  m_progressHighWater = qMax(m_progressHighWater, m_file.size());
+  if (!strongEtag(m_etag) && m_file.size() > 0 && !m_file.resize(0))
+  { fail("无法重置更新下载文件。", true); return; }
+  m_requestOffset = m_file.size();
+  if (!m_file.seek(m_requestOffset)) { fail("无法定位更新下载文件。", true); return; }
+  m_headersAccepted = false;
+  m_state["received"] = m_requestOffset;
+  m_state["retrying"] = false;
+  m_state["resumable"] = m_requestOffset > 0;
+  m_transferClock.start(); m_progressClock.invalidate();
+  publish("downloading");
+  if (!m_file.isOpen() || m_state.value("status") != "downloading") return;
+  // Always obtain a fresh signed asset redirect from the canonical URL.
+  request(m_candidate.downloadUrl, false);
+}
+
+void AppUpdater::restartDownload()
+{
+  if (m_restartedFresh) { fail("服务器续传信息不匹配，请稍后重新下载。", true); return; }
+  m_restartedFresh = true;
+  if (m_reply)
+  {
+    auto* reply = m_reply.data(); m_reply.clear();
+    disconnect(reply, nullptr, this, nullptr); reply->abort(); reply->deleteLater();
+  }
+  if (!m_file.resize(0) || !m_file.seek(0)) { fail("无法重置更新文件。", true); return; }
+  m_etag.clear(); QFile::remove(m_metadataPath); m_state["received"] = qint64(0);
+  m_retryTimer.start(0);
+}
+
+void AppUpdater::retryDownload(const QString& message)
+{
+  if (m_reply)
+  {
+    auto* reply = m_reply.data(); m_reply.clear();
+    disconnect(reply, nullptr, this, nullptr); reply->abort(); reply->deleteLater();
+  }
+  if (!m_file.isOpen() || !m_file.flush()) { fail("无法保存更新进度。", true); return; }
+  // Count consecutive attempts that did not grow the retained package. A
+  // server ignoring Range must not refill the budget by rewriting its prefix.
+  if (m_file.size() > m_progressHighWater)
+  { m_progressHighWater = m_file.size(); m_retryCount = 0; }
+  if (m_retryCount >= RetryLimit)
+  { fail(strongEtag(m_etag) && m_file.size() > 0 ? "自动重试未完成，已保留进度，可点击继续下载。" : "自动重试未完成，请稍后重新下载。"); return; }
+  const int delay = RetryDelays[m_retryCount++];
+  m_state["retrying"] = true;
+  m_state["retryAttempt"] = m_retryCount;
+  m_state["retryDelay"] = delay / 1000;
+  m_state["resumable"] = strongEtag(m_etag) && m_file.size() > 0;
+  m_state["speed"] = qint64(0);
+  m_retryTimer.start(delay);
+  publish("downloading", message);
+}
+
+void AppUpdater::completeDownload()
+{
+  const bool flushed = m_file.flush();
+  m_file.close();
+  if (!flushed || !AppUpdatePolicy::verifyFile(m_file.fileName(), m_candidate))
+  { fail("更新文件长度或 SHA-256 校验失败，请重新下载。", true); return; }
+  m_readyPath = m_downloadDirectory + "/" + m_candidate.fileName;
+  if (!plainPath(m_readyPath) || (QFile::exists(m_readyPath) && !QFile::remove(m_readyPath)) ||
+      !QFile::rename(m_file.fileName(), m_readyPath))
+  { fail("无法保存已校验的更新文件。"); return; }
+  QFile::remove(m_metadataPath);
+  m_state["received"] = m_candidate.size;
+  m_state["retrying"] = false;
+  m_state["resumable"] = false;
+  m_state["speed"] = qint64(0);
+  publish("ready");
 }
 
 void AppUpdater::finish(QNetworkReply* reply, bool metadata, int redirects)
@@ -172,8 +373,14 @@ void AppUpdater::finish(QNetworkReply* reply, bool metadata, int redirects)
     request(target, metadata, redirects + 1);
     return;
   }
-  if (reply->error() != QNetworkReply::NoError || status != 200)
+  if (reply->error() != QNetworkReply::NoError || (status != 200 && (metadata || status != 206)))
   {
+    const auto error = reply->error();
+    if (!metadata && (status == 403 || status == 408 || status == 429 || status >= 500 ||
+        error == QNetworkReply::RemoteHostClosedError || error == QNetworkReply::TimeoutError ||
+        error == QNetworkReply::OperationCanceledError || error == QNetworkReply::TemporaryNetworkFailureError ||
+        error == QNetworkReply::HostNotFoundError || error == QNetworkReply::ConnectionRefusedError))
+    { retryDownload("更新下载中断，正在重试。"); return; }
     fail(status == 403 || status == 429 ? "GitHub 请求受限，请稍后重试。" : "无法获取更新，请检查网络后重试。");
     return;
   }
@@ -196,28 +403,17 @@ void AppUpdater::finish(QNetworkReply* reply, bool metadata, int redirects)
       publish("idle");
       return;
     }
+    refreshCachedProgress();
     publish(m_candidate.valid() ? "available" : "current");
     return;
   }
-  const bool flushed = m_file.flush();
-  m_file.close();
-  if (!flushed || !AppUpdatePolicy::verifyFile(m_file.fileName(), m_candidate))
-  {
-    fail("更新文件长度或 SHA-256 校验失败，请重新下载。");
-    return;
-  }
-  m_readyPath = m_downloadDirectory + "/" + m_candidate.fileName;
-  if (!QFile::rename(m_file.fileName(), m_readyPath))
-  {
-    fail("无法保存已校验的更新文件。");
-    return;
-  }
-  publish("ready");
+  if (m_file.size() < m_candidate.size) { retryDownload("下载尚未完成，正在重试。"); return; }
+  completeDownload();
 }
 
-void AppUpdater::fail(const QString& message)
+void AppUpdater::fail(const QString& message, bool discard)
 {
-  clearTransfer();
+  clearTransfer(discard);
   publish("error", message);
 }
 
@@ -226,23 +422,44 @@ void AppUpdater::download()
   const QString status = m_state.value("status").toString();
   if (!m_candidate.valid() || (status != "available" && status != "error")) return;
   clearTransfer();
+  m_retryCount = 0; m_progressHighWater = 0; m_restartedFresh = false;
+  m_state["retryAttempt"] = 0;
   m_state["manual"] = true;
   m_state["deferred"] = false;
   m_state["installAfterDownload"] = true;
-  if (QFileInfo(m_cacheDirectory).isSymLink() || !QDir().mkpath(m_cacheDirectory))
+  if (!plainPath(m_cacheDirectory) || !QDir().mkpath(m_cacheDirectory))
   {
     fail("无法创建更新缓存目录。");
     return;
   }
   QFile::setPermissions(m_cacheDirectory, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
-  m_downloadDirectory = m_cacheDirectory + "/" + QUuid::createUuid().toString(QUuid::WithoutBraces);
-  if (!QDir().mkdir(m_downloadDirectory)) { fail("无法创建更新缓存目录。"); return; }
+  m_downloadDirectory = candidateDirectory(m_cacheDirectory, m_candidate);
+  if (!plainPath(m_downloadDirectory) || !QDir().mkpath(m_downloadDirectory)) { fail("无法创建更新缓存目录。"); return; }
   QFile::setPermissions(m_downloadDirectory, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
   m_file.setFileName(m_downloadDirectory + "/" + m_candidate.fileName + ".part");
-  if (!m_file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) { fail("无法创建更新下载文件。"); return; }
+  m_metadataPath = m_downloadDirectory + "/download.json";
+  m_readyPath = m_downloadDirectory + "/" + m_candidate.fileName;
+  const auto lockPath = m_downloadDirectory + "/download.lock";
+  for (const auto& path : {m_file.fileName(), m_metadataPath, m_readyPath, lockPath})
+    if (!plainPath(path)) { fail("更新缓存包含不安全的文件链接。"); return; }
+  // A completed package is immutable and may be verified/read by another
+  // window while its original downloader still owns the writer lock.
+  if (AppUpdatePolicy::verifyFile(m_readyPath, m_candidate))
+  { m_state["received"] = m_candidate.size; m_state["resumable"] = false; publish("ready"); return; }
+  m_cacheLock = std::make_unique<QLockFile>(lockPath);
+  m_cacheLock->setStaleLockTime(0);
+  if (!m_cacheLock->tryLock(0)) { m_cacheLock.reset(); fail("另一个窗口正在下载此更新。"); return; }
+  if (AppUpdatePolicy::verifyFile(m_readyPath, m_candidate))
+  { m_state["received"] = m_candidate.size; m_state["resumable"] = false; publish("ready"); return; }
+  if (!m_file.open(QIODevice::ReadWrite)) { fail("无法创建更新下载文件。"); return; }
   m_file.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
-  publish("downloading");
-  request(m_candidate.downloadUrl, false);
+  const bool resume = restoreDownloadMetadata() && m_file.size() > 0 && m_file.size() <= m_candidate.size;
+  if (!resume)
+  {
+    m_etag.clear();
+    if (!m_file.resize(0)) { fail("无法重置更新下载文件。", true); return; }
+  }
+  beginDownloadRequest();
 }
 
 void AppUpdater::install(bool automatic)
@@ -252,7 +469,7 @@ void AppUpdater::install(bool automatic)
   m_state["installAfterDownload"] = false;
   if (!AppUpdatePolicy::verifyFile(m_readyPath, m_candidate))
   {
-    fail("更新文件已被修改或丢失，请重新下载。");
+    fail("更新文件已被修改或丢失，请重新下载。", true);
     return;
   }
   publish("installing");
@@ -294,7 +511,7 @@ void AppUpdater::skip()
     publish(m_state.value("status").toString(), "无法保存跳过版本设置。");
     return;
   }
-  clearTransfer();
+  clearTransfer(true);
   m_candidate = {};
   m_state["deferred"] = true;
   publish("idle");

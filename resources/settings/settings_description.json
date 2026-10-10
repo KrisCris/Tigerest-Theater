@@ -1,7 +1,7 @@
 [
   {
     "section": "__meta__",
-    "version": 10
+    "version": 11
   },
   {
     "section": "state",
@@ -185,6 +185,19 @@
         "display_name": "允许网页界面缩放",
         "help": "允许用 Ctrl+加减号、Ctrl+滚轮或触控板手势缩放网页界面；触控板缩放修改后需要重启客户端。",
         "default": true
+      }
+    ]
+  },
+  {
+    "section": "home",
+    "order": 2,
+    "values": [
+      {
+        "value": "displayOrder",
+        "default": "resume",
+        "display_name": "展示顺序",
+        "help": "继续观看不足 24 项时，用当前媒体夹的最近入库作品补足。",
+        "possible_values": [["resume", "继续观看"], ["recent", "最近入库"], ["release", "发行时间"], ["rating", "评分"]]
       }
     ]
   },

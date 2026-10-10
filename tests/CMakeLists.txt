@@ -194,6 +194,13 @@ if(WIN32)
   endif()
 endif()
 if(WIN32 AND Python3_Interpreter_FOUND)
+  add_executable(app_update_transfer_host app_update_transfer_host.cpp ../src/system/AppUpdater.cpp ../src/system/AppUpdatePolicy.cpp)
+  target_include_directories(app_update_transfer_host PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_link_libraries(app_update_transfer_host PRIVATE Qt6::Core Qt6::Network)
+  add_test(NAME test_app_update_transfer COMMAND "${Python3_EXECUTABLE}" -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_app_update_transfer.py")
+  set_tests_properties(test_app_update_transfer PROPERTIES TIMEOUT 90
+    ENVIRONMENT "APP_UPDATE_TRANSFER_HOST=$<TARGET_FILE:app_update_transfer_host>")
+  add_test(NAME test_openssl_runtime_deployment COMMAND "${Python3_EXECUTABLE}" -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_openssl_runtime_deployment.py")
   add_executable(rife_extension_manager_host rife_extension_manager_host.cpp)
   target_link_libraries(rife_extension_manager_host PRIVATE tigerest_rife_control)
   add_test(NAME test_rife_extension_manager COMMAND "${Python3_EXECUTABLE}" -B -X utf8
@@ -454,7 +461,18 @@ find_program(Node_EXECUTABLE node)
 if(Node_EXECUTABLE)
   add_test(NAME test_home_data
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_home_data.js
+                   ${CMAKE_CURRENT_SOURCE_DIR}/test_home_backdrop.js
+                   ${CMAKE_CURRENT_SOURCE_DIR}/test_home_orders.js
+                   ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion.js
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_home_registration.js)
+  add_test(NAME test_home_motion_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_home_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_home_motion_cache_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_cache_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_home_motion_cache_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_home_gallery_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_gallery_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)

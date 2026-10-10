@@ -8,13 +8,19 @@ const routes={
 };
 for(const name of ['anime','movies','series','favorites'])routes['/art/'+name+'.png']={type:'image/png',path:path.join(root,'native/home-art',name+'.png')};
 withBrowser(routes,async({evaluate,call})=>{
+ // Keyboard focus requires an active page even when the native test window is
+ // in the background. Keep the fixture independent of the desktop's focus.
+ await call('Emulation.setFocusEmulationEnabled',{enabled:true});
  // The animation contract must not depend on the runner's accessibility
  // preference. Reduced motion is verified separately below.
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
  const result=await evaluate('('+ (async function(embedded){
   const check=(value,message)=>{if(!value)throw Error(message);};
+  check(document.hasFocus(),'keyboard-focus fixture has an active page');
   const wait=async(fn)=>{for(let i=0;i<400;i++){if(fn())return;await new Promise(r=>setTimeout(r,10));}throw Error('condition timeout: '+JSON.stringify({visibility:document.visibilityState,animations:window.gallery?.animations.map(a=>({state:a.playState,time:a.currentTime}))}));};
   check(window.TigerestHomeGallery,'rebuilt gallery is available');
+  // This fixture verifies the Gallery in isolation; actual navigation has its own fixture.
+  window.TigerestHomeMotion=null;
   const opened=[],requests=[];let heldResolve,currentUser='one';
   const api={serverId:()=> 'fixture-server',serverAddress:()=>location.origin,getCurrentUserId:()=>currentUser,
    getUserViews:async()=>({Items:Array.from({length:7},(_,i)=>({Id:'library'+i,Name:'我的媒体库 '+(i+1),CollectionType:i===0?'tvshows':'movies'}))}),
@@ -59,6 +65,9 @@ withBrowser(routes,async({evaluate,call})=>{
   check(Number(getComputedStyle(gallery.title).opacity)===0,'a carousel change resets the independent title entrance');
   await wait(()=>Number(getComputedStyle(gallery.title).opacity)>.95);
   check(gallery.title.textContent==='较早作品','carousel text ends on the selected work');
+  const selectedCover=document.querySelector('.tg-cover.is-selected'),selection=gallery.selection,sceneryBeforeFocus=gallery.scenery;
+  selectedCover.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,pointerType:'mouse'}));selectedCover.focus({preventScroll:true});
+  check(gallery.selection===selection&&gallery.scenery===sceneryBeforeFocus,'hovering or focusing the current cover preserves its scene and transition cache');
   check(gallery.overview.hidden,'a work without an overview has no empty summary block');
   const create=document.createElement.bind(document);
   document.createElement=function(tag,...args){const node=create(tag,...args);if(tag==='img')Object.defineProperty(node,'src',{set(){},configurable:true});return node;};
@@ -90,6 +99,7 @@ withBrowser(routes,async({evaluate,call})=>{
   // Pin the entrance before its first visible frame. Keyboard navigation must
   // reveal layout content even when a background compositor holds its timeline.
   gallery.animations.forEach(animation=>{animation.pause();animation.currentTime=0;});
+  if (embedded) await window.api?.window.raiseWindow?.();
   const lastLibrary=document.querySelector('[data-library-id="library6"]');lastLibrary.focus({preventScroll:true});
   const libraryFrame=gallery.libraryList.getBoundingClientRect(),focusedLibrary=lastLibrary.getBoundingClientRect();
   check(gallery.libraryList.scrollTop>0||gallery.libraryList.scrollLeft>0,'keyboard focus reveals a library outside the list viewport: '+JSON.stringify({frame:libraryFrame.toJSON(),item:focusedLibrary.toJSON(),scrollTop:gallery.libraryList.scrollTop,scrollLeft:gallery.libraryList.scrollLeft,active:document.activeElement?.dataset.libraryId,animations:gallery.animations.map(a=>a.playState)}));

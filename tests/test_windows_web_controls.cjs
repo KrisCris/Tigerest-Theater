@@ -4,6 +4,7 @@ const os=require('node:os'),http=require('node:http'),net=require('node:net');
 const {spawn,execFile}=require('node:child_process'),{promisify}=require('node:util');
 const {setTimeout:delay}=require('node:timers/promises');
 const exec=promisify(execFile);
+const configVersion=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../resources/settings/settings_description.json'),'utf8')).find(section=>section.section==='__meta__').version;
 async function run(){
  const exe=path.resolve(process.argv[2]),stage=process.argv.find(a=>a.startsWith('--stage='))?.slice(8)||'all';
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'tigerest-controls-')),id=require('node:crypto').randomUUID().replaceAll('-','');
@@ -17,7 +18,7 @@ async function run(){
  <script>document.querySelector('#avatar').onchange=async e=>{const f=e.target.files[0];window.selectedFile=f&&{name:f.name,bytes:Array.from(new Uint8Array(await f.arrayBuffer()))};};</script></body></html>`);});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const url='http://127.0.0.1:'+server.address().port;
  fs.writeFileSync(path.join(profile,'profile.json'),JSON.stringify({name:id}));
- fs.writeFileSync(path.join(profile,'Tigerest Theater.conf'),JSON.stringify({version:10,sections:{main:{enableWindowsTrayIcon:false},path:{startupurl_desktop:url}}}));
+ fs.writeFileSync(path.join(profile,'Tigerest Theater.conf'),JSON.stringify({version:configVersion,sections:{main:{enableWindowsTrayIcon:false},path:{startupurl_desktop:url}}}));
  const listener=net.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));const port=listener.address().port;await new Promise(r=>listener.close(r));
  const child=spawn(exe,['--config-dir',root,'--profile',id,'--disable-gpu','--remote-debugging-port','127.0.0.1:'+port],{cwd:path.dirname(exe),stdio:['ignore','pipe','pipe']});
  let diagnostics='',socket;child.stdout.on('data',d=>diagnostics=(diagnostics+d).slice(-5000));child.stderr.on('data',d=>diagnostics=(diagnostics+d).slice(-5000));

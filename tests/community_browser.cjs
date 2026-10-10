@@ -7,6 +7,7 @@ const net=require('node:net');
 const os=require('node:os');
 const {spawn}=require('node:child_process');
 const {setTimeout:delay}=require('node:timers/promises');
+const configVersion=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../resources/settings/settings_description.json'),'utf8')).find(section=>section.section==='__meta__').version;
 
 module.exports=async function withBrowser(routes,work,{settings={},gpu=false,visible=false,prepareProfile,startupTimeout=12000}={}){
     if(process.env.TIGEREST_ANDROID_FIXTURE) return require('../android/tests/android_browser.cjs')(routes,work,{settings});
@@ -29,7 +30,7 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         const id=require('node:crypto').randomUUID().replaceAll('-','');
         const folder=path.join(profile,'profiles',id);fs.mkdirSync(folder,{recursive:true});
         fs.writeFileSync(path.join(folder,'profile.json'),JSON.stringify({name:'MessagesFixture'}));
-        fs.writeFileSync(path.join(folder,'Tigerest Theater.conf'),JSON.stringify({version:10,sections:{
+        fs.writeFileSync(path.join(folder,'Tigerest Theater.conf'),JSON.stringify({version:configVersion,sections:{
             ...settings,main:{...settings.main,enableWindowsTrayIcon:false},path:{...settings.path,startupurl_desktop:url}}}));
         if(prepareProfile)await prepareProfile(profile,folder);
     }
@@ -71,6 +72,11 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         };
         await call('Page.navigate',{url});
         for(let i=0;i<100;i++){if(await evaluate('document.readyState==="complete"'))break;await delay(50);}
+        // Native macOS windows launched directly can remain behind the runner's
+        // desktop. Give the fixture a foreground WebContents before testing
+        // animation frames and short asynchronous bridge callbacks.
+        await call('Page.bringToFront');
+        await call('Emulation.setFocusEmulationEnabled',{enabled:true});
         await work({url,call,evaluate,webengine});
     }finally{
         socket?.close();

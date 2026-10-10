@@ -8,7 +8,7 @@ require('./media_fixture.cjs')(async({c,url,wait,requests,shot})=>{
   await c.evaluate('api.settings.setValue("mpv","enableDanmaku",true)');
   const item={Id:'matching-fixture-'+Date.now(),SeriesName:work,Name:'开始与结束',ParentIndexNumber:1,IndexNumber:1,PremiereDate:'2026-01-08T16:00:00Z'};
   await c.evaluate(`api.player.load(${JSON.stringify(url+'/media.mp4')},{autoplay:true},{type:'video',metadata:${JSON.stringify(item)}},1,-1)`);
-  await wait('api.danmaku.sources().then(s=>s.some(v=>v.id==="101"))','duplicated works with quote differences must choose the regular E1');
+  await wait('api.danmaku.sources().then(s=>s.some(v=>v.id==="101"))','repeated work records with quote differences must choose the regular E1');
   const source=(await c.evaluate('api.danmaku.sources()'))[0];
   assert.equal(source.title,work.replace(/[「」]/g,'')+' - 第1话 开始与结束','selected provider work and episode are visible in the source label');
   shot('danmaku-matching-osd');
@@ -17,22 +17,25 @@ require('./media_fixture.cjs')(async({c,url,wait,requests,shot})=>{
   const checkNoComment=async(metadata)=>{
    const first=requests.length;
    await c.evaluate(`api.danmaku.match(${JSON.stringify(metadata)})`);
-   for(let i=0;i<100;i++) {if(requests.slice(first).filter(v=>v.startsWith('/api/v2/bangumi/')).length>=3)break;await delay(100);}
-   assert.equal(requests.slice(first).filter(v=>v.startsWith('/api/v2/bangumi/')).length,3,'all releases were scanned');
+   for(let i=0;i<100;i++) {if(requests.slice(first).filter(v=>v.startsWith('/api/v2/bangumi/')).length>=1)break;await delay(100);}
+   assert.equal(requests.slice(first).filter(v=>v.startsWith('/api/v2/bangumi/')).length,1,'the deduplicated work was scanned');
    await delay(200);
    assert.ok(!requests.slice(first).some(v=>v.startsWith('/api/v2/comment/')),'unavailable episode must not load other comments');
    assert.equal((await c.evaluate('api.danmaku.sources()')).length,0);
   };
-  await checkNoComment({...item,Id:item.Id+'-eight-days',PremiereDate:'2026-01-01'});
-  await checkNoComment({...item,Id:item.Id+'-missing-episode',IndexNumber:2});
+  await c.evaluate(`api.danmaku.match(${JSON.stringify({...item,Id:item.Id+'-old-date-title',IndexNumber:25,PremiereDate:'1989-04-15'})})`);
+  await wait('api.danmaku.sources().then(s=>s.some(v=>v.id==="101"))','a unique title overrides the cumulative number even when premiere dates conflict');
+  await c.evaluate(`api.danmaku.match(${JSON.stringify({...item,Id:item.Id+'-old-date-number',Name:'Different translation',PremiereDate:'1989-04-15'})})`);
+  await wait('api.danmaku.sources().then(s=>s.some(v=>v.id==="101"))','the unique number remains usable when the title differs and premiere dates conflict');
+  await checkNoComment({...item,Id:item.Id+'-missing-episode',IndexNumber:2,Name:'Missing episode title'});
   await c.evaluate('api.player.stop()');
-  console.log(JSON.stringify({passed:true,duplicateWorks:true,quotationDifference:true,creditsExcluded:true,episodeTitleInOSD:true,nativeCorrectionOSD:true,eightDayRejection:true,missingEpisodeRejection:true,productionWrites:false}));
+  console.log(JSON.stringify({passed:true,repeatedWorkRecords:true,quotationDifference:true,creditsExcluded:true,episodeTitleInOSD:true,nativeCorrectionOSD:true,datesIgnored:true,titlePriority:true,numericFallback:true,missingEpisodeRejection:true,productionWrites:false}));
  }finally{await c.evaluate(`api.settings.setValue('danmaku','apiServer',${JSON.stringify(previous)})`);}
 },(req,res)=>{
  if(!req.url.startsWith('/api/'))return false;
  res.setHeader('Content-Type','application/json');
  if(req.url.startsWith('/api/v2/search/anime'))res.end(JSON.stringify({animes:[
-  {bangumiId:1,animeTitle:work.replace(/[「」]/g,'')},{bangumiId:2,animeTitle:work},{bangumiId:3,animeTitle:work}]}));
+  {bangumiId:1,animeTitle:work.replace(/[「」]/g,'')},{bangumiId:1,animeTitle:work},{bangumiId:1,animeTitle:work}]}));
  else if(req.url.startsWith('/api/v2/bangumi/')){
   const id=Number(req.url.split('/').at(-1));
   res.end(JSON.stringify({bangumi:{episodes:[

@@ -11,6 +11,7 @@ import okhttp3.Response
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONArray
 import java.io.File
+import java.io.IOException
 import java.io.InterruptedIOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
@@ -32,17 +33,24 @@ class AndroidAppUpdateSource(private val context: Context): AppUpdateSource {
         fixture = address.trimEnd('/')
     }
 
-    private fun open(address: String, accept: String, cancelled: () -> Boolean): Response {
+    private fun open(address: String, accept: String, cancelled: () -> Boolean, resumeFrom: Long? = null): Response {
         var url = address.toHttpUrl()
         repeat(5) { redirect ->
             if (cancelled()) throw InterruptedIOException("cancelled")
             val active = http.newCall(Request.Builder().url(url).header("User-Agent", "Tigerest-Theater-Android/${BuildConfig.VERSION_NAME}")
-                .header("Accept", accept).header("Accept-Encoding", "identity").header("X-GitHub-Api-Version", "2022-11-28").build())
+                .header("Accept", accept).header("Accept-Encoding", "identity").header("X-GitHub-Api-Version", "2022-11-28")
+                .apply { if (resumeFrom != null && resumeFrom > 0) header("Range", "bytes=$resumeFrom-") }.build())
             call = active
             if (cancelled()) { active.cancel(); throw InterruptedIOException("cancelled") }
             val response = active.execute()
             if (response.code !in setOf(301, 302, 303, 307, 308)) {
-                if (!response.isSuccessful) { val code = response.code; response.close(); throw IllegalStateException(if (code == 403 || code == 429) "更新服务暂时限流，请稍后重试" else "更新服务响应失败（$code），请稍后重试") }
+                if (!response.isSuccessful && !(resumeFrom != null && response.code == 416)) {
+                    val code = response.code; response.close()
+                    val message = if (code == 403 || code == 429) "更新服务暂时限流，请稍后重试" else "更新服务响应失败（$code），请稍后重试"
+                    // Each retry opens the official release URL again, obtaining a fresh signed asset redirect.
+                    if (resumeFrom != null && (code in setOf(403, 408, 429) || code in 500..599)) throw IOException(message)
+                    throw IllegalStateException(message)
+                }
                 return response
             }
             val location = response.header("Location"); response.close()
@@ -66,22 +74,11 @@ class AndroidAppUpdateSource(private val context: Context): AppUpdateSource {
 
     override fun download(candidate: AppUpdateCandidate, destination: File, cancelled: () -> Boolean, progress: (Long) -> Unit) {
         val address = if (BuildConfig.DEBUG && fixture.isNotEmpty()) "$fixture/download" else candidate.downloadUrl
-        open(address, "application/octet-stream", cancelled).use { response ->
-            val body = response.body ?: throw IllegalStateException("更新包为空")
-            require(body.contentLength() == -1L || body.contentLength() == candidate.size) { "更新包大小不匹配，请重新检查更新" }
-            body.byteStream().use { input -> destination.outputStream().use { output ->
-                val bytes = ByteArray(64 * 1024); var received = 0L; var reportedAt = 0L
-                while (true) {
-                    if (cancelled()) throw InterruptedIOException("cancelled")
-                    val count = input.read(bytes); if (count < 0) break
-                    received += count
-                    require(received <= candidate.size) { "更新包超出预期大小" }
-                    output.write(bytes, 0, count)
-                    val now = System.nanoTime()
-                    if (now - reportedAt >= 200_000_000L || received == candidate.size) { reportedAt = now; progress(received) }
-                }
-                output.fd.sync()
-            } }
+        if (cancelled()) throw InterruptedIOException("cancelled")
+        val offset = resumeOffset(destination, candidate)
+        if (offset == candidate.size) { progress(offset); return }
+        open(address, "application/octet-stream", cancelled, offset).use { response ->
+            writePackage(response, candidate, destination, offset, cancelled, progress)
         }
     }
 

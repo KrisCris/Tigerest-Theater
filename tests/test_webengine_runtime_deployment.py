@@ -16,6 +16,29 @@ class WebEngineDeployment(unittest.TestCase):
     def configure(self, *, empty=False, missing=None, stock=False, version="6.9.3", bad_patch=False):
         with tempfile.TemporaryDirectory(prefix="tigerest-webengine-deploy-") as temporary:
             root = Path(temporary)
+            # Keep the real configure/install code, with a fixture trust lock.
+            # These synthetic bytes validate packaging policy, not native TLS.
+            source = root / "source"
+            (source / "CMakeModules").mkdir(parents=True)
+            for name in ("CompleteBundle.cmake", "CompleteBundleWin.cmake.in",
+                         "ValidateWindowsWebEngine.cmake", "DeployWindowsOpenSSL.cmake"):
+                shutil.copyfile(ROOT / "CMakeModules" / name, source / "CMakeModules" / name)
+            patch_directory = source / "dev/windows/qtwebengine"
+            patch_directory.mkdir(parents=True)
+            shutil.copyfile(PATCH, patch_directory / PATCH.name)
+            tls = root / "tls runtime"
+            tls.mkdir()
+            tls_lock = {"schemaVersion": 1, "files": {}}
+            for name in ("libssl-3-x64.dll", "libcrypto-3-x64.dll", "libcrypto-3.dll", "LICENSE.OpenSSL.txt", "LICENSE.Python.txt"):
+                payload = ("verified-fixture-" + name).encode()
+                (tls / name).write_bytes(payload)
+                tls_lock["files"][name] = {"size": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
+            tls_lock_directory = source / "dev/windows/tls"
+            tls_lock_directory.mkdir(parents=True)
+            (tls_lock_directory / "runtime-lock.json").write_text(json.dumps(tls_lock), encoding="utf-8")
+            qt = root / "qt"
+            (qt / "plugins/tls").mkdir(parents=True)
+            (qt / "plugins/tls/qopensslbackend.dll").write_bytes(b"matching-qt-fixture")
             runtime = root / "中文 runtime"
             (runtime / "bin").mkdir(parents=True)
             for name in ("Qt6WebEngineCore.dll", "Qt6WebEngineQuick.dll",
@@ -37,7 +60,7 @@ cmake_minimum_required(VERSION 3.19)
 project(WebEnginePreflight NONE)
 set(WIN32 TRUE)
 set(APPLE FALSE)
-set(CMAKE_SOURCE_DIR "{ROOT.as_posix()}")
+set(CMAKE_SOURCE_DIR "{source.as_posix()}")
 set(Qt6Core_VERSION "6.9.3")
 include("{ROOT.as_posix()}/CMakeModules/CompleteBundle.cmake")
 ''', encoding="utf-8")
@@ -49,6 +72,8 @@ include("{ROOT.as_posix()}/CMakeModules/CompleteBundle.cmake")
             return subprocess.run([
                 os.environ.get("CMAKE_COMMAND") or shutil.which("cmake"), *generator,
                 "-DTIGEREST_WEBENGINE_RUNTIME=" + ("" if empty else runtime.as_posix()),
+                "-DTIGEREST_OPENSSL_RUNTIME_DIR=" + tls.as_posix(),
+                "-DQTROOT=" + qt.as_posix(),
                 "-S", str(root), "-B", str(root / "build"),
             ], capture_output=True, encoding="utf-8", errors="replace")
 

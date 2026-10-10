@@ -98,13 +98,13 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
                 val savedBangumi = prefs.getString("match:$group",null)
                 val selected = DanmakuMatch.resolve((0 until animes.length()).mapNotNull { animes.optJSONObject(it) },
                     title,original.optInt("ParentIndexNumber",-1),original.optInt("IndexNumber",-1),
-                    original.optString("PremiereDate"),original.optString("Name"),savedBangumi,{token==generation}) { anime ->
+                    original.optString("Name"),savedBangumi,{token==generation}) { anime ->
                     val records=episodes(anime.get("bangumiId").toString(),origin)
                     (0 until records.length()).mapNotNull { records.optJSONObject(it) }
                 }
                 if(selected == null) { if(token == generation) status("弹幕未自动匹配，请手动搜索作品或选择集数"); return@execute }
                 if(token == generation) {
-                    DiagnosticsLog.app.record("info","Danmaku selected ranked regular episode (dateDistance=${selected.dateDistance ?: "unknown"})")
+                    DiagnosticsLog.app.record("info","Danmaku selected regular episode (matchedByTitle=${selected.matchedByTitle})")
                     val label=selected.anime.optString("animeTitle",title)+" - "+selected.episode.optString("episodeTitle",title)
                     loadLegacy(selected.episode.get("episodeId").toString(),label,token,origin)
                 }

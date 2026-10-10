@@ -716,6 +716,11 @@ function getTigerestSettingsCategories() {
             icon: '&#xe30c;', // desktop_windows
             subtitle: '窗口、启动与系统集成'
         },
+        home: {
+            title: '首页设置',
+            icon: '&#xe88a;', // home
+            subtitle: '展示顺序与继续观看'
+        },
         audio: {
             title: '音频',
             icon: '&#xe050;', // volume_up

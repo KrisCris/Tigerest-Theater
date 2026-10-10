@@ -7,8 +7,8 @@ function modules() {
     const registrations = new Map();
     const context = {console, AbortController, setInterval:()=>1, clearInterval(){}, setTimeout:()=>1,
         location:{origin:'http://test.invalid'}, jmpInfo:{version:'test',
-            sections:['main','audio','video','subtitles','mpv','danmaku','other'].map((key,order)=>({key,order:order+1})),
-            settingsDescriptions:Object.fromEntries(['main','audio','video','subtitles','mpv','danmaku','other'].map(key=>[key,[]]))}, NativeShell:{AppHost:{}}};
+            sections:['main','home','audio','video','subtitles','mpv','danmaku','other'].map((key,order)=>({key,order:order+1})),
+            settingsDescriptions:Object.fromEntries(['main','home','audio','video','subtitles','mpv','danmaku','other'].map(key=>[key,[]]))}, NativeShell:{AppHost:{}}};
     context.window = context; context.globalThis = context;
     const shell=fs.readFileSync(__dirname+'/../native/nativeshell.js','utf8');
     const categoriesStart=shell.indexOf('function getTigerestSettingsCategories(');
@@ -43,7 +43,7 @@ test('only supported categories appear once in native settings menus', () => {
     const plugin=new (registrations.get('tigerest/settings.js').factory())();
     const routes=menuRoutes(plugin.getRoutes());
     assert.deepEqual(Array.from(routes,route=>route.tigerestSettingsSection),
-        ['main','audio','video','subtitles','mpv','danmaku','other']);
+        ['main','home','audio','video','subtitles','mpv','danmaku','other']);
     for(const route of routes){
         assert.equal(route.type,'settings');
         assert.equal(route.settingsTheme,true);
@@ -65,7 +65,7 @@ test('category routes use semantic Emby material icons from shared category meta
     const plugin=new (registrations.get('tigerest/settings.js').factory())();
     // Verified against Emby 4.10's mi_2024_05 font cmap: desktop_windows,
     // volume_up, videocam, closed_caption, high_quality, chat and tune.
-    const icons={main:'&#xe30c;',audio:'&#xe050;',video:'&#xe04b;',subtitles:'&#xe01c;',
+    const icons={main:'&#xe30c;',home:'&#xe88a;',audio:'&#xe050;',video:'&#xe04b;',subtitles:'&#xe01c;',
         mpv:'&#xe024;',danmaku:'&#xe0b7;',other:'&#xe429;'};
     for(const android of [false,true]){
         context.tigerestAndroidApi=android?{}:null;

@@ -5,18 +5,31 @@ set(QTROOT "@QTROOT@")
 set(TIGEREST_WEBENGINE_RUNTIME "@TIGEREST_WEBENGINE_RUNTIME@")
 include("@PROJECT_SOURCE_DIR@/CMakeModules/ValidateWindowsWebEngine.cmake")
 tigerest_validate_webengine("${TIGEREST_WEBENGINE_RUNTIME}" "@Qt6Core_VERSION@" "@PROJECT_SOURCE_DIR@")
+set(TIGEREST_OPENSSL_RUNTIME_DIR "@TIGEREST_OPENSSL_RUNTIME_DIR@")
+set(TLS_LOCK_FILE "@PROJECT_SOURCE_DIR@/dev/windows/tls/runtime-lock.json")
+include("@PROJECT_SOURCE_DIR@/CMakeModules/DeployWindowsOpenSSL.cmake")
+tigerest_validate_openssl("${TIGEREST_OPENSSL_RUNTIME_DIR}" "${QTROOT}" "${TLS_LOCK_FILE}")
 
 message(STATUS "Running windeployqt from: ${QTROOT}/bin/windeployqt.exe")
 message(STATUS "Target: ${CMAKE_INSTALL_PREFIX}/Tigerest Theater.exe")
 
 execute_process(
-  COMMAND "${QTROOT}/bin/windeployqt.exe" --verbose 9 --qmldir @SOURCE_ROOT@/src/ui "${CMAKE_INSTALL_PREFIX}/Tigerest Theater.exe"
+  COMMAND "${QTROOT}/bin/windeployqt.exe" --verbose 9 --force-openssl
+          --qmldir "@SOURCE_ROOT@/src/ui"
+          "${CMAKE_INSTALL_PREFIX}/Tigerest Theater.exe"
   RESULT_VARIABLE WINDEPLOYQT_RESULT
 )
 
 if(NOT WINDEPLOYQT_RESULT EQUAL 0)
   message(FATAL_ERROR "windeployqt failed with exit code: ${WINDEPLOYQT_RESULT}")
 endif()
+
+# --force-openssl deploys the Qt backend without looking for OpenSSL dependencies.
+# Copy exact pinned bytes ourselves and retain the matching Qt plugin.
+tigerest_deploy_openssl("${TIGEREST_OPENSSL_RUNTIME_DIR}" "${QTROOT}" "${TLS_LOCK_FILE}"
+                        "${CMAKE_INSTALL_PREFIX}")
+file(INSTALL "@PROJECT_SOURCE_DIR@/dev/windows/tls/NOTICE.txt"
+     DESTINATION "${CMAKE_INSTALL_PREFIX}/licenses/openssl")
 
 # windeployqt may miss Qt6Xml.dll - copy explicitly
 file(INSTALL "${QTROOT}/bin/Qt6Xml.dll" DESTINATION "${CMAKE_INSTALL_PREFIX}")

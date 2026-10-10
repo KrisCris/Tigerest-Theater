@@ -2,11 +2,11 @@
 
 独立 Kotlin 工程，最低 Android 15（API 35），目标 API 36，内置 arm64-v8a / x86_64 的 libmpv，无需另装播放器。现有 `native/` 网页插件、消息中心、评论与深色金色样式在构建时同步到 APK；安卓通过限定来源的 WebMessage 桥接替换 Qt WebChannel。
 
-当前正式版为 2.5.0（versionCode 2050000），沿用正式签名。新增沉浸式首页、播放防误触锁、选集及直接上下集按钮，支持系统旋转锁保留横屏。报错说明最低 3 字，按分秒填写发生时间，可附带最近约 10 分钟的脱敏日志。
+当前工程版本为 2.5.2（versionCode 2050200），沿用正式签名。首页默认继续观看，支持排序设置、聚焦项直接点击和海报转场。更新包下载支持暂停、重启后续传与自动重试；只有超过本次下载已保存的最高字节数，才会重置连续失败预算。沉浸式首页、播放防误触锁、选集及直接上下集按钮支持系统旋转锁保留横屏。报错说明最低 3 字，按分秒填写发生时间，可附带最近约 10 分钟的脱敏日志。
 
 ## 使用
 
-安装 [V2.5.0 正式 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-android.apk)，打开“大河影院”，选择服务器或输入自己的 Emby 地址，然后在服务器网页登录。正式版 versionName 为 `2.5.0`、versionCode 为 `2050000`，可覆盖升级同签名旧版并保留登录和设置。登录信息保留在安卓应用私有 WebView 中。普通 Emby 地址可以播放媒体；消息与评论沿用原客户端的服务路由与授权规则，需要相应的服务支持。
+安装 [V2.5.2 正式 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.2/TigerestTheater-2.5.2-android.apk)，打开“大河影院”，选择服务器或输入自己的 Emby 地址，然后在服务器网页登录。正式版 versionName 为 `2.5.2`、versionCode 为 `2050200`，可覆盖升级同签名旧版并保留登录和设置。登录信息保留在安卓应用私有 WebView 中。普通 Emby 地址可以播放媒体；消息与评论沿用原客户端的服务路由与授权规则，需要相应的服务支持。
 
 视频播放自动进入沉浸界面，返回网页时恢复系统栏，安卓不显示桌面全屏／窗口按钮。开始播放及缓冲时显示加载转圈。轻触空白处显示／隐藏控制栏，播放时约 3.5 秒自动收起；拖动进度或打开菜单时保持显示。常用暂停、前后跳转、选集、上一集、下一集、弹幕和倍速直接显示；音轨、内嵌及 Emby 外置字幕、字幕偏移、画质和客户端设置在“更多”中。顶部「防误触」隐藏控制栏并屏蔽手势和返回，长按「长按解锁」恢复操作。音频保留网页播放器界面。应用进入后台时暂停；当前版本未实现后台持续播放、画中画、离线下载或桌面 RIFE 补帧。
 
@@ -19,6 +19,8 @@
 弹幕使用屏幕帧时钟补齐 mpv 视频时间戳之间的运动，独立于视频帧率；暂停、缓冲、跳转和倍速仍以播放器状态同步。诊断分别记录重绘次数和滚动位置变化次数，不能用重绘次数代替实际运动帧率。
 
 从 2.4.2 起，每次启动后台检查正式发布；**2.4.3 起不再自动弹窗，右上角更新图标以红点提示新版本**。点击图标查看详情，可选择「立即更新／稍后／跳过此版本」。「客户端」设置分类提供手动检查和自动检查开关。点击更新后下载并核验，再交给系统安装器；首次需在系统页面允许“大河影院”安装应用，系统安装确认仍需手动完成。拒绝授权或取消安装后可重试。更新保留现有应用数据，下载期间切换网页或窗口不会丢失更新状态。
+
+2.5.1 将下载缓存按正式元数据的 SHA-256 命名。暂停保留已下载字节，继续下载或应用重启后检查同一版本可从断点继续；跳过版本会清理该版本缓存。下载中断按 2／5／10／20／30 秒自动重试，重新下载相同前缀或在旧进度以内反复波动不会无限重置预算。HTTP 206 必须精确匹配剩余范围，200 覆盖旧前缀，416 或不匹配的范围从零重试。完整缓存直接验证 SHA-256、APK 包名、版本、签名、系统与处理器兼容性，安装前再次验证；缓存校验失败会清理损坏包。Android 可回收应用缓存，因此缓存被系统清理后会从零下载。
 
 布局依据当前窗口及密度，支持横竖屏、内外屏切换、自由窗口和分屏尺寸。遇到系统上报的分隔折痕时使用可用的一侧。背景和视频覆盖到挖孔区域，仅交互控件避开挖孔及系统栏；2.4.3 减少网页多层叠加的安全区留白，并调整窄屏顶栏。键盘缩小网页区域，自由窗口标题栏单独处理。屏幕变化不会主动重载网页或媒体；视频表面改变尺寸时重新配置 EGL 输出，保留播放时间和暂停状态。
 
@@ -80,6 +82,10 @@ node android/tests/test_gestures.cjs
 
 仅调试版支持启动参数 `updateFixture=http://127.0.0.1:PORT`，将版本请求和下载传输映射到本地 `/releases` 与 `/download`；元数据仍需满足正式源、文件名、哈希与 APK 身份规则。发布版忽略此入口，更新地址不能由网页传入。夹具验证不能代替 GitHub 生产网络和真实安装确认测试。
 
+`AppUpdateResumeTest` 与 `AppUpdateTransferTest` 在 JVM 临时目录中验证暂停与进程重建、取消后的旧任务隔离、完整缓存直接核验、损坏缓存拒绝、严格 Content-Range、短响应、取消写入和连续失败上限。`AndroidAppUpdateSourceTest` 使用本机 MockWebServer 验证生产下载适配器实际发出的 Range／identity 请求、416 清空重试和 503 保留缓存；它不替代 Android PackageManager 的真实签名解析或系统安装验收。
+
+2.5.1 的本地构建、JVM／HTTP 夹具和 APK 对齐检查见[更新器本地验证记录](docs/update-resume-2.5.1-verification.md)。该记录不代表已完成真机安装、GitHub 生产传输或真实播放验收。
+
 媒体测试需要 `android/test-artifacts/playback-fixture.mp4`。用 FFmpeg 生成 90 秒 H.264 720p、两个 AAC 音轨的测试文件：
 
 ```powershell
@@ -98,4 +104,4 @@ ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=24 -f lavfi -i sine=frequency=440
 
 mpv 默认构建为 GPLv2 或更新版，上游 FFmpeg 开启 GPL 和 version3，因此本原生组合适用 GPLv3 或更新版。MIT、GPL、LGPL、Apache 及依赖许可文本在 `app/src/main/assets/licenses/` 并随 APK 打包。JNI 来源哈希和二进制哈希分别在构建脚本与锁文件记录。
 
-正式版同时提供 [TigerestTheater-2.5.0-android-Sources.zip](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-android-Sources.zip) 和[来源清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-android-SOURCE-MANIFEST.json)，包含客户端源码、上游应用／JNI／原生构建脚本及官方发布列出的固定依赖与子模块。源码包内 `unpack_native_sources.py` 可用 Python 3.12+ 解包；具体编译要求见包内 README。未重新编译原生库，不宣称原生二进制逐字节可复现。原生运行库未改变时，可用 `tools/package_sources.py --previous <已验证的源码附件> --apk <签名 APK> --output <新版-Sources.zip>` 更新客户端源码；它验证原生锁文件与每份旧源档案哈希，并只打包已提交的 Git 源码。原生依赖改变时必须重新收集对应源码。
+正式版同时提供 [TigerestTheater-2.5.2-android-Sources.zip](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.2/TigerestTheater-2.5.2-android-Sources.zip) 和[来源清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.2/TigerestTheater-2.5.2-android-SOURCE-MANIFEST.json)，包含客户端源码、上游应用／JNI／原生构建脚本及官方发布列出的固定依赖与子模块。源码包内 `unpack_native_sources.py` 可用 Python 3.12+ 解包；具体编译要求见包内 README。未重新编译原生库，不宣称原生二进制逐字节可复现。原生运行库未改变时，可用 `tools/package_sources.py --previous <已验证的源码附件> --apk <签名 APK> --output <新版-Sources.zip>` 更新客户端源码；它验证原生锁文件与每份旧源档案哈希，并只打包已提交的 Git 源码。原生依赖改变时必须重新收集对应源码。
