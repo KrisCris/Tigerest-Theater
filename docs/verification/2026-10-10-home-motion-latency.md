@@ -44,7 +44,7 @@
 
 海报转场期间超过 50ms 的长帧由 2–6 个降到 0–1 个。剩余的长帧主要出现在路由切换本身。媒体夹页面的位图约 210–310ms 就绪，返回首页用的副本约 300–370ms 就绪；2.5.2 两者都约 300–310ms。首页不再生成副本。
 
-这些数字来自 4 核 Linux 容器里的 headless Chromium，不能直接和用户设备比较。2.5.2 原有的同步开销随页面 DOM 大小和设备速度增长；上一份验证记录中，大图冷绘制在 PC 约 269ms、Android 约 574ms。用户反馈的约 200ms 卡顿与此量级相符，但这只是推断，没有真机数据。
+这些数字来自 4 核 Linux 容器里的 headless Chromium，当时夹具用的是 SVG 海报（现已改为 PNG，见下节），不能直接和用户设备比较。2.5.2 原有的同步开销随页面 DOM 大小和设备速度增长；上一份验证记录中，大图冷绘制在 PC 约 269ms、Android 约 574ms。用户反馈的约 200ms 卡顿与此量级相符，但这只是推断，没有真机数据。
 
 ## 自动验证
 
@@ -56,11 +56,22 @@
 | `test_home_gallery_ui.cjs`、`test_home_touch_ui.cjs`（Chromium） | 通过 |
 | 上述 4 个 UI 夹具连续 3 轮 | 全部通过 |
 
+## Linux 客户端实测（QtWebEngine 6.4）
+
+按 `dev/linux/build.sh` 的方式在 Ubuntu 24.04 上构建了真实客户端 `tigerest-theater`，使用系统自带的 Qt 6.4.2，即 QtWebEngine 6.4（Chromium 102）；正式包用的是 Qt 6.9。客户端在 Xvfb 中运行，没有 GPU，并使用临时隔离配置。
+
+- `test_home_motion_ui`、`test_home_motion_cache_ui`、`test_home_gallery_ui`、`test_home_touch_ui` 以 `--webengine` 模式在客户端内运行，全部通过。
+- 用同一环境分别编译 2.5.2 脚本和本次脚本，跑重型夹具，每项 3 次。点击时同步执行的 JS 耗时（即阻塞输入的部分）：首页→详情由 6.8–15.2ms 降到 2.5–6.4ms；媒体夹→详情由 94–112ms 降到 12–21ms；详情→媒体夹由 80–127ms 降到 6–39ms。
+- 该环境下两版的单次转场都要 10–22 秒，期间有 3–5 秒没有一帧。CPU profile 中 JS 约占 1 秒，其余是 QtWebEngine 6.4 纯软件渲染的原生样式／布局／绘制时间，所以整体耗时和帧间隔不作为结论。几次未命中缓存的测量中位图生成超过 2 秒上限，按设计回退到 DOM 副本，回退路径工作正常。
+- 夹具海报原为 600×900 的 SVG，在这个引擎下栅格化会让转场停顿约 7–11 秒，因此基准改用 Node 生成的 300×450 PNG，更接近 Emby 的 JPEG 海报。
+
+客户端无法连接 `http://nas.tigerest.top:8095`：容器出站只支持 HTTPS，而服务器只有明文 HTTP。因此没有用真实 Emby 页面和账号测试。
+
 新增的“入场动画不推迟导航”和“首页→媒体夹不复制”两条断言在 2.5.2 代码上失败（导航 2129ms；点击帧仍有副本），改动后通过。截图另外确认了冷点击镜片会模糊实时旧页面、目标页镜片会模糊实时新页面，以及导航前由不透明位图遮盖。
 
 ## 未验证范围
 
-- 未在 Windows QtWebEngine、macOS 或 Android WebView 上运行，也没有接真实 Emby 服务器或真机。夹具支持 `--webengine` 和 `TIGEREST_ANDROID_FIXTURE`，需要在对应环境复测。
+- 未在 Windows／macOS 正式包使用的 QtWebEngine 6.9、Android WebView、真机或真实 Emby 服务器上运行；Linux 客户端只验证了 QtWebEngine 6.4 下的夹具。夹具支持 `--webengine` 和 `TIGEREST_ANDROID_FIXTURE`，需要在对应环境复测。
 - `backdrop-filter` 的 GPU 开销没有测量。它取代的是原来带 `filter: blur(7px)` 的整页副本，量级相近，但 Android 和低端显卡需要实测。
 - 位图仍不采集 CSS 渐变背景（原有限制）。冷点击时会从镜片的 7px 模糊过渡到位图的低分辨率模糊，与 2.5.2 未命中路径一致。
 
