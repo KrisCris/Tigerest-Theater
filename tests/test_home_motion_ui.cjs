@@ -56,8 +56,20 @@ withBrowser(routes,async({evaluate,call,url})=>{
  await evaluate(`fixture.show('home');window.tabGallery={active:true};window.tabStart=performance.now();window.tabIncoming=new Promise((resolve,reject)=>{const deadline=performance.now()+8000;const observe=()=>{const n=document.querySelector('.tigerest-motion-frozen');if(n&&getComputedStyle(n).transform!=='none'&&+getComputedStyle(n).opacity>0)return resolve({observed:true,elapsedMs:performance.now()-tabStart});if(performance.now()>deadline)return reject(Error('same-page central incoming animation was not observed'));requestAnimationFrame(observe);};requestAnimationFrame(observe);});window.tab=TigerestHomeTransitions.library({gallery:tabGallery,samePage:true,navigate:()=>{tabGallery.active=false;document.querySelector('#home h1').textContent='收藏';history.replaceState({},'',location.pathname+'?tab=favorites');}});true`);
  assert.equal((await evaluate('tabIncoming')).observed,true,'same-page Favorites uses the central incoming animation');
  await evaluate('tab');assert.ok(await evaluate(`TigerestHomeTransitions.last.kind==='library'&&!TigerestHomeTransitions.last.interrupted`),'Favorites completes the observed incoming animation on the reused page');
+ // A detail image that is still loading must not hold the flight back; the
+ // poster copy lands and keeps covering it until the image is complete. A
+ // slow engine may still move the target after the flight's last read, so
+ // the landing is checked after release.
+ await evaluate(`fixture.show('home');window.slowTarget=document.createElement('img');slowTarget.src='/poster.svg';slowTarget.style.cssText='width:200px;height:300px;display:block;margin:20px 0 0 80px';document.querySelector('#detail').append(slowTarget);window.artReady=false;Object.defineProperty(slowTarget,'complete',{configurable:true,get:()=>artReady});window.slowRun=TigerestHomeTransitions.poster({source:document.querySelector('#source'),findTarget:()=>slowTarget,navigate:()=>fixture.route('detail')});true`);
+ const landedEarly=await evaluate(`new Promise((resolve,reject)=>{const deadline=performance.now()+8000;const poll=()=>{const p=document.querySelector('.tigerest-motion-poster'),r=p?.getBoundingClientRect(),t=slowTarget.getBoundingClientRect();const settled=p&&Array.from(document.querySelectorAll('.tigerest-motion-poster,.tigerest-motion-veil,.tigerest-motion-lens')).every(n=>n.getAnimations().every(a=>a.playState!=='running'));if(settled&&Math.max(...['x','y','width','height'].map(k=>Math.abs(r[k]-t[k])))<24)return setTimeout(()=>resolve({busy:TigerestHomeTransitions.busy,held:slowTarget.hasAttribute('data-tigerest-poster-held'),poster:!!document.querySelector('.tigerest-motion-poster'),ready:artReady}),100);if(performance.now()>deadline)return reject(Error('poster never landed'));requestAnimationFrame(poll);};poll();})`);
+ assert.deepEqual(landedEarly,{busy:true,held:true,poster:true,ready:false},'the poster lands while the target image loads and keeps covering it');
+ await evaluate('artReady=true;slowRun');
+ const artMetric=await evaluate('TigerestHomeTransitions.last');
+ assert.ok(artMetric.artworkWaitMs>artMetric.posterFlightStartsMs+700&&artMetric.landingErrorPx<2,'the image wait follows the completed flight: '+JSON.stringify(artMetric));
+ assert.equal(await evaluate(`TigerestHomeTransitions.busy||slowTarget.hasAttribute('data-tigerest-poster-held')||!!document.querySelector('.tigerest-motion-poster')`),false,'the held image and poster copy are released once it is ready');
+ await evaluate('slowTarget.remove();true');
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
  await evaluate(`fixture.show('home');window.reduced=TigerestHomeTransitions.poster({source:document.querySelector('#source'),findTarget:()=>document.querySelector('.detailImageContainer'),navigate:()=>fixture.route('detail')});true`);
  assert.equal(await evaluate('!!document.querySelector(".tigerest-motion-poster,.tigerest-motion-veil")'),false);await evaluate('reduced');
- console.log('production motion fixture:',JSON.stringify({checks:14,landed}));
+ console.log('production motion fixture:',JSON.stringify({checks:17,landed}));
 },{gpu:true,visible:true}).catch(error=>{console.error(error);process.exitCode=1;});

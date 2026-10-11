@@ -130,9 +130,16 @@
         const until = performance.now() + timeout;
         while (!job.signal.aborted && performance.now() < until) {
             const result = predicate(); if (result) return result;
-            await sleep(job, 32);
+            await sleep(job, 16);
         }
         return null;
+    }
+    function frame(job) {
+        return new Promise(resolve => {
+            if (job.signal.aborted) return resolve();
+            const done = () => { cancelAnimationFrame(id); job.signal.removeEventListener('abort', done); resolve(); };
+            const id = requestAnimationFrame(done); job.signal.addEventListener('abort', done, {once: true});
+        });
     }
     function hold(job, node) {
         if (!node || job.held.some(h => h.node === node)) return;
@@ -188,17 +195,41 @@
     }
     // Copy stylesheet elements instead of reading cssRules: Emby may serve CSS from another origin.
     // The shadow tree isolates duplicate IDs and makes the frozen controls inert.
+    const uncopied='.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache,.mainAnimatedPage.hide,.page.hide,script,iframe,object,embed,audio,video';
+    const offscreen = rect => rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth;
+    // Clone visible content natively; only paths leading to hidden cached views,
+    // motion layers or Emby item lists are walked, so hidden views are never copied.
+    function copyTree(node, pairs) {
+        if (!node.querySelector(uncopied+',.itemsContainer') && !node.matches('.itemsContainer')) {
+            const clone = node.cloneNode(true), from = node.querySelectorAll('*'), to = clone.querySelectorAll('*');
+            pairs.push([node,clone]); for (let i = 0; i < from.length; i++) pairs.push([from[i],to[i]]);
+            return clone;
+        }
+        const clone = node.cloneNode(false), list = node.matches('.itemsContainer'); pairs.push([node,clone]);
+        for (const child of node.childNodes) {
+            if (child.nodeType !== 1) clone.append(child.cloneNode(false));
+            else if (child.matches(uncopied)) continue;
+            else if (list && child.offsetParent !== null && offscreen(box(child))) {
+                // An off-screen card only needs to hold its layout size (unrounded,
+                // so rows above stay exact); the frozen page then styles and paints
+                // only the visible cards.
+                const holder = child.cloneNode(false), rect = box(child);
+                holder.style.cssText += `;width:${rect.width}px!important;height:${rect.height}px!important;box-sizing:border-box!important;flex:none!important;visibility:hidden!important`;
+                clone.append(holder);
+            } else clone.append(copyTree(child,pairs));
+        }
+        return clone;
+    }
     function frozen(job, blur = true) {
         if (job.metric) job.metric.domCopies = (job.metric.domCopies || 0) + 1;
         const host = document.createElement('div'); host.className = 'tigerest-motion-frozen';
         if (!blur) { host.style.filter = 'none'; host.style.transform = 'none'; }
         const home = document.body.classList.contains('tg-home-active') ? document.querySelector('.tg-home-host') : null;
-        const shadow = host.attachShadow({mode: 'open'}), html = document.documentElement.cloneNode(false), body = document.body.cloneNode(!home);
-        html.classList.add('tigerest-motion-html'); body.classList.remove('tigerest-motion-busy');
-        let originalRoot = document.body, copyRoot = body;
+        const shadow = host.attachShadow({mode: 'open'}), html = document.documentElement.cloneNode(false), pairs = [];
+        let body;
         if (home) {
-            originalRoot = home; copyRoot = home.cloneNode(true); body.append(copyRoot);
-            const rect = box(home), inherited = getComputedStyle(document.body);
+            body = document.body.cloneNode(false); body.append(copyTree(home,pairs));
+            const copyRoot = body.lastChild, rect = box(home), inherited = getComputedStyle(document.body);
             Object.assign(copyRoot.style,{position:'absolute',left:rect.x+'px',top:rect.y+'px',width:rect.width+'px',height:rect.height+'px'});
             Object.assign(body.style,{margin:'0',font:inherited.font,color:inherited.color,background:inherited.backgroundColor});
             // The home has its own complete stylesheet. Avoid reparsing all of Emby's
@@ -208,31 +239,27 @@
                 Object.assign(copy.style,{position:'fixed',left:r.x+'px',top:r.y+'px',width:r.width+'px',height:r.height+'px',opacity:s.opacity,filter:s.filter});
                 body.prepend(copy);
             }
-        }
-        const originals = [originalRoot,...originalRoot.querySelectorAll('*')], copies = [copyRoot,...copyRoot.querySelectorAll('*')];
+        } else body = copyTree(document.body,pairs);
+        html.classList.add('tigerest-motion-html'); body.classList.remove('tigerest-motion-busy');
+        // Animated, transitioning, hovered or focused nodes may differ from their
+        // stylesheet values. Freeze only those; every other node matches its CSS.
+        const live = new Set(document.querySelectorAll(':hover,:focus-within'));
+        for (const animation of document.getAnimations()) if (animation.effect?.target && !animation.effect.pseudoElement) live.add(animation.effect.target);
         const scrolls = [];
-        originals.forEach((node,i) => {
-            const clone = copies[i];
-            if (clone !== body && !body.contains(clone)) return;
-            // Stylesheets can declare important entrance animations. A universal
-            // shadow override cannot beat those selectors; freeze each element.
-            clone.style.setProperty('animation','none','important');
-            clone.style.setProperty('transition','none','important');
-            if (node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache') || node.matches('script,iframe,object,embed,audio,video')) { clone.remove(); return; }
-            if (node.matches('.mainAnimatedPage.hide,.page.hide')) { clone.remove(); return; }
-            const r = box(node);
-            if (r.width && r.height && r.bottom >= 0 && r.top <= innerHeight) {
+        for (const [node,clone] of pairs) {
+            if (live.has(node)) {
                 const computed = getComputedStyle(node);
                 for (const property of ['opacity','transform','filter']) clone.style[property] = computed[property];
             }
             if (node.tagName === 'IMG') {
+                const r = box(node);
                 clone.removeAttribute('srcset');
                 if(r.width&&r.height&&r.bottom>=0&&r.top<=innerHeight&&r.right>=0&&r.left<=innerWidth){clone.src=node.currentSrc||node.src;clone.loading='eager';}
                 else clone.removeAttribute('src');
             }
             for (const attr of Array.from(clone.attributes)) if (/^on/i.test(attr.name)) clone.removeAttribute(attr.name);
-            if (node.scrollLeft || node.scrollTop) {scrolls.push([clone,node.scrollLeft,node.scrollTop]);clone.setAttribute('data-tigerest-scroll',JSON.stringify([node.scrollLeft,node.scrollTop]));}
-        });
+            if (node.scrollLeft || node.scrollTop) scrolls.push([clone,node.scrollLeft,node.scrollTop]);
+        }
         Object.assign(html.style,{display:'block',width:innerWidth+'px',height:innerHeight+'px',overflow:'hidden'});
         Object.assign(body.style,{width:innerWidth+'px',height:innerHeight+'px',pointerEvents:'none'});
         const computed = getComputedStyle(document.documentElement);
@@ -245,8 +272,11 @@
             else copy.href = node.href;
             shadow.append(copy);
         });
+        // Stylesheets can declare important entrance animations, so a plain
+        // universal override loses to them. :is() takes its most specific
+        // argument (ten IDs) while still matching every element.
         const override = document.createElement('style');
-        override.textContent = '*{animation:none!important;transition:none!important;pointer-events:none!important}';
+        override.textContent = ':is(*,#t#t#t#t#t#t#t#t#t#t){animation:none!important;transition:none!important;pointer-events:none!important}';
         shadow.append(override,html); html.append(body);
         job.syncs ||= []; job.syncs.push(() => scrolls.forEach(([n,x,y]) => { n.scrollLeft=x; n.scrollTop=y; }));
         return host;
@@ -343,17 +373,20 @@
             let target=await wait(job,()=>{const n=options.findTarget();return page()!==previous && usable(n)?n:null;});
             if (target && options.direction==='return') {target.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});await sleep(job,64);}
             if (!usable(target)) { job.metric.fallback='missing-target';await Promise.all([cover,glass].map(n=>animate(job,n,[{opacity:1},{opacity:0}],{duration:220,easing:soft})));return result; }
-            // Allow image decoding and responsive layout to finish before reading the landing rectangle.
-            if (target.tagName==='IMG' && !target.complete) await wait(job,()=>target.complete,1200);
             // The real page is fully covered; finish its competing entrance now
             // so it cannot move the landing rectangle during our poster flight.
             for (const a of page()?.getAnimations?.()||[]) if (Number.isFinite(a.effect?.getComputedTiming().endTime)) {try{a.finish();}catch{}}
+            // Two unchanged frames are enough: the flight rejoins the final rectangle anyway.
             let prior=box(target), steady=0;
-            for (let i=0;i<18 && steady<2 && !job.signal.aborted;i++) {
-                await sleep(job,32); const current=box(target);
+            for (const until=performance.now()+576; steady<2 && !job.signal.aborted && performance.now()<until;) {
+                await frame(job); const current=box(target);
                 steady=Math.max(...['x','y','width','height'].map(k=>Math.abs(current[k]-prior[k])))<.5 ? steady+1 : 0;prior=current;
             }
             if(job.signal.aborted)return result;
+            // Fly while the target artwork loads rather than waiting for it first.
+            // The poster copy keeps covering the held target until it is ready,
+            // at most 1.2 s after take-off (about 0.5 s after landing).
+            const targetArt = target.tagName==='IMG' && !target.complete ? wait(job,()=>target.complete,1200) : null;
             const to=box(target);hold(job,target);
             // The destination is already rendered under the opaque veil. Blur it
             // live instead of copying and restyling the new page before the flight.
@@ -378,6 +411,14 @@
                 animate(job,veil,[{opacity:1,offset:0},{opacity:1,offset:.16},{opacity:0,offset:.48},{opacity:0,offset:1}],{duration,easing:'linear'}),
                 animate(job,glass,[{opacity:1,offset:0},{opacity:1,offset:.7,easing:soft},{opacity:0,offset:1}],{duration,easing:'linear'})
             ]);
+            if (targetArt && !target.complete) { await targetArt; job.metric.artworkWaitMs=performance.now()-job.start; }
+            // A late image or layout change can still move the target after the
+            // flight's last read; rejoin it before releasing the real poster.
+            const end=box(target), at=box(floating);
+            if (!job.signal.aborted && Math.max(...['x','y','width','height'].map(k=>Math.abs(end[k]-at[k])))>.5) {
+                const now=getComputedStyle(floating).transform;floating.style.transform=now;
+                await animate(job,floating,[{transform:now},{transform:transform(end)}],{duration:160,easing:'cubic-bezier(.2,.6,.3,1)'});
+            }
             const landing=box(floating), actual=box(target);
             job.metric.landingErrorPx=Math.max(...['x','y','width','height'].map(key=>Math.abs(landing[key]-actual[key])));
             return result;

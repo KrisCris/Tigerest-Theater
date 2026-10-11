@@ -90,8 +90,18 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.ok(await evaluate(`(()=>{const n=document.querySelector('.tigerest-motion-veil');return +getComputedStyle(n).opacity>.99&&getComputedStyle(n).backgroundColor==='rgb(11, 13, 18)'})()`),'the DOM fallback covers its blur borders before the real route changes');
  assert.equal(await evaluate('state.params.topParentId'),'library');
  await evaluate('releaseNoRaster();true');await evaluate(`noRaster.then(()=>{window.Worker=savedWorker;show('library')})`);
+ // Off-screen list cards are size-holding placeholders in the frozen page;
+ // visible cards keep their exact positions after the list has scrolled,
+ // including fractional card sizes that rounding would accumulate.
+ await evaluate(`window.listCards=Array.from({length:60},(_,i)=>{const c=document.createElement('div');c.className='card extra-card';c.style.cssText='display:inline-block;vertical-align:top;width:90.4px;height:140.4px;margin:4px';c.innerHTML='<div class="cardImageContainer"><img class="cardImage" style="width:90px;height:130px" src="/poster.svg"></div>';return c;});libraryRoot.querySelector('.itemsContainer').prepend(...listCards);libraryRoot.style.overflow='auto';libraryRoot.scrollTop=600;Promise.all(listCards.map(c=>c.querySelector('img').decode().catch(()=>{}))).then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))`);
+ // Late image loads, the scroll event or the client's pending page entrance can
+ // invalidate or defer a prewarm; retry until the snapshot is settled.
+ await evaluate(`(async()=>{for(let i=0;i<30&&!TigerestHomeTransitions.cacheState.snapshot;i++)if(!await TigerestHomeTransitions.prewarm())await new Promise(r=>setTimeout(r,100));return TigerestHomeTransitions.cacheState.snapshot;})()`);
+ const pruned=await evaluate(`(()=>{const copies=Array.from(document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot.querySelectorAll('.extra-card'));const inView=listCards.findIndex(c=>{const r=c.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});if(inView<0)return {inView};const live=listCards[inView].querySelector('img').getBoundingClientRect(),copy=copies[inView].querySelector('img')?.getBoundingClientRect();return {count:copies.length,aboveEmpty:copies[0].childElementCount===0,aboveSize:Math.abs(copies[0].getBoundingClientRect().height-listCards[0].getBoundingClientRect().height),offset:copy?Math.max(...['x','y','width','height'].map(k=>Math.abs(live[k]-copy[k]))):null};})()`);
+ assert.ok(pruned.count===60&&pruned.aboveEmpty&&pruned.aboveSize<1&&pruned.offset!==null&&pruned.offset<1,'off-screen cards hold their size and visible cards stay aligned: '+JSON.stringify(pruned));
+ await evaluate(`listCards.forEach(c=>c.remove());libraryRoot.scrollTop=0;libraryRoot.style.overflow='';new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
  await evaluate('TigerestHomeMotion.reset()');assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'account reset releases the cached background');
  await evaluate('TigerestHomeTransitions.prewarm()');await call('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'viewport changes cannot use the old background');
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});assert.equal(await evaluate('TigerestHomeTransitions.prewarm()'),false);assert.equal(await evaluate('TigerestHomeTransitions.cacheState.bytes'),0);
- console.log('async background/cache fixture:',JSON.stringify({checks:29,hot,started,foreignMetric}));
+ console.log('async background/cache fixture:',JSON.stringify({checks:30,hot,started,foreignMetric}));
 },{gpu:true,visible:true}).catch(e=>{console.error(e);process.exitCode=1});
