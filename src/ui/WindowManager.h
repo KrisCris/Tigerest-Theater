@@ -2,6 +2,8 @@
 #define WINDOWMANAGER_H
 
 #include <QObject>
+#include <QAbstractNativeEventFilter>
+#include <QPointer>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QRect>
@@ -14,7 +16,7 @@
 #define WEBUI_SIZE QSize(1280, 720)
 #define WINDOWW_MIN_SIZE QSize(213, 120)
 
-class WindowManager : public ComponentBase
+class WindowManager : public ComponentBase, public QAbstractNativeEventFilter
 {
   Q_OBJECT
 
@@ -52,6 +54,7 @@ public:
 
   // Event filter for cursor enter/leave tracking
   bool eventFilter(QObject* watched, QEvent* event) override;
+  bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override;
 
   // Window activation
   Q_INVOKABLE void raiseWindow();
@@ -75,8 +78,10 @@ private slots:
   void updateDebugInfo();
   void onShowDebugLayerChanged();
   void updateOpenGLInfo();
+  void applySettings();
 
 private:
+  void configureNativeWindowFrame();
   void prepareFullscreenComposition();
   void updateNativePlaybackWindow(bool visible);
   bool nativePlaybackOwnsCursor() const;
@@ -107,11 +112,10 @@ private:
 
   // Settings
   void connectSettings();
-  void applySettings();
 
   void enforceZoom();
 
-  QQuickWindow* m_window;
+  QPointer<QQuickWindow> m_window;
   QQuickItem* m_webView;
   bool m_enforcingZoom;
   QString m_currentScreenName;

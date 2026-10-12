@@ -37,6 +37,8 @@ class TestWindowManager : public QObject
 private slots:
   void initTestCase();
   void cleanup();
+  void testStartupFullscreenPreference_data();
+  void testStartupFullscreenPreference();
   void testMovingToAnotherScreenRefreshesPlaybackPolicy();
   void testFullscreenStateIsIndependentFromRestoreVisibility();
   void testPlaybackSessionRestoresMaximizedWindow();
@@ -46,6 +48,10 @@ private slots:
   void testNativePlaybackLeavesCursorAutohideToMpv();
   void testEndingNativePlaybackRestoresWebCursorControl();
 #if defined(Q_OS_WIN)
+  void testCustomChromeKeepsNativeSnapAndRestore_data();
+  void testCustomChromeKeepsNativeSnapAndRestore();
+  void testWindowsEdgeDragSnap_data();
+  void testWindowsEdgeDragSnap();
   void testPlaybackInheritsHostFullscreen_data();
   void testPlaybackInheritsHostFullscreen();
   void testNativeVideoAnchorDoesNotPaintOverScene();
@@ -69,9 +75,248 @@ void TestWindowManager::initTestCase()
 
 void TestWindowManager::cleanup()
 {
+  PlayerComponent::Get().setWindow(nullptr);
+  DisplayComponent::Get().setApplicationWindow(nullptr);
   PlayerComponent::Get().setNativeVideoOutput(false);
   clearOverrideCursor();
 }
+
+void TestWindowManager::testStartupFullscreenPreference_data()
+{
+  QTest::addColumn<bool>("startupFullscreen");
+  QTest::addColumn<bool>("staleRuntimeFullscreen");
+  QTest::newRow("windowed-ignores-last-fullscreen") << false << true;
+  QTest::newRow("fullscreen-ignores-last-windowed") << true << false;
+}
+
+void TestWindowManager::testStartupFullscreenPreference()
+{
+  QFETCH(bool, startupFullscreen);
+  QFETCH(bool, staleRuntimeFullscreen);
+  auto& settings = SettingsComponent::Get();
+  settings.setValue("home", "startupFullscreen", startupFullscreen);
+  settings.setValue("main", "fullscreen", staleRuntimeFullscreen);
+  QQuickWindow window;
+  WindowManager manager;
+  manager.m_window = &window;
+  connect(&window, SIGNAL(visibilityChanged(QWindow::Visibility)),
+          &manager, SLOT(onVisibilityChanged(QWindow::Visibility)));
+  QVERIFY(QMetaObject::invokeMethod(&manager, "applySettings", Qt::DirectConnection));
+  // A false startup preference leaves the saved windowed/maximized geometry.
+  if (!window.isVisible())
+    window.show();
+  QTRY_COMPARE(manager.isFullScreen(), startupFullscreen);
+  manager.setFullScreen(!startupFullscreen);
+  QTRY_COMPARE(manager.isFullScreen(), !startupFullscreen);
+  QCOMPARE(settings.value("home", "startupFullscreen").toBool(), startupFullscreen);
+  settings.setValue("home", "startupFullscreen", !startupFullscreen);
+  settings.setValue("home", "startupFullscreen", startupFullscreen);
+  QCOMPARE(manager.isFullScreen(), !startupFullscreen);
+  window.hide();
+}
+
+#if defined(Q_OS_WIN)
+void TestWindowManager::testCustomChromeKeepsNativeSnapAndRestore_data()
+{
+  QTest::addColumn<int>("screenIndex");
+  for (int index = 0; index < QGuiApplication::screens().size(); ++index)
+    QTest::newRow(qPrintable(QGuiApplication::screens()[index]->name())) << index;
+}
+
+void TestWindowManager::testCustomChromeKeepsNativeSnapAndRestore()
+{
+  QFETCH(int, screenIndex);
+  if (QGuiApplication::platformName() != QStringLiteral("windows"))
+    QSKIP("Native window styles require the Windows platform plugin");
+  QQuickWindow window;
+  WindowManager manager;
+  window.setProperty("customTitleBarEnabled", true);
+  window.setFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowSystemMenuHint |
+                  Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint);
+  manager.m_window = &window;
+  window.installEventFilter(&manager);
+  connect(&window, SIGNAL(visibilityChanged(QWindow::Visibility)),
+          &manager, SLOT(onVisibilityChanged(QWindow::Visibility)));
+  QScreen* screen = QGuiApplication::screens()[screenIndex];
+  window.setScreen(screen);
+  window.setGeometry(QRect(screen->availableGeometry().center() - QPoint(320, 200), QSize(640, 400)));
+  window.showNormal();
+  QVERIFY(QTest::qWaitForWindowExposed(&window));
+  const HWND handle = reinterpret_cast<HWND>(window.winId());
+  const auto requiredStyles = WS_THICKFRAME | WS_CAPTION | WS_MAXIMIZEBOX | WS_MINIMIZEBOX;
+  QTRY_VERIFY2((GetWindowLongPtr(handle, GWL_STYLE) & requiredStyles) == requiredStyles,
+           "Custom chrome must retain native resize/caption styles for Windows Snap");
+  RECT outer{}, client{};
+  GetWindowRect(handle, &outer);
+  GetClientRect(handle, &client);
+  QCOMPARE(client.right, outer.right - outer.left);
+  QCOMPARE(client.bottom, outer.bottom - outer.top);
+  const QRect normalGeometry = window.geometry();
+  for (int cycle = 0; cycle < 3; ++cycle) {
+    window.showMaximized();
+    QTRY_VERIFY(IsZoomed(handle));
+    QTest::qWait(100); // Catch Qt's later native size-based fullscreen detection.
+    QTRY_COMPARE(window.visibility(), QWindow::Maximized);
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    QVERIFY(GetMonitorInfo(MonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST), &monitor));
+    GetClientRect(handle, &client);
+    POINT clientOrigin{};
+    QVERIFY(ClientToScreen(handle, &clientOrigin));
+    const QRect work(monitor.rcWork.left, monitor.rcWork.top,
+                     monitor.rcWork.right - monitor.rcWork.left,
+                     monitor.rcWork.bottom - monitor.rcWork.top);
+    const QRect bounds(clientOrigin.x, clientOrigin.y, client.right, client.bottom);
+    QVERIFY(work.contains(bounds));
+    // An autohide taskbar may need a one-physical-pixel reveal strip.
+    QVERIFY(work.width() - bounds.width() <= 1);
+    QVERIFY(work.height() - bounds.height() <= 1);
+    manager.setFullScreen(true);
+    QTRY_COMPARE(window.visibility(), QWindow::FullScreen);
+    manager.setFullScreen(false);
+    QTRY_COMPARE(window.visibility(), QWindow::Maximized);
+    QTRY_VERIFY(IsZoomed(handle));
+    window.showNormal();
+    QTRY_COMPARE(window.geometry(), normalGeometry);
+    manager.setAlwaysOnTop(true);
+    manager.setAlwaysOnTop(false);
+    QTest::qWait(100); // Let queued native state/geometry notifications settle.
+    QCOMPARE(window.visibility(), QWindow::Windowed);
+    QVERIFY((GetWindowLongPtr(handle, GWL_STYLE) & requiredStyles) == requiredStyles);
+  }
+  window.hide();
+}
+
+void TestWindowManager::testWindowsEdgeDragSnap_data()
+{
+  QTest::addColumn<bool>("customChrome");
+  QTest::newRow("standard-frame-control") << false;
+  QTest::newRow("custom-chrome") << true;
+}
+
+void TestWindowManager::testWindowsEdgeDragSnap()
+{
+  QFETCH(bool, customChrome);
+  if (!qEnvironmentVariableIsSet("TIGEREST_TEST_NATIVE_SNAP"))
+    QSKIP("Opt in with TIGEREST_TEST_NATIVE_SNAP=1: this test moves the real desktop pointer");
+  if (QGuiApplication::platformName() != QStringLiteral("windows"))
+    QSKIP("Windows Snap requires the Windows platform plugin");
+  BOOL arranging = FALSE;
+  QVERIFY(SystemParametersInfo(SPI_GETWINARRANGING, 0, &arranging, 0));
+  if (!arranging)
+    QSKIP("Windows Snap is disabled in the desktop settings");
+  POINT originalCursor{};
+  GetCursorPos(&originalCursor);
+  const HWND originalForeground = GetForegroundWindow();
+  const auto restoreDesktop = qScopeGuard([&]() {
+    SetCursorPos(originalCursor.x, originalCursor.y);
+    if (IsWindow(originalForeground))
+      SetForegroundWindow(originalForeground);
+  });
+  QQuickWindow window;
+  WindowManager manager;
+  window.setTitle("Tigerest native Snap fixture");
+  window.setProperty("customTitleBarEnabled", customChrome);
+  window.setFlags(Qt::Window | Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint |
+                  (customChrome ? Qt::FramelessWindowHint : Qt::WindowFlags{}));
+  manager.m_window = &window;
+  window.installEventFilter(&manager);
+  window.setGeometry(QRect(window.screen()->availableGeometry().center() - QPoint(320, 200), QSize(640, 400)));
+  window.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&window));
+  const HWND handle = reinterpret_cast<HWND>(window.winId());
+  QTRY_VERIFY(GetWindowLongPtr(handle, GWL_STYLE) & WS_THICKFRAME);
+  // Windows can reject SetForegroundWindow from a background test runner.
+  // Activate only this isolated fixture through an actual click, then remove
+  // the temporary topmost flag before testing normal desktop Snap behavior.
+  SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+  POINT activation{100, 70};
+  ClientToScreen(handle, &activation);
+  SetCursorPos(activation.x, activation.y);
+  INPUT click[2]{};
+  click[0].type = click[1].type = INPUT_MOUSE;
+  click[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+  click[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+  QCOMPARE(SendInput(2, click, sizeof(INPUT)), UINT(2));
+  QTRY_COMPARE(GetForegroundWindow(), handle);
+  SetWindowPos(handle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+  MONITORINFO monitor{sizeof(MONITORINFO)};
+  QVERIFY(GetMonitorInfo(MonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST), &monitor));
+  const QSize normalSize = window.size();
+  const auto dragTo = [&](POINT target) {
+    RECT client{};
+    GetClientRect(handle, &client);
+    POINT start{client.right / 3, qRound(18 * window.devicePixelRatio())};
+    ClientToScreen(handle, &start);
+    SetCursorPos(start.x, start.y);
+    INPUT down{};
+    down.type = INPUT_MOUSE;
+    down.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+    SendInput(1, &down, sizeof(INPUT));
+    QTest::qWait(80);
+    const bool started = window.startSystemMove();
+    std::thread pointer([=]() {
+      Sleep(150);
+      for (int step = 1; step <= 30; ++step) {
+        SetCursorPos(start.x + (target.x - start.x) * step / 30,
+                     start.y + (target.y - start.y) * step / 30);
+        Sleep(12);
+      }
+      Sleep(400);
+      INPUT up{};
+      up.type = INPUT_MOUSE;
+      up.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+      SendInput(1, &up, sizeof(INPUT));
+    });
+    QTest::qWait(1200);
+    pointer.join();
+    qInfo() << "Native drag" << QPoint(start.x, start.y) << "to" << QPoint(target.x, target.y)
+            << "result geometry" << window.geometry() << "state" << window.visibility();
+    return started;
+  };
+  const LONG midX = (monitor.rcWork.left + monitor.rcWork.right) / 2;
+  const LONG midY = (monitor.rcWork.top + monitor.rcWork.bottom) / 2;
+  QVERIFY(dragTo({monitor.rcMonitor.left + (monitor.rcMonitor.right - monitor.rcMonitor.left) / 5,
+                  monitor.rcMonitor.top}));
+  QTRY_VERIFY(IsZoomed(handle));
+  QTRY_COMPARE(window.visibility(), QWindow::Maximized);
+  QVERIFY(dragTo({midX, midY}));
+  QTRY_VERIFY(!IsZoomed(handle));
+  QTRY_COMPARE(window.size(), normalSize);
+  if (!customChrome)
+    return;
+  // Snap targets come from Windows' own monitor work area, in physical pixels.
+  const auto clientBounds = [&]() {
+    RECT bounds{};
+    GetClientRect(handle, &bounds);
+    POINT origin{};
+    ClientToScreen(handle, &origin);
+    return QRect(origin.x, origin.y, bounds.right, bounds.bottom);
+  };
+  QVERIFY(dragTo({monitor.rcMonitor.left, midY}));
+  QTRY_VERIFY(qAbs(clientBounds().left() - monitor.rcWork.left) <= 16);
+  QTRY_VERIFY(qAbs(clientBounds().right() + 1 - midX) <= 16);
+  QTRY_VERIFY(qAbs(clientBounds().height() - (monitor.rcWork.bottom - monitor.rcWork.top)) <= 16);
+  QVERIFY(dragTo({monitor.rcMonitor.right - 1, midY}));
+  QTRY_VERIFY(qAbs(clientBounds().left() - midX) <= 16);
+  QTRY_VERIFY(qAbs(clientBounds().right() + 1 - monitor.rcWork.right) <= 16);
+  // Pull away from the dock threshold before entering the top edge again.
+  // Staying within that threshold is just repositioning a snapped window.
+  QVERIFY(dragTo({midX, midY}));
+  QTRY_COMPARE(window.size(), normalSize);
+  // Windows 11 reserves the top-center for its Snap layout picker. Use the
+  // top edge outside that picker to exercise the maximize gesture itself.
+  QVERIFY(dragTo({monitor.rcMonitor.left + (monitor.rcMonitor.right - monitor.rcMonitor.left) / 5,
+                  monitor.rcMonitor.top}));
+  QTRY_VERIFY(IsZoomed(handle));
+  QTRY_COMPARE(window.visibility(), QWindow::Maximized);
+  QVERIFY(dragTo({midX, midY}));
+  QTRY_VERIFY(!IsZoomed(handle));
+  QTRY_COMPARE(window.visibility(), QWindow::Windowed);
+  QTRY_COMPARE(window.size(), normalSize);
+  window.hide();
+}
+
+#endif
 
 void TestWindowManager::testMovingToAnotherScreenRefreshesPlaybackPolicy()
 {

@@ -591,7 +591,7 @@ void MprisComponent::notifyMetadata(const QVariantMap& metadata)
 
 void MprisComponent::notifyVolumeChange(double volume)
 {
-  double newVolume = qBound(0.0, volume, 1.0);
+  double newVolume = qBound(0.0, volume / 100.0, 1.0);
   if (m_volume != newVolume)
   {
     m_volume = newVolume;

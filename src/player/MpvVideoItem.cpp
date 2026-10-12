@@ -384,6 +384,10 @@ void MpvVideoItem::noteNativeHostPointerActivity(const QPointF& position)
 
 void MpvVideoItem::initializeController()
 {
+#ifdef Q_OS_WIN
+    if (m_player && m_player->isShuttingDown())
+        return;
+#endif
     MpvController* controller = mpvController();
     if (!m_player || !controller) {
         qWarning() << "Cannot initialize MPV controller; player:" << m_player
@@ -462,6 +466,12 @@ void MpvVideoItem::initializeController()
 
 void MpvVideoItem::syncFullscreenToMpv()
 {
+#ifdef Q_OS_WIN
+    // A queued fullscreen/visibility event can arrive after exit was requested.
+    // The VO may be waiting on this GUI thread to release its native window.
+    if (m_player && m_player->isShuttingDown())
+        return;
+#endif
 #if defined(Q_OS_MAC)
     // Native Cocoa playback has its own window, independent of the library.
     if (m_nativeGpuNext)
@@ -650,6 +660,14 @@ void MpvVideoItem::wheelEvent(QWheelEvent* event)
 
 void MpvVideoItem::keyPressEvent(QKeyEvent* event)
 {
+#ifdef Q_OS_WIN
+    if (m_player && m_player->isShuttingDown()) {
+        if (event->key() == Qt::Key_F4 && event->modifiers() == Qt::AltModifier)
+            m_player->requestApplicationQuit();
+        event->accept();
+        return;
+    }
+#endif
     if (event->isAutoRepeat()) {
         event->accept();
         return;

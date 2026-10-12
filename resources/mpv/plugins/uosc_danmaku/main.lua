@@ -12,6 +12,7 @@ Sha256 = require("modules/hash")
 
 require("modules/options")
 require("modules/utils")
+require("modules/http")
 require("modules/mapping")
 require("modules/parse")
 require("modules/guess")
@@ -110,7 +111,8 @@ end
 
 function show_loaded(init)
     if DANMAKU.anime and DANMAKU.episode then
-        show_message("匹配内容：" .. DANMAKU.anime .. "-" .. DANMAKU.episode .. "\\N弹幕加载成功，共计" .. #COMMENTS .. "条弹幕\\N匹配不正确可在弹幕菜单中手动纠正", 5)
+        local origin_label = DANMAKU.mapping_origin == 'shared' and '（共享）' or ''
+        show_message("匹配内容：" .. DANMAKU.anime .. "-" .. DANMAKU.episode .. origin_label .. "\\N弹幕加载成功，共计" .. #COMMENTS .. "条弹幕\\N匹配不正确可在弹幕菜单中手动纠正", 5)
         if init then
             msg.info(DANMAKU.anime .. "-" .. DANMAKU.episode .. " 弹幕加载成功，共计" .. #COMMENTS .. "条弹幕")
         end

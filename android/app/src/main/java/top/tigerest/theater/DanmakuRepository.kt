@@ -20,7 +20,8 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
         .readTimeout(35,TimeUnit.SECONDS).callTimeout(35,TimeUnit.SECONDS)
         .followRedirects(false).followSslRedirects(false).build()
     private val privateConfiguration = PrivateDanmakuConfiguration(context)
-    private val sharedMapping = SharedDanmakuMapping(::mappingRequest,privateConfiguration::credential)
+    @Volatile private var mappingAuthorization=MappingAuthorization()
+    private val sharedMapping = SharedDanmakuMapping(::mappingRequest,{mappingAuthorization.legacyCredential(privateConfiguration::credential)},sessionHeaders={mappingAuthorization.headers.takeIf{it.isNotEmpty()}})
     private val executor = Executors.newSingleThreadExecutor()
     private val prefs = context.getSharedPreferences("danmaku-sources",Context.MODE_PRIVATE)
     private val requestGeneration = DanmakuRequestGeneration()
@@ -34,6 +35,7 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
     private var item = JSONObject()
     private fun base(): String = settings.string("danmaku","apiServer").takeIf { it.isNotBlank() }?.let { ServerAddress.base(it).trimEnd('/') } ?: if(settings.string("main","userWebClient").contains("192.168.5.150")) "http://192.168.5.150:18443" else "http://nas.tigerest.top:18443"
     private fun fetch(path: String,origin: String = base()): JSONObject {
+        val wait=sharedMapping.retryAfter(origin);check(wait==0L){"弹幕接口请求过于频繁，请 $wait 秒后重试"}
         val url = origin+path
         client.newCall(Request.Builder().url(url).header("Accept","application/json").header("User-Agent","TigerestTheater Android").build()).execute().use { response ->
             require(response.isSuccessful) { "弹幕服务暂不可用（${response.code}）" }
@@ -43,11 +45,11 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
             return JSONObject(text)
         }
     }
-    private fun mappingRequest(url: String,body: String,credential: String?): MappingHttpResponse {
+    private fun mappingRequest(url: String,body: String,credential: Map<String,String>?): MappingHttpResponse {
         val request = Request.Builder().url(url).header("Accept","application/json")
             .header("User-Agent","TigerestTheater Android")
             .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
-        if(credential != null) request.header("Authorization","Bearer $credential")
+        credential?.forEach{(name,value)->request.header(name,value)}
         mappingClient.newCall(request.build()).execute().use { response ->
             if(response.code != 200) return MappingHttpResponse(response.code,"",response.header("Retry-After"))
             val data = response.body
@@ -82,6 +84,7 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
                     loadMapping(mapping,origin,token)
                     return@execute
                 }
+                if(mapping.kind==MappingResult.Kind.RATE_LIMITED){status("弹幕接口请求过于频繁，请 ${sharedMapping.retryAfter(origin)} 秒后重试");return@execute}
                 DiagnosticsLog.app.record("info","Danmaku shared lookup used legacy fallback (${mapping.kind.name.lowercase()})")
                 val history = runCatching { JSONArray(prefs.getString("history:$historyKey","[]")) }.getOrDefault(JSONArray())
                 for(index in 0 until minOf(history.length(),12)) {
@@ -175,10 +178,11 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
             rememberMatch(bangumiId,selectionToken)
             return loadMapping(result,origin,selectionToken)
         }
+        if(result.kind==MappingResult.Kind.RATE_LIMITED){status("弹幕接口请求过于频繁，请 ${sharedMapping.retryAfter(origin)} 秒后重试");return 0}
         val count = loadLegacy(episodeId,title,selectionToken,origin)
         if(selectionToken == generation) {
             rememberMatch(bangumiId,selectionToken)
-            if(result.kind == MappingResult.Kind.FAILED) {
+            if(result.kind == MappingResult.Kind.FAILED||result.kind == MappingResult.Kind.SKIPPED) {
                 DiagnosticsLog.app.record("warning","Danmaku manual mapping save failed; selected legacy comments loaded")
                 status("弹幕已加载，但共享匹配未保存")
             }
@@ -186,6 +190,10 @@ class DanmakuRepository(private val context: Context,private val settings: Setti
         return count
     }
     fun configureMappingCredential(value: String) = privateConfiguration.setCredential(value)
+    @Synchronized fun setMappingSession(headers:Map<String,String>,legacyEligible:Boolean=false){
+        requestGeneration.playbackChanged();mappingAuthorization=MappingAuthorization(headers.toMap(),legacyEligible)
+        mappingClient.dispatcher.cancelAll();client.dispatcher.cancelAll()
+    }
     fun importText(id: String,title: String,text: String,token: Long = generation) { add(id,title,DanmakuParser.parse(text),token) }
     fun sourceSnapshot(): JSONArray = JSONArray().also { result -> sources.forEach { result.put(JSONObject().put("id",it.id).put("title",it.title).put("enabled",it.enabled).put("delay",it.delay).put("count",it.comments.size)) } }
     @Synchronized fun sourceSetting(id: String,enabled: Boolean,delay: Double) { require(delay.isFinite() && delay in -3600.0..3600.0); val source = sources.find { it.id == id } ?: throw IllegalArgumentException("弹幕来源不存在"); source.enabled = enabled; source.delay = delay; prefs.edit().putBoolean("enabled:$group:${source.policyId}",enabled).putString("delay:$group:${source.policyId}",delay.toString()).apply(); changed() }

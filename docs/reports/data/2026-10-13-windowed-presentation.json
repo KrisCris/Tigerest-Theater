@@ -1,0 +1,74 @@
+[
+  {
+    "phase": "live-window",
+    "warmupSeconds": 5,
+    "seconds": 14.561,
+    "outputDrops": 11,
+    "decoderDrops": 0,
+    "sync": "display-resample",
+    "avSync": 0.010223,
+    "estimatedFps": 155.34212,
+    "jitter": 1.71294,
+    "fullscreen": false
+  },
+  {
+    "phase": "live-fullscreen",
+    "warmupSeconds": 5,
+    "seconds": 24.594,
+    "outputDrops": 0,
+    "decoderDrops": 0,
+    "sync": "display-resample",
+    "avSync": -0.00187,
+    "estimatedFps": 239.999123,
+    "jitter": 0.010588,
+    "fullscreen": true
+  },
+  {
+    "phase": "live-window2",
+    "warmupSeconds": 5,
+    "seconds": 19.591,
+    "outputDrops": 13,
+    "decoderDrops": 0,
+    "sync": "display-resample",
+    "avSync": 0.018495,
+    "estimatedFps": 184.027577,
+    "jitter": 1.226373,
+    "fullscreen": false
+  },
+  {
+    "phase": "live-audio-bypass",
+    "warmupSeconds": 5,
+    "seconds": 19.574,
+    "outputDrops": 0,
+    "decoderDrops": 0,
+    "sync": "audio",
+    "avSync": 4E-06,
+    "estimatedFps": 162.170143,
+    "jitter": 1.57799,
+    "fullscreen": false
+  },
+  {
+    "phase": "live-hidden-page",
+    "warmupSeconds": 5,
+    "seconds": 19.583,
+    "outputDrops": 10,
+    "decoderDrops": 0,
+    "sync": "display-resample",
+    "avSync": 0.004687,
+    "estimatedFps": 165.240847,
+    "jitter": 1.543172,
+    "fullscreen": false
+  },
+  {
+    "phase": "live-blit-probe",
+    "warmupSeconds": 5,
+    "seconds": 14.568,
+    "outputDrops": 64,
+    "decoderDrops": 0,
+    "sync": "display-resample",
+    "avSync": -0.000107,
+    "estimatedFps": 141.847688,
+    "jitter": 0.850813,
+    "fullscreen": false
+  }
+]

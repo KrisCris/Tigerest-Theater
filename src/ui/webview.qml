@@ -66,6 +66,10 @@ Window
       // Minimize to tray on close.
       close.accepted = false
       mainWindow.hide()
+    } else if (components.system.isWindows) {
+      // An accepted close destroys the host HWND before mpv can release its VO.
+      close.accepted = false
+      components.system.exit()
     }
   }
 
@@ -140,9 +144,16 @@ Window
 
   Action
   {
+    enabled: components.system.isWindows
+    shortcut: "Alt+F4"
+    onTriggered: components.system.exit()
+  }
+
+  Action
+  {
     enabled: mainWindow.webDesktopMode
     shortcut: components.system.isWindows ? "Ctrl+Q" : StandardKey.Quit
-    onTriggered: Qt.quit()
+    onTriggered: components.system.exit()
   }
 
   Action
@@ -262,7 +273,10 @@ Window
     focus: mainWindow.nativeVideoVisible && mainWindow.useUoscPlaybackUi
 
     onFullscreenRequested: function(fullscreen) {
-      components.window.setFullScreen(fullscreen)
+      // MPV reports its initial fullscreen=false before any video is shown.
+      // Hidden playback must not override the library's startup preference.
+      if (mainWindow.nativeVideoVisible)
+        components.window.setFullScreen(fullscreen)
     }
 
     // Keep native GPU-Next's child HWND clear of the QML resize handles.
@@ -549,7 +563,7 @@ Window
       Labs.MenuSeparator {}
       Labs.MenuItem {
         text: qsTr("Quit")
-        onTriggered: Qt.quit()
+        onTriggered: components.system.exit()
       }
     }
   }

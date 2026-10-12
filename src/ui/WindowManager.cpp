@@ -23,6 +23,7 @@
 #include <QLibrary>
 #include <QPlatformSurfaceEvent>
 #include <windows.h>
+#include <shellapi.h>
 
 namespace {
 void applyWindowsTitleBar(QWindow* window)
@@ -74,11 +75,18 @@ WindowManager::WindowManager(QObject* parent)
     m_initialSize(),
     m_initialScreenSize()
 {
+#if defined(Q_OS_WIN)
+  qApp->installNativeEventFilter(this);
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 WindowManager::~WindowManager()
 {
+#if defined(Q_OS_WIN)
+  if (qApp)
+    qApp->removeNativeEventFilter(this);
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -112,6 +120,7 @@ void WindowManager::initializeWindow(QQuickWindow* window)
   // Install event filter to track cursor enter/leave
   m_window->installEventFilter(this);
 #if defined(Q_OS_WIN)
+  configureNativeWindowFrame();
   applyWindowsTitleBar(m_window);
 #endif
 
@@ -496,6 +505,84 @@ void WindowManager::releaseCursorOverrideForNativePlayback()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+void WindowManager::configureNativeWindowFrame()
+{
+#if defined(Q_OS_WIN)
+  if (!m_window || QGuiApplication::platformName() != QStringLiteral("windows") ||
+      !m_window->property("customTitleBarEnabled").toBool())
+    return;
+
+  // FramelessWindowHint removes WS_THICKFRAME and makes Qt emulate maximize
+  // with MoveWindow. Keep the real Windows frame/state for Snap and drag-to-
+  // restore; nativeEventFilter removes only its non-client appearance.
+  const Qt::WindowFlags flags = m_window->flags();
+  if (flags & Qt::FramelessWindowHint)
+    m_window->setFlags((flags & ~Qt::FramelessWindowHint) | Qt::WindowTitleHint);
+#endif
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+bool WindowManager::nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result)
+{
+#if defined(Q_OS_WIN)
+  if (eventType != "windows_generic_MSG" || !m_window || !m_window->handle() ||
+      !m_window->property("customTitleBarEnabled").toBool())
+    return false;
+  const MSG* msg = static_cast<MSG*>(message);
+  if (msg->hwnd != reinterpret_cast<HWND>(m_window->winId()) ||
+      msg->message != WM_NCCALCSIZE)
+    return false;
+
+  // Qt deliberately removes WS_THICKFRAME for fullscreen. Leave that path
+  // untouched, including its one-pixel OpenGL composition workaround.
+  if (!(GetWindowLongPtr(msg->hwnd, GWL_STYLE) & WS_THICKFRAME))
+    return false;
+
+  RECT* client = msg->wParam
+      ? &reinterpret_cast<NCCALCSIZE_PARAMS*>(msg->lParam)->rgrc[0]
+      : reinterpret_cast<RECT*>(msg->lParam);
+  if (IsZoomed(msg->hwnd)) {
+    // Windows includes an invisible resize border around a maximized window.
+    // Use this monitor's physical work area so neither content nor taskbar is
+    // covered, also with negative monitor origins and per-monitor DPI.
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    if (GetMonitorInfo(MonitorFromRect(client, MONITOR_DEFAULTTONEAREST), &monitor)) {
+      *client = monitor.rcWork;
+      if (EqualRect(&monitor.rcWork, &monitor.rcMonitor)) {
+        // Qt 6.9 infers fullscreen solely from the client rectangle. Without
+        // a reserved taskbar area, an edge-maximized custom frame therefore
+        // loses its title bar. Keep one physical pixel for the autohide
+        // taskbar (or the bottom edge on a screen without its own appbar).
+        UINT edge = ABE_BOTTOM;
+        APPBARDATA appbar{sizeof(APPBARDATA)};
+        appbar.rc = monitor.rcMonitor;
+        for (const UINT candidate : {ABE_LEFT, ABE_TOP, ABE_RIGHT, ABE_BOTTOM}) {
+          appbar.uEdge = candidate;
+          if (SHAppBarMessage(ABM_GETAUTOHIDEBAREX, &appbar)) {
+            edge = candidate;
+            break;
+          }
+        }
+        switch (edge) {
+        case ABE_LEFT: ++client->left; break;
+        case ABE_TOP: ++client->top; break;
+        case ABE_RIGHT: --client->right; break;
+        default: --client->bottom; break;
+        }
+      }
+    }
+  }
+  *result = 0;
+  return true;
+#else
+  Q_UNUSED(eventType);
+  Q_UNUSED(message);
+  Q_UNUSED(result);
+  return false;
+#endif
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 bool WindowManager::eventFilter(QObject* watched, QEvent* event)
 {
   if (watched == m_window)
@@ -505,7 +592,10 @@ bool WindowManager::eventFilter(QObject* watched, QEvent* event)
         (event->type() == QEvent::PlatformSurface &&
          static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated))
     {
-      QTimer::singleShot(0, this, [this]() { applyWindowsTitleBar(m_window); });
+      QTimer::singleShot(0, this, [this]() {
+        configureNativeWindowFrame();
+        applyWindowsTitleBar(m_window);
+      });
     }
 #endif
     if (event->type() == QEvent::Enter)
@@ -1114,7 +1204,21 @@ void WindowManager::applySettings()
 {
   // Read and apply all settings
   QVariantMap values;
-  values["fullscreen"] = SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "fullscreen");
+  // Startup is a preference, whereas main.fullscreen tracks the current
+  // session. Reusing the latter would make the last manual toggle change the
+  // next launch. The command-line parser has already applied explicit window
+  // mode overrides to main.fullscreen, so preserve those when supplied.
+  bool commandLineWindowMode = false;
+  for (const QString& argument : QCoreApplication::arguments().mid(1)) {
+    if (argument == QStringLiteral("--"))
+      break;
+    if (argument == QStringLiteral("--fullscreen") || argument == QStringLiteral("--windowed") ||
+        argument == QStringLiteral("-fullscreen") || argument == QStringLiteral("-windowed"))
+      commandLineWindowMode = true;
+  }
+  values["fullscreen"] = commandLineWindowMode
+      ? SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "fullscreen")
+      : SettingsComponent::Get().value("home", "startupFullscreen");
   values["alwaysOnTop"] = SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "alwaysOnTop");
   values["webMode"] = SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "webMode");
   values["forceFSScreen"] = SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "forceFSScreen");
@@ -1122,6 +1226,8 @@ void WindowManager::applySettings()
   values["startupurl"] = SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "startupurl");
 
   updateMainSectionSettings(values);
+  if (auto* section = SettingsComponent::Get().getSection(SETTINGS_SECTION_MAIN))
+    section->setValueNoSave("fullscreen", isFullScreen());
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

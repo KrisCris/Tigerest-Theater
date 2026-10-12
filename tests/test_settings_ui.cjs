@@ -53,6 +53,16 @@ withBrowser({
   await evaluate('document.fonts.ready');
   assert.equal(await evaluate('document.fonts.check(\'16px "Material Symbols Rounded"\')'),true,'local native icon font loaded');
  }
+ await evaluate('openSettingsCategory("home")');
+ assert.equal(await evaluate(`document.querySelector('[data-setting="main.fullscreen"]')`),null,'runtime fullscreen is not an editable startup setting');
+ assert.equal(await evaluate(`document.querySelector('[data-setting="home.startupFullscreen"] input')?.checked`),false,'new home startup preference defaults to windowed');
+ await evaluate(`document.querySelector('[data-setting="home.startupFullscreen"] input').click()`);
+ assert.deepEqual(await evaluate('saves.at(-1)'),['home','startupFullscreen',true],'home startup toggle persists its independent preference');
+ assert.match(await evaluate('document.querySelector("#tigerest-settings-inline .tgs-status").textContent'),/已保存；此项将在重启后生效。/,'startup preference confirms next-launch application');
+ if(process.env.TIGEREST_SETTINGS_SCREENSHOTS){
+  fs.mkdirSync(process.env.TIGEREST_SETTINGS_SCREENSHOTS,{recursive:true});
+  fs.writeFileSync(path.join(process.env.TIGEREST_SETTINGS_SCREENSHOTS,'settings-home.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
+ }
  await evaluate('openSettingsCategory("audio")');
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-inline .tgs-tabs, #tigerest-settings-inline [role=tablist]").length'),0,
   'content has no duplicate category navigation');

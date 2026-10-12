@@ -1,0 +1,114 @@
+// Real UI + session + avatar coordinator, backed only by an isolated native-bridge fixture.
+const assert=require('node:assert/strict'),path=require('node:path'),crypto=require('node:crypto');
+const withBrowser=require('./community_browser.cjs');
+const files=['communityClient','communityBridge','communitySession','communityPublicClient','communityAvatar','communityAccount','communityMessages','communityPlugin'];
+const routes=Object.fromEntries(files.map(file=>['/'+file+'.js',{path:path.join(__dirname,'../native/'+file+'.js')}]));
+routes['/']={type:'text/html',body:'<html><meta charset="utf-8"><div class="headerRight"></div><div class="itemView"><h1>头像测试</h1><div class="peopleSection"></div></div>'+files.map(file=>'<script src="/'+file+'.js"></script>').join('')+'</html>'};
+const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const hash=crypto.createHash('sha256').update(Buffer.from(png,'base64')).digest('hex');
+withBrowser(routes,async({evaluate})=>{
+ const waitFor=async expression=>{for(let i=0;i<150;i++){if(await evaluate(expression))return;await new Promise(resolve=>setTimeout(resolve,50));}throw Error('Timed out: '+expression);};
+ const click=async label=>evaluate(`Array.from(document.querySelectorAll('#tigerest-community-account button')).find(button=>button.textContent===${JSON.stringify(label)}).click()`);
+ await evaluate(`
+ window.calls=[];window.sourceCalls=[];window.saved={};window.failAvatar=true;window.failRead=false;window.holdImages=false;window.badImages=false;window.pendingImages=[];
+ window.png=${JSON.stringify(png)};window.sourceHash=${JSON.stringify(hash)};
+ window.selfId='11111111-1111-4111-8111-111111111111';window.peerId='22222222-2222-4222-8222-222222222222';
+ window.selfPath='/community/v2/avatars/'+selfId+'?v='+'a'.repeat(64);window.peerPath='/community/v2/avatars/'+peerId+'?v='+'b'.repeat(64);
+ window.selfAuthor=()=>({id:selfId,name:'自己',avatarPath:selfPath});window.peerAuthor=()=>({id:peerId,name:'另一位用户',avatarPath:peerPath});
+ window.comment=(id,author,body)=>({id,author,body,state:'visible',createdAt:'2026-10-13T01:00:00Z',permissions:{canReply:true,canDelete:true}});
+ window.created=[];let listener;
+ const respond=(id,data,status=200)=>setTimeout(()=>listener(id,{status,headers:{},body:JSON.stringify(status===200?{data}:{error:{code:'NETWORK_UNAVAILABLE'}})}),0);
+ const image=(id)=>{const finish=()=>listener(id,{status:200,headers:{'content-type':'image/png'},bodyBase64:badImages?btoa('invalid png'):png});if(holdImages)pendingImages.push(finish);else setTimeout(finish,0);};
+ window.api={system:{communityResponse:{connect:callback=>listener=callback},communityCancel(){},communitySetEmbySession(session,callback){callback(true)},
+ communityCredential(operation,key,value,callback){if(operation==='write')saved[key]=value;if(operation==='remove')delete saved[key];callback({ok:true,value:saved[key]||''});},
+ communitySourceAvatar(id,session){sourceCalls.push(session);setTimeout(()=>listener(id,{status:200,body:JSON.stringify({hash:sourceHash,imageBase64:png})}),0);},
+ communityRequest(id,request){calls.push(request);const p=request.path,method=request.method;
+  if(p==='/capabilities')return respond(id,{enabled:true,auth:['password','emby-exchange'],embyExchangeServerId:'62526c3bf747439c99327ddec5fed4a8',registrationEnabled:true,mediaIdentity:'tmdb-aired',passwordPolicy:{minLength:8,maxLength:128,lengthUnit:'unicode-code-point',allowControlCharacters:false},avatarPolicy:{sync:'sha256-on-comment',mimeType:'image/png',maxBytes:262144,maxWidth:128,maxHeight:128,uploadBodyMaxBytes:393216}});
+  if(p.startsWith('/auth/'))return respond(id,{accessToken:'fixture-access',refreshToken:'fixture-refresh',tokenType:'Bearer',expiresAt:'2099-01-01T00:00:00Z',refreshExpiresAt:'2099-02-01T00:00:00Z',author:selfAuthor()});
+  if(p==='/me/password')return respond(id,{});
+  if(p==='/me/avatar'){if(failAvatar)return respond(id,null,503);selfPath='/community/v2/avatars/'+selfId+'?v='+sourceHash;return respond(id,{avatarPath:selfPath,avatarHash:sourceHash,avatarRevision:2,revision:2});}
+  if(p.startsWith('/avatars/'))return image(id);
+  if(failRead&&(p==='/me'||p.startsWith('/me/messages')||p.startsWith('/me/comments')))return respond(id,null,503);
+  if(p==='/me')return respond(id,{author:selfAuthor(),avatarHash:selfPath.split('=')[1],avatarRevision:1});
+  if(p==='/topics/resolve')return respond(id,{id:'topic',scope:'work',title:'头像测试'});
+  if(p==='/topics/topic/comments'&&method==='POST'){const body=JSON.parse(request.body),savedComment=comment('sent-'+created.length,selfAuthor(),body.body);created.push(savedComment);return respond(id,{comment:savedComment,replayed:false,avatarSync:{required:true,expectedRevision:1,currentHash:'a'.repeat(64)}});}
+  if(p.startsWith('/topics/topic/comments'))return respond(id,{items:[{...comment('root',selfAuthor(),'历史主评论'),replies:[comment('reply',peerAuthor(),'回复内容')]},...created],nextCursor:null,rootCount:created.length+1});
+  if(p.startsWith('/me/comments'))return respond(id,{items:[{comment:comment('mine',selfAuthor(),'我的历史发言'),availability:'available'}],nextCursor:null});
+  if(p.startsWith('/me/messages'))return respond(id,{items:[{id:'message',reply:comment('received',peerAuthor(),'消息正文'),originalComment:comment('original',selfAuthor(),'被回复的原文'),availability:'available',isRead:true}],nextCursor:null,unreadCount:0});
+  return respond(id,{items:[],nextCursor:null,unreadCount:0});
+ }}};
+ window.createdUrls=[];window.revokedUrls=[];const createUrl=URL.createObjectURL.bind(URL),revokeUrl=URL.revokeObjectURL.bind(URL);
+ URL.createObjectURL=blob=>{const url=createUrl(blob);createdUrls.push(url);return url;};URL.revokeObjectURL=url=>{revokedUrls.push(url);revokeUrl(url);};
+ window.emby={serverId:()=> 'external',getCurrentUserId:()=> 'u1',accessToken:()=> 'PRIVATE-EXTERNAL-TOKEN',serverAddress:()=> 'http://other.invalid'};
+ window.plugin=new _communityPlugin({connectionManager:{currentApiClient:()=>emby}});
+ document.querySelector('.itemView').dispatchEvent(new CustomEvent('itemshow',{bubbles:true,detail:{item:{Id:'movie',Type:'Movie',ProviderIds:{Tmdb:'42'}}}}));
+ `);
+ await waitFor(`plugin.state&&!plugin.state.loading`);
+ assert.equal(await evaluate(`plugin.state.status.textContent`),'注册或登录评论账号后查看评论');
+ assert.equal(await evaluate(`document.querySelectorAll('#tigerest-community .tc-card,#tigerest-community img').length`),0);
+ await evaluate(`plugin.messages.open()`);await waitFor(`plugin.messages.state&&!plugin.messages.state.loading`);
+ assert.equal(await evaluate(`plugin.messages.state.status.textContent`),'注册或登录评论账号后查看评论');
+ assert.equal(await evaluate(`calls.some(call=>call.path.startsWith('/topics/')||call.path.startsWith('/me/messages'))`),false,'anonymous self-hosted visitors make no restricted reads');
+ await evaluate(`plugin.account.show()`);await waitFor(`!!document.querySelector('[aria-label="用户名"]')`);
+ assert.equal(await evaluate(`document.querySelector('[aria-label="密码"]').parentElement.firstChild.textContent`),'密码');
+ await click('注册新账号');
+ assert.equal(await evaluate(`document.querySelector('[aria-label="密码"]').parentElement.firstChild.textContent`),'密码（8–128 个字符）');
+ assert.equal(await evaluate(`document.querySelector('#tc-password-requirements').textContent`),'可使用字母、数字和符号，不可包含换行等控制字符。');
+ await evaluate(`document.querySelector('[aria-label="用户名"]').value='fixture';document.querySelector('[aria-label="显示名称（1–60 字符）"]').value='自己';document.querySelector('[aria-label="密码"]').value='😊'.repeat(7)`);await click('注册并登录');
+ await waitFor(`document.querySelector('#tigerest-community-account [role="status"]').textContent.includes('当前 7 个')`);
+ assert.equal(await evaluate(`calls.some(call=>call.path==='/auth/register')`),false,'seven emoji must count as seven code points');
+ await evaluate(`document.querySelector('[aria-label="密码"]').value='😊'.repeat(8)`);await click('注册并登录');
+ await waitFor(`plugin.state?.topic?.id==='topic'&&!plugin.state.loading&&document.querySelectorAll('#tigerest-community .tc-avatar img').length===2`);
+ assert.equal(await evaluate(`JSON.parse(calls.find(call=>call.path==='/auth/register').body).password`),'😊'.repeat(8));
+ await waitFor(`document.querySelectorAll('#tigerest-messages .tc-avatar img').length===2`);
+ await waitFor(`Array.from(document.querySelectorAll('.tc-avatar img')).every(image=>image.naturalWidth>0)`);
+ assert.equal(await evaluate(`document.querySelectorAll('#tigerest-messages blockquote .tc-avatar img').length`),1,'reply preview includes the original author avatar');
+ await evaluate(`plugin.messages.state.kind='sent';plugin.messages.load(plugin.messages.state)`);
+ await waitFor(`document.querySelectorAll('#tigerest-messages .tc-avatar img').length===1&&!plugin.messages.state.loading`);
+ assert.equal(await evaluate(`plugin.messages.state.list.textContent.includes('我的历史发言')`),true);
+ const oldMessageUrl=await evaluate(`document.querySelector('#tigerest-messages .tc-avatar img').src`);
+ await evaluate(`plugin.state.input.value='新评论';plugin.updateComposer(plugin.state);plugin.submit(plugin.state)`);
+ await waitFor(`created.length===1&&!plugin.state.busy&&!plugin.state.loading&&plugin.account.avatars.status.retryable`);
+ assert.equal(await evaluate(`plugin.state.input.value`),'','successful comment is cleared even when avatar upload fails');
+ assert.equal(await evaluate(`plugin.state.avatarStatus.hidden`),false);
+ assert.equal(await evaluate(`plugin.messages.state.avatarStatus.hidden`),false);
+ assert.equal(await evaluate(`plugin.state.status.textContent.includes('身份发言')`),true,'avatar failure does not overwrite comment status');
+ assert.equal(await evaluate(`calls.filter(call=>call.path==='/topics/topic/comments'&&call.method==='POST').length`),1);
+ await evaluate(`failAvatar=false;plugin.messages.state.avatarRetry.click()`);
+ await waitFor(`calls.filter(call=>call.path==='/me/avatar').length===2&&!plugin.account.avatars.status.busy&&document.querySelector('#tigerest-messages .tc-avatar img')?.src!==${JSON.stringify(oldMessageUrl)}`);
+ assert.equal(await evaluate(`calls.filter(call=>call.path==='/topics/topic/comments'&&call.method==='POST').length`),1,'avatar retry never resends the comment');
+ assert.equal(await evaluate(`sourceCalls.length`),1,'upload retry reuses the source snapshot');
+ await waitFor(`document.querySelectorAll('#tigerest-community .tc-avatar img').length===3`);
+ assert.equal(await evaluate(`JSON.stringify(calls).includes('PRIVATE-EXTERNAL-TOKEN')`),false);
+ assert.equal(await evaluate(`calls.filter(call=>call.path.startsWith('/avatars/')).every(call=>call.headers.Authorization==='Bearer fixture-access'&&!call.path.includes('fixture-access'))`),true);
+ const priorUrls=await evaluate(`Array.from(document.querySelectorAll('#tigerest-community .tc-avatar img,#tigerest-messages .tc-avatar img'),image=>image.src)`);
+ await evaluate(`(async()=>{failRead=true;await plugin.load(plugin.state,true);await plugin.messages.load(plugin.messages.state)})()`);
+ assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('#tigerest-community .tc-avatar img,#tigerest-messages .tc-avatar img'),image=>image.src)`),priorUrls,'transient refresh retains the displayed avatars');
+ await evaluate(`(async()=>{failRead=false;badImages=true;await plugin.load(plugin.state,true)})()`);
+ await waitFor(`document.querySelectorAll('#tigerest-community .tc-avatar').length===3&&Array.from(document.querySelectorAll('#tigerest-community .tc-avatar')).every(holder=>!holder.querySelector('img')&&holder.textContent.length>0)`);
+ await evaluate(`badImages=false`);
+ // Deliver image callbacks after logout even though cancellation was requested.
+ await evaluate(`(async()=>{failRead=false;holdImages=true;await plugin.load(plugin.state,true);await plugin.messages.load(plugin.messages.state)})()`);
+ await waitFor(`pendingImages.length>0`);
+ await evaluate(`(async()=>{await plugin.account.session.logout();holdImages=false;pendingImages.splice(0).forEach(finish=>finish())})()`);
+ await waitFor(`plugin.messages.state&&!plugin.messages.state.loading`);
+ assert.equal(await evaluate(`document.querySelectorAll('#tigerest-community .tc-card,#tigerest-messages .tm-card,#tigerest-community .tc-avatar img,#tigerest-messages .tc-avatar img').length`),0,'logout removes comments, previews and late images');
+ assert.equal(await evaluate(`createdUrls.every(url=>revokedUrls.includes(url))`),true,'all old image object URLs are revoked');
+ assert.equal(await evaluate(`plugin.state.avatarStatus.hidden&&plugin.messages.state.avatarStatus.hidden`),true);
+ // Login accepts an existing short password; only a new password uses the capability policy.
+ await evaluate(`plugin.account.show()`);await waitFor(`!!document.querySelector('[aria-label="用户名"]')`);
+ await evaluate(`document.querySelector('[aria-label="用户名"]').value='fixture';document.querySelector('[aria-label="密码"]').value='old'`);await click('登录');
+ await waitFor(`!document.querySelector('#tigerest-community-account').open`);
+ assert.equal(await evaluate(`JSON.parse(calls.filter(call=>call.path==='/auth/login').at(-1).body).password`),'old');
+ await evaluate(`plugin.account.show()`);await waitFor(`!!document.querySelector('[aria-label="当前密码"]')`);
+ assert.equal(await evaluate(`!!document.querySelector('[aria-label="新密码（8–128 个字符）"]')`),true);
+ await evaluate(`document.querySelector('[aria-label="当前密码"]').value='old';document.querySelector('[aria-label="新密码（8–128 个字符）"]').value='1234567'`);await click('修改密码');
+ await waitFor(`document.querySelector('#tigerest-community-account [role="status"]').textContent.includes('当前 7 个')`);
+ assert.equal(await evaluate(`calls.some(call=>call.path==='/me/password')`),false);
+ await evaluate(`document.querySelector('[aria-label="新密码（8–128 个字符）"]').value='😊'.repeat(8)`);await click('修改密码');
+ await waitFor(`!document.querySelector('#tigerest-community-account').open`);
+ assert.equal(await evaluate(`plugin.account.session.tokens`),null,'password change ends the comment session');
+ assert.equal(await evaluate(`JSON.parse(calls.find(call=>call.path==='/me/password').body).newPassword`),'😊'.repeat(8));
+ await evaluate(`plugin.destroy()`);
+ console.log('avatar/password UI: capability policy, protected views, avatars in detail/reply/history, upload-only retry, 503 preservation and logout cleanup passed');
+}).catch(error=>{console.error(error);process.exitCode=1;});

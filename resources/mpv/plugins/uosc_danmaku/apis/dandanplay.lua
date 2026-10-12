@@ -53,11 +53,15 @@ function prepare_episode_id(input, selected_server)
     return selected_server
 end
 
-function set_episode_id(input, from_menu, api_server, bangumi_id, playback_token)
+function set_episode_id(input, from_menu, api_server, bangumi_id, playback_token, anime_title, episode_title)
     if from_menu and not begin_manual_danmaku_selection(playback_token) then return end
     local selected_server = resolve_api_server(api_server or DANMAKU.api_server
         or get_api_server_list(options.api_server)[1])
     local function legacy(save_failed)
+        local notice = mapping_rate_limit_message(selected_server)
+        if notice then show_message(notice, 5); return end
+        if anime_title then DANMAKU.anime = anime_title end
+        if episode_title then DANMAKU.episode = episode_title end
         prepare_episode_id(input, selected_server)
         fetch_danmaku(input, from_menu or false, selected_server, save_failed)
     end
@@ -145,9 +149,13 @@ end
 -- 返回弹幕请求参数
 function make_danmaku_request_args(method, url, headers, body)
     url = resolve_managed_api_url(url)
+    local notice = mapping_rate_limit_message(url:match('^https?://[^/]+'))
+    if notice then show_message(notice, 5); return nil, notice end
     local args = {
         "curl",
         "-L",
+        "--connect-timeout", "5",
+        "--max-time", "20",
         "-X",
         method,
         "-H",
@@ -508,12 +516,16 @@ end
 
 -- 异步获取弹幕数据
 function fetch_danmaku_data(args, callback)
-    call_cmd_async(args, function(error, json)
-        if error then
-            show_message("获取数据失败", 3)
-            msg.error("HTTP 请求失败：" .. error)
+    request_danmaku_http(args, {retry=true, kind='comment'}, function(result)
+        if not result.ok then
+            local notice = result.status == 429 and (mapping_rate_limit_message(args[#args]:match('^https?://[^/]+')) or '弹幕接口请求过于频繁，请稍后重试')
+                or result.curl == 28 and '弹幕请求超时，请稍后手动重试'
+                or result.status and ('弹幕请求失败（HTTP ' .. result.status .. '），请稍后重试')
+                or '弹幕请求失败，请检查网络后重试'
+            show_message(notice, 5)
             return
         end
+        local json = result.body
         local data = utils.parse_json(json)
         if data ~= nil then
             data = normalize_danmaku_response(data)
@@ -594,6 +606,11 @@ end
 -- 通过danmaku api（url）+id获取弹幕
 function fetch_danmaku(episodeId, from_menu, api_server, save_failed)
     api_server = resolve_api_server(api_server)
+    local wait = mapping_retry_after(api_server)
+    if wait > 0 then
+        show_message(string.format('弹幕接口请求过于频繁，请 %d 秒后重试', wait), 5)
+        return
+    end
     local url = api_server .. "/api/v2/comment/" .. episodeId .. "?withRelated=true&chConvert=0"
     show_message("弹幕加载中...", 30)
     msg.verbose("尝试获取弹幕：" .. url)
@@ -606,7 +623,11 @@ function fetch_danmaku(episodeId, from_menu, api_server, save_failed)
     fetch_danmaku_data(args, function(data)
         handle_fetched_danmaku(data, url, from_menu)
         if save_failed and data and data.comments then
-            show_message('弹幕已加载，但共享匹配未保存', 5)
+            local outcome = (data.count == 0 or #data.comments == 0)
+                and '该集弹幕内容为空' or '弹幕已加载'
+            show_message(outcome .. (save_failed == 'missing-token'
+                and '，但当前账户暂不可保存共享匹配，绑定未保存'
+                or '，但共享匹配未保存'), 5)
         end
     end)
 end

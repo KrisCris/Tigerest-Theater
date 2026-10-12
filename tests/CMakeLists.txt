@@ -36,6 +36,10 @@ set(TEST_COMPILE_DEFS
 )
 
 add_executable(test_systemcomponent test_systemcomponent.cpp)
+add_executable(test_community_bridge test_community_bridge.cpp)
+target_link_libraries(test_community_bridge jmp_core Qt6::Test)
+target_include_directories(test_community_bridge PRIVATE ${TEST_INCLUDE_DIRS})
+add_test(NAME test_community_bridge COMMAND test_community_bridge)
 target_link_libraries(test_systemcomponent jmp_core Qt6::Test)
 target_include_directories(test_systemcomponent PRIVATE ${TEST_INCLUDE_DIRS})
 target_compile_definitions(test_systemcomponent PRIVATE ${TEST_COMPILE_DEFS})
@@ -172,6 +176,7 @@ if(WIN32)
     add_dependencies(test_rife_player_playback tigerest_rife_vs)
     add_test(NAME test_rife_player_lifecycle COMMAND test_rife_player_playback
       nativeVolumeChangesAreObserved
+      webVolumeNotificationsUseNativeUnits
       replacementDoesNotFinishOnSupersededNativeStart
       preparationPauseReportsBufferingUntilUserPauses
       stopCancelsPreparationBeforeNativeEndFileArrives
@@ -477,9 +482,41 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_gallery_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_home_gallery_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_window_mode_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_nativeshell_window_button.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_window_mode_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_window_startup_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_window_startup_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_window_startup_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  if(WIN32)
+    add_test(NAME test_danmaku_http_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_danmaku_http.cjs
+                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_danmaku_http_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+    add_test(NAME test_playback_exit_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_playback_exit.cjs
+                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_playback_exit_webengine PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+  endif()
   add_test(NAME test_community_client
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_community_client.js
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_registration.js)
+  add_test(NAME test_community_v2_protocol COMMAND ${Node_EXECUTABLE} --test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_v2.js ${CMAKE_CURRENT_SOURCE_DIR}/test_community_bridge.js ${CMAKE_CURRENT_SOURCE_DIR}/test_community_review.js ${CMAKE_CURRENT_SOURCE_DIR}/test_community_avatar.js)
+  add_test(NAME test_community_v2_webengine COMMAND ${Node_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_v2_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_community_v2_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_community_unified_webengine COMMAND ${Node_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_unified_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_community_unified_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_community_avatar_webengine COMMAND ${Node_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_avatar_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_community_avatar_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_community_native_bridge COMMAND ${Node_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_native_bridge.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_community_native_bridge PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_community_reports_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_community_reports_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
@@ -501,6 +538,10 @@ if(Node_EXECUTABLE)
   execute_process(COMMAND ${Node_EXECUTABLE} -p "typeof WebSocket === 'function' && typeof fetch === 'function'"
                   OUTPUT_VARIABLE NODE_HAS_WEBENGINE_TEST_APIS OUTPUT_STRIP_TRAILING_WHITESPACE)
   if(WIN32 AND NODE_HAS_WEBENGINE_TEST_APIS STREQUAL "true")
+    add_test(NAME test_volume_persistence_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_volume_persistence.cjs
+                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_volume_persistence_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
     add_test(NAME test_update_webengine
              COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_update_ui.cjs
                      $<TARGET_FILE:${MAIN_TARGET}> --webengine)
@@ -547,6 +588,8 @@ if(Node_EXECUTABLE)
   endif()
   add_test(NAME test_player_lifecycle
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_player_lifecycle.js)
+  add_test(NAME test_mpv_volume_preferences
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_mpv_volume_preferences.js)
   add_test(NAME test_stream_quality
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_stream_quality.js)
   add_test(NAME test_android_playlist

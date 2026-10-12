@@ -719,7 +719,7 @@ function getTigerestSettingsCategories() {
         home: {
             title: '首页设置',
             icon: '&#xe88a;', // home
-            subtitle: '展示顺序与继续观看'
+            subtitle: '启动全屏、展示顺序与继续观看'
         },
         audio: {
             title: '音频',
@@ -821,6 +821,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     const priorBodyOverflow = document.body.style.overflow;
     const orderedSections = getTigerestSettingsCategories();
     const restartSettings = new Set([
+        'home.startupFullscreen',
         'main.enableMPV',
         'mpv.configMode',
         'mpv.renderBackend',
@@ -1459,6 +1460,43 @@ function installHorizontalShelfDragging() {
     mountStyle();
 }
 
+function installHeaderControlsStyle() {
+    if (document.getElementById('tigerest-header-controls-style')) return;
+    const style = document.createElement('style'); style.id = 'tigerest-header-controls-style';
+    style.textContent = `
+        .headerRight { gap: 6px; align-items: center; }
+        .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode {
+            box-sizing: border-box; width: 36px; min-width: 36px; height: 36px; min-height: 36px;
+            flex: 0 0 auto; margin: 0; padding: 0; border: 1px solid rgba(230,222,205,.18);
+            border-radius: 10px; background: rgba(24,27,33,.78); color: #e9e6df;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.035); backdrop-filter: blur(12px);
+            font: 600 12px/1 system-ui,sans-serif; vertical-align: middle; cursor: pointer;
+            transition: background .16s,border-color .16s,color .16s;
+        }
+        .headerRight .headerButton:hover, .headerRight #tigerest-message-entry:hover, .headerRight #tigerest-update-button:hover, .tg-home .tg-home-window-mode:hover {
+            background: rgba(60,54,43,.9); border-color: rgba(239,195,110,.6); color: #f5d493;
+        }
+        .headerRight .headerButton:focus-visible, .headerRight #tigerest-message-entry:focus-visible, .headerRight #tigerest-update-button:focus-visible, .tg-home .tg-home-window-mode:focus-visible {
+            outline: 2px solid #efc36e; outline-offset: 2px; border-color: #efc36e;
+        }
+        .headerRight .headerButton.md-icon, .headerRight .headerButton .md-icon { font-size: 20px; }
+        .headerRight #tigerest-update-button svg { width: 20px; height: 20px; }
+        .headerRight .headerUserButton { overflow: hidden; }
+        .headerRight .headerUserButton img { object-fit: cover; border-radius: 8px; }
+        .headerRight #tigerest-message-entry { width: auto; padding: 0 10px; white-space: nowrap; }
+        .headerRight #tigerest-mpv-settings-button { width: 46px; color: #efc36e; border-color: rgba(239,195,110,.38); background: rgba(82,63,30,.28); font-weight: 800; letter-spacing: .04em; }
+        #tigerest-window-mode-button, .tg-home .tg-home-window-mode { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+        #tigerest-window-mode-button .tigerest-window-label { display: none; }
+        .tg-home .tg-home-window-mode { width: auto; padding: 0 10px; white-space: nowrap; }
+        .tg-home .tg-home-window-mode[hidden] { display: none; }
+        .tigerest-window-icon { flex: 0 0 auto; }
+        #tigerest-window-mode-button:disabled, .tg-home .tg-home-window-mode:disabled { cursor: wait; opacity: .6; }
+        @media(max-width:600px) { .headerRight { flex-wrap: wrap; gap: 4px; } }
+        @media(pointer:coarse) { .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode { min-height: 44px; min-width: 44px; } }
+    `;
+    document.head.appendChild(style);
+}
+
 function installMpvSettingsEntry() {
     // The native shell is injected at DocumentCreation, before <head> and
     // <html> necessarily exist. Defer mounting instead of aborting the rest
@@ -1468,24 +1506,7 @@ function installMpvSettingsEntry() {
         return;
     }
 
-    if (!document.getElementById('tigerest-mpv-entry-style')) {
-        const style = document.createElement('style');
-        style.id = 'tigerest-mpv-entry-style';
-        style.textContent = `
-            #tigerest-mpv-settings-button {
-                width: auto; min-width: 3.25em; padding: 0 .7em; margin: 0 .15em;
-                color: #ffbe38; font: 800 12px/1 system-ui, sans-serif;
-                letter-spacing: .06em; border-radius: 999px;
-                border: 1px solid rgba(255,190,56,.42);
-                background: rgba(255,190,56,.08);
-            }
-            #tigerest-mpv-settings-button:hover,
-            #tigerest-mpv-settings-button:focus-visible {
-                color: #151515; background: #ffbe38;
-            }
-        `;
-        document.head.appendChild(style);
-    }
+    installHeaderControlsStyle();
 
     const mount = () => {
         if (document.getElementById('tigerest-mpv-settings-button')) return;
@@ -1520,75 +1541,91 @@ function installMpvSettingsEntry() {
 }
 
 function installWindowModeEntry() {
-    if (window.tigerestAndroidApi) return;
+    if (window.tigerestAndroidApi || window.api?.system?.isAndroid) return;
     if (!document.head || !document.documentElement) {
         setTimeout(installWindowModeEntry, 50);
         return;
     }
+    installHeaderControlsStyle();
 
-    if (!document.getElementById('tigerest-window-entry-style')) {
-        const style = document.createElement('style');
-        style.id = 'tigerest-window-entry-style';
-        style.textContent = `
-            #tigerest-window-mode-button {
-                width: auto; min-width: 3.5em; padding: 0 .65em; margin: 0 .15em;
-                color: #f2f2f2; font: 700 12px/1 system-ui, sans-serif;
-                border-radius: 999px; border: 1px solid rgba(255,255,255,.28);
-                background: rgba(255,255,255,.08);
-            }
-            #tigerest-window-mode-button:hover,
-            #tigerest-window-mode-button:focus-visible {
-                color: #151515; background: #f2f2f2;
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
-    let fullscreen = false;
-    const updateButton = () => {
-        const button = document.getElementById('tigerest-window-mode-button');
-        if (!button) return;
-        const label = fullscreen ? '窗口' : '全屏';
-        if (button.textContent !== label) button.textContent = label;
-        button.title = fullscreen ? '恢复播放前的窗口状态' : '切换为全屏';
-        button.setAttribute('aria-label', button.title);
+    let fullscreen = false, known = false, pending = false, readVersion = 0;
+    const buttons = () => document.querySelectorAll('#tigerest-window-mode-button,[data-tigerest-window-mode]');
+    const updateButtons = () => {
+        for (const button of buttons()) {
+            const label = fullscreen ? '窗口' : '全屏';
+            const title = fullscreen ? '退出全屏，恢复窗口（F11）' : '切换为全屏（F11）';
+            const text = button.querySelector('.tigerest-window-label');
+            if (text && text.textContent !== label) text.textContent = label;
+            button.title = title;
+            button.setAttribute('aria-label', title);
+            button.setAttribute('aria-pressed', String(fullscreen));
+            button.setAttribute('aria-busy', String(pending));
+            button.disabled = pending;
+            const path = button.querySelector('path');
+            const shape = fullscreen ? 'M9 3v6H3m12-6v6h6M3 15h6v6m6 0v-6h6' : 'M9 3H3v6m12-6h6v6M3 15v6h6m6 0h6v-6';
+            if (path && path.getAttribute('d') !== shape) path.setAttribute('d', shape);
+        }
     };
     const refreshState = async () => {
-        if (!window.api?.window) return;
-        fullscreen = !!(await window.api.window.isFullScreen());
-        updateButton();
-    };
-    const mount = () => {
-        if (document.getElementById('tigerest-window-mode-button')) {
-            updateButton();
-            return;
+        if (!window.api?.window?.isFullScreen) return false;
+        const version = ++readVersion;
+        try {
+            const value = await window.api.window.isFullScreen();
+            if (version !== readVersion) return known;
+            fullscreen = !!value; known = true; updateButtons();
+            return true;
+        } catch (error) {
+            console.warn('Unable to read window fullscreen state', error);
+            return false;
         }
-        const userButton = document.querySelector('.headerUserButton');
-        if (!userButton?.parentElement) return;
-
-        const button = document.createElement('button');
-        button.id = 'tigerest-window-mode-button';
-        button.type = 'button';
-        button.className = 'headerButton headerSectionItem paper-icon-button-light emby-button-focusscale';
-        button.addEventListener('click', async event => {
-            event.preventDefault();
-            event.stopPropagation();
-            if (!window.api?.window) return;
-            window.api.window.setFullScreen(!fullscreen);
-            await refreshState();
-        });
-        const settingsButton = document.getElementById('tigerest-mpv-settings-button');
-        userButton.parentElement.insertBefore(button, settingsButton || userButton);
-        updateButton();
     };
-
+    const toggle = async event => {
+        event.preventDefault(); event.stopPropagation();
+        if (pending || !window.api?.window?.setFullScreen) return;
+        pending = true; updateButtons();
+        try {
+            if (!known && !await refreshState()) return;
+            await window.api.window.setFullScreen(!fullscreen);
+            await refreshState();
+        } catch (error) {
+            console.warn('Unable to change window fullscreen state', error);
+            await refreshState();
+        } finally {
+            pending = false; updateButtons();
+        }
+    };
+    const bound = new WeakSet();
+    const mount = () => {
+        if (!document.getElementById('tigerest-window-mode-button')) {
+            const userButton = document.querySelector('.headerUserButton');
+            if (userButton?.parentElement) {
+                const button = document.createElement('button');
+                button.id = 'tigerest-window-mode-button'; button.type = 'button';
+                button.className = 'headerButton headerSectionItem paper-icon-button-light emby-button-focusscale';
+                const settingsButton = document.getElementById('tigerest-mpv-settings-button');
+                userButton.parentElement.insertBefore(button, settingsButton || userButton);
+            }
+        }
+        for (const button of buttons()) {
+            if (bound.has(button)) continue;
+            bound.add(button);
+            button.innerHTML = '<svg class="tigerest-window-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path></path></svg><span class="tigerest-window-label"></span>';
+            button.addEventListener('click', toggle);
+            button.hidden = false;
+        }
+        updateButtons();
+    };
     mount();
     const observer = new MutationObserver(mount);
     observer.observe(document.documentElement, {childList: true, subtree: true});
     window.initCompleted.then(() => {
-        window.api.window.fullScreenSwitched.connect(refreshState);
+        window.api?.window?.fullScreenSwitched?.connect(value => {
+            if (typeof value === 'boolean') {
+                ++readVersion; fullscreen = value; known = true; updateButtons();
+            } else refreshState();
+        });
         refreshState();
-    });
+    }).catch(error => console.warn('Unable to initialize window controls', error));
 }
 
 installMpvSettingsEntry();

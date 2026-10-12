@@ -1,0 +1,29 @@
+{
+  "scope": "read-only production Emby episode counts through shipped HomeData; no playback progress changes",
+  "results": [
+    {
+      "unwatched": true,
+      "played": 6,
+      "total": 10,
+      "label": "观看进度：6/10"
+    },
+    {
+      "unwatched": true,
+      "played": 40,
+      "total": 328,
+      "label": "观看进度：40/328"
+    },
+    {
+      "unwatched": true,
+      "played": 7,
+      "total": 58,
+      "label": "观看进度：7/58"
+    },
+    {
+      "unwatched": false,
+      "played": 36,
+      "total": 36,
+      "label": "观看进度：36/36"
+    }
+  ]
+}

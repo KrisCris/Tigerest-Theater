@@ -81,7 +81,7 @@ local function sandbox(integration, mapping)
         if name == 'mp.msg' then return original_mp.msg end
         if name == 'mp.utils' then return require('mp.utils') end
         if name == 'mp.options' then return {read_options = function() end} end
-        if name == 'modules/utils' or name == 'modules/options' or name == 'modules/mapping'
+        if name == 'modules/utils' or name == 'modules/http' or name == 'modules/options' or name == 'modules/mapping'
             or (mapping and name == 'modules/menu')
             or (integration and (name == 'modules/parse' or name == 'modules/guess'
                 or name == 'modules/render' or name == 'apis/dandanplay')) then
@@ -140,7 +140,9 @@ local function sandbox(integration, mapping)
     end
     function state.respond(index, data)
         assert(requests[index], 'Expected HTTP request ' .. index)
-        requests[index](true, {status = 0, stdout = require('mp.utils').format_json(data)})
+        local body = require('mp.utils').format_json(data)
+        for _, arg in ipairs(request_args[index]) do if arg == '--include' then body = 'HTTP/1.1 200 OK\r\n\r\n' .. body; break end end
+        requests[index](true, {status = 0, stdout = body})
         state.advance(0.1)
     end
     if integration then
@@ -165,6 +167,119 @@ local function mapping_reply(s, index, origin, episode, text)
     s.requests[index](true, {status=0, stdout='HTTP/1.1 200 OK\r\n\r\n' .. require('mp.utils').format_json({
         success=true, matched=true, match={origin=origin, bangumiId='tmdb-55', episodeId=episode,
             animeTitle='Chosen work', episodeTitle=text}, danmaku={count=1, comments={{p='10,1,16777215',m=text}}}})})
+end
+local function http_reply(s, index, status, data, headers, curl)
+    s.requests[index](true, {status=curl or 0, stdout='HTTP/1.1 ' .. status .. ' Fixture\r\n' .. (headers or '') .. '\r\n' .. require('mp.utils').format_json(data or {})})
+end
+local function comment_request(s)
+    s.env.ENABLED = true
+    s.env.fetch_danmaku('198760001', false, 'http://nas.tigerest.top:18443')
+end
+function cases.comment_timeout_retries_once_then_loads()
+    local s=sandbox(true,true); comment_request(s)
+    s.requests[1](true,{status=28,stdout='',stderr='PRIVATE-RESPONSE'})
+    assert(s.env.is_async_running(),'Retry backoff remains part of the active load')
+    s.advance(0.9); assert(#s.requests==1,'Retry must be delayed')
+    s.advance(0.2); assert(#s.requests==2,'Timeout must automatically retry once')
+    http_reply(s,2,200,{count=1,comments={{p='10,1,16777215',m='Recovered'}}})
+    assert(s.env.COMMENTS and #s.env.COMMENTS==1,'Retry response must reach renderer')
+    assert(not s.env.is_async_running(),'Completed retry releases loading state')
+    s.advance(10); assert(#s.requests==2,'Only one retry is allowed')
+end
+function cases.comment_gateway_failure_retries_but_stops_at_two_attempts()
+    for _,status in ipairs({408,502,503,504}) do
+        local s=sandbox(true,true); local notice=''; s.env.show_message=function(value) notice=value end
+        comment_request(s); http_reply(s,1,status,{success=false}); s.advance(1.1)
+        assert(#s.requests==2,'Transient HTTP failure retries')
+        http_reply(s,2,status,{success=false}); s.advance(5)
+        assert(#s.requests==2 and not s.env.is_async_running(),'Exhausted retry must stop and release loading state')
+        assert(notice:find(tostring(status),1,true),'Final failure identifies the HTTP status')
+    end
+end
+function cases.comment_empty_and_client_errors_are_not_retried()
+    for _,status in ipairs({200,400,401,403,404,429}) do
+        local s=sandbox(true,true); comment_request(s)
+        http_reply(s,1,status,{count=0,comments={}},status==429 and 'Retry-After: 60\r\n' or nil)
+        s.advance(2); assert(#s.requests==1,'Empty responses and client/rate errors must not retry')
+        assert(s.env.COMMENTS==nil,'No fabricated comments on empty/error')
+        assert(not s.env.is_async_running(),'Terminal response releases loading state')
+        if status==429 then
+            assert(s.env.mapping_retry_after('http://192.168.5.150:18443')>0,'GET limit applies to both NAS addresses')
+            s.env.fetch_danmaku('198760002',false,'http://192.168.5.150:18443')
+            assert(#s.requests==1,'GET limit must prevent another NAS request')
+        end
+    end
+end
+function cases.pending_comment_retry_is_cancelled_on_unload_or_manual_selection()
+    for _,action in ipairs({'unload','manual','account'}) do
+        local s=sandbox(true,true); comment_request(s)
+        s.requests[1](true,{status=28,stdout=''});
+        if action=='unload' then s.emit('on_unload')
+        elseif action=='manual' then s.env.begin_manual_danmaku_selection()
+        else s.set('user-data/tigerest/danmaku/auth-generation','1'); s.set('user-data/tigerest/danmaku/auth-generation','2') end
+        s.advance(2); assert(#s.requests==1,'Cancelled playback/selection/account cannot start old retry')
+        assert(not s.env.is_async_running(),'Cancelled retry releases loading state')
+        http_reply(s,1,200,{count=1,comments={{p='10,1,16777215',m='STALE'}}})
+        assert(s.env.COMMENTS==nil,'Late completion after cancellation cannot load')
+    end
+end
+function cases.shared_lookup_retries_readonly_then_loads_without_get()
+    local s=sandbox(true,true); s.emit('file-loaded'); http_reply(s,1,504,{success=false})
+    s.advance(1.1); assert(#s.requests==2,'Shared lookup retries instead of starting legacy matching')
+    assert(s.request_args[2][#s.request_args[2]]:find('/api/tigerest/v1/danmaku',1,true),'Retry stays on shared lookup')
+    local args=s.request_args[2]; local body
+    for i,value in ipairs(args) do if value=='--data-binary' then body=require('mp.utils').parse_json(args[i+1]) end end
+    assert(body and not body.selection,'Automatic retry must never write a shared mapping')
+    mapping_reply(s,2,'shared','198760001','Recovered shared comments')
+    assert(#s.requests==2 and s.env.COMMENTS and #s.env.COMMENTS==1,'Successful shared retry must not issue redundant GET')
+end
+function cases.pending_shared_retry_is_cancelled_by_manual_choice()
+    local s=sandbox(true,true); s.emit('file-loaded'); http_reply(s,1,503,{success=false})
+    s.env.begin_manual_danmaku_selection();s.advance(2)
+    assert(#s.requests==1,'Manual choice cancels pending shared retry and fallback')
+end
+function cases.terminal_http_error_wins_over_partial_body_transport_failure()
+    for _,status in ipairs({400,401,403,404,429}) do
+        for _,code in ipairs({18,28,56}) do
+            local s=sandbox(true,true); comment_request(s)
+            http_reply(s,1,status,{success=false},nil,code); s.advance(2)
+            assert(#s.requests==1 and not s.env.is_async_running(),'Terminal HTTP status forbids retry even if its body is incomplete')
+        end
+    end
+end
+function cases.rate_limit_received_during_backoff_blocks_the_retry()
+    local s=sandbox(true,true); comment_request(s)
+    s.requests[1](true,{status=28,stdout=''})
+    s.env.mapping_record_rate_limit('http://192.168.5.150:18443','120')
+    s.advance(2)
+    assert(#s.requests==1 and not s.env.is_async_running(),'New server cooldown must prevent queued retries')
+end
+function cases.http_network_failure_retries_but_tls_and_size_errors_do_not()
+    for _,code in ipairs({6,7,18,28,52,55,56,60,63}) do
+        local s=sandbox(true,true);comment_request(s)
+        s.requests[1](true,{status=code,stdout='',stderr='PRIVATE-ERROR'})
+        s.advance(1.1)
+        assert(#s.requests==((code==60 or code==63) and 1 or 2),'Retry only transient network failures')
+        s.emit('on_unload')
+    end
+end
+function cases.http_redirect_and_proxy_headers_keep_final_body()
+    local s=sandbox(true,true); comment_request(s)
+    s.requests[1](true,{status=0,stdout='HTTP/1.1 200 Connection established\r\n\r\nHTTP/1.1 302 Found\r\nLocation: /new\r\n\r\nHTTP/2 200\r\nContent-Type: application/json\r\n\r\n{"count":1,"comments":[{"p":"10,1,16777215","m":"Redirected"}]}'})
+    assert(s.env.COMMENTS and #s.env.COMMENTS==1,'Only final headers may precede parsed comments')
+end
+function cases.successful_malformed_body_is_not_an_infinite_retry()
+    local s=sandbox(true,true);comment_request(s)
+    s.requests[1](true,{status=0,stdout='HTTP/1.1 200 OK\r\n\r\nnot json or xml'})
+    s.advance(3)
+    assert(#s.requests==1 and not s.env.is_async_running() and s.env.COMMENTS==nil,'Invalid bodies terminate without inventing comments or indefinite retries')
+end
+function cases.api_requests_have_connection_and_total_deadlines()
+    local s=sandbox(true,true)
+    local args=s.env.make_danmaku_request_args('GET','http://nas.tigerest.top:18443/api/v2/comment/198760001')
+    local connection,total
+    for i,v in ipairs(args) do if v=='--connect-timeout' then connection=tonumber(args[i+1]) elseif v=='--max-time' then total=tonumber(args[i+1]) end end
+    assert(connection and connection<=5 and total and total<=20,'Legacy API subprocess must have bounded connection and total duration')
 end
 function cases.manual_selection_wins_over_delayed_shared_hit()
     local s = sandbox(true, true)
@@ -257,6 +372,32 @@ local function mapping_header(s)
         return {read=function() return 'Authorization: Bearer fixture-private-token\n' end, close=function() end}
     end}, {__index=io})
 end
+function cases.legacy_authorization_requires_explicit_generation_mode()
+    local legacy = sandbox(true, true); mapping_header(legacy)
+    legacy.props['user-data/tigerest/danmaku/auth-generation'] = 'legacy:9'
+    legacy.env.set_episode_id('99000005',true,'http://nas.tigerest.top:18443','99',legacy.env.mapping_playback_token())
+    assert(legacy.request_args[1][#legacy.request_args[1]]:find('/api/tigerest/v1/danmaku',1,true),
+        'Explicit eligible legacy generation must preserve the configured mapping token')
+    local ordinary = sandbox(true, true); mapping_header(ordinary)
+    ordinary.props['user-data/tigerest/danmaku/auth-generation'] = '9'
+    ordinary.env.set_episode_id('99000005',true,'http://nas.tigerest.top:18443','99',ordinary.env.mapping_playback_token())
+    assert(ordinary.request_args[1][#ordinary.request_args[1]]:find('/comment/99000005?',1,true),
+        'Ordinary session generation must never reinterpret a Bearer file as legacy authorization')
+end
+function cases.logged_in_emby_session_saves_without_admin_json_and_cancels_on_switch()
+    local s = sandbox(true, true); mapping_header(s)
+    s.props['user-data/tigerest/danmaku/auth-generation'] = '7'
+    s.env.io = setmetatable({open = function()
+        return {read=function() return 'X-Emby-Token: fixture-session-secret\r\nX-Emby-Server-Id: 62526c3bf747439c99327ddec5fed4a8\r\nX-Emby-User-Id: fixture-user\r\n' end, close=function() end}
+    end}, {__index=io})
+    s.env.set_episode_id('99000005', true, 'http://nas.tigerest.top:18443', 'tmdb-99', s.env.mapping_playback_token())
+    local args=s.request_args[1]
+    assert(args[#args]:find('/api/tigerest/v1/danmaku',1,true), 'Ordinary Emby session must save shared binding without administrator JSON')
+    for _,value in ipairs(args) do assert(not value:find('fixture-session-secret',1,true), 'Session token must stay out of command arguments') end
+    s.props['user-data/tigerest/danmaku/auth-generation'] = '8'
+    s.requests[1](true, {status=0,stdout='HTTP/1.1 401 Unauthorized\r\n\r\n{}'})
+    assert(#s.requests==1, 'Account switch invalidates old response and its fallback')
+end
 function cases.explicit_selection_uses_original_identity_and_private_header_reference()
     local s = sandbox(true, true); mapping_header(s)
     s.env.DANMAKU.anime, s.env.DANMAKU.episode = 'Selected catalog title', 'Catalog E5'
@@ -304,6 +445,28 @@ function cases.no_token_third_party_unknown_season_and_stale_manual_are_legacy_o
     stale.env.set_episode_id('99000005',true,'http://nas.tigerest.top:18443','99',token)
     assert(#stale.requests == 0, 'Stale menu selection must never calibrate the replacement playback')
 end
+function cases.missing_write_token_does_not_imply_shared_binding_was_saved()
+    local s = sandbox(true, true)
+    local notice
+    s.env.show_message = function(value) notice = value end
+    s.env.set_episode_id('99000005', true, 'http://nas.tigerest.top:18443', '99', s.env.mapping_playback_token())
+    s.respond(1, {count=1, comments={{p='10,1,16777215', m='Chosen episode'}}})
+    assert(s.env.COMMENTS and #s.env.COMMENTS == 1 and #s.requests == 1,
+        'Missing credentials must preserve the selected episode via a single legacy GET')
+    assert(notice and notice:find('未保存', 1, true) and notice:find('共享', 1, true) and not notice:find('未配置', 1, true),
+        'Successful playback without write permission must explain why no shared binding was saved')
+end
+function cases.mapping_rate_limit_blocks_immediate_legacy_download()
+    local s = sandbox(true, true); mapping_header(s)
+    s.env.set_episode_id('99000005', true, 'http://nas.tigerest.top:18443', '99', s.env.mapping_playback_token())
+    s.requests[1](true, {status=0, stdout='HTTP/1.1 429 Too Many Requests\r\nRetry-After: 120\r\n\r\n{"success":false}'})
+    assert(#s.requests == 1, 'A 429 must not immediately download through the same gateway legacy endpoint')
+    s.env.fetch_danmaku('99000005', true, 'http://192.168.5.150:18443')
+    assert(#s.requests == 1, 'LAN and DDNS addresses must share the same gateway cooldown')
+    s.advance(121)
+    s.env.fetch_danmaku('99000005', true, 'http://nas.tigerest.top:18443')
+    assert(#s.requests == 2, 'Legacy download must become available after Retry-After expires')
+end
 function cases.rate_limit_cooldown_survives_playback_change()
     local s = sandbox(true,true)
     s.emit('file-loaded')
@@ -311,8 +474,62 @@ function cases.rate_limit_cooldown_survives_playback_change()
     s.emit('on_unload'); s.props['user-data/tigerest/emby/episode-number'] = 4
     local count = #s.requests
     s.env.auto_load_danmaku(s.props.path,'Fixture series Season1','Fixture series S01E04',4)
-    assert(#s.requests == count + 1 and not s.request_args[#s.requests][#s.request_args[#s.requests]]:find('/tigerest/',1,true),
-        'A new playback during Retry-After must skip another mapping POST')
+    assert(#s.requests == count, 'A new playback during Retry-After must skip both mapping and legacy requests')
+end
+function cases.cooldown_blocks_unknown_season_and_catalog_requests_but_allows_third_parties()
+    local s = sandbox(true, true); mapping_header(s)
+    s.env.set_episode_id('99000005', true, 'http://nas.tigerest.top:18443', '99', s.env.mapping_playback_token())
+    s.requests[1](true, {status=0, stdout='HTTP/1.1 429 Too Many Requests\r\nRetry-After: 120\r\n\r\n{"success":false}'})
+    s.emit('on_unload'); s.props['user-data/tigerest/emby/season-number'] = 0
+    s.env.auto_load_danmaku(s.props.path, 'Fixture series', 'Fixture series E04', 4)
+    assert(#s.requests == 1, 'Unknown source metadata must not bypass the gateway cooldown through automatic search')
+    s.env.uosc_available = true
+    local menu, icon
+    s.env.update_menu_uosc = function(_, _, value, _, _, _, next_icon) menu, icon = value, next_icon end
+    s.env.get_episodes('Chosen catalog', '99', 'http://192.168.5.150:18443', s.env.mapping_playback_token())
+    assert(#s.requests == 1 and type(menu) == 'string' and menu:find('120', 1, true) and icon ~= 'spinner',
+        'Catalog cooldown must end its loading spinner and show the remaining wait')
+    s.env.get_animes('Chosen catalog', s.env.mapping_playback_token()); s.advance(0.2)
+    assert(#s.requests == 1 and type(menu) == 'table' and #menu > 0 and menu[1].title:find('120', 1, true),
+        'Manual search must show cooldown without sending another gateway request')
+    s.env.get_episodes('Third catalog', '99', 'https://third.example.test', s.env.mapping_playback_token())
+    assert(#s.requests == 2, 'An unrelated third-party gateway remains available')
+end
+function cases.rate_limited_menu_selection_preserves_loaded_titles_and_comments()
+    local s = sandbox(true, true); mapping_header(s)
+    s.emit('file-loaded'); mapping_reply(s, 1, 'shared', '55000003', 'Original loaded episode')
+    local comments, history = s.env.COMMENTS, require('mp.utils').format_json(s.history())
+    s.messages['load-danmaku']('Rejected catalog', 'Rejected episode', '99000005',
+        'http://nas.tigerest.top:18443', '99', s.env.mapping_playback_token())
+    assert(s.env.DANMAKU.anime == 'Chosen work' and s.env.DANMAKU.episode == 'Original loaded episode',
+        'Pending selection must not relabel comments before the response')
+    s.requests[2](true, {status=0, stdout='HTTP/1.1 429 Too Many Requests\r\nRetry-After: 120\r\n\r\n{"success":false}'})
+    assert(s.env.DANMAKU.anime == 'Chosen work' and s.env.DANMAKU.episode == 'Original loaded episode'
+        and s.env.DANMAKU.mapping_origin == 'shared' and s.env.COMMENTS == comments
+        and require('mp.utils').format_json(s.history()) == history,
+        'Rejected selection must leave the loaded association and history intact')
+end
+function cases.gateway_cooldown_keeps_third_party_automatic_matching_available()
+    local s = sandbox(true, true)
+    s.env.options.api_server = 'http://nas.tigerest.top:18443,https://third.example.test'
+    s.emit('file-loaded')
+    s.requests[1](true, {status=0, stdout='HTTP/1.1 429 Too Many Requests\r\nRetry-After: 120\r\n\r\n{"success":false}'})
+    assert(#s.requests == 2 and s.request_args[2][#s.request_args[2]]:find('https://third.example.test/api/v2/search/anime?', 1, true),
+        'NAS cooldown must skip the NAS while preserving third-party automatic search')
+    s.respond(2, {animes={{type='tvseries', animeTitle='Fixture series', bangumiId='42'}}})
+    s.respond(3, {bangumi={episodes={{episodeNumber='3', episodeTitle='Episode three', episodeId=420003}}}})
+    s.respond(4, {count=1, comments={{p='10,1,16777215',m='Third-party comment'}}})
+    assert(s.env.COMMENTS and #s.env.COMMENTS == 1 and #s.requests == 4,
+        'Third-party automatic matching must complete while the NAS remains in cooldown')
+end
+function cases.empty_legacy_response_reports_empty_comments_and_unsaved_binding()
+    local s = sandbox(true, true)
+    local notice
+    s.env.show_message = function(value) notice = value end
+    s.env.set_episode_id('99000005', true, 'http://nas.tigerest.top:18443', '99', s.env.mapping_playback_token())
+    s.respond(1, {count=0, comments={}})
+    assert(notice and notice:find('为空', 1, true) and notice:find('未保存', 1, true)
+        and not notice:find('已加载', 1, true), 'An empty response cannot be advertised as loaded comments')
 end
 function cases.manual_menu_carries_catalog_and_original_generation_to_selection()
     local s = sandbox(true,true); mapping_header(s)

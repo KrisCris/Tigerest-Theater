@@ -23,6 +23,8 @@
 #include "PlaybackIdentity.h"
 #include "MpvConfigManager.h"
 #ifdef Q_OS_WIN
+#include "ui/WindowManager.h"
+#include "power/PowerComponent.h"
 #include "interpolation/windows/RifeRuntimeManager.h"
 #include "interpolation/windows/RifeVSScriptRuntime.h"
 #include "interpolation/windows/RifePlaybackCoordinator.h"
@@ -65,6 +67,14 @@ static void wakeup_cb(void *context)
   emit player->onMpvEvents();
 }
 
+#ifdef Q_OS_WIN
+namespace {
+constexpr uint64_t ApplicationQuitStop = 0x54000001;
+constexpr uint64_t ApplicationQuitIdle = 0x54000002;
+constexpr uint64_t ApplicationQuitVo = 0x54000003;
+}
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 PlayerComponent::PlayerComponent(QObject* parent)
   : ComponentBase(parent), m_state(State::finished), m_paused(false), m_playbackActive(false),
@@ -82,6 +92,10 @@ PlayerComponent::PlayerComponent(QObject* parent)
   qmlRegisterType<MpvVideoItem>("Konvergo", 1, 0, "MpvVideoItem");
 
   m_restoreDisplayTimer.setSingleShot(true);
+#ifdef Q_OS_WIN
+  m_applicationQuitTimer.setInterval(100);
+  connect(&m_applicationQuitTimer, &QTimer::timeout, this, &PlayerComponent::checkApplicationQuit);
+#endif
   connect(&m_restoreDisplayTimer, &QTimer::timeout, this, &PlayerComponent::onRestoreDisplay);
 
   connect(&DisplayComponent::Get(), &DisplayComponent::refreshRateChanged, this, &PlayerComponent::onRefreshRateChange);
@@ -510,6 +524,11 @@ void PlayerComponent::initializeMpv()
       "F11 cycle fullscreen\n"
       "Ctrl+j script-binding stats/display-stats-toggle\n"
       "Ctrl+Shift+j script-binding stats/display-page-2");
+#ifdef Q_OS_WIN
+  hostBindings.prepend(QStringLiteral(
+      "Alt+F4 script-message tigerest-application-quit\n"
+      "CLOSE_WIN script-message tigerest-application-quit\n"));
+#endif
 #if defined(Q_OS_MAC)
   if (m_nativeVideoOutput)
   {
@@ -631,9 +650,11 @@ bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
     return false;
   }
 
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   if (m_shuttingDown)
     return false;
+#endif
+#ifdef Q_OS_MAC
   if (m_nativeVideoOutput && m_nativeVoTeardownPending)
   {
     // mpv can report idle before macvk has finished closing its Cocoa window.
@@ -719,10 +740,8 @@ bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
   auto& settings = SettingsComponent::Get();
   // Only a private filename is published; the credential is never an MPV option,
   // setting, log field or web/bootstrap property. Absence enables read-only mapping.
-  setIdentityProperty(QStringLiteral("user-data/tigerest/danmaku/mapping-auth-file"),
-    ProfileManager::Get().hasActiveProfile()
-      ? ProfileManager::activeProfile().dataDir(QStringLiteral("private/danmaku-mapping-authorization.txt"))
-      : QString());
+  updateDanmakuAuthorization(SystemComponent::Get().communityMappingAuthFile(),
+                            SystemComponent::Get().communityAuthGeneration());
   setIdentityProperty(QStringLiteral("user-data/tigerest/danmaku/api-server"),
     MpvConfigManager::danmakuApiServer(
       settings.value(SETTINGS_SECTION_MAIN, "userWebClient").toString(),
@@ -884,6 +903,9 @@ bool PlayerComponent::switchDisplayFrameRate()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::onRestoreDisplay()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
 #if defined(Q_OS_MAC)
   if (m_nativeVideoOutput)
   {
@@ -906,6 +928,9 @@ void PlayerComponent::onRestoreDisplay()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::onRefreshRateChange()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
 #if defined(Q_OS_MAC)
   if (m_nativeVideoOutput && (!m_inPlayback || m_nativeVoTeardownPending || m_shuttingDown))
   {
@@ -1008,6 +1033,45 @@ void PlayerComponent::updatePlaybackState()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::handleMpvEvent(mpv_event *event)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown && event->event_id != MPV_EVENT_LOG_MESSAGE) {
+    // Do not run normal playback callbacks while the native VO is being
+    // removed: several of them synchronously enter mpv from the GUI thread.
+    if (event->event_id == MPV_EVENT_COMMAND_REPLY && event->reply_userdata == ApplicationQuitStop) {
+      m_applicationStopAcknowledged = event->error >= 0;
+      if (event->error < 0) qWarning() << "Application shutdown stop failed:" << mpv_error_string(event->error);
+      checkApplicationQuit();
+    } else if (event->event_id == MPV_EVENT_GET_PROPERTY_REPLY && event->reply_userdata == ApplicationQuitIdle) {
+      m_applicationQuitQueryPending = false;
+      const auto* property = static_cast<mpv_event_property*>(event->data);
+      if (event->error >= 0 && property && property->format == MPV_FORMAT_FLAG &&
+          property->data && *static_cast<int*>(property->data)) {
+        m_applicationQuitQueryPending = mpv_get_property_async(m_mpv->mpv(), ApplicationQuitVo,
+                                                               "current-vo", MPV_FORMAT_STRING) >= 0;
+      }
+    } else if (event->event_id == MPV_EVENT_GET_PROPERTY_REPLY && event->reply_userdata == ApplicationQuitVo) {
+      m_applicationQuitQueryPending = false;
+      // idle-active alone can precede VO teardown. current-vo is unavailable
+      // only after uninit_video_out has returned, including already-idle exits.
+      if (event->error == MPV_ERROR_PROPERTY_UNAVAILABLE)
+        finishApplicationQuit();
+    } else if (event->event_id == MPV_EVENT_IDLE) {
+      checkApplicationQuit();
+#if MPV_CLIENT_API_VERSION >= MPV_MAKE_VERSION(1, 100)
+    } else if (event->event_id == MPV_EVENT_HOOK) {
+      const auto* hook = static_cast<mpv_event_hook*>(event->data);
+      mpv_hook_continue(m_mpv->mpv(), hook->id);
+#endif
+    } else if (event->event_id == MPV_EVENT_CLIENT_MESSAGE) {
+      const auto* message = static_cast<mpv_event_client_message*>(event->data);
+      if (message->num_args >= 1 && !strcmp(message->args[0], "tigerest-application-quit"))
+        requestApplicationQuit();
+      else if (message->num_args >= 3 && !strcmp(message->args[0], "hook_run"))
+        m_mpv->commandAsync(QStringList() << "hook-ack" << QString::fromUtf8(message->args[2]));
+    }
+    return;
+  }
+#endif
   switch (event->event_id)
   {
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
@@ -1332,6 +1396,12 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     case MPV_EVENT_CLIENT_MESSAGE:
     {
       auto *msg = static_cast<mpv_event_client_message*>(event->data);
+#ifdef Q_OS_WIN
+      if (msg->num_args >= 1 && !strcmp(msg->args[0], "tigerest-application-quit")) {
+        requestApplicationQuit();
+        break;
+      }
+#endif
       if (msg->num_args == 2 && strcmp(msg->args[0], "tigerest-playlist-item") == 0)
       {
         const QString itemId = QString::fromUtf8(msg->args[1]);
@@ -1388,7 +1458,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
         // Calling this lambda will instruct mpv to continue loading the file.
         auto resume = [=] {
           qInfo() << "resuming loading";
-          m_mpv->command( QStringList() << "hook-ack" << resumeId);
+          m_mpv->commandAsync(QStringList() << "hook-ack" << resumeId);
         };
         if (switchDisplayFrameRate())
         {
@@ -1510,6 +1580,9 @@ void PlayerComponent::handleMpvEvents()
     handleMpvEvent(event);
   }
   // Once we got all status updates, determine the new canonical state.
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   updatePlaybackState();
 }
 
@@ -1700,6 +1773,9 @@ void PlayerComponent::setVideoOnlyMode(bool enable)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::play()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   if(m_rifeStartup.requestPause(false)){publishInterpolationPause();return;}
 #endif
@@ -1780,7 +1856,10 @@ void PlayerComponent::notifyMetadata(const QVariantMap& metadata)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::notifyVolumeChange(double volume)
 {
-  emit volumeChanged(volume);
+  // Web media notifications use a ratio; mpv observations and web player
+  // consumers share this signal in percent. Mixing units feeds the saved
+  // volume back through inputPlugin at 1/100 on every notification.
+  emit volumeChanged(volume * 100.0);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1802,6 +1881,7 @@ void PlayerComponent::notifyStreamingBitrateResult(qint64 bitrate, bool success,
 void PlayerComponent::stop()
 {
 #ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
   ++m_windowsPlaybackGeneration;m_windowsReplacementTargetEntryId=-1;
   m_replacementPending=false;m_windowsRecoveryLoads.clear();
   if(m_windowsRifePlayback)m_windowsRifePlayback->endItem();
@@ -1839,6 +1919,75 @@ void PlayerComponent::stop()
     m_mpv->command(args);
   }
 }
+
+#ifdef Q_OS_WIN
+void PlayerComponent::requestApplicationQuit()
+{
+  if (m_applicationQuitReady || (m_shuttingDown && m_applicationQuitTimer.isActive())) return;
+  qInfo() << "Application shutdown requested; waiting for native video output";
+  m_shuttingDown = true;
+  m_nativeVideoReady = false;
+  m_applicationStopAcknowledged = false;
+  m_applicationQuitQueryPending = false;
+  m_applicationQuitElapsed.start();
+  m_rifeTimer.stop();
+  m_restoreDisplayTimer.stop();
+  m_reloadAudioTimer.stop();
+  m_audioOutputWarningTimer.stop();
+  InputComponent::Get().cancelAutoRepeat();
+  ++m_windowsPlaybackGeneration;
+  m_windowsReplacementTargetEntryId = -1;
+  m_replacementPending = false;
+  m_windowsRecoveryLoads.clear();
+  if (m_windowsRifePlayback) m_windowsRifePlayback->endItem();
+  m_rifeStartup.cancel();
+  publishInterpolationPause();
+  if (!m_mpv) {
+    finishApplicationQuit();
+    return;
+  }
+  // Keep the main HWND and its event loop alive while mpv's Windows VO thread
+  // removes the embedded window. Never synchronously wait for the core here.
+  m_mpv->setPropertyAsync("force-window", false);
+  const int result = m_mpv->commandAsync(QStringList() << "stop", ApplicationQuitStop);
+  if (result < 0) qWarning() << "Unable to queue application shutdown stop:" << mpv_error_string(result);
+  m_applicationQuitTimer.start();
+}
+
+void PlayerComponent::checkApplicationQuit()
+{
+  if (!m_shuttingDown || m_applicationQuitReady) return;
+  if (m_applicationQuitElapsed.elapsed() >= 10000) {
+    // A hung driver must not destroy the live host HWND. Leave the application
+    // responsive and permit another exit attempt instead of freezing Qt.
+    m_applicationQuitTimer.stop();
+    m_applicationQuitQueryPending = false;
+    qWarning() << "Application shutdown timed out waiting for native video output";
+    return;
+  }
+  if (!m_applicationStopAcknowledged || m_applicationQuitQueryPending) return;
+  m_applicationQuitQueryPending = mpv_get_property_async(m_mpv->mpv(), ApplicationQuitIdle,
+                                                        "idle-active", MPV_FORMAT_FLAG) >= 0;
+}
+
+void PlayerComponent::finishApplicationQuit()
+{
+  if (!m_shuttingDown || m_applicationQuitReady) return;
+  m_applicationQuitReady = true;
+  m_applicationQuitTimer.stop();
+  m_applicationQuitQueryPending = false;
+  m_inPlayback = false;
+  m_windowVisible = false;
+  emit windowVisible(false);
+  DisplayComponent::Get().restorePreviousVideoMode();
+  WindowManager::Get().endPlaybackSession();
+  PowerComponent::Get().setScreensaverEnabled(true);
+  qInfo() << "Native video output released; exiting application";
+  // quit() sends another close request, which the tray/async close handler can
+  // veto. VO teardown is complete now, so end the event loop directly.
+  QTimer::singleShot(0, qApp, [] { QCoreApplication::exit(0); });
+}
+#endif
 
 #ifdef Q_OS_MAC
 void PlayerComponent::completeNativeVoTransition()
@@ -1886,6 +2035,9 @@ bool PlayerComponent::prepareForShutdown()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::clearQueue()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::clearQueue: mpv not initialized yet";
     return;
@@ -1908,6 +2060,9 @@ void PlayerComponent::clearQueue()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::togglePause()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   if(m_rifeStartup.waiting()){
     if(m_rifeStartup.waitingToPlay())pause();else play();
@@ -1922,6 +2077,9 @@ void PlayerComponent::togglePause()
 
 void PlayerComponent::pause()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   m_rifeResumeRequest=0;
   m_rifeStartup.requestPause(true);
@@ -1943,6 +2101,9 @@ void PlayerComponent::pause()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::seekTo(qint64 ms)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::seekTo: mpv not initialized yet";
     return;
@@ -1955,6 +2116,9 @@ void PlayerComponent::seekTo(qint64 ms)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 QVariant PlayerComponent::getAudioDeviceList()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return {};
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::getAudioDeviceList: mpv not initialized yet";
     return QVariant();
@@ -1969,6 +2133,9 @@ QVariant PlayerComponent::getAudioDeviceList()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setAudioDevice(const QString& name)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::setAudioDevice: mpv not initialized yet";
     return;
@@ -1979,6 +2146,9 @@ void PlayerComponent::setAudioDevice(const QString& name)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setVolume(double volume)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::setVolume: mpv not initialized yet";
     return;
@@ -1989,6 +2159,9 @@ void PlayerComponent::setVolume(double volume)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 double PlayerComponent::volume()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return 0;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::volume: mpv not initialized yet";
     return 0;
@@ -2002,6 +2175,9 @@ double PlayerComponent::volume()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setMuted(bool muted)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::setMuted: mpv not initialized yet";
     return;
@@ -2013,6 +2189,9 @@ void PlayerComponent::setMuted(bool muted)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 bool PlayerComponent::muted()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return false;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::muted: mpv not initialized yet";
     return false;
@@ -2158,6 +2337,9 @@ void PlayerComponent::reselectStream(const QVariant &streamSelection, MediaType 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setSubtitleStream(const QVariant &subtitleStream)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   m_currentSubtitleStream = subtitleStream;
 #ifdef Q_OS_WIN
   m_windowsCurrentLoad.subtitleStream=subtitleStream;
@@ -2168,6 +2350,9 @@ void PlayerComponent::setSubtitleStream(const QVariant &subtitleStream)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setAudioStream(const QVariant &audioStream)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   m_currentAudioStream = audioStream;
 #ifdef Q_OS_WIN
   m_windowsCurrentLoad.audioStream=audioStream;
@@ -2178,6 +2363,9 @@ void PlayerComponent::setAudioStream(const QVariant &audioStream)
 /////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setAudioDelay(qint64 milliseconds)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   m_playbackAudioDelay = milliseconds;
 
   double displayFps = DisplayComponent::Get().currentRefreshRate();
@@ -2196,6 +2384,9 @@ void PlayerComponent::setAudioDelay(qint64 milliseconds)
 /////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setSubtitleDelay(qint64 milliseconds)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::setSubtitleDelay: mpv not initialized yet";
     return;
@@ -2206,6 +2397,9 @@ void PlayerComponent::setSubtitleDelay(qint64 milliseconds)
 /////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setPlaybackRate(int rate)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::setPlaybackRate: mpv not initialized yet";
     return;
@@ -2218,6 +2412,9 @@ void PlayerComponent::setPlaybackRate(int rate)
 /////////////////////////////////////////////////////////////////////////////////////////
 qint64 PlayerComponent::getPosition()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return 0;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::getPosition: mpv not initialized yet";
     return 0;
@@ -2239,6 +2436,9 @@ qint64 PlayerComponent::getPosition()
 /////////////////////////////////////////////////////////////////////////////////////////
 qint64 PlayerComponent::getDuration()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return 0;
+#endif
   if (!m_mpv) {
     qWarning() << "PlayerComponent::getDuration: mpv not initialized yet";
     return 0;
@@ -2260,6 +2460,9 @@ qint64 PlayerComponent::getDuration()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::checkAudioOutput()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv || !m_inPlayback || m_audioOutputWarningShown)
     return;
 #ifdef Q_OS_MAC
@@ -2344,6 +2547,9 @@ void PlayerComponent::checkAudioOutput()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 QVariantMap PlayerComponent::mpvDiagnostics()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return {};
+#endif
   QVariantMap result;
   const auto read=[this](const QString& key){
 #ifdef Q_OS_MAC
@@ -2475,6 +2681,9 @@ void PlayerComponent::checkCurrentAudioDevice(const QSet<QString>& old_devs, con
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::updateAudioDeviceList()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   QString userDevice = SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "device").toString();
   bool userDeviceFound = false;
 
@@ -2519,6 +2728,9 @@ void PlayerComponent::updateAudioDeviceList()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::updateAudioDevice()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   QString device = SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "device").toString();
 
   if (!m_audioDevices.contains(device))
@@ -2542,6 +2754,9 @@ void PlayerComponent::updateAudioConfiguration()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setAudioConfiguration()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   QString deviceType = SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "devicetype").toString();
 
   m_mpv->setProperty( "audio-exclusive", SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "exclusive").toBool());
@@ -2632,6 +2847,9 @@ void PlayerComponent::updateSubtitleConfiguration()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setSubtitleConfiguration()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   bool assScaleBorderAndShadow = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "ass_scale_border_and_shadow").toBool();
   m_mpv->setProperty( "sub-ass-style-overrides", assScaleBorderAndShadow ? "ScaledBorderAndShadow=yes" : "ScaledBorderAndShadow=no");
 
@@ -2747,6 +2965,9 @@ void PlayerComponent::updateVideoConfiguration()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setVideoConfiguration()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv)
     return;
 
@@ -2804,6 +3025,9 @@ void PlayerComponent::setVideoConfiguration()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setOtherConfiguration()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv) return;
 
   QString otherConfiguration = SettingsComponent::Get().value(SETTINGS_SECTION_OTHER, "other_conf").toString();
@@ -2826,6 +3050,9 @@ void PlayerComponent::setOtherConfiguration()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setMpvPreset()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   if (!m_mpv) return;
 
   // System mode consumes the user's mpv.conf, profiles and shader list without
@@ -2893,6 +3120,9 @@ void PlayerComponent::setMpvPreset()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::updateMpvConfiguration()
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
   setMpvPreset();
   const QString message = MpvConfigManager::usingSystemConfig()
     ? "当前直接使用系统 MPV 配置；用户 profile、脚本与 shader 保持不变。配置模式修改将在重启后生效"
@@ -2914,6 +3144,9 @@ void PlayerComponent::updateConfiguration()
 /////////////////////////////////////////////////////////////////////////////////////////
 bool PlayerComponent::userCommand(QString command)
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return false;
+#endif
   if (!m_mpv)
     return false;
   QByteArray cmdUtf8 = command.toUtf8();
@@ -2960,6 +3193,9 @@ void PlayerComponent::appendAudioFormat(QTextStream& info, const QString& proper
 /////////////////////////////////////////////////////////////////////////////////////////
 QString PlayerComponent::videoInformation() const
 {
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return {};
+#endif
   QString infoStr;
   QTextStream info(&infoStr);
 
@@ -3085,4 +3321,14 @@ QVariantList PlayerComponent::getWebPlaylist() const
 QString PlayerComponent::getCurrentWebPlaylistItemId() const
 {
   return m_currentWebPlaylistItemId;
+}
+
+void PlayerComponent::updateDanmakuAuthorization(const QString& path, const QString& generation)
+{
+#ifdef Q_OS_WIN
+  if (m_shuttingDown) return;
+#endif
+  if (!m_mpv) return;
+  m_mpv->setProperty(QStringLiteral("user-data/tigerest/danmaku/mapping-auth-file"), path);
+  m_mpv->setProperty(QStringLiteral("user-data/tigerest/danmaku/auth-generation"), generation);
 }

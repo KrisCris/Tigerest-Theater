@@ -78,13 +78,16 @@
                 token: api.accessToken?.(), address: api.serverAddress?.()};
         }
         static supported(session) {
-            if (!session?.token || !session.userId || session.serverId !== trustedServer) return false;
+            const normalize=value=>String(value||'').replace(/-/g,'').toLowerCase();
+            const expected=CommunityClient.trustedServerId===undefined?trustedServer:CommunityClient.trustedServerId;
+            if (!session?.token || !session.userId || !expected || normalize(session.serverId)!==normalize(expected)) return false;
             try {
                 const url = new URL(session.address);
                 return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password &&
-                    ['192.168.5.150', 'nas.tigerest.top'].includes(url.hostname.toLowerCase());
+                    (CommunityClient.trustedServerId!==undefined || ['192.168.5.150', 'nas.tigerest.top'].includes(url.hostname.toLowerCase()));
             } catch (_) { return false; }
         }
+        static setTrustedServer(id) { CommunityClient.trustedServerId=id; }
         setSession(session) { return this.setContext(session); }
         setContext(session, itemId = null) {
             const next = CommunityClient.supported(session) ? {...session, itemId: itemId ? String(itemId) : null} : null;
@@ -98,11 +101,11 @@
             }
             return Boolean(this.context);
         }
-        cancelRequests() {
+        cancelRequests({preserveSend=false}={}) {
             this.generation++;
             for (const controller of this.controllers) controller.abort();
             this.controllers.clear();
-            this.pendingSend = null;
+            if(!preserveSend)this.pendingSend = null;
             this.cancelReportRequests();
         }
         cancelReportRequests() {
@@ -121,13 +124,14 @@
             this.reportCooldownUntil = 0;
             this.diagnosticsCooldownUntil = 0;
         }
-        async request(path, {method = 'GET', body, item = false, image = false} = {}) {
+        async request(path, {method = 'GET', body, item = false, image = false, signal} = {}) {
             if (!this.context) throw new Error(messages.AUTH_REQUIRED);
             if (item && !this.context.itemId) throw new Error('请先打开可访问的媒体详情。');
             const generation = this.generation;
             const reportRequest=method!=='GET'&&/^\/reports(?:\/|$)/.test(path),reportGeneration=this.reportGeneration;
             const cancelled=()=>generation!==this.generation||(reportRequest&&reportGeneration!==this.reportGeneration);
             const controller = new AbortController();
+            const cancel=()=>controller.abort();signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted)cancel();
             this.controllers.add(controller);
             if(reportRequest)this.reportControllers.add(controller);
             const timeout = setTimeout(() => controller.abort(), 15000);
@@ -180,6 +184,7 @@
                 throw new Error('网络连接失败，请重试。');
             } finally {
                 clearTimeout(timeout);
+                signal?.removeEventListener('abort',cancel);
                 this.controllers.delete(controller);
                 this.reportControllers.delete(controller);
             }
@@ -205,9 +210,14 @@
             if (this.pendingSend?.key !== key)
                 this.pendingSend = {key, payload: {body, clientRequestId: uuid()}};
             if (reply) this.pendingSend.payload.replyToId = reply.id;
-            const result = await this.request(path, {method:'POST', body:this.pendingSend.payload, item:true});
-            this.pendingSend = null;
+            const attempt=this.pendingSend,generation=this.generation;
+            if(this.prepareSend)await this.prepareSend(attempt);
+            if(generation!==this.generation)throw abortError();
+            const result = await this.request(path, {method:'POST', body:attempt.payload, item:true});
+            if(this.pendingSend===attempt)this.pendingSend = null;
             this.cooldownUntil = Math.max(this.cooldownUntil, this.now() + 3000);
+            // The server has accepted the comment. A secondary avatar task must never turn that into a failed send.
+            try{this.afterSend?.(result,attempt);}catch(_){}
             return result;
         }
         remove(id) { return this.request('/comments/' + encodeURIComponent(id), {method:'DELETE', item:true}); }
@@ -289,10 +299,10 @@
             if (cursor) query.set('cursor', cursor);
             return this.request('/admin/messages?' + query);
         }
-        avatar(path) {
+        avatar(path,options={}) {
             if (!/^\/community\/v1\/avatars\/[0-9a-z-]+(?:\?v=[^#]*)?$/i.test(path || ''))
                 return Promise.reject(new Error('头像暂不可用'));
-            return this.request(path.slice('/community/v1'.length), {image:true});
+            return this.request(path.slice('/community/v1'.length), {...options,image:true});
         }
     }
     window.TigerestCommunityClient = CommunityClient;

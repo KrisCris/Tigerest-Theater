@@ -9,7 +9,7 @@ import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 
-class AndroidAppUpdateSourceTest {
+class AndroidAppUpdateSourceDebugTest {
     private val candidate = AppUpdateCandidate("2.5.0", "", "", 3, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-android.apk")
     private fun scenario(text: String, responses: List<MockResponse>, action: (AndroidAppUpdateSource, File, MockWebServer) -> Unit) {
         val server = MockWebServer()

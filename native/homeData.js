@@ -16,6 +16,14 @@
             ParentBackdropImageTags: episode.ParentBackdropImageTags
         };
     }
+    const isCount = value => Number.isSafeInteger(value) && value >= 0;
+    function withWatchState(cards) {
+        cards.forEach(card => {
+            const played = card.item.UserData?.Played;
+            card.watchState = {unwatched: typeof played === 'boolean' ? !played : null};
+        });
+        return cards;
+    }
     function HomeData(api) { this.api = api; }
     HomeData.orders = Object.freeze({resume: '继续观看', recent: '最近入库', release: '发行时间', rating: '评分'});
     HomeData.normalizeOrder = value => Object.prototype.hasOwnProperty.call(HomeData.orders, value) ? value : 'resume';
@@ -31,7 +39,7 @@
     };
     HomeData.prototype.load = async function (library, signal, order = 'resume') {
         order = HomeData.normalizeOrder(order);
-        if (order !== 'resume') return this.loadOrdered(library, signal, order);
+        if (order !== 'resume') return withWatchState(await this.loadOrdered(library, signal, order));
         const api = this.api, user = api.getCurrentUserId(), cards = new Map(), pages = new Set();
         const favorites = library.kind === 'favorites';
         // A favorite Series need not have favorited Episodes. Filter resume
@@ -68,14 +76,14 @@
         await this.hydrateSeries(continuing, query, signal);
         const filler = continuing.length < 24 ? (favoriteCards || await this.loadOrdered(library, signal, 'recent')) : [];
         check(signal);
-        return continuing.concat(filler.filter(card => !cards.has(card.item.Id))).slice(0, 24);
+        return withWatchState(continuing.concat(filler.filter(card => !cards.has(card.item.Id))).slice(0, 24));
     };
     HomeData.prototype.hydrateSeries = async function (cards, query, signal) {
         const series = cards.filter(card => card.latestEpisode);
         if (!series.length) return;
         try {
             const result = await this.api.getItems(this.api.getCurrentUserId(), {Ids: series.map(card => card.item.Id).join(','),
-                Fields: query.Fields, EnableImageTypes: query.EnableImageTypes, ImageTypeLimit: 1}, signal);
+                Fields: query.Fields, EnableUserData: true, EnableImageTypes: query.EnableImageTypes, ImageTypeLimit: 1}, signal);
             check(signal);
             const byId = new Map(series.map(card => [card.item.Id, card]));
             (result.Items || []).forEach(item => { const card = byId.get(item.Id); if (card) card.item = item; });
@@ -89,7 +97,7 @@
         const query = {
             Recursive: true, SortBy: (order === 'release' ? 'PremiereDate' : order === 'rating' ? 'CommunityRating' : 'DateCreated') + ',SortName', SortOrder: 'Descending', Limit: 100,
             Fields: 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating,PresentationUniqueKey',
-            EnableImageTypes: 'Primary,Backdrop,Thumb', ImageTypeLimit: 1,
+            EnableUserData: true, EnableImageTypes: 'Primary,Backdrop,Thumb', ImageTypeLimit: 1,
             IncludeItemTypes: favorites ? 'Series,Movie,Episode,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game' : (types[library.CollectionType] || 'Episode,Movie,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game')
         };
         if (order !== 'recent' && !favorites) query.IncludeItemTypes = library.CollectionType === 'tvshows' ? 'Series'
@@ -138,6 +146,32 @@
         const score = card => order === 'rating' ? Number(card.item.CommunityRating) || 0
             : order === 'release' ? stamp(card.item.PremiereDate || (card.item.ProductionYear ? card.item.ProductionYear + '-01-01' : '')) : stamp(card.addedAt);
         return Array.from(cards.values()).sort((a, b) => score(b) - score(a)).slice(0, limit);
+    };
+    HomeData.prototype.loadWatchProgress = async function (cards, signal, onProgress) {
+        const api = this.api, user = api.getCurrentUserId();
+        const queue = cards.filter(card => card.item.Type === 'Series' && !isCount(card.watchState?.total));
+        // Enrich after the artwork is visible. Each worker reads just two count
+        // responses; never download the episode catalogue or use season counts.
+        await Promise.all(Array.from({length: Math.min(4, queue.length)}, async () => {
+            while (queue.length) {
+                check(signal);
+                const card = queue.shift();
+                const query = {ParentId: card.item.Id, Recursive: true, IncludeItemTypes: 'Episode',
+                    IsMissing: false, IsVirtualUnaired: false, IsPlaceHolder: false, ExcludeLocationTypes: 'Virtual',
+                    EnableTotalRecordCount: true, Limit: 0};
+                try {
+                    const [all, completed] = await Promise.all([
+                        api.getItems(user, query, signal), api.getItems(user, {...query, IsPlayed: true}, signal)
+                    ]);
+                    check(signal);
+                    const total = all.TotalRecordCount, played = completed.TotalRecordCount;
+                    if (!isCount(total) || !isCount(played) || played > total) continue;
+                    card.watchState = {unwatched: total > 0 ? played < total : null, played, total};
+                    if (onProgress) onProgress(card);
+                } catch (error) { check(signal); /* Unknown counts never become an invented zero. */ }
+            }
+        }));
+        check(signal);
     };
     HomeData.prototype.artwork = function (item, purpose) {
         if (!item) return '';

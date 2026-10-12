@@ -1,0 +1,35 @@
+{
+  "playbackExit": [
+    {
+      "method": "api-exit",
+      "code": 0,
+      "signal": null,
+      "elapsedMs": 679
+    },
+    {
+      "method": "CLOSE_WIN",
+      "code": 0,
+      "signal": null,
+      "elapsedMs": 676
+    },
+    {
+      "method": "Alt+F4",
+      "code": 0,
+      "signal": null,
+      "elapsedMs": 688
+    },
+    {
+      "method": "exit-during-controls",
+      "code": 0,
+      "signal": null,
+      "elapsedMs": 745
+    },
+    {
+      "method": "idle-api-exit",
+      "code": 0,
+      "signal": null,
+      "elapsedMs": 415
+    }
+  ],
+  "scope": "real Windows client, libmpv and local Y4M; isolated profiles; native key binding/API exit paths"
+}

@@ -41,7 +41,7 @@ withBrowser({
    throw Error('unexpected endpoint '+p);
   };
   const api={serverId:()=>server,getCurrentUserId:()=> 'user',accessToken:()=>token,serverAddress:()=> 'http://192.168.5.150:8096'};
-  const plugin=new _communityPlugin({connectionManager:{currentApiClient:()=>api},appRouter:{show:async()=>{}},events:{on(){},off(){}}});
+  window.TigerestCommunityAccount=undefined; window.TigerestCommunityClient.trustedServerId=undefined; const plugin=new _communityPlugin({connectionManager:{currentApiClient:()=>api},appRouter:{show:async()=>{}},events:{on(){},off(){}}});
   await wait(()=>plugin.messages.unread===2);document.getElementById('tigerest-message-entry').click();
   await wait(()=>document.querySelector('[data-message-id="repair1"]'));
   const panel=document.getElementById('tigerest-messages');

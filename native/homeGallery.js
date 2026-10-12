@@ -20,6 +20,9 @@
     .tg-home button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
     .tg-home button:focus-visible { outline: 2px solid #efc36e; outline-offset: -4px; }
     .tg-home-nav { grid-column: 1; grid-row: 1 / 3; display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
+    .tg-home-nav-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 0 0 auto; }
+    .tg-home-nav-heading .tg-home-eyebrow { min-width: 0; margin: 0; line-height: 1.5; }
+    .tg-home-eyebrow > span { display: inline-block; white-space: nowrap; }
     .tg-home-eyebrow { font-size: 10px; letter-spacing: .2em; color: #afa89e; margin: 0 0 2px; padding-left: 4px; text-transform: uppercase; }
     .tg-library-list { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; padding: 3px; }
     .tg-library { position: relative; flex: 0 0 auto; width: 100%; height: clamp(92px,calc((var(--home-height) - 98px)/4),178px); border: 1px solid #ffffff16;
@@ -134,7 +137,8 @@
     .tg-cover.is-selected { border-color: #d9b273; box-shadow: 0 0 22px #c7a56d18; }
     .tg-cover-label { font-size: 12px; }
     @media (max-width:680px) {
-        .tg-home { padding: calc(10px + var(--tgs-safe-top,0px)) calc(12px + var(--tgs-safe-right,0px)) calc(18px + var(--tgs-safe-bottom,0px)) calc(12px + var(--tgs-safe-left,0px)); min-height: calc(533px + var(--home-safe-height)); grid-template-columns: minmax(0,1fr); grid-template-rows: 105px minmax(220px,1fr) 154px; gap: 13px; }
+        .tg-home { padding: calc(10px + var(--tgs-safe-top,0px)) calc(12px + var(--tgs-safe-right,0px)) calc(18px + var(--tgs-safe-bottom,0px)) calc(12px + var(--tgs-safe-left,0px)); min-height: calc(533px + var(--home-safe-height)); grid-template-columns: minmax(0,1fr); grid-template-rows: max-content minmax(220px,1fr) 154px; gap: 13px; }
+        .tg-home.tg-home-has-window-control { min-height: calc(565px + var(--home-safe-height)); }
         .tg-home-nav { gap: 5px; }.tg-library-list { gap: 10px; }.tg-library { height: 78px; width: 146px; padding: 10px 12px; border-radius: 4px 14px 4px 4px; }
         .tg-library-name { font-size: 19px; }.tg-library.is-selected .tg-library-label { transform: none; }
         .tg-hero-copy { left: 18px; right: 18px; bottom: 20px; gap: 10px; }.tg-hero-content { gap: 9px; }.tg-hero-title { font-size: 32px; }.tg-hero-subtitle { font-size: 11px; }
@@ -157,6 +161,10 @@
     .tg-rail-counter { flex: 0 0 auto; }
     .tg-home[data-style="cinema"] .tg-cover { height: 130px; flex-basis: 88px; }
     .tg-home[data-style="cinema"] .tg-cover-label { font-size: 10px; left: 8px; right: 8px; bottom: 10px; }
+    .tg-cover-label { display: block; }
+    .tg-cover-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .tg-watch-badge { position: absolute; top: 7px; right: 6px; z-index: 3; width: 8px; height: 8px; border-radius: 50%; background: #e03c4a; }
+    .tg-watch-progress { display: block; margin-top: 4px; color: #f2d6a0; font-size: 9px; line-height: 1.35; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
     .tg-home-more { margin-left: auto; padding: 4px 6px; border: 0; background: transparent; color: #e5ca91 !important; font-size: 11px !important; white-space: nowrap; }
     .tg-rail-heading { gap: 12px; }
     .tg-resume-progress { position: absolute; left: 4px; right: 4px; bottom: 3px; height: 2px; z-index: 3; background: #ffffff38; }
@@ -166,13 +174,28 @@
         .tg-home[data-style="cinema"] .tg-cover { height: 98px; flex-basis: 70px; }
     }
     @media (min-width:681px) and (max-height:520px) {
-        .tg-home[data-style="cinema"] .tg-cover { height: 76px; flex-basis: 54px; }
+        .tg-home[data-style="cinema"] .tg-cover { height: 76px; flex-basis: 88px; }
+        .tg-home[data-style="cinema"] .tg-cover-name { -webkit-line-clamp: 1; }
+        .tg-home[data-style="cinema"] .tg-cover-label { bottom: 7px; }
+        .tg-home[data-style="cinema"] .tg-watch-badge { top: 4px; }
     }
     `;
     function element(tag, className, text) {
         const node = document.createElement(tag); node.className = className;
         if (text != null) node.textContent = text;
         return node;
+    }
+    function watchProgress(card) {
+        const state = card.watchState;
+        return state && Number.isInteger(state.played) && Number.isInteger(state.total) && state.total > 0
+            ? '观看进度：' + state.played + '/' + state.total : '';
+    }
+    function watchDescription(card) {
+        return [card.watchState?.unwatched === true ? '未看' : '', watchProgress(card)].filter(Boolean).join('，');
+    }
+    function subtitle(card) {
+        const episode = card.latestEpisode;
+        return [watchProgress(card), card.item.ProductionYear, episode ? '最新入库 · S' + (episode.ParentIndexNumber || 1) + ':E' + (episode.IndexNumber || '?') + ' ' + (episode.Name || '') : '', card.addedAt ? '入库 ' + card.addedAt.slice(0, 10) : ''].filter(Boolean).join('  ·  ');
     }
     function Gallery(host, options) {
         this.host = host; this.options = options; this.generation = 0; this.selection = 0;
@@ -184,7 +207,18 @@
         this.scenery = element('img', 'tg-home-scenery'); this.scenery.alt = '';
         this.nav = element('nav', 'tg-home-nav'); this.nav.setAttribute('aria-label', '媒体库');
         this.libraryList = element('div', 'tg-library-list');
-        this.nav.append(element('p', 'tg-home-eyebrow', 'YOUR LIBRARY / 我的媒体'), this.libraryList);
+        const navHeading = element('div', 'tg-home-nav-heading');
+        const eyebrow = element('p', 'tg-home-eyebrow');
+        eyebrow.append(element('span', '', 'YOUR LIBRARY /'), document.createTextNode(' '), element('span', '', '我的媒体'));
+        navHeading.append(eyebrow);
+        if (!window.tigerestAndroidApi && !window.api?.system?.isAndroid) {
+            this.root.classList.add('tg-home-has-window-control');
+            const windowMode = element('button', 'tg-home-window-mode');
+            windowMode.type = 'button'; windowMode.dataset.tigerestWindowMode = '';
+            windowMode.hidden = true; // The shell reveals this after its native controller mounts.
+            navHeading.append(windowMode);
+        }
+        this.nav.append(navHeading, this.libraryList);
         this.stage = element('div', 'tg-home-stage'); this.hero = element('button', 'tg-home-hero'); this.hero.type = 'button';
         this.heroImages = element('div', 'tg-hero-images');
         const content = this.heroContent = element('div', 'tg-hero-content');
@@ -265,11 +299,6 @@
             options.signal.addEventListener('abort', () => { if (generation === this.generation) this.stop(); }, { once: true, signal: this.abort.signal });
         }
         try {
-            if (this.options.enterFullscreen) {
-                try { await this.options.enterFullscreen(this.api, this.abort.signal); } catch (error) { /* Home remains usable if the window manager rejects fullscreen. */ }
-                if (!this.valid(generation)) return;
-                this.resize();
-            }
             this.libraries = await this.data.libraries(this.abort.signal);
             if (!this.valid(generation)) return;
             const artBase = this.options.artBase || window.jmpInfo?.homeArtPath || ((window.jmpInfo?.scriptPath || '') + '/home-art');
@@ -373,16 +402,35 @@
                 const button = element('button', 'tg-cover'); button.type = 'button'; button.dataset.itemId = card.item.Id; button.dataset.index = index;
                 const url = this.data.artwork(card.item, 'poster');
                 if (url) { const image = element('img', ''); image.src = url; image.alt = ''; image.loading = 'lazy'; image.draggable = false; button.append(image); }
-                button.append(element('span', 'tg-cover-label', card.item.Name));
+                const label = element('span', 'tg-cover-label');
+                label.append(element('span', 'tg-cover-name', card.item.Name));
+                const progressText = watchProgress(card);
+                if (progressText) label.append(element('span', 'tg-watch-progress', progressText));
+                button.append(label);
+                if (card.watchState?.unwatched === true) button.append(element('span', 'tg-watch-badge'));
                 if (card.resumeItem) {
                     const progress = element('span', 'tg-resume-progress'), fill = element('i', '');
                     fill.style.width = Math.max(0, Math.min(100, Number(card.resumeItem.UserData?.PlayedPercentage) || 0)) + '%';
                     progress.append(fill); button.append(progress);
                 }
-                button.setAttribute('aria-label', '查看作品：' + card.item.Name); return button;
+                button.setAttribute('aria-label', '查看作品：' + card.item.Name + (watchDescription(card) ? '，' + watchDescription(card) : '')); return button;
             }));
             this.status.hidden = true; this.select(0, false); this.root.classList.add('tg-ready');
+            this.data.loadWatchProgress(cards, signal, card => {
+                if (this.valid(generation) && !signal.aborted && this.cards.includes(card)) this.updateWatchState(card);
+            }).catch(error => { if (error.name !== 'AbortError') console.warn('Tigerest Theater: unable to refresh home watch progress', error); });
         } catch (error) { if (this.valid(generation) && !signal.aborted) this.showStatus('作品加载失败，请重试。', true); }
+    };
+    Gallery.prototype.updateWatchState = function (card) {
+        const button = Array.from(this.coverList.children).find(node => node.dataset.itemId === card.item.Id);
+        if (!button) return;
+        button.querySelector('.tg-watch-badge')?.remove(); button.querySelector('.tg-watch-progress')?.remove();
+        if (card.watchState?.unwatched === true) button.append(element('span', 'tg-watch-badge'));
+        const text = watchProgress(card);
+        if (text) button.querySelector('.tg-cover-label').append(element('span', 'tg-watch-progress', text));
+        const accessible = '查看作品：' + card.item.Name + (watchDescription(card) ? '，' + watchDescription(card) : '');
+        button.setAttribute('aria-label', accessible);
+        if (this.cards[this.index] === card) { this.subtitle.textContent = subtitle(card); this.hero.setAttribute('aria-label', accessible); }
     };
     Gallery.prototype.select = function (index, scroll) {
         const card = this.cards?.[index]; if (!card || !this.valid()) return;
@@ -397,9 +445,8 @@
         this.overview.hidden = !this.overview.textContent;
         this.heroCopy.classList.toggle('tg-no-overview', this.overview.hidden);
         this.kicker.textContent = this.selectedLibrary.Name + ' / ' + window.TigerestHomeData.orders[this.order];
-        const episode = card.latestEpisode;
-        this.subtitle.textContent = [card.item.ProductionYear, episode ? '最新入库 · S' + (episode.ParentIndexNumber || 1) + ':E' + (episode.IndexNumber || '?') + ' ' + (episode.Name || '') : '', card.addedAt ? '入库 ' + card.addedAt.slice(0, 10) : ''].filter(Boolean).join('  ·  ');
-        this.hero.setAttribute('aria-label', '查看作品：' + this.title.textContent); this.hero.disabled = false;
+        this.subtitle.textContent = subtitle(card);
+        this.hero.setAttribute('aria-label', '查看作品：' + this.title.textContent + (watchDescription(card) ? '，' + watchDescription(card) : '')); this.hero.disabled = false;
         this.counter.textContent = String(index + 1).padStart(2, '0') + ' / ' + String(this.cards.length).padStart(2, '0');
         this.ordinal.textContent = this.counter.textContent;
         const covers = this.coverList.querySelectorAll('.tg-cover');

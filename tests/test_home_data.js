@@ -93,3 +93,90 @@ test('an aborted account or library request cannot return a previous result',asy
  abort.abort();finish({Items:[{Id:'old-account',Type:'Movie',DateCreated:'2026-10-09'}]});
  await assert.rejects(request,error=>error.name==='AbortError');
 });
+test('movie badges use explicit account playback state and never infer missing user metadata',async()=>{
+ const Home=dataSource(),api=client([
+  {Id:'unplayed',Type:'Movie',UserData:{Played:false}},
+  {Id:'played',Type:'Movie',UserData:{Played:true}},
+  {Id:'unknown',Type:'Movie'},
+  {Id:'partial',Type:'Movie',UserData:{Played:false,PlayedPercentage:45}},
+  {Id:'bad',Type:'Movie',UserData:{Played:'false'}}
+ ]);
+ const cards=await new Home(api).load({Id:'movies',CollectionType:'movies'});
+ assert.deepEqual(Array.from(cards,c=>c.watchState?.unwatched),[true,false,null,true,null]);
+ assert.equal(api.requests.find(r=>r[0]==='items')[2].EnableUserData,true,'request account playback metadata in recent mode');
+});
+function countClient(series,counts){
+ const api=client([]);api.getItems=async(user,query,signal)=>{
+  api.requests.push(['items',user,query,signal]);
+  if(query.IncludeItemTypes==='Episode'&&query.ParentId!=='library'){
+   assert.equal(query.Recursive,true);assert.equal(query.IsMissing,false);assert.equal(query.IsVirtualUnaired,false);
+   assert.equal(query.IsPlaceHolder,false);assert.equal(query.ExcludeLocationTypes,'Virtual','ask compatible servers to exclude missing and virtual entries');
+   assert.equal(query.Limit,0,'count without fetching every episode');assert.equal(query.EnableTotalRecordCount,true);
+   const value=counts[query.ParentId];if(value instanceof Error)throw value;
+   return {Items:[],TotalRecordCount:query.IsPlayed===true?value?.played:value?.total};
+  }
+  return {Items:series,TotalRecordCount:series.length};
+ };return api;
+}
+async function loadWithProgress(Home,api,library,signal,order){
+ const source=new Home(api),cards=await source.load(library,signal,order);
+ await source.loadWatchProgress(cards,signal);return cards;
+}
+test('series counts use actual episode records and explicit played counts instead of stale aggregate metadata',async()=>{
+ const Home=dataSource(),api=countClient([
+  {Id:'partial',Type:'Series',RecursiveItemCount:13,ChildCount:3,UserData:{Played:false,UnplayedItemCount:4}},
+  {Id:'complete',Type:'Series',RecursiveItemCount:12,ChildCount:1,UserData:{Played:true,UnplayedItemCount:0}},
+  {Id:'new',Type:'Series',UserData:{Played:false}},
+  {Id:'empty',Type:'Series',UserData:{Played:false}}
+ ],{partial:{total:12,played:8},complete:{total:12,played:12},new:{total:4,played:0},empty:{total:0,played:0}});
+ const cards=await loadWithProgress(Home,api,{Id:'library',CollectionType:'tvshows'},undefined,'release');
+ assert.deepEqual(JSON.parse(JSON.stringify(cards.map(c=>c.watchState))),[
+  {unwatched:true,played:8,total:12},{unwatched:false,played:12,total:12},
+  {unwatched:true,played:0,total:4},{unwatched:null,played:0,total:0}
+ ]);
+ assert.equal(api.requests.filter(r=>r[2].Limit===0).length,8,'even plausible aggregates require explicit played counts');
+});
+test('unavailable or inconsistent episode counts omit the fraction without inventing zero',async()=>{
+ const Home=dataSource(),api=countClient([
+  {Id:'offline',Type:'Series',UserData:{Played:false}},
+  {Id:'unknown',Type:'Series'},
+  {Id:'invalid',Type:'Series',UserData:{Played:true}},
+  {Id:'missing',Type:'Series',UserData:{Played:false}}
+ ],{offline:Error('offline'),unknown:{},invalid:{total:4,played:7},missing:{total:null,played:null}});
+ const cards=await loadWithProgress(Home,api,{Id:'library',CollectionType:'tvshows'},undefined,'rating');
+ assert.deepEqual(JSON.parse(JSON.stringify(cards.map(c=>c.watchState))),[
+  {unwatched:true},{unwatched:null},{unwatched:false},{unwatched:true}
+ ]);
+});
+test('recent episode cards obtain account-specific series data before displaying a watch state',async()=>{
+ const Home=dataSource(),api=client([episode('newest','show','2026-10-13')]);
+ api.getItems=async(user,query)=>{
+  if(query.Ids){assert.equal(query.EnableUserData,true);return {Items:[{Id:'show',Type:'Series',UserData:{Played:false}}]};}
+  if(query.ParentId==='show')return {Items:[],TotalRecordCount:query.IsPlayed===true?3:10};
+  return {Items:[episode('newest','show','2026-10-13')]};
+ };
+ const cards=await loadWithProgress(Home,api,{Id:'library',CollectionType:'tvshows'});
+ assert.deepEqual(cards[0].watchState&&JSON.parse(JSON.stringify(cards[0].watchState)),{unwatched:true,played:3,total:10});
+});
+test('only the final 24 visible series request counts, with bounded request concurrency',async()=>{
+ const Home=dataSource(),api=countClient(Array.from({length:40},(_,i)=>({Id:'series-'+i,Type:'Series'})),Object.fromEntries(Array.from({length:40},(_,i)=>['series-'+i,{total:12,played:5}])));
+ const get=api.getItems;let active=0,peak=0;
+ api.getItems=async(...args)=>{active++;peak=Math.max(peak,active);await new Promise(r=>setImmediate(r));try{return await get(...args);}finally{active--;}};
+ const cards=await loadWithProgress(Home,api,{Id:'library',CollectionType:'tvshows'},undefined,'rating');
+ assert.equal(cards.length,24);assert.ok(peak<=8,'at most four series load two counts at a time');
+ assert.equal(api.requests.filter(r=>r[2].Limit===0).length,48);
+});
+test('cancelling episode-count requests rejects the home load',async()=>{
+ const Home=dataSource(),api=client([]),abort=new AbortController();const releases=[];let counting;
+ const reachedCounts=new Promise(resolve=>counting=resolve);
+ api.getItems=async(user,query)=>{
+  if(query.Limit===0){counting();return new Promise(resolve=>releases.push(resolve));}
+  return {Items:[{Id:'show',Type:'Series'}]};
+ };
+ const source=new Home(api),cards=await source.load({Id:'library',CollectionType:'tvshows'},abort.signal,'release');
+ const pending=source.loadWatchProgress(cards,abort.signal);
+ // A pending count must obey the same account/navigation cancellation as the initial query.
+ await Promise.race([reachedCounts,new Promise((_,reject)=>setTimeout(()=>reject(Error('home did not request episode counts')),100))]);
+ const rejected=assert.rejects(pending,error=>error.name==='AbortError');abort.abort();releases.forEach(release=>release({Items:[],TotalRecordCount:1}));
+ await rejected;
+});

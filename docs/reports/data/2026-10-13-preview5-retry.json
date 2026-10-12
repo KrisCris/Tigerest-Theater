@@ -1,0 +1,66 @@
+{
+  "scope": "isolated Windows preview; packaged Lua, libmpv, curl and loopback HTTP; no production writes",
+  "package": {
+    "files": 1530,
+    "bytes": 339814154,
+    "sha256": "f25d05b7db8ac3097a24dcfe50509f4594a4701f2ef65222f425976bf91ee1b8",
+    "zipMatchesStage": true
+  },
+  "http": {
+    "danmakuHttp": [
+      {
+        "name": "timeout",
+        "attempts": 2,
+        "status": 200,
+        "elapsedMs": 21102
+      },
+      {
+        "name": "gateway",
+        "attempts": 2,
+        "status": 200,
+        "elapsedMs": 1062
+      },
+      {
+        "name": "empty",
+        "attempts": 1,
+        "status": 200,
+        "elapsedMs": 44
+      },
+      {
+        "name": "limited",
+        "attempts": 1,
+        "status": 429,
+        "elapsedMs": 42
+      },
+      {
+        "name": "denied",
+        "attempts": 1,
+        "status": 403,
+        "elapsedMs": 43
+      },
+      {
+        "name": "cancel",
+        "attempts": 1,
+        "cancelled": true
+      }
+    ],
+    "scope": "packaged Lua, real libmpv timers and curl, loopback HTTP, isolated profile"
+  },
+  "privateScan": {
+    "private_credentials_absent": true,
+    "files_scanned": 1530
+  },
+  "ctest": {
+    "passed": 5,
+    "failed": 0
+  },
+  "opened": {
+    "id": 262248,
+    "path": "C:\\A\\tigerest-shared-danmaku\\build\\portable-window-260-r5\\Tigerest Theater.exe",
+    "title": "Tigerest Theater / 大河影院",
+    "handle": 1933580390,
+    "responding": true,
+    "config": "C:\\Users\\59890\\AppData\\Local\\TigerestTheaterPreview\\2.6.0-retry",
+    "profile": "Preview5"
+  }
+}

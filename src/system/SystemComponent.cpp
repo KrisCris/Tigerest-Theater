@@ -32,6 +32,8 @@
 #include "input/InputComponent.h"
 #include "SystemComponent.h"
 #include "AppUpdater.h"
+#include "CommunityBridge.h"
+#include "player/PlayerComponent.h"
 #include "Version.h"
 #include "settings/SettingsComponent.h"
 #include "player/MpvConfigManager.h"
@@ -75,6 +77,11 @@ QMap<SystemComponent::PlatformArch, QString> g_platformArchNames = {
 SystemComponent::SystemComponent(QObject* parent) : ComponentBase(parent), m_platformType(platformTypeUnknown), m_platformArch(platformArchUnknown), m_doLogMessages(false), m_scale(1), m_connectivityCheckReply(nullptr), m_resolveUrlReply(nullptr)
 {
   m_networkManager = new QNetworkAccessManager(this);
+  m_communityBridge = new CommunityBridge(this);
+  connect(m_communityBridge, &CommunityBridge::response, this, &SystemComponent::communityResponse);
+  connect(m_communityBridge, &CommunityBridge::mappingAuthChanged, this, [](const QString& path, const QString& generation) {
+    PlayerComponent::Get().updateDanmakuAuthorization(path, generation);
+  });
 
 // define OS Type
 #if defined(Q_OS_MAC)
@@ -549,7 +556,11 @@ QVariantMap SystemComponent::systemInformation() const
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void SystemComponent::exit()
 {
+#ifdef Q_OS_WIN
+  PlayerComponent::Get().requestApplicationQuit();
+#else
   qApp->quit();
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1029,6 +1040,11 @@ QString SystemComponent::getNativeShellScript()
     ":/web-client/extension/inputPlugin.js",
     ":/web-client/extension/sessionNavigationPlugin.js",
     ":/web-client/extension/communityClient.js",
+    ":/web-client/extension/communityBridge.js",
+    ":/web-client/extension/communitySession.js",
+    ":/web-client/extension/communityAvatar.js",
+    ":/web-client/extension/communityPublicClient.js",
+    ":/web-client/extension/communityAccount.js",
     ":/web-client/extension/communityMessages.js",
     ":/web-client/extension/communityPlugin.js",
     ":/web-client/extension/updatePlugin.js",
@@ -1165,3 +1181,11 @@ QString SystemComponent::getCapabilitiesString()
 
   return capstring.arg(dtschannels).arg(ac3channels);
 }
+
+void SystemComponent::communityRequest(const QString& id, const QVariantMap& request) { m_communityBridge->request(id, request); }
+void SystemComponent::communitySourceAvatar(const QString& id, const QVariantMap& session) { m_communityBridge->sourceAvatar(id, session); }
+void SystemComponent::communityCancel(const QString& id) { m_communityBridge->cancel(id); }
+QVariantMap SystemComponent::communityCredential(const QString& operation, const QString& key, const QString& value) { return m_communityBridge->credential(operation, key, value); }
+bool SystemComponent::communitySetEmbySession(const QVariantMap& session) { return m_communityBridge->setEmbySession(session); }
+QString SystemComponent::communityMappingAuthFile() const { return m_communityBridge->mappingAuthFile(); }
+QString SystemComponent::communityAuthGeneration() const { return m_communityBridge->authGeneration(); }

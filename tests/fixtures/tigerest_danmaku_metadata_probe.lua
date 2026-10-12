@@ -6,6 +6,7 @@ local root = fixture_dir .. '/../../resources/mpv/plugins/uosc_danmaku'
 package.path = root .. '/?.lua;' .. root .. '/?/init.lua;' .. package.path
 require('modules/options')
 require('modules/utils')
+require('modules/mapping')
 
 mp.register_script_message('tigerest-danmaku-routing-probe', function()
     local ok, err = pcall(function()

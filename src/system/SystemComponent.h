@@ -22,6 +22,7 @@ constexpr int NETWORK_REQUEST_TIMEOUT_MS = 30000;
 constexpr int CONNECTIVITY_REQUEST_TIMEOUT_MS = 5000;
 
 class AppUpdater;
+class CommunityBridge;
 
 class SystemComponent : public ComponentBase
 {
@@ -58,6 +59,14 @@ public:
   Q_INVOKABLE QString getUserAgent();
 
   Q_INVOKABLE QString debugInformation();
+  Q_INVOKABLE void communityRequest(const QString& id, const QVariantMap& request);
+  Q_INVOKABLE void communitySourceAvatar(const QString& id, const QVariantMap& session);
+  Q_INVOKABLE void communityCancel(const QString& id);
+  Q_INVOKABLE QVariantMap communityCredential(const QString& operation, const QString& key, const QString& value);
+  Q_INVOKABLE bool communitySetEmbySession(const QVariantMap& session);
+  Q_SIGNAL void communityResponse(const QString& id, const QVariantMap& result);
+  QString communityMappingAuthFile() const;
+  QString communityAuthGeneration() const;
   Q_INVOKABLE bool setReportDiagnosticsScope(const QString& key);
   Q_INVOKABLE QVariantMap collectReportDiagnostics() const;
 
@@ -171,6 +180,7 @@ private:
 
   QNetworkAccessManager* m_networkManager;
   AppUpdater* m_appUpdater = nullptr;
+  CommunityBridge* m_communityBridge = nullptr;
   PlatformType m_platformType;
   PlatformArch m_platformArch;
   bool m_doLogMessages;

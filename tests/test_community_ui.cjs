@@ -101,7 +101,7 @@ async function run() {
                 return new Response(JSON.stringify({data}),{status:200});
             };
             const handlers={};
-            const plugin=new window._communityPlugin({connectionManager:{currentApiClient:()=>api},events:{on:(o,n,f)=>handlers[n]=f,off:()=>{}}});
+            window.TigerestCommunityAccount=undefined; window.TigerestCommunityClient.trustedServerId=undefined; const plugin=new window._communityPlugin({connectionManager:{currentApiClient:()=>api},events:{on:(o,n,f)=>handlers[n]=f,off:()=>{}}});
             const view=document.querySelector('.itemView');
             const show=(item)=>view.dispatchEvent(new CustomEvent('itemshow',{bubbles:true,detail:{item}}));
             const click=(label)=>{const e=Array.from(document.querySelectorAll('#tigerest-community button')).find(e=>e.textContent===label);check(e,'missing '+label);e.click();};

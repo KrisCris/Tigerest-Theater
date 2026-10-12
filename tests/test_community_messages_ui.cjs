@@ -60,7 +60,7 @@ async function run(){
                 throw Error('unhandled '+p);
             };
             const api={serverId:()=> '62526c3bf747439c99327ddec5fed4a8',getCurrentUserId:()=> 'user1',accessToken:()=>token,serverAddress:()=> 'http://nas.tigerest.top:8095'};
-            const plugin=new window._communityPlugin({connectionManager:{currentApiClient:()=>api},events:{on:(x,k,h)=>handlers[k]=h,off(){}},appRouter:{show:async p=>navigations.push(p)}});
+            window.TigerestCommunityAccount=undefined; window.TigerestCommunityClient.trustedServerId=undefined; const plugin=new window._communityPlugin({connectionManager:{currentApiClient:()=>api},events:{on:(x,k,h)=>handlers[k]=h,off(){}},appRouter:{show:async p=>navigations.push(p)}});
             plugin.messages.sync();await wait(()=>document.querySelector('#tigerest-message-entry')?.textContent.includes('2'));
             check(!plugin.state,'entry works away from detail pages');
             document.querySelector('#tigerest-message-entry').click();

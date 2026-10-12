@@ -69,6 +69,8 @@
         #tigerest-messages .tm-card{padding:18px;margin:12px 0;background:#1d293b;border:1px solid #33435a;border-radius:12px}
         #tigerest-messages .tm-unread{border-left:3px solid #72c6ff}
         #tigerest-messages .tm-card-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+        #tigerest-messages .tm-author{display:flex;gap:10px;align-items:center}#tigerest-messages .tc-avatar{width:36px;height:36px;border-radius:50%;background:#2c4d72;color:white;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+        #tigerest-messages .tm-avatar-status{display:flex;gap:10px;align-items:center;flex-wrap:wrap}#tigerest-messages .tm-avatar-status[hidden]{display:none}
         #tigerest-messages .tm-topic{color:#87c8fa;font-size:14px;margin:10px 0}
         #tigerest-messages .tm-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;margin:12px 0;font-size:15px}
         #tigerest-messages blockquote{margin:12px 0;padding:10px 14px;background:#111b29;border-left:2px solid #506884;border-radius:4px}
@@ -88,22 +90,31 @@
         (document.head||document.documentElement).appendChild(sheet);
     }
     class CommunityMessages {
-        constructor({connectionManager,openDiscussion}){
+        constructor({connectionManager,openDiscussion,account}){
             this.connectionManager=connectionManager;this.openDiscussion=openDiscussion;
             this.client=new Client();this.summaryVersion=0;this.lastSummary=0;this.unread=0;
+            this.account=account;this.privateClient=this.client;this.publicClient=account?new window.TigerestCommunityPublicClient(account.session,account.avatars):null;
+            this.unsubscribeAccount=account?.subscribe(()=>{
+                this.publicClient.clear();
+                if(!this.client.public)return;
+                const kind=this.state?.kind;this.reset();this.sync();if(kind)this.open(kind);
+            });
         }
         session(){return Client.session(this.connectionManager.currentApiClient?.());}
         valid(state){
             return this.state===state && this.sessionKey===JSON.stringify(this.session()) && Boolean(this.client.context);
         }
         sync(){
-            const session=this.session(),key=Client.supported(session)?JSON.stringify(session):'';
-            if(this.blockedKey===key)return;
-            if(key!==this.sessionKey){
-                this.reset();this.sessionKey=key;
+            const session=this.session(),key=(this.account?!!session?.token:Client.supported(session))?JSON.stringify(session):'';
+            const nextClient=this.account&&!Client.supported(session)?this.publicClient:this.privateClient;
+            // Emby logout can keep returning the old token until its network call finishes.
+            // Account callbacks and polls must honor the same block as detail views.
+            if(this.blockedKey===key||this.account?.blockedKey===key)return;
+            if(key!==this.sessionKey||this.client!==nextClient){
+                this.reset();this.client=nextClient;this.sessionKey=key;
                 if(key){
                     this.client.setSession(session);
-                    this.diagnosticsSystem=window.api?.system||window.tigerestAndroidApi?.system;
+                    this.diagnosticsSystem=this.client.public?null:window.api?.system||window.tigerestAndroidApi?.system;
                     const bytes=window.crypto.getRandomValues(new Uint8Array(16));
                     this.diagnosticsScope=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
                     this.diagnosticsReady=systemCall(this.diagnosticsSystem,'setReportDiagnosticsScope',[this.diagnosticsScope]);
@@ -133,7 +144,7 @@
             }catch(error){
                 // Authentication invalidates this account, even if a newer view
                 // superseded the poll that discovered it. Never clear a new account.
-                if(error.status===401&&key===this.sessionKey&&key===JSON.stringify(this.session()))this.reset(true);
+                if(error.status===401&&!this.client.public&&key===this.sessionKey&&key===JSON.stringify(this.session()))this.reset(true);
                 // A badge refresh must never interrupt browsing or playback.
             }
         }
@@ -148,11 +159,13 @@
             panel.setAttribute('aria-labelledby','tm-heading');
             const state={panel,kind,version:0,ids:new Set(),cursor:null,busy:false};
             this.state=state;
+            if(window.TigerestCommunityAvatarView)state.avatarView=new window.TigerestCommunityAvatarView({client:this.client,valid:()=>this.valid(state),coordinator:this.client.public?this.account?.avatars:null});
             const shell=node('div',null,'tm-shell'),head=node('div',null,'tm-head');
             const title=node('div',null,'tm-title'),heading=node('h2','消息中心');heading.id='tm-heading';
             title.append(heading,button('关闭',()=>this.close()));head.append(title,node('p','查看回复、报错处理结果，以及你的历史发言。','tm-muted'));
             const toolbar=node('div',null,'tm-toolbar');state.tabs=[];
-            for(const [kind,label] of [['replies','收到的消息'],['sent','我的发言'],['reports','我的报错']]){
+            if(this.account)toolbar.appendChild(button('评论账号',()=>this.account.show()));
+            for(const [kind,label] of (this.client.public?[['replies','公共回复'],['sent','我的公共发言']]:[['replies','收到的消息'],['sent','我的发言'],['reports','我的报错']])){
                 const tab=button(label,()=>{if(state.busy||state.kind===kind)return;state.kind=kind;this.load(state);});
                 tab.dataset.kind=kind;state.tabs.push(tab);toolbar.appendChild(tab);
             }
@@ -160,8 +173,16 @@
             state.readAll=button('全部已读',()=>this.readAll(state));toolbar.appendChild(state.readAll);head.appendChild(toolbar);
             const content=node('div',null,'tm-content');state.status=node('p','','tm-status');
             state.status.setAttribute('role','status');state.status.setAttribute('aria-live','polite');
+            state.avatarStatus=node('div',null,'tm-avatar-status tm-muted');state.avatarStatus.setAttribute('role','status');state.avatarStatus.setAttribute('aria-live','polite');
+            state.avatarMessage=node('span');state.avatarRetry=button('重试头像同步',()=>{if(this.valid(state))Promise.resolve(this.account.avatars.retry()).catch(()=>{});});
+            state.avatarStatus.append(state.avatarMessage,state.avatarRetry);
+            state.unsubscribeAvatars=this.account?.avatars?.subscribe(event=>{
+                if(!this.valid(state))return;
+                if(this.client.public&&event.author)state.avatarView?.update(event.author);
+                this.avatarStatus(state);
+            });this.avatarStatus(state);
             state.list=node('div');state.more=button('加载更多消息',()=>this.load(state,true));state.more.hidden=true;
-            content.append(state.status,state.list,state.more);shell.append(head,content);panel.appendChild(shell);
+            content.append(state.status,state.avatarStatus,state.list,state.more);shell.append(head,content);panel.appendChild(shell);
             panel.addEventListener('cancel',e=>{e.preventDefault();this.close();});
             document.body.appendChild(panel);panel.showModal();
             this.load(state);
@@ -175,22 +196,27 @@
         }
         error(state,error){
             if(this.state!==state||this.sessionKey!==JSON.stringify(this.session())||error.name==='AbortError')return;
-            if(error.status===401){this.reset(true);return;}
+            if(error.status===401&&!this.client.public){this.reset(true);return;}
+            if(this.client.public&&(error.status===401||['LOGIN_REQUIRED','AUTH_REQUIRED','AUTH_INVALID'].includes(error.code))){
+                state.avatarView?.clear();state.ids.clear();state.list.replaceChildren();state.cursor=null;state.more.hidden=true;state.through=null;
+                state.status.textContent='注册或登录评论账号后查看评论';this.controls(state);return;
+            }
             state.status.textContent=error.status===404?'消息功能尚未启用，请联系管理员升级评论服务。':
                 error.message+(error.requestId?'（请求编号：'+error.requestId+'）':'');
         }
         async load(state,more=false){
             if(!this.valid(state)||state.busy||(more&&(!state.cursor||state.loading)))return;
+            state.avatarView?.beginRead();
             const version=++state.version,kind=state.kind,cursor=more?state.cursor:null;
             ++this.summaryVersion;
             state.loading=true;state.status.textContent='正在加载消息…';
             // Keep a successful page through transient errors, but never mix tabs.
-            if(state.loadedKind!==kind){state.ids.clear();state.list.replaceChildren();state.cursor=null;state.more.hidden=true;state.through=null;}
+            if(state.loadedKind!==kind){state.avatarView?.clear();state.ids.clear();state.list.replaceChildren();state.cursor=null;state.more.hidden=true;state.through=null;}
             this.controls(state);
             try{
                 const data=kind==='reports'?await this.client.reports('all',cursor):await this.client.messages(kind,cursor);
                 if(!this.valid(state)||version!==state.version)return;
-                if(!more){state.ids.clear();state.list.replaceChildren();}
+                if(!more){state.avatarView?.clear();state.ids.clear();state.list.replaceChildren();}
                 state.loadedKind=kind;
                 if(kind==='replies'){
                     this.updateUnread(data);this.lastSummary=Date.now();
@@ -207,6 +233,18 @@
             }catch(error){if(version===state.version||error.status===401)this.error(state,error);}
             finally{if(this.valid(state)&&version===state.version){state.loading=false;this.controls(state);}}
         }
+        avatarStatus(state){
+            const status=this.account?.avatars?.status||{};
+            state.avatarStatus.hidden=!this.client.public||!status.message;
+            state.avatarMessage.textContent=status.message||'';state.avatarRetry.hidden=!status.retryable;
+            state.avatarRetry.disabled=Boolean(status.busy||status.retryAt>Date.now());
+            clearTimeout(state.avatarRetryTimer);
+            if(status.retryable&&status.retryAt>Date.now())state.avatarRetryTimer=setTimeout(()=>{if(this.valid(state))this.avatarStatus(state);},Math.min(1000,status.retryAt-Date.now()));
+        }
+        avatar(state,author){
+            if(state.avatarView)return state.avatarView.render(author||{});
+            const holder=node('span',Array.from(author?.name||'?')[0],'tc-avatar');holder.setAttribute('aria-hidden','true');return holder;
+        }
         card(state,message){
             const received=state.kind==='replies',report=message.type==='report_resolved'?message.report:state.kind==='reports'?message:null;
             const comment=(received?message.reply:message.comment)||{};
@@ -214,12 +252,17 @@
             const card=node('article',null,'tm-card');card.dataset.messageId=state.kind==='sent'?comment.id:message.id;
             const unread=received&&!message.isRead&&!message.readAt;card.classList.toggle('tm-unread',unread);
             const header=node('div',null,'tm-card-head');
-            header.append(node('strong',report?(received?'报错已修复':(report.status==='resolved'?'已修复':'待处理')+' · '+(categories[report.category]||'其他问题')):comment.author?.name||'用户'),node('span',time(message.createdAt||comment.createdAt),'tm-muted'));
+            const author=node('div',null,'tm-author');
+            if(!report&&available)author.appendChild(this.avatar(state,comment.author));
+            author.appendChild(node('strong',report?(received?'报错已修复':(report.status==='resolved'?'已修复':'待处理')+' · '+(categories[report.category]||'其他问题')):comment.author?.name||'用户'));
+            header.append(author,node('span',time(message.createdAt||comment.createdAt),'tm-muted'));
             card.appendChild(header);
             if(location)card.appendChild(node('p',(location.scope==='episode'?'本集 · ':'作品 · ')+
                 (location.workTitle?location.workTitle+' · ':'')+(location.title||'未命名作品'),'tm-topic'));
             if(available&&message.originalComment){
-                const original=node('blockquote');original.append(node('div','回复的原发言','tm-muted'),node('div',body(message.originalComment),'tm-body'));card.appendChild(original);
+                const original=node('blockquote'),originalAuthor=node('div',null,'tm-author');
+                originalAuthor.append(this.avatar(state,message.originalComment.author),node('span',(message.originalComment.author?.name||'用户')+' · 回复的原发言','tm-muted'));
+                original.append(originalAuthor,node('div',body(message.originalComment),'tm-body'));card.appendChild(original);
             }
             if(report){
                 card.appendChild(node('div',report.description||'','tm-body'));
@@ -236,7 +279,7 @@
                     state.status.textContent='未读消息 '+this.unread+' 条';
                 }finally{if(this.valid(state)){state.busy=false;this.controls(state);}}
             };
-            if(location?.itemId){
+            if(location?.itemId||location?.media){
                 const open=button(!report&&location.canNavigate?'查看讨论':'查看作品',async()=>{
                     if(!this.valid(state)||state.busy||state.loading||open.disabled)return;
                     open.disabled=true;
@@ -306,7 +349,7 @@
         }
         closeReportDetails(){this.reportDetail?.panel.close();this.reportDetail?.panel.remove();this.reportDetail=null;}
         reportProblem(item){
-            this.sync();if(!this.client.context||!item?.Id)return;
+            this.sync();if(this.client.public||!this.client.context||!item?.Id)return;
             if(this.reportForm){this.reportForm.panel.focus();return;}
             style();const panel=node('dialog');panel.id='tigerest-report-form';
             const shell=node('div',null,'tm-shell'),head=node('div',null,'tm-head'),title=node('div',null,'tm-title');
@@ -408,18 +451,18 @@
         close(){
             this.closeReportDetails();
             const state=this.state;this.state=null;
-            if(state){this.client.cancelRequests();++this.summaryVersion;state.panel.close();state.panel.remove();}
+            if(state){state.unsubscribeAvatars?.();clearTimeout(state.avatarRetryTimer);state.avatarView?.clear();this.client.cancelRequests();++this.summaryVersion;state.panel.close();state.panel.remove();}
             this.entry?.focus();
         }
         reset(block=false){
-            const key=Client.supported(this.session())?JSON.stringify(this.session()):'';
+            const session=this.session(),key=(this.account?!!session?.token:Client.supported(session))?JSON.stringify(session):'';
             this.close();this.closeReportForm();this.client.clear();++this.summaryVersion;
             systemCall(this.diagnosticsSystem,'setReportDiagnosticsScope',['']);
             this.diagnosticsSystem=null;this.diagnosticsScope=null;this.diagnosticsReady=null;
             this.entry?.remove();this.entry=null;this.sessionKey='';this.unread=0;this.lastSummary=0;
             this.blockedKey=block?key:null;
         }
-        destroy(){this.reset();}
+        destroy(){this.unsubscribeAccount?.();this.reset();}
     }
     window.TigerestCommunityMessages=CommunityMessages;
 })();

@@ -816,6 +816,7 @@ local async_generation = 0
 local async_commands = {}
 
 function cancel_danmaku_async_requests()
+    if cancel_danmaku_http_requests then cancel_danmaku_http_requests() end
     async_generation = async_generation + 1
     async_running_count = 0
     local previous = async_commands

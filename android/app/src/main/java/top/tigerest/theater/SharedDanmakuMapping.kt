@@ -8,17 +8,23 @@ import java.util.concurrent.ConcurrentHashMap
 
 data class MappingHttpResponse(val code: Int, val body: String, val retryAfter: String? = null)
 data class MappingResult(val kind: Kind, val match: JSONObject? = null, val danmaku: JSONObject? = null) {
-    enum class Kind { HIT, FAILED, SKIPPED, STALE }
+    enum class Kind { HIT, FAILED, SKIPPED, STALE, RATE_LIMITED }
 }
 
 /** Transport is injected so protocol, generation and cooldown behavior runs on the JVM. */
 class SharedDanmakuMapping(
-    private val transport: (String, String, String?) -> MappingHttpResponse,
+    private val transport: (String, String, Map<String,String>?) -> MappingHttpResponse,
     private val credential: () -> String?,
     private val elapsedMillis: () -> Long = { System.nanoTime() / 1_000_000 },
-    private val wallMillis: () -> Long = { System.currentTimeMillis() }
+    private val wallMillis: () -> Long = { System.currentTimeMillis() },
+    private val sessionHeaders: () -> Map<String,String>? = { null }
 ) {
     private val cooldown = ConcurrentHashMap<String, Long>()
+    fun retryAfter(origin:String):Long {
+        if(trustedOrigin(origin)==null)return 0
+        val until=cooldown["nas"]?:return 0
+        return if(until<=elapsedMillis())0 else (until-elapsedMillis())/1000+1
+    }
 
     fun lookup(origin: String, metadata: JSONObject, generation: Long, isCurrent: (Long) -> Boolean): MappingResult =
         request(origin, metadata, null, generation, isCurrent)
@@ -36,9 +42,13 @@ class SharedDanmakuMapping(
         if (!isCurrent(generation)) return MappingResult(MappingResult.Kind.STALE)
         val normalized = trustedOrigin(origin) ?: return MappingResult(MappingResult.Kind.SKIPPED)
         val source = source(metadata) ?: return MappingResult(MappingResult.Kind.SKIPPED)
-        val auth = if (selection != null) credential()?.takeIf { validCredential(it) }
-            ?: return MappingResult(MappingResult.Kind.SKIPPED) else null
-        if ((cooldown[normalized] ?: Long.MIN_VALUE) > elapsedMillis()) return MappingResult(MappingResult.Kind.FAILED)
+        var auth:Map<String,String>? = null
+        if(selection!=null){
+            auth=sessionHeaders()?.takeIf { it.keys==setOf("X-Emby-Token","X-Emby-Server-Id","X-Emby-User-Id")&&it.values.all(CommunityBridgePolicy::safe) }
+                ?: credential()?.takeIf { validCredential(it) }?.let{mapOf("Authorization" to "Bearer $it")}
+            if(auth==null)return MappingResult(MappingResult.Kind.SKIPPED)
+        }
+        if (retryAfter(normalized)>0) return MappingResult(MappingResult.Kind.RATE_LIMITED)
         val request = JSONObject().put("source",source).put("comment",JSONObject().put("withRelated",true).put("chConvert",0))
         if (selection != null) request.put("selection",selection)
         val body = request.toString()
@@ -50,9 +60,11 @@ class SharedDanmakuMapping(
         if (response.code == 429) {
             val delay = retryAfterMillis(response.retryAfter, wallMillis())
             val now = elapsedMillis()
-            cooldown[normalized] = if (now > Long.MAX_VALUE - delay) Long.MAX_VALUE else now + delay
+            val until=if (now > Long.MAX_VALUE - delay) Long.MAX_VALUE else now + delay
+            cooldown["nas"]=maxOf(cooldown["nas"]?:Long.MIN_VALUE,until)
         }
         if (!isCurrent(generation)) return MappingResult(MappingResult.Kind.STALE)
+        if(response.code==429)return MappingResult(MappingResult.Kind.RATE_LIMITED)
         if (response.code != 200 || response.body.toByteArray(Charsets.UTF_8).size > MAX_RESPONSE_BYTES) return MappingResult(MappingResult.Kind.FAILED)
         val data = runCatching { JSONObject(response.body) }.getOrNull() ?: return MappingResult(MappingResult.Kind.FAILED)
         val match = data.optJSONObject("match")

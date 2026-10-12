@@ -1,7 +1,7 @@
 -- Private NAS mapping transport. Credential values never enter subprocess arguments,
 -- mpv properties, ordinary options, history, or diagnostics.
 local utils = require('mp.utils')
-local generation, attempted, requests, cooldown = 0, {}, {}, {}
+local generation, attempted, cooldown = 0, {}, {}
 local selection_revision = 0
 local MAX_BODY = 16 * 1024 * 1024
 
@@ -24,7 +24,8 @@ end
 
 function mapping_playback_token()
     return tostring(generation) .. '\n' .. tostring(mp.get_property('path', '')) .. '\n'
-        .. utils.format_json(mapping_source() or {})
+        .. utils.format_json(mapping_source() or {}) .. '\n'
+        .. tostring(mp.get_property_native('user-data/tigerest/danmaku/auth-generation') or '')
 end
 
 local function current(token) return token == mapping_playback_token() end
@@ -32,8 +33,6 @@ local function current(token) return token == mapping_playback_token() end
 function begin_manual_danmaku_selection(token)
     if token and not current(token) then return false end
     selection_revision = selection_revision + 1
-    for id in pairs(requests) do mp.abort_async_command(id) end
-    requests = {}
     -- Legacy searches/hash/comment requests must not resume once a user chooses
     -- a source. Their playback generation alone cannot distinguish this race.
     cancel_danmaku_async_requests()
@@ -45,13 +44,31 @@ local function trusted(server)
     return server == 'http://nas.tigerest.top:18443' or server == 'http://192.168.5.150:18443'
 end
 
+function mapping_retry_after(server)
+    if not trusted(server) then return 0 end
+    return math.max(0, math.ceil((cooldown[resolve_api_server(server)] or 0) - mp.get_time()))
+end
+
+function mapping_rate_limit_message(server)
+    local wait = mapping_retry_after(server)
+    if wait > 0 then return string.format('弹幕接口请求过于频繁，请 %d 秒后重试', wait) end
+end
+
+local function show_rate_limit(server)
+    show_message(mapping_rate_limit_message(server), 5)
+end
+
 local function private_header_file()
     local path = mp.get_property_native('user-data/tigerest/danmaku/mapping-auth-file')
     if type(path) ~= 'string' or path == '' then return nil end
     local file = io.open(path, 'rb')
     if not file then return nil end
-    local contents = file:read(4097) or ''; file:close()
-    if #contents > 4096 or not contents:match('^Authorization: Bearer [%w%-%._~%+/=]+\r?\n?$') then return nil end
+    local contents = file:read(12289) or ''; file:close()
+    local session = mp.get_property_native('user-data/tigerest/danmaku/auth-generation')
+    if session ~= nil and tostring(session) ~= '' and not tostring(session):match('^legacy:%d+$') then
+        local token, server, user = contents:match('^X%-Emby%-Token: ([%w%-%._~%+/=]+)\r?\nX%-Emby%-Server%-Id: ([%w%-]+)\r?\nX%-Emby%-User%-Id: ([%w%-]+)\r?\n$')
+        if #contents > 12288 or not token or #token > 4000 or not server or not user then return nil end
+    elseif #contents > 4096 or not contents:match('^Authorization: Bearer [%w%-%._~%+/=]+\r?\n?$') then return nil end
     return path
 end
 
@@ -70,27 +87,13 @@ local function retry_seconds(value)
     return date and math.max(0, date - utc_as_local) or 60
 end
 
-local function response(stdout)
-    if type(stdout) ~= 'string' or #stdout > MAX_BODY + 65536 then return nil end
-    local function split(value)
-        local _, finish = value:find('\r\n\r\n', 1, true)
-        if not finish then _, finish = value:find('\n\n', 1, true) end
-        if not finish then return nil end
-        local headers = value:sub(1, finish)
-        return headers:match('^HTTP/[%d.]+ (%d+)'), headers, value:sub(finish + 1)
-    end
-    local status, headers, body = split(stdout)
-    -- A proxy may prepend its CONNECT or 100 Continue header block.
-    while body and body:match('^HTTP/') do
-        status, headers, body = split(body)
-    end
-    if not status or not body or #body > MAX_BODY then return nil end
-    local retry
-    for line in (headers .. '\n'):gmatch('(.-)\r?\n') do
-        local key, value = line:match('^([^:]+):%s*(.*)$')
-        if key and key:lower() == 'retry-after' then retry = value end
-    end
-    return tonumber(status), body, retry
+function mapping_record_rate_limit(server, retry)
+    if not trusted(server) then return end
+    server = resolve_api_server(server)
+    local until_time = math.max(cooldown[server] or 0, mp.get_time() + retry_seconds(retry))
+    -- Both addresses reach the same NAS and share its request budget.
+    cooldown['http://nas.tigerest.top:18443'] = until_time
+    cooldown['http://192.168.5.150:18443'] = until_time
 end
 
 local function request(server, source, selection, token, callback)
@@ -111,20 +114,11 @@ local function request(server, source, selection, token, callback)
     if options.proxy ~= '' then args[#args + 1] = '--proxy'; args[#args + 1] = options.proxy end
     args[#args + 1] = server .. '/api/tigerest/v1/danmaku'
     if not current(token) then return end
-    mark_async_start()
-    local id
-    id = mp.command_native_async({name='subprocess', args=args, playback_only=true,
-        capture_stdout=true, capture_stderr=true, capture_size=MAX_BODY + 65536}, function(ok, result)
-        requests[id] = nil
-        local status, json, retry
-        if ok and result then status, json, retry = response(result.stdout) end
-        if status == 429 then cooldown[server] = mp.get_time() + retry_seconds(retry) end
-        if not current(token) or revision ~= selection_revision then return end
-        mark_async_end()
-        -- Never forward subprocess error text: it may contain private arguments.
-        if not ok or not result then callback(nil); return end
-        if result.status ~= 0 or status ~= 200 then callback(nil); return end
-        local data = utils.parse_json(json)
+    request_danmaku_http(args, {timeout=35, retry=not selection,
+        kind=selection and 'mapping-write' or 'shared-lookup',
+        current=function() return current(token) and revision == selection_revision end}, function(result)
+        if not result.ok or result.status ~= 200 then callback(nil); return end
+        local data = utils.parse_json(result.body)
         if type(data) ~= 'table' or data.success ~= true or data.matched ~= true
             or type(data.match) ~= 'table' or type(data.danmaku) ~= 'table'
             or type(data.danmaku.comments) ~= 'table'
@@ -133,7 +127,6 @@ local function request(server, source, selection, token, callback)
         if not episode:match('^%d+$') or #episode > 32 then callback(nil); return end
         callback(data)
     end)
-    requests[id] = true
 end
 
 local function apply(data, server, from_menu)
@@ -142,20 +135,23 @@ local function apply(data, server, from_menu)
     DANMAKU.mapping_origin = data.match.origin == 'shared' and 'shared' or 'manual'
     local url = server .. '/api/v2/comment/' .. tostring(data.match.episodeId) .. '?withRelated=true&chConvert=0'
     handle_fetched_danmaku(data.danmaku, url, from_menu)
-    if DANMAKU.mapping_origin == 'shared' then show_message('来自共享匹配，可在弹幕菜单中手动纠正', 4) end
 end
 
 function lookup_shared_danmaku(fallback)
     local token, source = mapping_playback_token(), mapping_source()
-    if attempted[token] or not source then fallback(); return end
-    attempted[token] = true
+    if not source then fallback(); return end
     local servers = get_api_server_list(options.api_server)
     local server
     for _, candidate in ipairs(servers) do if trusted(candidate) then server = resolve_api_server(candidate); break end end
     if not server then fallback(); return end
+    if mapping_retry_after(server) > 0 then show_rate_limit(server); fallback(); return end
+    if attempted[token] then fallback(); return end
+    attempted[token] = true
     request(server, source, nil, token, function(data)
         if not current(token) then return end
-        if data then apply(data, server, false) else fallback() end
+        if data then apply(data, server, false)
+        elseif mapping_retry_after(server) > 0 then show_rate_limit(server); fallback()
+        else fallback() end
     end)
 end
 
@@ -163,11 +159,14 @@ function select_shared_danmaku(episode_id, bangumi_id, server, token, fallback)
     -- Only the menu event can call this, carrying its original playback token.
     if token and not current(token) then return true end
     local source = mapping_source()
-    if not token or not source or not trusted(server) or not private_header_file()
+    if not token or not source or not trusted(server)
         or not tostring(bangumi_id or ''):match('^[%w%-]+$') then return false end
+    if mapping_retry_after(server) > 0 then show_rate_limit(server); return true end
+    if not private_header_file() then fallback('missing-token'); return true end
     request(server, source, {bangumiId=tostring(bangumi_id), episodeId=tostring(episode_id)}, token, function(data)
         if not current(token) then return end
         if data then apply(data, server, true)
+        elseif mapping_retry_after(server) > 0 then show_rate_limit(server)
         else fallback(true) end
     end)
     return true
@@ -175,6 +174,11 @@ end
 
 mp.add_hook('on_unload', 39, function()
     generation = generation + 1; selection_revision = 0; attempted = {}
-    for id in pairs(requests) do mp.abort_async_command(id) end
-    requests = {}
+end)
+local observed_auth
+mp.observe_property('user-data/tigerest/danmaku/auth-generation', 'native', function(_, value)
+    if observed_auth ~= nil and observed_auth ~= value then
+        begin_manual_danmaku_selection()
+    end
+    observed_auth = value
 end)

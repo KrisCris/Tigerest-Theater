@@ -85,6 +85,12 @@ public:
 
   // Stop playback and clear all queued items.
   Q_INVOKABLE virtual void stop();
+#ifdef Q_OS_WIN
+  // Keep the Qt/native host windows alive until mpv releases its video output.
+  void requestApplicationQuit();
+  bool isShuttingDown() const { return m_shuttingDown; }
+#endif
+  void updateDanmakuAuthorization(const QString& path, const QString& generation);
 #ifdef Q_OS_MAC
   // Drain native VO teardown on the Cocoa main thread before QML destroys mpv.
   bool prepareForShutdown();
@@ -110,6 +116,7 @@ public:
   Q_INVOKABLE void notifyPosition(qint64 positionMs);
   Q_INVOKABLE void notifySeek(qint64 positionMs);
   Q_INVOKABLE void notifyMetadata(const QVariantMap& metadata);
+  // Web/OS notification ratio: 0=silence and 1=normal.
   Q_INVOKABLE void notifyVolumeChange(double volume);
   // Report an Emby Web managed quality change back to the originating mpv
   // script so UOSC can update its selected state.
@@ -271,6 +278,7 @@ Q_SIGNALS:
   void positionChanged(qint64 positionMs);
   void seekPerformed(qint64 positionMs);
   void metadataChanged(const QVariantMap& metadata);
+  // Always mpv percent, whether observed natively or reported by the web UI.
   void volumeChanged(double volume);
 
   // Buffered ranges from demuxer-cache-state, as list of {start, end} in ticks
@@ -355,6 +363,18 @@ private:
 
   MpvController* m_mpv = nullptr;
   bool m_nativeVideoOutput = false;
+#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
+  bool m_shuttingDown = false;
+#endif
+#ifdef Q_OS_WIN
+  QTimer m_applicationQuitTimer;
+  QElapsedTimer m_applicationQuitElapsed;
+  bool m_applicationStopAcknowledged = false;
+  bool m_applicationQuitQueryPending = false;
+  bool m_applicationQuitReady = false;
+  void checkApplicationQuit();
+  void finishApplicationQuit();
+#endif
 #ifdef Q_OS_MAC
   struct DeferredMediaLoad {
     QString url;
@@ -363,7 +383,6 @@ private:
     QString mode;
   };
   bool m_nativeVoTeardownPending = false;
-  bool m_shuttingDown = false;
   QList<DeferredMediaLoad> m_deferredMediaLoads;
   void completeNativeVoTransition();
 #endif

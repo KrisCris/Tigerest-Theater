@@ -22,52 +22,26 @@ test('favorites selects the original HomeView tab instead of relying on its malf
  new Controller({classList:{remove(){}},removeAttribute(){}},{},{}).onTemplateLoaded();
  calls[0][2].openFavorites();assert.deepEqual(selected,[1]);
 });
-test('native fullscreen is requested once per login session and can be reset on logout',async()=>{
- const {registrations,calls,context}=modules(),fullscreen=[];context.api={window:{setFullScreen:async value=>fullscreen.push(value)}};
- function Base(view){this.view=view;}Base.prototype.onTemplateLoaded=function(){};
- let address='https://own.example';const api={serverId:()=> 'own-server',serverAddress:()=>address,getCurrentUserId:()=> 'user'},manager={currentApiClient:()=>api};
- const Controller=registrations.get('home/hometab.js').factory({default:Base},{default:manager},{default:{}}).default;
- const view={classList:{remove(){}},removeAttribute(){}},controller=new Controller(view,{},{});controller.onTemplateLoaded();
- const enter=calls[0][2].enterFullscreen;assert.equal(typeof enter,'function');
- await enter(api);address='http://192.168.0.2';await enter(api);assert.deepEqual(fullscreen,[true]);context.TigerestHomeReset();await enter(api);assert.deepEqual(fullscreen,[true,true]);
- const abort=new AbortController();abort.abort();context.TigerestHomeReset();await enter(api,abort.signal);assert.equal(fullscreen.length,2);
-});
-
-test('Android login and home re-entry keep system bars visible instead of requesting desktop fullscreen',async()=>{
- for(const bridgeOnly of [false,true]) {
-  const {registrations,calls,context}=modules(),fullscreen=[];
-  let initialized;context.initCompleted=new Promise(resolve=>initialized=resolve);
-  function Base(view){this.view=view;}Base.prototype.onTemplateLoaded=function(){};
-  const api={serverId:()=> 'server',getCurrentUserId:()=> 'user'};
+test('home entry, cached resume and a new login never request native fullscreen',async()=>{
+ for(const android of [false,true]) {
+  const {registrations,context}=modules(),fullscreen=[];
+  context.api={system:{isAndroid:android},window:{setFullScreen:async value=>fullscreen.push(value)}};
+  if(android)context.tigerestAndroidApi=context.api;
+  let user='first';const api={serverId:()=> 'server',serverAddress:()=> 'https://server.example',getCurrentUserId:()=>user};
+  context.TigerestHomeGallery=class {
+   constructor(view,options){this.options=options;}
+   async start(){await this.options.enterFullscreen?.(api);}
+   stop(){}destroy(){}
+  };
+  function Base(view){this.view=view;}Base.prototype.onTemplateLoaded=function(){};Base.prototype.onResume=function(){};Base.prototype.onPause=function(){};
   const Controller=registrations.get('home/hometab.js').factory({default:Base},{default:{currentApiClient:()=>api}},{default:{}}).default;
-  new Controller({classList:{remove(){}},removeAttribute(){}},{},{}).onTemplateLoaded();
-  const enter=calls[0][2].enterFullscreen,pending=enter(api);
-  context.api={system:{isAndroid:!bridgeOnly},window:{setFullScreen:async value=>fullscreen.push(value)}};
-  if(bridgeOnly)context.tigerestAndroidApi=context.api;
-  initialized();await pending;context.TigerestHomeReset();await enter(api);
-  assert.deepEqual(fullscreen,[],'mobile home does not hide status and navigation bars');
+  const controller=new Controller({classList:{remove(){}},removeAttribute(){}},{},{});controller.onTemplateLoaded();
+  await controller.onResume({});controller.onPause();await controller.onResume({});
+  user='second';context.TigerestHomeReset?.();await controller.onResume({});
+  assert.deepEqual(fullscreen,[],'browsing never overrides the startup decision or a manual window change');
  }
 });
-test('logout during a pending fullscreen request cannot mark the next login as already entered',async()=>{
- const {registrations,calls,context}=modules();let requests=0,release;
- context.api={window:{setFullScreen:()=>{requests++;return requests===1?new Promise(resolve=>release=resolve):Promise.resolve();}}};
- function Base(view){this.view=view;}Base.prototype.onTemplateLoaded=function(){};
- const api={serverId:()=> 'server',serverAddress:()=> 'https://server.example',getCurrentUserId:()=> 'user'},manager={currentApiClient:()=>api};
- const Controller=registrations.get('home/hometab.js').factory({default:Base},{default:manager},{default:{}}).default;
- new Controller({classList:{remove(){}},removeAttribute(){}},{},{}).onTemplateLoaded();const enter=calls[0][2].enterFullscreen;
- const first=enter(api);await Promise.resolve();await Promise.resolve();assert.equal(requests,1);
- context.TigerestHomeReset();release();await first;await enter(api);assert.equal(requests,2);
-});
-test('a surviving home start marks a shared in-flight fullscreen request after the first start is aborted',async()=>{
- const {registrations,calls,context}=modules();let requests=0,release;
- context.api={window:{setFullScreen:()=>{requests++;return requests===1?new Promise(resolve=>release=resolve):Promise.resolve();}}};
- function Base(view){this.view=view;}Base.prototype.onTemplateLoaded=function(){};
- const api={serverId:()=> 'server',serverAddress:()=> 'https://server.example',getCurrentUserId:()=> 'user'};
- const Controller=registrations.get('home/hometab.js').factory({default:Base},{default:{currentApiClient:()=>api}},{default:{}}).default;
- new Controller({classList:{remove(){}},removeAttribute(){}},{},{}).onTemplateLoaded();const enter=calls[0][2].enterFullscreen,abort=new AbortController();
- const first=enter(api,abort.signal);await Promise.resolve();await Promise.resolve();abort.abort();const second=enter(api);await Promise.resolve();
- release();await Promise.all([first,second]);await enter(api);assert.equal(requests,1);
-});
+
 test('home supports an already loaded Emby section template and owns its pause/destroy lifecycle',async()=>{
  const {registrations,calls}=modules();const module=registrations.get('home/hometab.js');assert.ok(module,'home registration exists');
  function Base(view){this.view=view;this.scroller={legacy:true};}Base.prototype.onTemplateLoaded=function(){if(this.view.classList.contains('scrollFrameY'))this.scroller=this.view;};Base.prototype.onResume=function(){};Base.prototype.onPause=function(){};Base.prototype.destroy=function(){};

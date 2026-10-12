@@ -120,27 +120,6 @@
         // controller so every existing Home command uses the same gallery.
         defineModule('home/hometab.js', ['modules/tabbedview/basetab.js', 'connectionManager', 'appRouter', 'modules/maintabsmanager.js'], function (baseTab, connectionManager, appRouter, mainTabsManager) {
             const BaseTab = moduleValue(baseTab), manager = moduleValue(connectionManager), router = moduleValue(appRouter), tabs = moduleValue(mainTabsManager);
-            const fullscreenSessions = new Set();
-            const fullscreenPending = new Map();
-            let fullscreenEpoch = 0;
-            window.TigerestHomeReset = () => { ++fullscreenEpoch; fullscreenSessions.clear(); fullscreenPending.clear(); };
-            const enterFullscreen = async (api, signal) => {
-                const session = [api.serverId(), api.getCurrentUserId()].join('|'), epoch = fullscreenEpoch;
-                await window.initCompleted;
-                // Android browsing keeps its system bars. Native video playback
-                // owns immersive mode and restores the bars when it ends.
-                if (window.tigerestAndroidApi || window.api?.system?.isAndroid) return;
-                if (signal?.aborted || epoch !== fullscreenEpoch || fullscreenSessions.has(session)) return;
-                if (window.api?.window?.setFullScreen) {
-                    let pending = fullscreenPending.get(session);
-                    if (!pending) {
-                        pending = Promise.resolve(window.api.window.setFullScreen(true)).finally(() => { if (fullscreenPending.get(session) === pending) fullscreenPending.delete(session); });
-                        fullscreenPending.set(session, pending);
-                    }
-                    await pending;
-                    if (epoch === fullscreenEpoch && !signal?.aborted) fullscreenSessions.add(session);
-                }
-            };
             function HomeTab(view, params, options) { BaseTab.apply(this, arguments); }
             Object.assign(HomeTab.prototype, BaseTab.prototype);
             HomeTab.prototype.onTemplateLoaded = function () {
@@ -153,7 +132,7 @@
                 // Select the active original HomeView tab. Some Emby versions'
                 // showFavorites() helper emits /home&tab=favorites, losing the
                 // query parameter and reopening the home tab instead.
-                this.gallery = new window.TigerestHomeGallery(this.view, { apiProvider: () => manager.currentApiClient(), router, enterFullscreen, openFavorites: () => tabs.selectedTabIndex(1) });
+                this.gallery = new window.TigerestHomeGallery(this.view, { apiProvider: () => manager.currentApiClient(), router, openFavorites: () => tabs.selectedTabIndex(1) });
                 window.TigerestHomeMotion?.setGallery(this.gallery);
                 BaseTab.prototype.onTemplateLoaded.apply(this, arguments);
             };

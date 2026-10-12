@@ -10,6 +10,8 @@ const path = require('node:path');
 const net = require('node:net');
 const { randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
+const configVersion = JSON.parse(fs.readFileSync(path.resolve(__dirname,
+    '../resources/settings/settings_description.json'), 'utf8')).find(section => section.section === '__meta__').version;
 
 async function freePort() {
     const server = net.createServer();
@@ -49,7 +51,7 @@ async function run(executable, allowBrowserZoom, accelerated = false) {
     fs.mkdirSync(profile, { recursive: true });
     fs.writeFileSync(path.join(profile, 'profile.json'), JSON.stringify({ name: `GpuTest-${id}` }));
     fs.writeFileSync(path.join(profile, 'Tigerest Theater.conf'), JSON.stringify({
-        version: 10,
+        version: configVersion,
         sections: {
             main: { allowBrowserZoom, enableWindowsTrayIcon: false },
             path: { startupurl_desktop: 'about:blank' },

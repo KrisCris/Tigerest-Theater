@@ -1,0 +1,77 @@
+{
+  "rows": [
+    {
+      "index": 1,
+      "close": "red-x",
+      "restored": {
+        "web": 100,
+        "native": 100,
+        "saved": 1
+      },
+      "saved": {
+        "web": 100,
+        "native": 100,
+        "saved": 1
+      },
+      "exit": {
+        "code": 0,
+        "signal": null
+      }
+    },
+    {
+      "index": 2,
+      "close": "alt-f4",
+      "restored": {
+        "web": 100,
+        "native": 100,
+        "saved": 1
+      },
+      "saved": {
+        "web": 37,
+        "native": 37,
+        "saved": 0.37
+      },
+      "exit": {
+        "code": 0,
+        "signal": null
+      }
+    },
+    {
+      "index": 3,
+      "close": "red-x",
+      "restored": {
+        "web": 37,
+        "native": 37,
+        "saved": 0.37
+      },
+      "saved": {
+        "web": 0,
+        "native": 0,
+        "saved": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null
+      }
+    },
+    {
+      "index": 4,
+      "close": "alt-f4",
+      "restored": {
+        "web": 0,
+        "native": 0,
+        "saved": 0
+      },
+      "saved": {
+        "web": 0,
+        "native": 0,
+        "saved": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null
+      }
+    }
+  ],
+  "scope": "real Windows client, real QWebChannel/mpv, silent WAV, isolated localStorage; actual close button and Alt+F4 driven separately"
+}

@@ -8,6 +8,32 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 class SharedDanmakuMappingTest {
+    @Test fun existingPrivateTokenIsReadOnlyForExplicitEligibleLegacySelections() {
+        val trusted="62526c3bf747439c99327ddec5fed4a8"
+        val session=JSONObject().put("serverId",trusted).put("userId","fixture-user").put("token","fixture-emby").put("mappingAuth","legacy")
+        var authorization=MappingAuthorization()
+        var privateReads=0
+        val sent=mutableListOf<Map<String,String>?>()
+        val mapping=SharedDanmakuMapping({_,body,headers->
+            sent.add(headers)
+            MappingHttpResponse(200,hit().apply{if(JSONObject(body).has("selection"))getJSONObject("match").put("origin","manual")}.toString())
+        },{authorization.legacyCredential{privateReads++;"fixture-legacy"}},sessionHeaders={authorization.headers.takeIf{it.isNotEmpty()}})
+        for(code in listOf(0,200,401,403,503)){
+            authorization=CommunityBridgePolicy.mappingAuthorization(session,trusted,code)
+            assertEquals(MappingResult.Kind.SKIPPED,mapping.select("http://nas.tigerest.top:18443",metadata(),"99","99000005",7){true}.kind)
+        }
+        authorization=CommunityBridgePolicy.mappingAuthorization(session,"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",404)
+        assertEquals(MappingResult.Kind.SKIPPED,mapping.select("http://nas.tigerest.top:18443",metadata(),"99","99000005",7){true}.kind)
+        assertEquals(0,privateReads);assertTrue(sent.isEmpty())
+        authorization=CommunityBridgePolicy.mappingAuthorization(session,trusted,404)
+        assertEquals(MappingResult.Kind.HIT,mapping.lookup("http://nas.tigerest.top:18443",metadata(),7){true}.kind)
+        assertNull(sent.single());assertEquals(0,privateReads)
+        assertEquals(MappingResult.Kind.HIT,mapping.select("http://nas.tigerest.top:18443",metadata(),"99","99000005",7){true}.kind)
+        assertEquals(mapOf("Authorization" to "Bearer fixture-legacy"),sent.last());assertEquals(1,privateReads)
+        session.remove("mappingAuth");authorization=CommunityBridgePolicy.mappingAuthorization(session,trusted,200)
+        assertEquals(MappingResult.Kind.HIT,mapping.select("http://nas.tigerest.top:18443",metadata(),"99","99000005",7){true}.kind)
+        assertEquals("fixture-emby",sent.last()!!["X-Emby-Token"]);assertFalse(sent.last()!!.containsKey("Authorization"));assertEquals(1,privateReads)
+    }
     @Test fun manualSelectionInvalidatesPendingAutoLookupWithinSamePlayback() {
         val requests = DanmakuRequestGeneration()
         val autoToken = requests.playbackChanged()
@@ -59,7 +85,7 @@ class SharedDanmakuMappingTest {
     @Test fun onlyExplicitSelectionSendsIdsAndThePrivateCredential() {
         val calls = mutableListOf<JSONObject>()
         val mapping = SharedDanmakuMapping({ _, body, credential ->
-            assertEquals("private-fixture-token", credential)
+            assertEquals(mapOf("Authorization" to "Bearer private-fixture-token"), credential)
             calls.add(JSONObject(body)); MappingHttpResponse(200, hit().apply { getJSONObject("match").put("origin","manual") }.toString())
         }, { "private-fixture-token" })
         val result = mapping.select("http://192.168.5.150:18443", metadata(), "tmdb-99", "99000005", 7) { true }
@@ -94,8 +120,8 @@ class SharedDanmakuMappingTest {
     @Test fun failuresDoNotClaimSaveAndRetryAfterSuppressesPostsAcrossPlaybackChanges() {
         var time = 1000L; var requests = 0
         val mapping = SharedDanmakuMapping({ _, _, _ -> requests++; MappingHttpResponse(429,"{}","120") }, { "private-fixture-token" }, { time })
-        assertEquals(MappingResult.Kind.FAILED,mapping.select("http://nas.tigerest.top:18443",metadata(),"99","99000005",7) { true }.kind)
-        assertEquals(MappingResult.Kind.FAILED,mapping.lookup("http://nas.tigerest.top:18443",metadata(2,4),8) { true }.kind)
+        assertEquals(MappingResult.Kind.RATE_LIMITED,mapping.select("http://nas.tigerest.top:18443",metadata(),"99","99000005",7) { true }.kind)
+        assertEquals(MappingResult.Kind.RATE_LIMITED,mapping.lookup("http://192.168.5.150:18443",metadata(2,4),8) { true }.kind)
         assertEquals(1,requests)
         time += 120001
         mapping.lookup("http://nas.tigerest.top:18443",metadata(2,5),9) { true }

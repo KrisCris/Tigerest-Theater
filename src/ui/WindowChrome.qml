@@ -20,11 +20,10 @@ Item {
   }
 
   function restoreForDrag(globalPosition, horizontalRatio, verticalOffset) {
-    if (!maximized)
+    if (!maximized || !(hostWindow.flags & Qt.FramelessWindowHint))
       return
-    // Qt maximizes a frameless HWND without Windows' WS_MAXIMIZE state, so
-    // SC_DRAGMOVE cannot restore it for us. Keep the pointer over the same
-    // proportion of the title bar when restoring the saved window size.
+    // Fallback for platforms using Qt's frameless maximize emulation. Native
+    // Windows chrome keeps WS_MAXIMIZE and restores through startSystemMove.
     hostWindow.showNormal()
     hostWindow.x = Math.round(globalPosition.x - hostWindow.width * horizontalRatio)
     hostWindow.y = Math.round(globalPosition.y - verticalOffset)

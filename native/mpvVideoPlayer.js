@@ -457,10 +457,16 @@
         }
 
         getSavedVolume() {
+            // The old shared Emby key could be reduced to zero by the volume
+            // notification feedback bug. A separate key makes the first
+            // corrected initialization distinguishable from intentional zero.
+            const current = this.appSettings.get('tigerest-mpv-volume-v2');
+            if (current != null && current !== '' && Number.isFinite(Number(current)) && Number(current) >= 0)
+                return Number(current);
             const saved = this.appSettings.get('volume');
             if (saved == null || saved === '') return 1;
             const volume = Number(saved);
-            return Number.isFinite(volume) && volume >= 0 ? volume : 1;
+            return Number.isFinite(volume) && volume > 0 ? volume : 1;
         }
 
 
@@ -575,7 +581,9 @@
                 // episodes retain mpv's live volume, including UOSC changes
                 // whose web-channel notification may still be queued.
                 if (!this._volumeInitialized) {
-                    this.setVolume(this.getSavedVolume() * 100, false);
+                    const savedVolume = this.getSavedVolume();
+                    this.setVolume(savedVolume * 100, false);
+                    this.saveVolume(savedVolume);
                     this._volumeInitialized = true;
                 }
                 player.load(val,
@@ -1025,7 +1033,15 @@
 
     saveVolume(value) {
         if (Number.isFinite(value) && value >= 0) {
-            this.appSettings.set('volume', value);
+            for (const key of ['tigerest-mpv-volume-v2', 'volume']) {
+                try {
+                    this.appSettings.set(key, value);
+                } catch (error) {
+                    // Storage can be unavailable or full; playback and live
+                    // volume controls must remain usable in that case.
+                    console.warn('[MPV] Could not save volume preference');
+                }
+            }
         }
     }
 

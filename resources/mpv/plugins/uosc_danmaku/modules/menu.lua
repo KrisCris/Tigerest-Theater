@@ -99,6 +99,10 @@ local function make_handle_response(ctx)
         end
 
         if err then
+            local notice = mapping_rate_limit_message(server)
+            if notice then
+                ctx.server_items[server] = {{title = notice, selectable = false, value = ''}}
+            end
             msg.debug(("search anime failed for %s: %s"):format(server, tostring(err)))
             ctx.remaining.n = math.max(0, ctx.remaining.n - 1)
             if ctx.remaining.n == 0 then pcall(do_final_update) end
@@ -302,9 +306,11 @@ function get_episodes(animeTitle, bangumiId, api_server, playback_token)
         show_message(message, 30)
     end
 
-    local args = make_danmaku_request_args("GET", url)
+    local args, reason = make_danmaku_request_args("GET", url)
 
     if args == nil then
+        active_request_type = nil
+        if uosc_available then update_menu_uosc(menu_type, menu_title, reason or '获取数据失败', footnote) end
         return
     end
 
@@ -1416,9 +1422,7 @@ end)
 mp.register_script_message("load-danmaku", function(animeTitle, episodeTitle, episodeId, api_server, bangumiId, playback_token)
     if playback_token and playback_token ~= mapping_playback_token() then return end
     ENABLED = true
-    DANMAKU.anime = animeTitle
-    DANMAKU.episode = episodeTitle
-    set_episode_id(episodeId, true, api_server, bangumiId, playback_token)
+    set_episode_id(episodeId, true, api_server, bangumiId, playback_token, animeTitle, episodeTitle)
 end)
 
 mp.register_script_message("add-source-event", function(query)

@@ -39,8 +39,7 @@
       },
       {
         "value": "fullscreen",
-        "display_name": "启动时全屏",
-        "help": "启动客户端后直接进入全屏。网页内容请求的 HTML5 全屏仍可正常使用。",
+        "hidden": true,
         "default": false,
         "platforms_excluded": "oe"
       },
@@ -192,6 +191,13 @@
     "section": "home",
     "order": 2,
     "values": [
+      {
+        "value": "startupFullscreen",
+        "default": false,
+        "display_name": "启动时自动全屏",
+        "help": "下次启动客户端时自动进入全屏。首页按钮和 F11 只切换当前窗口状态，不会修改此选项。",
+        "platforms_excluded": [ "android", "oe" ]
+      },
       {
         "value": "displayOrder",
         "default": "resume",

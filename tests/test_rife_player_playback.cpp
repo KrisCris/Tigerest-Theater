@@ -52,6 +52,16 @@ private slots:
         QCOMPARE(player.volume(),18.25);
         // No media, production credentials, or user progress is involved.
     }
+    void webVolumeNotificationsUseNativeUnits(){
+        PlayerComponent player;
+        QSignalSpy changes(&player,&PlayerComponent::volumeChanged);
+        // inputPlugin reports a 0..1 ratio; consumers of volumeChanged use
+        // mpv percentages and persist signalValue/100 for the next launch.
+        for (double expected : {100.0,37.0,23.5,0.0}) {
+            player.notifyVolumeChange(expected/100.0);
+            QCOMPARE(changes.takeLast().at(0).toDouble(),expected);
+        }
+    }
     void replacementDoesNotFinishOnSupersededNativeStart(){
         PlayerComponent player;player.m_inPlayback=true;player.m_replacementPending=true;
         // C has replaced R; the old recovery START can already be queued.

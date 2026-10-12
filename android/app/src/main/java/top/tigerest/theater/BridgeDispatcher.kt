@@ -18,8 +18,9 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
     private var proxy: JavaScriptReplyProxy? = null
     @Volatile private var epoch = 0L
     private var connection = 0L
+    private val community=CommunityBridge(activity,{id,result->emit("system","communityResponse",JSONArray().put(id).put(result))},{headers,legacyEligible->activity.danmaku.setMappingSession(headers,legacyEligible)})
     init { DiagnosticsLog.app.setScope("") }
-    fun pageStarted() { epoch++; proxy = null; DiagnosticsLog.app.setScope("") }
+    fun pageStarted() { epoch++; proxy = null; community.clear(); DiagnosticsLog.app.setScope("") }
     fun emit(component: String, signal: String, args: JSONArray = JSONArray()) {
         val target = proxy ?: return
         val generation = epoch
@@ -58,6 +59,11 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
             else -> throw IllegalArgumentException("设置操作无效")
         }
         "system" -> when(method) {
+            "communityRequest" -> { community.request(args.getString(0),args.getJSONObject(1)); true }
+            "communitySourceAvatar" -> { community.sourceAvatar(args.getString(0),args.getJSONObject(1)); true }
+            "communityCancel" -> { community.cancel(args.getString(0)); true }
+            "communityCredential" -> community.credential(args.getString(0),args.getString(1),args.getString(2))
+            "communitySetEmbySession" -> community.setSession(args.getJSONObject(0))
             "setReportDiagnosticsScope" -> { require(args.length() == 1 && args.get(0) is String && args.getString(0).length <= 256); DiagnosticsLog.app.setScope(args.getString(0)); true }
             "collectReportDiagnostics" -> { require(args.length() == 0); DiagnosticsLog.app.collect() }
             "checkForUpdates" -> { require(args.length() <= 1 && (args.length() == 0 || args.get(0) is Boolean)); activity.updates.engine.check(args.optBoolean(0,false)) }
@@ -101,5 +107,5 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
         "danmaku" -> if(method == "importFile") { activity.runOnUiThread { activity.chooseDanmakuFile() }; true } else activity.danmaku.dispatch(method,args)
         else -> throw IllegalArgumentException("客户端组件无效")
     }
-    fun close() { epoch++; proxy = null; DiagnosticsLog.app.setScope(""); worker.shutdownNow(); network.shutdownNow() }
+    fun close() { epoch++; proxy = null; community.clear(); DiagnosticsLog.app.setScope(""); worker.shutdownNow(); network.shutdownNow() }
 }

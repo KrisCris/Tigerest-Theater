@@ -1,195 +1,144 @@
 # Tigerest Theater / EMBY 大河版
 
-面向 Windows、Apple Silicon Mac 和 Android 的 Emby 客户端：内置 MPV、弹幕，以及作品和单集评论区。桌面端另有 RIFE AI 补帧、画质预设及离线下载。
+把 Emby 媒体库、MPV 播放器、弹幕和作品讨论放在一起。支持 Windows、Apple Silicon Mac 与 Android，桌面端提供画质预设、离线下载和可选 RIFE AI 补帧。
 
-媒体库来自你连接的 Emby Server，账号和内容权限由服务器提供。本项目提供客户端，不包含影视资源，也不会自动开通服务器访问权限。
+[下载正式版](https://github.com/Tigerest/Tigerest-Theater/releases/latest) · [使用教程](https://github.com/Tigerest/Tigerest-Theater/wiki) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/Tigerest/Tigerest-Theater/issues) · [作者 B站](https://space.bilibili.com/12562485)
 
-## 当前正式版：V2.5.3（Windows / Android / Mac）
+**当前版本：2.6.0。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
 
-Windows、Android 和 Apple Silicon Mac 更新至 [V2.5.3](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.5.3)。本次优化首页、媒体夹与详情转场的点击响应，减少整页复制与悬停后等待，并保留原开屏动效。现有功能包括：
+**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.6.0 尚未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
-- **沉浸式首页：** 媒体库入口、轮播大海报和作品列表，默认继续观看，不足时用最近入库补齐，可在「首页」设置中改为最近入库、发行时间或评分；独立标题与简介动效、登录自动全屏，适配自己的服务器与账号权限。
-- **Windows 窗口与播放：** 自绘细顶栏，全屏隐藏；记住面板和滚轮调整的音量，切集保持当前音量；原生播放画面鼠标闲置约 3 秒隐藏，移动恢复。
-- **Android 播放：** 系统关闭自动旋转时保持当前横屏，切集和浏览页面仍生效；新增防误触锁、长按解锁、选集和直接显示的上一集／下一集。
-- **各平台切集：** 同步真实 Emby 队列，等待旧播放停止后再换集；修复灰色按钮、错误列表和切集后仅声音播放，补齐播放诊断图标。手机首页避让系统状态栏和挖孔。
-- **弹幕与报错：** 改进自动识别及可见纠正提示，接入共享校准；说明最低 3 字，发生时间按分秒填写，默认附带最近约 10 分钟的脱敏日志并支持附件重试。
+客户端不包含影视资源。你需要已有的 Emby 服务器地址和账号；媒体库、播放与下载权限由所连接的服务器提供。本项目是非官方 Emby 客户端，与 Emby LLC 无隶属关系。
 
-完整版本变化见 [CHANGELOG](CHANGELOG.md)。
+## 2.6.0 更新重点
 
-| 平台 | 下载 | 安装 |
+- **跨服务器公共评论：** 同一部作品可以一起讨论。大河用户沿用 Emby 登录；自建 Emby 用户注册独立评论账号后，可查看评论、发言和回复。
+- **头像随发言同步：** 大河头像由服务端同步，自建用户的头像来自自己当前登录的 Emby。头像同步失败可单独重试，已经发送成功的评论不会重新发送。
+- **更清楚的账户规则：** 注册和修改密码按服务端公布的规则显示；新服务为 8–128 个字符，旧服务保持 12–128。外服 Emby 登录凭据只用于自己的服务器。
+- **共享弹幕纠正：** 普通大河用户登录后即可保存手动选择的作品和集数关系，无需额外配置管理员文件。所有用户仍可读取共享匹配。
+- **音量正确记忆：** 首次默认 100，旧版遗留的 0 恢复一次；之后记住手动设置，包括主动设为 0。
+- **窗口操作：** Windows 支持左右边缘吸附、顶边最大化和拖出还原；首页「我的媒体」右侧提供全屏／窗口切换，顶部按钮统一样式。「首页 → 启动时自动全屏」默认关闭，下次启动生效。
+- **完整中文教程：** 安装、评论账号、头像、消息与报错、弹幕、字幕、补帧和故障排查均有独立 Wiki 页面。
+
+详情页统一显示「评论区」，大河的私人问题上报和评论管理继续保留。公共评论不会把私人报错公开。详细变化与验证范围见 [2.6.0 发布说明](docs/releases/2026-10-13-v2.6.0.md)。
+
+## 下载与安装
+
+| 平台 | 安装包 | 系统要求 |
 | --- | --- | --- |
-| Windows 10 1903+ / Windows 11 x64 | [安装版 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.3/TigerestTheater-2.5.3-x64.exe) | 完全退出客户端（含托盘）后按向导覆盖更新 |
-| Windows 10 1903+ / Windows 11 x64 | [便携 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.3/TigerestTheater-2.5.3-x64.zip) | 完全退出后解压替换程序，升级时保留 `data` |
-| Android 15+，arm64-v8a / x86_64 | [APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.3/TigerestTheater-2.5.3-android.apk) | 沿用正式签名，覆盖升级保留登录与设置；详见 [安卓说明](android/README.md) |
-| macOS 26+，Apple Silicon M 系列 | [DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.3/TigerestTheater-2.5.3-arm64.dmg) | 退出旧版后将应用拖入「应用程序」替换 |
+| Windows 安装版 | [2.6.0 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
+| Windows 便携版 | [2.6.0 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-x64.zip) | 同上；完整解压后运行 |
+| Android | [2.6.0 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-android.apk) | Android 15+，arm64-v8a / x86_64 |
+| Apple Silicon Mac | [2.6.0 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-arm64.dmg) | macOS 26+，M 系列芯片 |
 
-基础包已包含 MPV 和所需运行库。Windows RIFE 的大型 AI 组件使用独立扩展，在客户端设置中下载或离线导入；已有扩展及模型可继续使用。下载文件可用 [SHA-256 清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.3/TigerestTheater-2.5.3-SHA256SUMS.txt) 核验。
+包内已包含 MPV 和基础运行库，无需另装播放器。Windows RIFE 大型组件是可选扩展；已有 NVIDIA 1.0.0 扩展可以继续使用。正式 Mac 下载仅提供 Apple Silicon 版本。
 
-Windows 安装包未做 Authenticode 签名；Mac 使用 ad-hoc 签名，尚未经过 Apple 公证。确认下载来源后，Mac 可在「系统设置 → 隐私与安全性」中允许打开。当前正式发行的 Mac 安装包仅支持 Apple Silicon。
+[2.6.0 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-SHA256SUMS.txt)与安装包放在同一发行页。
 
-Android 首次播放会展示手势教程：双击播放／暂停，左右滑动快进／快退，左侧上下调整本次播放亮度，右侧上下调整媒体音量；长按空白画面临时至少 2 倍速，松手恢复原速度，原速度高于 2 倍时保持原速度。可从播放器「更多 → 手势教程」重看。Android 暂不提供桌面 RIFE、离线下载、后台持续播放或画中画。
+### 第一次使用
 
-## 客户端更新（V2.4.2 起）
+1. 下载对应平台安装包。Windows 安装版运行向导；便携版完整解压；Mac 将应用拖入「应用程序」；Android 安装 APK。
+2. 打开客户端，选择「大河李斯特专属 EMBY」或「自建 EMBY」。
+3. 自建服务器填写完整地址，例如 `http://192.168.1.100:8096` 或 `https://example.com/emby`，然后使用该服务器账号登录。
+4. 进入作品详情并播放。需要调整播放选项时，打开 Emby 设置中的「Tigerest Theater 设置」。
+5. 想参与公共讨论时，大河用户可直接进入评论区；自建用户点击「评论账号」完成注册或登录。
 
-每次启动在后台检查本项目的正式发布。V2.4.3 起，只有比当前版本更新、且包含对应平台安装包时，**右上角更新图标才显示红点**，不会自动弹窗。点击图标查看详情，可选择「立即更新」「稍后」或「跳过此版本」。在「客户端」设置分类中可关闭「启动时检查更新」，也可随时点击「检查客户端更新」；手动检查会包含此前跳过的版本。
+专属服务器的权限与开通说明请查看[作者 B站主页](https://space.bilibili.com/12562485)中的充电说明；下载客户端不会自动获得服务器权限。
 
-「立即更新」会在应用内下载并检查文件长度及 SHA-256。安卓随后打开系统安装器，首次需允许“大河影院”安装应用；Windows 安装版启动升级向导。Windows 便携版打开 ZIP，退出客户端后替换程序并保留 `data`；Mac 打开 DMG，退出后将应用替换到「应用程序」。系统要求的确认仍需完成。下载可取消、失败可重试，暂时无法联网不会阻止使用客户端。
+Windows 安装包目前未做 Authenticode 签名。Mac 使用 ad-hoc 签名，尚未经过 Apple 公证；确认文件来自本项目后，可按系统提示在「系统设置 → 隐私与安全性」中允许打开。详细步骤见 [安装与更新](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation)。
 
-Windows 2.5.1 及之后可使用内置下载升级至 V2.5.3；旧版内置下载失败时请手动安装。Android 和 Mac 可在应用内下载 V2.5.3。V2.4.1 及更早版本需先手动安装；相同版本不显示更新红点。
+### 从旧版更新
 
-2.5.1 增加桌面和 Android 下载断点续传：暂停或退出后保留进度，断流时自动重新连接；连续五次重试没有新进度才提示失败。Windows 包同时修复下载运行库。旧版内置下载反复失败时，请手动安装修复版一次。详细改动见 [2.5.1 说明](docs/releases/2026-10-09-v2.5.1.md)。
+客户端启动时后台检查正式版本，以右上角更新图标红点提示；也可在「客户端」设置中点击「检查客户端更新」。下载会核验文件大小与 SHA-256，支持暂停、继续和中断后的续传。
 
-## 客户端设置
+手动更新前完全退出客户端，包括 Windows 托盘。安装版覆盖安装；便携版备份并保留 `data`，使用完整新版文件；Mac 替换应用；Android 使用同签名正式 APK 覆盖安装。
 
-进入 Emby 设置，在左侧 **Tigerest Theater 设置** 下直接选择「客户端」「首页」「音频」「视频」「字幕」「MPV 画质与插件」「弹幕样式」「高级」。分类使用与原有菜单一致的图标和对齐方式，内容区只展示当前分类；不再需要经过额外的「MPV 播放设置」父按钮。窄屏通过 Emby 抽屉访问，Android 仅显示该平台支持的选项。
+旧版 Windows 的内置下载若反复失败，可从发行页手动安装一次。具体操作、跳过版本和校验方式见 [安装与更新](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation)。
 
-顶栏 **MPV** 按钮和桌面的 `Ctrl+,`（Mac 为 `Cmd+,`）也可进入客户端设置。设置支持搜索、即时保存和分类恢复默认值；标注「需要重启」的项目在下次启动生效。
+## 能做什么
 
-## 连接服务器
+### 浏览与播放
 
-首次启动可选择「大河李斯特专属 EMBY」或「自建 EMBY」。专属服务器的权限与开通说明详见 B站充电页面；已获得权限的用户使用服务器账号登录。
+沉浸式首页展示当前账号可访问的媒体库和作品。首页默认优先继续观看，不足时补充最近入库，也可改为最近入库、发行时间或评分。内置 MPV 支持音轨、字幕、播放队列、选集和观看进度回传。
 
-连接自建服务器时，填写当前设备可以访问的完整地址，保留协议、端口和反向代理路径，例如 `http://192.168.1.100:8096`、`https://emby.example.com` 或 `https://example.com/emby`。客户端会记住地址；连接失败时显示具体错误。更换入口可在设置中使用「重置已保存的服务器地址」。
+首页海报用红点标记尚有未观看内容的作品；剧集显示「观看进度：8/12」，表示已看 8 集、当前服务器共有 12 集。观看进度在首页显示后加载，播放返回时刷新。
 
-## 评论区与回复
+桌面默认使用 GPU-Next，并提供 Render API 兼容模式。Windows 播放画面嵌入主窗口，Mac 使用独立播放窗口。设置按客户端、首页、音频、视频、字幕、MPV 画质与插件、弹幕样式和高级分类，支持搜索、即时保存与分类恢复默认值。
 
-连接大河专属 Emby 并登录后，进入电影、剧集、季或单集详情页即可看到评论区。评论与页面内容左对齐，优先位于演职人员上方。
+Android 提供双击暂停、横滑跳转、左右侧亮度／音量调节、长按临时倍速、防误触锁及选集。系统关闭自动旋转时保留当前方向。详见 [播放与设置](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback)。
 
-- 电影、整部剧集和季详情显示**作品评论**；单集默认显示**本集评论**，可切换到作品评论。输入框上方标明当前发言对象。
-- 评论和回复显示作者名称、头像及时间，**每页 10 条主评论**，使用上一页／下一页切换。回复跟随主评论展示，不单独占主评论页数，可继续回复其中任意可见内容。
-- 使用现有 Emby 登录身份，无需另外注册，不支持匿名评论。正文为纯文字，可换行，最多 2000 字。
-- 用户可以删除自己的评论。正文删除后，已有回复仍会保留，并显示删除占位。
-- 评论管理员可删除单条内容或整条讨论、按 1 小时／1 天／7 天／永久禁言、解除禁言，并查看管理记录。管理员资格由评论服务配置。
-- 网络发送失败时保留草稿，再次点击发送会复用同一次提交标识；频率限制会提示等待时间。退出登录或切换账号、详情页时清空当前评论状态和草稿。
+### 公共评论、头像与消息
 
-2.4.4 起，顶栏「消息」提供「收到的消息」「我的发言」「我的报错」，跨作品分页查看。收到的消息合并直接回复与问题修复通知；点击讨论可定位到原评论，修复通知可打开报错详情，已删除或不可访问的媒体仍保留修复说明。「全部已读」只处理当前服务端快照内的通知，新收到的消息仍未读。网络暂不可用时保留最近列表，退出、切换账号或登录失效立即清空；不在本机永久保存已读清单。管理后台由独立服务维护，客户端继续保留原有评论管理工具。
+电影和剧集按可靠的 TMDB 标识关联公共讨论；单集还需要明确的播出季集编号。详情页区分「作品评论」「本集评论」，每页 10 条主评论，可回复和删除自己的内容，正文最多 2000 字。
 
-电影、整部剧集和单集详情可点击「上报问题」，选择播放异常、字幕缺失、字幕错误或其他，填写 10–2000 字说明，可附问题时间点。提交后从消息中心「我的报错」查看待处理／已修复状态及修复说明。网络失败保留草稿，重试复用提交标识；提交期间锁定表单，离开当前详情、退出或切换账号清空草稿。禁言不影响问题上报。
+自建用户必须登录独立评论账号后才能读取或发送评论。这个账号与 Emby 账号分开；头像来自当前 Emby 的本人头像，发言时检查变化并按需同步。大河用户免注册，头像由服务端同步。
 
-当前评论区仅对大河专属服务器开放，自建 Emby 暂不显示。评论与弹幕共用 HTTP 18443：大河局域网连接使用局域网服务，域名连接使用域名服务。评论服务验证当前账号与媒体访问权限，头像请求也经过认证。服务暂不可用时可稍后刷新，媒体浏览与播放继续使用。
+顶栏「消息」提供收到的消息与我的发言；大河用户还可查看我的报错及修复通知。详情页不再切换公共／本服评论；大河自动使用统一评论入口，保留旧回复、管理工具和私人问题上报，自建服务器使用公共评论账号。
 
-客户端源码公开，评论及弹幕后端单独维护，不包含在此仓库中。未来接入其他 Emby 服务器需要额外的身份信任规则。
+缺少可靠作品编号或使用不支持的集序时，客户端会说明原因，避免把不同集数混到一起。参见 [评论账号与头像](https://github.com/Tigerest/Tigerest-Theater/wiki/Community) 和 [消息与私人报错](https://github.com/Tigerest/Tigerest-Theater/wiki/Messages-and-Reports)。
 
-## RIFE AI 补帧
+### 弹幕与共享校准
 
-桌面端进入 **Emby 设置 → Tigerest Theater 设置 → 视频**，开启「AI 补帧（RIFE）」，再重新打开视频。补帧默认关闭，需使用大河内置播放配置。Windows 和 Mac 使用不同推理后端；支持范围和性能取决于平台、硬件、输入格式及画质滤镜负载。Android 暂不提供 RIFE。
+新配置默认启用弹幕，已有明确关闭的设置会保留。播放时先查共享匹配，再按作品、季度、集标题与集数自动识别；仍有歧义时可手动选择。
 
-### Windows NVIDIA
+桌面与 Android 均可搜索、管理来源、调整时间偏移和样式。大河用户手动选择正确的作品与集数后，可使用当前 Emby 登录保存共享对应关系；保存失败仍能加载本次选择，并显示提示。自建用户可读取共享结果。
 
-需要受扩展运行库支持的 NVIDIA 显卡和可用的 NVIDIA 驱动。使用 **V2.4.4 客户端**，下载或离线导入 **RIFE NVIDIA 1.0.0 扩展**；已安装该扩展的用户无需重新下载。扩展包含 RIFE 4.25 lite、4.25、4.25 heavy 三个模型，以及独立的 TensorRT 运行库，无需另装 SVP、Python 或 CUDA Toolkit。Intel／AMD 显卡仍可使用基础播放功能。
+桌面内置弹幕下载和共享查询遇到超时或临时网络故障会等待 1 秒后自动重试一次；空结果和限流不反复请求，切集或手动换源会取消旧请求。
 
-#### 在线安装
+视频来自你的 Emby；弹幕搜索和匹配信息会发送到所用弹幕服务。手动配置的第三方来源保留原设置。操作示例见 [弹幕匹配与纠正](https://github.com/Tigerest/Tigerest-Theater/wiki/Danmaku)。
 
-1. 进入上述设置页的「视频」分类，在 **NVIDIA RIFE 扩展** 区域点击 **下载扩展**。
-2. 客户端自动选择当前显卡适配包，约 **724–1040 MiB**；多显卡、无法识别或没有匹配小包时使用约 **2 GiB** 的完整兼容包。等待下载、核验及安装完成；设置页会显示包大小、进度或具体错误。临时文件、展开内容及引擎缓存需要额外空间，建议预留 **10 GB 以上**。
-3. 出现 **请完全退出并重启客户端** 后，从应用退出；启用托盘时也要退出托盘中的程序，然后重新启动。
-4. 在「MPV 画质与插件」中将播放配置模式设为 **大河内置配置**，按提示重启；随后在「视频」中开启 AI 补帧，先选择 **均衡 · 4.25 / 约 60 fps**，重新打开视频。
+### 画质与 AI 补帧
 
-下载服务来自 GitHub；连接失败时可使用下面的离线方式。操作期间按钮暂时禁用，可使用「取消操作」停止；完成或取消后恢复可用。
+桌面内置默认 Anime AA、真人影视、激进测试 Anime4K 三档画质；可以从菜单切换，也可以使用 `Alt+1`～`Alt+3`。日常先使用默认档，再按片源和设备调整。
 
-#### 离线导入
+RIFE 默认关闭，需要大河内置播放配置：
 
-1. 从 [V2.3.3 发布页](https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.3.3) 下载与显卡架构对应的 **`Tigerest-RIFE-NVIDIA-smXX-1.0.0.zip`**；不确定架构、准备给多台电脑使用或更换显卡时，选 [完整兼容包 `Tigerest-RIFE-NVIDIA-1.0.0.zip`](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.2.0/Tigerest-RIFE-NVIDIA-1.0.0.zip)。它与客户端便携 ZIP 是两个不同文件。
-2. 保持扩展 ZIP 完整，**无需解压，也无需复制到程序目录**。可在另一台电脑下载后拷贝过来，中文路径和含空格路径均可使用。
-3. 在「视频 → NVIDIA RIFE 扩展」点击 **导入离线包**，选择这个 ZIP，然后等待完整核验和安装。客户端会检查文件哈希、清单、版本及运行库 ABI，不接受自行重新压缩或修改的包。
-4. 看到重启提示后完全退出并重新启动，再按照在线安装的第 4 步启用补帧。导入完成后，下载的原始 ZIP 可自行保留作备份或删除。
+| 平台 | RIFE 方式 | 输入范围 |
+| --- | --- | --- |
+| Windows NVIDIA | 下载或离线导入 NVIDIA 1.0.0 扩展；三个 4.25 系列模型与可调目标帧率 | 最高逐行 SDR 4K / 60 fps；实际实时性能取决于设备和设置 |
+| Apple Silicon Mac | 模型与插件随包提供，使用 Core ML / Metal | 最高逐行 SDR 1080p / 30 fps、恒定帧率，输出两倍帧率 |
+| Android | 暂不提供 RIFE | 使用基础播放 |
 
-完整兼容包沿用原始 1.0.0 ZIP，其 SHA-256 为：
+首次 Windows 引擎准备可能需要数分钟。高目标帧率、4K 和重型模型会增加负载；屏幕刷新率不代表补帧推理能力。详细安装、目标帧率计算和排查见 [RIFE 补帧](https://github.com/Tigerest/Tigerest-Theater/wiki/RIFE)。
 
-```text
-f7a7958b119b94b374df916b39ef36e9ed34f6df15eac4fb40153d30b2aab694
-```
+### 桌面离线媒体
 
-各适配包的校验值见发布页扩展 SHA-256 清单。也可在 PowerShell 中运行 `Get-FileHash -Algorithm SHA256 '你的扩展ZIP完整路径'` 核对。哈希不一致或核验失败时重新下载原包；不要关闭检查或手动替换运行库。
+服务器允许下载时，可创建下载任务，暂停、恢复或删除，并从下载与离线媒体管理中播放已完成文件。Android 当前不提供离线下载、后台持续播放或画中画。参见 [下载与离线播放](https://github.com/Tigerest/Tigerest-Theater/wiki/Downloads)。
 
-适配包覆盖 **sm75、sm80、sm86、sm89、sm90、sm100、sm120**，完整包仍保留全部这些架构。每个小包只去掉其他架构的 TensorRT 编译资源，保留公共运行库、PTX 和全部三种模型。以 sm89 为例，下载为 **787 MiB**，比原完整包减少约 **62%**。可按 [NVIDIA 官方计算能力列表](https://developer.nvidia.com/cuda-gpus) 确认架构；普通用户优先使用客户端自动下载。
+## 中文 Wiki
 
-**为什么仍比 Mac 大？** Mac 使用系统提供的 Core ML／Metal，Windows 这条补帧路径需要分发 TensorRT 及相关运行库。适配包减少重复的显卡架构资源，未通过删掉其他显卡的支持来缩小基础功能范围。已安装的完整包可以继续用，无需为了更新客户端重新下载；主动换成小包会重新准备引擎。更换显卡后应安装匹配包或完整包。
+| 我想要…… | 教程 |
+| --- | --- |
+| 从头开始使用 | [教程首页](https://github.com/Tigerest/Tigerest-Theater/wiki/Home) |
+| 安装、更新、核验下载 | [安装与更新](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation) |
+| 连接自己的服务器或更换账号 | [服务器与登录](https://github.com/Tigerest/Tigerest-Theater/wiki/Server) |
+| 注册评论账号、改密码、更新头像 | [公共评论与头像](https://github.com/Tigerest/Tigerest-Theater/wiki/Community) |
+| 找回复、查看修复通知、上报问题 | [消息与私人报错](https://github.com/Tigerest/Tigerest-Theater/wiki/Messages-and-Reports) |
+| 弹幕匹配错集、调时间或来源 | [弹幕教程](https://github.com/Tigerest/Tigerest-Theater/wiki/Danmaku) |
+| 调播放、声音、画质或 Android 手势 | [播放与设置](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback) |
+| 选择字幕、修正延迟、保留 ASS 特效 | [字幕教程](https://github.com/Tigerest/Tigerest-Theater/wiki/Subtitles) |
+| 安装与调试 AI 补帧 | [RIFE 教程](https://github.com/Tigerest/Tigerest-Theater/wiki/RIFE) |
+| 下载作品并离线播放 | [下载管理](https://github.com/Tigerest/Tigerest-Theater/wiki/Downloads) |
+| 解决异常或准备反馈 | [故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting) · [常见问题](https://github.com/Tigerest/Tigerest-Theater/wiki/FAQ) |
 
-扩展运行库由同一客户端的配置档共用，引擎缓存按当前配置保存。安装版保存在用户数据目录，便携版保存在 `data` 中；更新便携客户端时请保留这个目录。需要卸载时使用 **移除扩展**，再完全退出并重启。基础播放不依赖该扩展。
+## 反馈与支持
 
-可选择均衡、画质优先、高帧率和 4K 流畅预设；使用 **0.5 倍步进** 接近目标帧率。首次使用某个模型和输入尺寸时需要准备引擎：播放暂时暂停，画面显示准备阶段、估算进度和已用时间；完成后直接开始当前视频。估算进度不代表固定剩余时间。下次播放会复用通过校验的缓存；用户主动暂停时不会强制开始。完整包展开约 **2.49 GiB**，小包更少，引擎缓存另占空间。
+播放器问题请提交 [GitHub Issue](https://github.com/Tigerest/Tigerest-Theater/issues)，写明客户端版本、系统、复现步骤与错误提示。日志和截图请先删除密码、访问令牌及私人服务器信息。大河某部作品的播放或字幕问题，可直接在详情页「上报问题」中提交。
 
-#### 倍率、同步与弹幕
+项目动态与支持入口：[大河李斯特视频工作室 / 大老师的 B站主页](https://space.bilibili.com/12562485)。
 
-Windows 的目标帧率可输入 **24–360 的整数**，或 **0 表示源帧率两倍**。实际倍率在 **1.5–15 倍**之间按 0.5 倍一档选择，取最接近目标的档位，距离相同时取较低档。片源时长不变；目标值不一定等于最终输出值。
+## 开发与许可
 
-| 片源帧率 | 目标帧率 | 实际倍率 | 输出帧率 |
-| --- | --- | --- | --- |
-| 24 fps | 36 fps | 1.5× | 36 fps |
-| 23.976 fps | 60 fps | 2.5× | 约 59.94 fps |
-| 24 fps | 60 fps | 2.5× | 60 fps |
-| 24 fps | 84 fps | 3.5× | 84 fps |
-| 29.97 fps | 60 fps | 2× | 约 59.94 fps |
+客户端源码在本仓库维护，评论和弹幕服务端单独维护。公开客户端源码不包含服务器资源、账号或访问权限。
 
-V2.4.3 修复了监控滤镜阻塞上游并行推理、弹幕与原生播放器竞争同步模式，以及 D3D11 全屏仍使用兼容边框的问题。当原同步偏好为默认的 **显示重采样（`display-resample`）** 时，Windows TensorRT 补帧在窗口和全屏下统一临时使用 **音频时钟（`audio`）**，停止或退出补帧后恢复原设置。用户明确选择的其他同步方式仍保持有效。此策略不会改变显示器刷新率、模型、推理分辨率或补帧目标。
+- [Windows 构建](dev/windows/README.md)
+- [macOS 构建](dev/macos/README.md)
+- [Android 构建](android/README.md)
+- [Windows 测试环境要求](dev/windows/TESTING.md)
+- [版本变化](CHANGELOG.md)与[本次发布说明](docs/releases/2026-10-13-v2.6.0.md)
 
-在上述 RIFE 音频时钟策略下，桌面弹幕随补帧视频帧率更新，例如视频约 60 fps 时弹幕也约 60 fps，**不强制按 240 Hz 屏幕刷新率绘制**。其他桌面播放场景仍可使用显示同步实现高刷弹幕，实际流畅度受显示器与系统呈现调度影响。Android 使用独立的屏幕帧时钟，不受此 Windows RIFE 策略影响。
+Windows 每次运行原生测试前，都必须在同一个 PowerShell 调用中加载测试环境脚本并完成运行库预检。测试、包启动检查、生产 API 联调和真实媒体播放的覆盖范围分别记录，不能互相替代。
 
-Ctrl+J 打开中文统计，数字 2 或 Ctrl+Shift+J 查看处理耗时，数字 6 查看排障说明。优先看丢帧是否持续增加以及音画偏差；GPU 单帧渲染耗时不包含解码、RIFE 和桌面合成的全部开销。音频模式下旧刷新率估计和 jitter 不作为当前测量显示，统计不可用不等于 jitter 为零。
+项目沿用 Jellyfin Desktop 代码基础，并使用 MPV、Qt、[uosc](https://github.com/tomasklaen/uosc)、[uosc_danmaku](https://github.com/Tony15246/uosc_danmaku)、Anime4K 与 RIFE 等组件，感谢相关项目及贡献者。
 
-**启动检查：** 首次安装、校验记录失效或扩展文件变化时仍须重新核验。后续启动在支持变更日志的本地 NTFS 上快速检查文件身份、大小和变更记录，未变化的扩展文件不再反复读取数 GB 内容；校验记录受当前 Windows 用户保护。文件损坏、缺失、出现多余文件或记录异常时会重新核验或拒绝加载。显卡和私有运行库仍会进行实际探测；ReFS、网络盘或变更日志不可用时保留完整校验。
-
-模型决定画质和运算量，目标帧率决定插帧数量：24→120 每张原帧需生成 4 张新帧，24→240 需生成 9 张，性能要求明显不同。屏幕支持高刷新率不代表显卡能实时完成同等数量的推理。
-
-格式门槛最高为逐行 SDR 4K／60 fps 输入，程序不自动缩小推理尺寸或转换 HDR。持续丢帧或音画偏差只提醒，由用户决定降低目标、换轻量模型或关闭补帧。倍速播放、不支持的格式、引擎和推理故障仍单独处理。
-
-V2.4.3 在 RTX 4090、标准 RIFE 4.25、1080p 23.976→59.94 fps 的完整客户端中，以真实影片、画面字幕和 2640 条弹幕验证：预热后窗口采样约 61 秒、4K 全屏采样约 122 秒，均无新增解码／输出丢帧。启动与立即跳转阶段已有丢帧，未计入这两段稳态数据；此测试使用本地同片源，不等同于生产 Emby 网络播放的端到端验证。详见 [播放性能复查报告](docs/reports/2026-10-07-playback-performance-followup.md)。
-
-此前的 **1080p→240 和原生 4K60→120** 测试尚未达到实时目标，V2.4.3 不承诺这些档位实时可用。各架构扩展做过完整性校验，实际 GPU 编译和播放验证仅覆盖 RTX 4090；其他显卡、模型及激进画质的表现需按实际情况判断。
-
-### Apple Silicon Mac
-
-M 系列 Mac 的模型与补帧插件随基础包提供，推理使用 macOS 自带的 Core ML／Metal。支持最高 1080p、30 fps 的逐行 SDR 恒定帧率视频，以两倍帧率播放。HDR、4K、变帧率及色彩信息不完整的视频保持原帧播放；性能统计改为提示，推理故障仍会停止故障链路。
-
-## 桌面主要功能
-
-- **媒体库与原生播放：** 浏览、搜索、播放队列、音轨与字幕切换，观看进度回传；Windows 提供原生 GPU-Next 与 Render API 兼容后端。
-- **弹幕：** 新配置默认加载，保留已有明确关闭的选择。支持自动匹配、搜索、加载以及字号、透明度、速度、区域等调整。自动识别依据作品、季度和集数，不再使用首播日期确认；在对应作品与季度内，真实集标题唯一匹配时优先按标题定位，不匹配时按集数识别。多个同等候选保留手动选择。保留历史来源的屏蔽状态和时间偏移。
-- **画质预设：** 默认 Anime AA、真人影视、激进测试 Anime4K 三档，可从播放菜单选择，或使用 `Alt+1`～`Alt+3`。`Alt+1` 恢复当前默认画质，切档保留正在运行的 RIFE 滤镜及播放时钟；未开启补帧时不会自动添加。
-- **播放操作：** 内置 uosc 控制栏、中文字体和插件设置。MPV 控制台可在设置中开启，重启后生效。
-- **MPV 配置：** 可选大河内置或系统配置；Windows 读取 `%APPDATA%\mpv`，Mac 读取 `~/.config/mpv` 或 `~/Library/Application Support/mpv`。
-- **下载与离线：** 暂停、恢复和删除下载任务，完成后从「打开离线媒体」进入播放；下载权限由 Emby 服务器决定。
-- **独立配置档：** 分别保存设置、缓存、日志、MPV 配置及离线文件。
-- **统一设置页：** 音频、视频、RIFE、字幕、MPV 画质与插件、弹幕样式和高级选项在 Emby 客户端设置内编辑，支持搜索、即时保存和分类恢复默认值。
-- **界面优化：** 去掉封面中央的大号绿色播放按钮，保留详情页正常播放入口；修复选集拖动后卡片悬浮不复位，采用紧凑深色翻页按钮、合理的季度间距和圆角细滚动条。Windows 原生标题栏使用深色主题，保留系统窗口控制。
-
-专属服务器的内置弹幕服务随局域网／域名连接选择地址，自建 Emby 使用大河弹幕服务域名。视频仍来自你自己的 Emby；弹幕搜索词与匹配信息会发送到弹幕服务。手动配置的第三方弹幕来源保留原设置。
-
-## 更新和排查
-
-**更新：** 完全退出应用后覆盖安装；便携版先备份 `data`，完整解压新版再保留或迁移该目录，不要只复制 EXE。Mac 替换「应用程序」中的旧版。
-
-**评论区未出现：** 确认使用当前正式版、大河专属 Emby 账号，以及电影／剧集／季／单集详情页。自建服务器和离线媒体暂不支持。加载失败时检查 HTTP 18443 是否可达；登录失效时重新登录。
-
-**补帧未生效：** 开启后重新打开视频。Windows 安装扩展后须完全退出并重启；首次引擎准备会显示等待进度，完成后自动播放。检查设置中的当前状态和格式／组件错误原因。
-
-**补帧出现持续丢帧提示：** 先升级至 V2.4.3，应用并行推理与呈现修复。性能提示仍保留补帧链路，由用户决定调整。按 Ctrl+J 查看输出／解码丢帧是否持续增加，按 6 阅读排障提示；启动或跳转留下的累计数字不代表稳态还在掉帧。可降低目标、换 lite 或降低画质；GPU 总占用率不能单独说明整个播放过程是否实时。日志中的 `RIFE playback warning` 保留当时模型、倍率、丢帧和音画偏差。若补帧因组件或格式原因停止，状态栏会另行说明。
-
-**扩展按钮或头像“浏览”没反应：** 旧版存在扩展兼容范围与 Windows 文件选择器打包问题，请升级至当前正式版，使用完整安装包或完整解压便携包。运行其他任务时扩展按钮会暂时禁用；如果提示空间不足、校验失败或运行库异常，按设置页错误信息排查。
-
-**Windows 媒体库闪烁／花屏：** V2.4.3 随包提供修复 D3D11 共享纹理同步的 WebEngine 组件，请完整安装或解压，避免混入旧 DLL。仍有异常时，完全退出后尝试 `"Tigerest Theater.exe" --disable-gpu` 排查网页 GPU 渲染；视频硬解设置保持独立。
-
-**Mac 提示无法打开：** 应用尚未经过 Apple 公证，确认来源后可在「系统设置 → 隐私与安全性」中允许打开。
-
-问题反馈请提交 [GitHub Issue](https://github.com/Tigerest/Tigerest-Theater/issues)，附系统、版本、复现步骤和脱敏日志。删除账号、密码及访问令牌；评论错误中的请求编号可用于定位。
-
-Windows 安装版日志位于 `%LOCALAPPDATA%\Tigerest Theater\profiles\<profile-id>\logs\`，便携版位于程序目录的 `data\profiles\<profile-id>\logs\`；Mac 位于 `~/Library/Logs/Tigerest Theater/profiles/<profile-id>/`。
-
-## 验证范围
-
-V2.5.3 的[发布验证清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.3/TigerestTheater-2.5.3-RELEASE-MANIFEST.json)记录各平台构建、测试、包摘要和未测范围。本次转场优化及夹具测量见[延迟记录](docs/verification/2026-10-10-home-motion-latency.md)。此前导航验证见[2.5.2 记录](docs/verification/2026-10-10-home-motion.md)；2.5.3 的 Android 包未重新进行手机实测。
-
-V2.5.1 的 [发布验证清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.1/TigerestTheater-2.5.1-RELEASE-MANIFEST.json) 分别记录各平台的构建提交、包摘要、测试与未测范围。Windows CTest 72 项、Android JVM 111 项通过；Mac 补充版本 CTest 42 项通过，包含 67 个弹幕运行时用例，并完成签名及运行库审计。验证使用隔离夹具，未执行新的生产视频或真机安装验收；详见 [Mac 2.5.1 验证记录](docs/verification/2026-10-10-macos-2.5.1.md)。
-
-V2.5.0 的 [发布验证清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-RELEASE-MANIFEST.json) 记录各平台准确构建提交、包摘要、测试结果与未测范围。Windows 验证独立运行库启动、原生窗口和播放；Android 验证原生按钮、误触拦截、选集和系统横屏锁；Mac 由 Apple Silicon CI 构建、测试、签名并审计 DMG。
-
-Mac 尚未完成实体设备播放验收。Android 折叠屏实测使用 Android 16，Android 15、x86_64 和 16 KB 页设备尚未实机验收；二进制对齐检查不能代替实际设备运行。网页及播放队列夹具验证与生产服务验证分别记录。首页、标题栏的验证范围见 [首页验证](docs/verification/2026-10-09-home-gallery.md) 和 [Windows 顶栏验证](docs/verification/2026-10-09-window-chrome.md)。
-
-## 源码构建
-
-参见 [Windows 构建说明](dev/windows/README.md)、[macOS 构建说明](dev/macos/README.md) 和 [Android 构建说明](android/README.md)。本次发布为 `v2.5.3`，三端从同一提交构建，准确来源见发布验证清单和对应源码附件。主分支可能继续更新。RIFE 组件来源、校验与第三方许可见对应构建文档及包内许可证。开发构建需使用匹配的固定播放运行库。
-
-本项目为非官方 Emby 客户端，与 Emby LLC 无隶属关系。
-
-Windows 开发与测试请先阅读 [测试启动环境](dev/windows/TESTING.md)，每次调用原生测试前加载运行库及 Qt 插件预检脚本。
+主项目许可证见 [LICENSE](LICENSE)（GNU GPL v2）；第三方组件按各自许可证分发，具体来源、修改及许可文件随源码和发行包提供。
