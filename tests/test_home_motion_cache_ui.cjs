@@ -14,6 +14,39 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.deepEqual(edgePixels.corner,[40,84,200,255],'blur clamps the viewport edges instead of revealing a different page through alpha');
  assert.deepEqual(edgePixels.center,[40,84,200,255]);
  assert.equal(await evaluate('TigerestHomeTransitions.prewarm()'),true);
+ // Inactive Emby views can contain thousands of cached controls. Recreating
+ // those controls during a frozen-scene capture wastes the click's frame budget.
+ // A custom-element constructor observes real deep cloning, including descendants.
+ const hiddenClones=await evaluate(`(async()=>{
+  customElements.define('fixture-hidden-control',class extends HTMLElement{constructor(){super();window.hiddenControlCopies=(window.hiddenControlCopies||0)+1;}});
+  const old=document.createElement('div');old.id='inactive-fixture';old.className='page hide';
+  for(let i=0;i<500;i++)old.append(document.createElement('fixture-hidden-control'));
+  document.body.append(old);TigerestHomeTransitions.invalidate(false);window.hiddenControlCopies=0;
+  await TigerestHomeTransitions.prewarm();
+  const copies=window.hiddenControlCopies;old.remove();return copies;
+ })()`);
+ assert.equal(hiddenClones,0,'frozen scenes must not construct controls from hidden cached views');
+ await evaluate('TigerestHomeTransitions.prewarm()');
+ // A scrolled poster wall only needs the cards intersecting the viewport.
+ // Offscreen placeholders must still preserve grid flow and scroll offsets.
+ const wallCopy=await evaluate(`(async()=>{
+  customElements.define('fixture-card-content',class extends HTMLElement{constructor(){super();window.cardContentCopies=(window.cardContentCopies||0)+1;}});
+  const grid=document.createElement('div');grid.id='large-wall-fixture';Object.assign(grid.style,{display:'grid',gridTemplateColumns:'repeat(4,120px)',gap:'20px'});
+  for(let i=0;i<160;i++){const card=document.createElement('div');card.className='card';card.id='wall-card-'+i;card.style.width='120px';const content=document.createElement('fixture-card-content');Object.assign(content.style,{display:'block',height:'180px'});card.append(content);grid.append(card);}
+  libraryRoot.append(grid);libraryRoot.style.overflow='auto';libraryRoot.scrollTop=1800;
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const visible=[...grid.children].filter(n=>{const r=n.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})[0];
+  const live=visible.getBoundingClientRect().toJSON();TigerestHomeTransitions.invalidate(false);window.cardContentCopies=0;
+  await TigerestHomeTransitions.prewarm();
+  const shadow=document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot;
+  const result={constructed:window.cardContentCopies,visible:Math.ceil(innerHeight/200)*4,
+   live,copy:shadow.querySelector('#'+visible.id).getBoundingClientRect().toJSON(),scroll:shadow.querySelector('#library').scrollTop};
+  grid.remove();libraryRoot.style.removeProperty('overflow');libraryRoot.scrollTop=0;return result;
+ })()`);
+ assert.ok(wallCopy.constructed<=wallCopy.visible+12,'offscreen card contents should not be cloned: '+JSON.stringify(wallCopy));
+ assert.equal(wallCopy.scroll,1800);
+ assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(wallCopy.live[k]-wallCopy.copy[k])))<1,'scrolled visible cards must keep their exact geometry');
+ await evaluate('TigerestHomeTransitions.prewarm()');
  // A completed page entrance must stay completed in the frozen background.
  // Emby's important animation rule otherwise starts again inside the shadow tree.
  await evaluate(`document.body.classList.add('skinBody');const s=document.createElement('style');s.textContent='.skinBody .page.motion-enter{animation:fixturePageEnter 160ms both!important}@keyframes fixturePageEnter{from{transform:translateY(72px)}to{transform:none}}';document.head.append(s);libraryRoot.classList.add('motion-enter');true`);

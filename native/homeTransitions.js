@@ -96,7 +96,7 @@
     const style = document.createElement('style');
     style.id = 'tigerest-home-motion-style';
     style.textContent = `
-      body.tigerest-motion-busy{pointer-events:none!important}
+      .tigerest-motion-input{position:fixed;inset:0;z-index:2147483002;pointer-events:auto!important;touch-action:none}
       .tigerest-motion-layer{position:fixed;inset:0;z-index:2147483000;pointer-events:none!important;overflow:hidden;contain:layout paint}
       .tigerest-motion-veil,.tigerest-motion-scene,.tigerest-motion-frozen{position:absolute;inset:0}
       .tigerest-motion-veil{background:#0b0d12}
@@ -166,6 +166,14 @@
         ensureStyle();
         const controller = new AbortController(), job = {controller, signal: controller.signal, animations: [], layers: [], held: [], canvases: [], frames: [], metric: {kind, surfaces: [], domCopies: 0}};
         active = job; document.body.classList.add('tigerest-motion-busy');
+        // An input surface blocks even controls with explicit pointer-events:auto.
+        // Changing the body's inherited pointer-events instead restyles the whole
+        // library at the first animation frame and again when it finishes.
+        const input = document.createElement('div'); input.className = 'tigerest-motion-input';
+        input.setAttribute('aria-hidden','true');
+        for (const type of ['pointerdown','click','dblclick','wheel','touchmove'])
+            input.addEventListener(type,event=>{event.preventDefault();event.stopPropagation();},{passive:false});
+        job.layers.push(input);document.body.append(input);
         const start = job.start = performance.now(), tick = t => {
             job.metric.firstFrameMs??=Math.max(0,t-start);job.frames.push(t);
             if (job.poster && job.metric.posterFirstMotionMs === undefined) {
@@ -197,11 +205,38 @@
         const host = document.createElement('div'); host.className = 'tigerest-motion-frozen';
         if (!blur) { host.style.filter = 'none'; host.style.transform = 'none'; }
         const home = document.body.classList.contains('tg-home-active') ? document.querySelector('.tg-home-host') : null;
-        const shadow = host.attachShadow({mode: 'open'}), html = document.documentElement.cloneNode(false), body = document.body.cloneNode(!home);
+        const pairs = [];
+        // Emby keeps old views in the body. Reject entire inactive branches
+        // before copying them; cloning then removing them still constructs all
+        // their controls and makes work grow with the navigation history.
+        function copyTree(node) {
+            if (node.nodeType !== Node.ELEMENT_NODE) return node.cloneNode(true);
+            if (node.matches('.mainAnimatedPage.hide,.page.hide,.tigerest-motion-layer,.tigerest-motion-input,.tigerest-motion-poster,.tigerest-motion-cache,script,iframe,object,embed,audio,video')) return null;
+            const clone = node.cloneNode(false); pairs.push([node,clone]);
+            if (node.matches('.card')) {
+                const r = box(node);
+                // Preserve the flow boxes of offscreen flex/grid cards without
+                // constructing their poster/text subtrees. The margin also keeps
+                // near-edge shadows and transformed artwork in the snapshot.
+                if (r.width && r.height && (r.bottom < -64 || r.top > innerHeight + 64 || r.right < -64 || r.left > innerWidth + 64)) {
+                    const layout = getComputedStyle(node.parentElement).display;
+                    if (['flex','inline-flex','grid','inline-grid'].includes(layout)) {
+                        const s = getComputedStyle(node);
+                        for (const property of ['width','height','box-sizing','min-width','min-height'])
+                            clone.style.setProperty(property,s.getPropertyValue(property),'important');
+                        return clone;
+                    }
+                }
+            }
+            for (const child of node.childNodes) {
+                const copy = copyTree(child); if (copy) clone.append(copy);
+            }
+            return clone;
+        }
+        const shadow = host.attachShadow({mode: 'open'}), html = document.documentElement.cloneNode(false), body = home ? document.body.cloneNode(false) : copyTree(document.body);
         html.classList.add('tigerest-motion-html'); body.classList.remove('tigerest-motion-busy');
-        let originalRoot = document.body, copyRoot = body;
         if (home) {
-            originalRoot = home; copyRoot = home.cloneNode(true); body.append(copyRoot);
+            const copyRoot = copyTree(home); body.append(copyRoot);
             const rect = box(home), inherited = getComputedStyle(document.body);
             Object.assign(copyRoot.style,{position:'absolute',left:rect.x+'px',top:rect.y+'px',width:rect.width+'px',height:rect.height+'px'});
             Object.assign(body.style,{margin:'0',font:inherited.font,color:inherited.color,background:inherited.backgroundColor});
@@ -213,19 +248,14 @@
                 body.prepend(copy);
             }
         }
-        const originals = [originalRoot,...originalRoot.querySelectorAll('*')], copies = [copyRoot,...copyRoot.querySelectorAll('*')];
         const scrolls = [];
         job.copies=new WeakMap();
-        originals.forEach((node,i) => {
-            const clone = copies[i];
-            if(clone)job.copies.set(node,clone);
-            if (clone !== body && !body.contains(clone)) return;
+        pairs.forEach(([node,clone]) => {
+            job.copies.set(node,clone);
             // Stylesheets can declare important entrance animations. A universal
             // shadow override cannot beat those selectors; freeze each element.
             clone.style.setProperty('animation','none','important');
             clone.style.setProperty('transition','none','important');
-            if (node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache') || node.matches('script,iframe,object,embed,audio,video')) { clone.remove(); return; }
-            if (node.matches('.mainAnimatedPage.hide,.page.hide')) { clone.remove(); return; }
             const r = box(node);
             if (r.width && r.height && r.bottom >= 0 && r.top <= innerHeight) {
                 const computed = getComputedStyle(node);

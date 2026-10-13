@@ -19,6 +19,9 @@ withBrowser(routes,async({evaluate,call,url})=>{
  await evaluate(`const hidden=document.createElement('div');hidden.className='detailImageContainer hide';document.querySelector('#detail').prepend(hidden);`);
  await evaluate(`const card=document.querySelector('#library [data-id]');card.removeAttribute('data-id');card.className='card';const list=document.createElement('div');list.className='virtualItemsContainer itemsContainer';card.replaceWith(list);list.append(card);list._itemSource=Array(80);list.indexOfItemId=()=>-1;list.getItemFromElement=()=>list.mounted?{Id:'grouped-work',Type:'Movie'}:null;list.fetchItems=async(q,signal)=>{window.indexQuery=q;return {Items:Array.from({length:80},(_,i)=>({Id:i===61?'grouped-work':'other-'+i,PresentationUniqueKey:i===61?'same-work':null}))}};list.scrollToIndex=index=>{list.mounted=index===61;};`);
  const begin=(holdRoute=false)=>evaluate(`window.pending=TigerestHomeMotion.openItem({card:{item:{Id:'work',Type:'Movie',PresentationUniqueKey:'same-work'}},library:{Id:'library',Type:'CollectionFolder'},source:document.querySelector('#source'),navigate:()=>${holdRoute ? `new Promise(resolve=>{fixture.releaseDetail=()=>fixture.route('detail',450).then(resolve);})` : `fixture.route('detail',450)`}});true`);
+ // Explicit pointer-events on a child overrides inherited pointer-events:none.
+ // A transition must still prevent this real click from reaching the old page.
+ await evaluate(`window.blockedPageClicks=0;const button=document.createElement('button');button.id='input-probe';button.textContent='action';Object.assign(button.style,{position:'fixed',left:'8px',top:'8px',width:'80px',height:'32px',pointerEvents:'auto'});button.onclick=()=>++blockedPageClicks;document.querySelector('#home').append(button);true`);
  // Keep the slow route pending until inspected. A wall-clock sample can arrive
  // after navigation on a loaded runner and confuse that with a missing veil.
  await begin(true);
@@ -26,6 +29,9 @@ withBrowser(routes,async({evaluate,call,url})=>{
  await evaluate(`new Promise((resolve,reject)=>{const deadline=performance.now()+8000;const poll=()=>{if(fixture.releaseDetail)return resolve();if(performance.now()>deadline)return reject(Error('poster never reached navigation'));setTimeout(poll,16);};poll();})`);
  const waiting=await evaluate(`({busy:TigerestHomeTransitions.busy,veil:+getComputedStyle(document.querySelector('.tigerest-motion-veil')).opacity,poster:!!document.querySelector('.tigerest-motion-poster'),old:!document.querySelector('#home').classList.contains('hide')})`);
  assert.ok(waiting.busy&&waiting.poster&&waiting.veil>.99&&waiting.old,'blur remains opaque while the real route loads: '+JSON.stringify(waiting));
+ await call('Input.dispatchMouseEvent',{type:'mousePressed',x:30,y:20,button:'left',clickCount:1});
+ await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:30,y:20,button:'left',clickCount:1});
+ assert.equal(await evaluate('blockedPageClicks'),0,'transition cover must intercept clicks even when the underlying control explicitly accepts pointer input');
  // Change the responsive target after its flight starts, rather than relying
  // on a timer measured from an earlier CDP command.
  await evaluate(`fixture.resizedDuringFlight=false;const target=document.querySelector('#detail .detailImageContainer:not(.hide)');const deadline=performance.now()+8000;const resize=()=>{if(target.hasAttribute('data-tigerest-poster-held')){target.style.width='240px';target.style.height='360px';fixture.resizedDuringFlight=true;}else if(performance.now()<deadline)requestAnimationFrame(resize);};requestAnimationFrame(resize);fixture.releaseDetail();true`);
@@ -36,6 +42,10 @@ withBrowser(routes,async({evaluate,call,url})=>{
  await evaluate('router.back()');assert.equal(await evaluate('fixture.state.contextPath'),'/library');
  assert.ok(await evaluate('TigerestHomeTransitions.last.landingErrorPx<2&&indexQuery.EnableImages===false'),'return locates the work through the real virtual-list API');
  await evaluate('router.back()');assert.equal(await evaluate('fixture.state.contextPath'),'/home');
+ assert.equal(await evaluate('!!document.querySelector(".tigerest-motion-input")'),false,'input is restored after the transition');
+ await call('Input.dispatchMouseEvent',{type:'mousePressed',x:30,y:20,button:'left',clickCount:1});
+ await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:30,y:20,button:'left',clickCount:1});
+ assert.equal(await evaluate('blockedPageClicks'),1,'the same control accepts input again after the transition');
  const returnBackground=await evaluate(`fixture.show('library');window.returnGallery={active:false,root:document.querySelector('#home')};window.returning=TigerestHomeTransitions.homeReturn({findGallery:()=>returnGallery,navigate:()=>{fixture.show('home');returnGallery.active=true;returnGallery.root.classList.add('tg-entered');}});getComputedStyle(document.querySelector('.tigerest-motion-layer')).backgroundColor`);
  assert.equal(returnBackground,'rgb(11, 13, 18)','the shrinking return copy must cover the stationary real page');
  await evaluate('returning');
