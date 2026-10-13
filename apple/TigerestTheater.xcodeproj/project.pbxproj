@@ -406,6 +406,24 @@
 			<key>fileRef</key>
 			<string>51576657CDBAAF22ED43C8EF</string>
 		</dict>
+		<key>B0587E8C67B8C8333E24A360</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>App/Updates/UpdateController.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>7E2D6EFBC4C3FA39B2BADDEC</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>B0587E8C67B8C8333E24A360</string>
+		</dict>
 		<key>67E7B97EAFD0AA3CBDC83FD6</key>
 		<dict>
 			<key>isa</key>
@@ -648,6 +666,7 @@
 				<string>77FB5B6B87B252FF950EBBF6</string>
 				<string>37A6B38777EDBE5A7376DC3C</string>
 				<string>F93C911B286FE4163A8E9A1E</string>
+				<string>7E2D6EFBC4C3FA39B2BADDEC</string>
 				<string>FED2B16E96709BD237C9DA5B</string>
 				<string>4E9C712A4D1FECE569FCA043</string>
 				<string>7F1F9EB30F9BBCDB38FFE691</string>
@@ -1237,6 +1256,7 @@
 				<string>E00B640A8BFBAB35463BF8E2</string>
 				<string>2DEAE82326365A1243C0B004</string>
 				<string>51576657CDBAAF22ED43C8EF</string>
+				<string>B0587E8C67B8C8333E24A360</string>
 				<string>67E7B97EAFD0AA3CBDC83FD6</string>
 				<string>EA4EA786C5BC9B7737331310</string>
 				<string>6B9AF8604B8E01F0D6FA89F9</string>

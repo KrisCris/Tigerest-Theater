@@ -19,7 +19,7 @@ const features = [
 const getPlugins = () => {
     const basePlugins = [
         'inputPlugin',
-        ...((window.tigerestAndroidApi || window.jmpInfo?.capabilities?.selfUpdate === false) ? [] : ['updatePlugin'])
+        ...((window.tigerestAndroidApi || (window.jmpInfo?.capabilities?.selfUpdate === false && window.jmpInfo?.capabilities?.updateCheck !== true)) ? [] : ['updatePlugin'])
     ];
 
     const mpvEnabled = jmpInfo.settings?.main?.enableMPV !== false;

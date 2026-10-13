@@ -36,3 +36,9 @@ Use `--danmaku-frame-probe` with the quality probe arguments and the local 720p/
 `--danmaku-glyph-probe` renders the same CJK/Latin text using the old attributed stroke, plain fill, production silhouette/fill renderer and a color-range control. `danmaku-glyph-comparison.png` preserves that row order; `danmaku-glyph.json` must have zero damaged opaque interior pixels. Run on a physical device with CJK fonts; the minimal simulator image lacks those fonts.
 
 `--bluebox-live-probe` is explicitly different from the network-isolated parity fixture. It makes anonymous GET requests to the configured public NAS API for 青之箱 S1E1 search, release details and comments, and writes `bluebox-live.json`. It does not read production Profiles, send credentials or submit any shared correction. A failed online result must be reported separately from fixture results. Restore the normal app afterward.
+
+## iPad release checks
+
+`--update-probe` uses an isolated settings/defaults domain. `update-validation.json` checks request coalescing, throttling, persisted skip and startup settings, manual override during an unfinished automatic request, HTTP failures and the response size bound. Its last row separately performs an anonymous, read-only GitHub release request; this is not an installation or distribution test. Always restore the normal app after collecting the report.
+
+Release selection follows the PC stable-tag rules, but requires an iPad asset named `TigerestTheater-<version>-ipad.ipa`, an exact URL under this repository's release tag, a positive bounded size and a SHA-256 digest. Desktop/Android assets do not count as iPad releases. The development build only checks and opens release notes; free Personal Team installation continues through Xcode. No IPA is downloaded or installed by this path.

@@ -195,3 +195,22 @@ extension WebHostTests {
         XCTAssertTrue(app.staticTexts["键盘播放次数 1"].waitForExistence(timeout:3), "空格不可穿透重新载入底层网页的剧集")
     }
 }
+
+extension WebHostTests {
+    /// Real read-only GitHub check through WKWebView -> native bridge -> HTTP.
+    @MainActor func testIPadUpdateEntryShowsPlatformStatusWithoutInstaller() {
+        let app=XCUIApplication();app.launchArguments=["--ui-testing","-TigerestPlaybackGesturesSeen","YES"];app.launch()
+        app.buttons["连接自建 EMBY 服务器"].tap()
+        let field=app.textFields["服务器地址"];field.tap();field.typeText("http://127.0.0.1:18768/sub/")
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout:20))
+        let entry=app.descendants(matching:.any).matching(NSPredicate(format:"label == %@ OR label BEGINSWITH %@","客户端更新","客户端有新版本")).firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout:5),app.debugDescription);entry.tap()
+        let result=app.staticTexts.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@","iPad 版本发布情况","发现新版本","检查完成")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout:35),app.debugDescription)
+        XCTAssertTrue(app.buttons["查看发布说明"].exists)
+        XCTAssertFalse(app.buttons["立即更新"].exists);XCTAssertFalse(app.buttons["安装更新"].exists)
+        let capture=XCTAttachment(screenshot:app.screenshot());capture.name="ipad-update-status";capture.lifetime = .keepAlways;add(capture)
+        app.buttons["关闭"].tap()
+    }
+}

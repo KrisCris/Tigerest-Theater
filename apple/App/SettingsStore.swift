@@ -16,7 +16,7 @@ import AppleCore
     var changed: ((String, JSONValue) -> Void)?
     private var supported: [String: Set<String>] = [
         "home": ["displayOrder"],
-        "main": ["enableMPV", "allowBrowserZoom", "userWebClient", "serverConnectionMode"],
+        "main": ["checkForUpdates", "enableMPV", "allowBrowserZoom", "userWebClient", "serverConnectionMode"],
         "audio": ["channels", "normalize"],
         "video": ["aiRife", "hardwareDecoding", "deinterlace", "cache", "aspect", "sync_mode", "default_playback_speed", "audio_delay.normal", "force_transcode_hevc", "force_transcode_4k", "force_transcode_av1", "force_transcode_hdr", "force_transcode_hi10p", "force_transcode_dovi", "always_force_transcode", "allow_transcode_to_hevc", "prefer_transcode_to_h265"],
         "mpv": ["shaderPreset", "enableDanmaku", "audioLanguage", "subtitleLanguage", "cachePause", "deband", "toneMapping"],

@@ -17,6 +17,7 @@ import AppleCore
     @Published var connectionFailure: String?
     private var connectionTask: Task<Void, Never>?
     let diagnostics = DiagnosticsLog()
+    lazy var updates = UpdateController(model:self)
     lazy var danmaku = DanmakuRepository(model: self)
     lazy var community = CommunityTransport(model: self)
     lazy var player = PlaybackController(model: self)
@@ -25,7 +26,10 @@ import AppleCore
     init() {
         let testing = ProcessInfo.processInfo.arguments.contains("--ui-testing")
         let root = URL.applicationSupportDirectory.appending(path: testing ? "UITestProfiles" : "Profiles")
-        if testing { try? FileManager.default.removeItem(at: root) }
+        if testing {
+            try? FileManager.default.removeItem(at: root)
+            UserDefaults(suiteName:"TigerestUITestUpdates")?.removePersistentDomain(forName:"TigerestUITestUpdates")
+        }
         do {
             profiles = try ProfileStore(root: root)
             settings = try SettingsStore(directory: profiles.directory)

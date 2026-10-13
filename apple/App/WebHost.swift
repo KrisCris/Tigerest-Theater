@@ -37,7 +37,7 @@ import AppleCore
                 "version": .string("2.6.0"), "deviceName": .string("iPad"), "platform": .string("ipad"), "mode": .string("desktop"),
                 "userAgent": .string(view.customUserAgent!), "scriptPath": .string("tigerest://bundle"), "mpvConfigMode": .string("embedded"), "mpvConfigDir": .string("iPad 应用内配置"),
                 "settings": .object(model.settings.values.mapValues(JSONValue.object)), "sections": .array(model.settings.sections), "settingsDescriptions": .object(model.settings.descriptions),
-                "capabilities": .object(["downloads": .bool(true), "nativePlayback": .bool(true), "desktopWindowControls": .bool(false), "selfUpdate": .bool(false), "rife": .bool(SettingsStore.nativeRifeAvailable)])
+                "capabilities": .object(["downloads": .bool(true), "nativePlayback": .bool(true), "desktopWindowControls": .bool(false), "selfUpdate": .bool(false), "updateCheck": .bool(true), "rife": .bool(SettingsStore.nativeRifeAvailable)])
             ])
             let json = String(decoding: try JSONEncoder().encode(bootstrap), as: UTF8.self)
             let manifest = try JSONDecoder().decode(JSONValue.self, from: Data(resource("manifest.json").utf8))

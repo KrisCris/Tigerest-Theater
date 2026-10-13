@@ -65,7 +65,10 @@ import AppleCore
                 guard let text = arg(0).string, let url = URL(string: text), ["https", "http"].contains(url.scheme), url.user == nil, url.password == nil else { throw CoreError.invalidAddress }
                 return .bool(await UIApplication.shared.open(url))
             case "restart": model.start(); return .null
-            case "appUpdateState", "checkForUpdates": return .object(["status": .string("current"), "message": .string("开发版请通过 Xcode 更新"), "version": .string("2.6.0")])
+            case "appUpdateState": return model.updates.state
+            case "checkForUpdates": return await model.updates.check(manual:arg(0).bool ?? false)
+            case "skipAppUpdate": model.updates.skip();return .null
+            case "deferAppUpdate": model.updates.deferUpdate();return .null
             default: throw CoreError.invalidRequest
             }
         default: throw CoreError.invalidRequest
