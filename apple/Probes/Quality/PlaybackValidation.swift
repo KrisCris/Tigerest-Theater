@@ -10,6 +10,8 @@ import AppleCore
     }
     static func run(_ model: AppModel) async {
         guard ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
+        if ProcessInfo.processInfo.arguments.contains("--bluebox-live-probe") { await DanmakuParityValidation.blueBoxLive(model); return }
+        if ProcessInfo.processInfo.arguments.contains("--danmaku-glyph-probe") { await DanmakuFrameValidation.glyphs(model); return }
         if ProcessInfo.processInfo.arguments.contains("--danmaku-frame-probe") { await DanmakuFrameValidation.run(model); return }
         if ProcessInfo.processInfo.arguments.contains("--rife-playback-probe") { await RifePlaybackValidation.run(model); return }
         if ProcessInfo.processInfo.arguments.contains("--danmaku-parity-probe") { await DanmakuParityValidation.run(model); return }

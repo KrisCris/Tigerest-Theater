@@ -66,15 +66,8 @@ struct DanmakuOverlay: UIViewRepresentable {
     private func image(for row:DanmakuLayout.Row) -> UIImage {
         let id=NSNumber(value:row.id)
         if let image=images.object(forKey:id) {return image}
-        let color=row.comment.color,padding=ceil(max(outline,shadow*2)+2)
-        var attributes:[NSAttributedString.Key:Any]=[.font:font,.foregroundColor:UIColor(red:CGFloat((color>>16)&255)/255,green:CGFloat((color>>8)&255)/255,blue:CGFloat(color&255)/255,alpha:1)]
-        if outline>0 {attributes[.strokeColor]=UIColor.black;attributes[.strokeWidth] = -100*outline/font.pointSize}
-        if shadow>0 {let value=NSShadow();value.shadowColor=UIColor.black;value.shadowBlurRadius=shadow;value.shadowOffset=CGSize(width:shadow,height:shadow);attributes[.shadow]=value}
-        let size=CGSize(width:max(1,row.width+padding*2),height:ceil(font.lineHeight+padding*2))
-        let format=UIGraphicsImageRendererFormat();format.opaque=false;format.scale=window?.screen.scale ?? 2
-        let image=UIGraphicsImageRenderer(size:size,format:format).image { _ in
-            (row.comment.text as NSString).draw(at:CGPoint(x:padding,y:padding),withAttributes:attributes)
-        }
+        let image=DanmakuGlyph.image(text:row.comment.text,width:row.width,font:font,color:row.comment.color,
+                                    outline:outline,shadow:shadow,scale:window?.screen.scale ?? 2)
         images.setObject(image,forKey:id,cost:image.cgImage.map{$0.bytesPerRow*$0.height} ?? 0);return image
     }
     fileprivate func drawFrame() {
@@ -100,5 +93,31 @@ struct DanmakuOverlay: UIViewRepresentable {
         #if PLAYBACK_VALIDATION
         DanmakuFrameValidation.record(host:host,position:position)
         #endif
+    }
+}
+
+/// Stroke glyph silhouettes, then fill once. Attributed-string stroke+fill
+/// outlines overlapping CJK contours inside each glyph, cutting up the strokes.
+@MainActor enum DanmakuGlyph {
+    static func image(text:String,width:Double,font:UIFont,color:UInt32,outline:Double,shadow:Double,scale:CGFloat) -> UIImage {
+        let padding=ceil(max(outline,shadow*2)+2)
+        let size=CGSize(width:max(1,width+padding*2),height:ceil(font.lineHeight+padding*2))
+        let format=UIGraphicsImageRendererFormat();format.opaque=false;format.scale=scale
+        return UIGraphicsImageRenderer(size:size,format:format).image { ctx in
+            var attrs:[NSAttributedString.Key:Any]=[.font:font,.foregroundColor:UIColor.black]
+            if shadow>0 {
+                ctx.cgContext.saveGState()
+                ctx.cgContext.setShadow(offset:CGSize(width:shadow,height:shadow),blur:shadow,color:UIColor.black.cgColor)
+                (text as NSString).draw(at:CGPoint(x:padding,y:padding),withAttributes:attrs)
+                ctx.cgContext.restoreGState()
+            }
+            if outline>0 {
+                for y in [-outline,0,outline] {for x in [-outline,0,outline] where x != 0 || y != 0 {
+                    (text as NSString).draw(at:CGPoint(x:padding+x,y:padding+y),withAttributes:attrs)
+                }}
+            }
+            attrs[.foregroundColor]=UIColor(red:CGFloat((color>>16)&255)/255,green:CGFloat((color>>8)&255)/255,blue:CGFloat(color&255)/255,alpha:1)
+            (text as NSString).draw(at:CGPoint(x:padding,y:padding),withAttributes:attrs)
+        }
     }
 }

@@ -8,26 +8,37 @@ public enum DanmakuMatch {
         public let score: Double, byTitle: Bool
         public init(work: JSONValue, episode: JSONValue, score: Double, byTitle: Bool) { self.work=work;self.episode=episode;self.score=score;self.byTitle=byTitle }
     }
-    public static func ranked(works: [JSONValue], title: String, season: Int?) -> [Work] {
+    public static func ranked(works: [JSONValue], title: String, season: Int?, includeUnmatched: Bool = false) -> [Work] {
         let (base, querySeason)=work(title)
         let type = title.contains("OVA") || title.contains("OAD") ? "ova" : "tvseries"
         var seen=Set<String>()
+        func cleaned(_ value:String) -> String {
+            value.trimmingCharacters(in:.whitespacesAndNewlines)
+                .replacingOccurrences(of:#"\s*\([^)]*\)\s*$|\s*【[^】]*】.*$"#,with:"",options:.regularExpression)
+        }
         return works.compactMap { anime -> Work? in
             guard anime["type"].string==type, !base.isEmpty else { return nil }
             let id=scalar(anime["bangumiId"]), provider=anime["_server"].string ?? ""
             guard !id.isEmpty, seen.insert(provider+"\u{0}"+id).inserted else { return nil }
-            let raw=(anime["animeTitle"].string ?? "").trimmingCharacters(in:.whitespacesAndNewlines)
-                .replacingOccurrences(of:#"\s*\([^)]*\)\s*$|\s*【[^】]*】.*$"#,with:"",options:.regularExpression)
+            let raw=cleaned(anime["animeTitle"].string ?? "")
             let (candidate, explicit)=work(raw), special=raw.range(of:"ova|oad|special|特别篇|特別篇|番外",options:[.regularExpression,.caseInsensitive]) != nil
             guard !candidate.isEmpty else { return nil }
             if let querySeason, let season, season>0, querySeason != season { return nil }
             if season==0 && !special { return nil }
             if let season, season>0, special, title.range(of:"ova|oad",options:[.regularExpression,.caseInsensitive]) == nil { return nil }
+            // The primary release title gates season eligibility. A generic
+            // alias may never turn a second season into a first season match.
             if let explicit, let season, explicit != season { return nil }
             if let season, season>1, explicit != season { return nil }
-            let specialTitle=normalize(raw.replacingOccurrences(of:"ova|oad|special|特别篇|特別篇|番外",with:"",options:[.regularExpression,.caseInsensitive]))
-            let score=(explicit != nil && base==candidate) || (season==0 && specialTitle==base) ? 1 : similarity(base,candidate)
-            return score>=0.85 ? Work(value:anime,score:score) : nil
+            let names=[raw]+(anime["titles"].array ?? []).compactMap{$0["title"].string}.map(cleaned)
+            let score=names.compactMap { name -> Double? in
+                let (candidate, aliasSeason)=work(name)
+                guard !candidate.isEmpty else {return nil}
+                if let aliasSeason,let season,aliasSeason != season {return nil}
+                let specialTitle=normalize(name.replacingOccurrences(of:"ova|oad|special|特别篇|特別篇|番外",with:"",options:[.regularExpression,.caseInsensitive]))
+                return (aliasSeason != nil && base==candidate) || (season==0 && specialTitle==base) ? 1 : similarity(base,candidate)
+            }.max() ?? 0
+            return includeUnmatched || score>=0.85 ? Work(value:anime,score:score) : nil
         }.sorted { $0.score>$1.score }
     }
     public static func choose(works: [JSONValue], title: String, season: Int) -> [JSONValue] { ranked(works:works,title:title,season:season).map(\.value) }

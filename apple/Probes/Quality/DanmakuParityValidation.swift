@@ -38,8 +38,11 @@ final class DanmakuFixtureProtocol: URLProtocol {
             code=status;result=["success":true,"matched":true,"match":["origin":((try? JSONSerialization.jsonObject(with:requestBody)) as? [String:Any])?["selection"] != nil ? "manual" : "shared","episodeId":malformed ? "bad/id" : "11","episodeTitle":"开始"],"danmaku":comment]
         } else if path=="/community/v2/capabilities" { result=["data":["enabled":true,"embyExchangeServerId":String(repeating:"a",count:32)]]
         } else if path=="/api/v2/search/anime" {
-            result=["animes":[["type":"tvseries","bangumiId":"1","animeTitle":"作品"],["type":"movie","bangumiId":url.host=="second.invalid" ? "3" : "2","animeTitle":"另一作品"]]]
-        } else if path=="/api/v2/bangumi/1" { result=["bangumi":["episodes":[["episodeId":"11","episodeNumber":"1","episodeTitle":"第1话 开始"]]]] }
+            if parameter("keyword")=="青之箱" {
+                result=["animes":[["type":"tvseries","bangumiId":"18278","animeTitle":"蓝箱"],["type":"tvseries","bangumiId":"19249","animeTitle":"青之箱 第二季"]]]
+            } else {result=["animes":[["type":"tvseries","bangumiId":"1","animeTitle":"作品"],["type":"movie","bangumiId":url.host=="second.invalid" ? "3" : "2","animeTitle":"另一作品"]]]}
+        } else if path=="/api/v2/bangumi/18278" {result=["bangumi":["titles":[["title":"青之箱"],["title":"Blue Box"]],"episodes":[["episodeId":"182780001","episodeNumber":"1","episodeTitle":"第1话 千夏前辈"]]]]}
+        else if path=="/api/v2/bangumi/1" { result=["bangumi":["episodes":[["episodeId":"11","episodeNumber":"1","episodeTitle":"第1话 开始"]]]] }
         else if path.hasPrefix("/api/v2/comment/") { result=alternate ? ["danmuku":[[1,"right","#ff0000","","fixture"]],"danum":1] : comment }
         else { code=404 }
         let data=try! raw ?? JSONSerialization.data(withJSONObject:result)
@@ -60,10 +63,18 @@ final class DanmakuFixtureProtocol: URLProtocol {
             try model.settings.set("mpv","enableDanmaku",.bool(true));try model.settings.set("danmaku","apiServer",.string(DanmakuProvider.remote))
         }
         func check(_ condition: Bool) throws { if !condition { throw PlaybackValidation.Failure.incorrectOutput } }
-        for test in ["shared-first","shared-failure-fallback","invalid-shared-fallback","rate-limit-no-get","ordered-providers","manual-no-auth-fallback","stale-manual-selection","manual-share-success","manual-share-forbidden","manual-share-limited","mixed-catalog-selection","alternate-response","main-quality-reset","extra-cached-episodes","extra-v2-episodes","extra-movie","extra-translated-search","extra-xml-fallback","extra-first-success"] {
+        for test in ["bluebox-auto-alias","shared-first","shared-failure-fallback","invalid-shared-fallback","rate-limit-no-get","ordered-providers","manual-no-auth-fallback","stale-manual-selection","manual-share-success","manual-share-forbidden","manual-share-limited","mixed-catalog-selection","alternate-response","main-quality-reset","extra-cached-episodes","extra-v2-episodes","extra-movie","extra-translated-search","extra-xml-fallback","extra-first-success"] {
             do {
                 try fresh(["shared-first","invalid-shared-fallback","manual-share-success"].contains(test) ? 200 : test=="rate-limit-no-get" || test=="manual-share-limited" ? 429 : test=="manual-share-forbidden" ? 403 : 503,malformed:test=="invalid-shared-fallback")
                 let repo=model.danmaku
+                if test=="bluebox-auto-alias" {
+                    repo.autoMatch(.object(["Id":.string(test),"SeriesName":.string("青之箱"),"ParentIndexNumber":.number(1),"IndexNumber":.number(1),"Name":.string("千夏前辈")]))
+                    try await PlaybackValidation.wait {!repo.sources.isEmpty || !repo.status.contains("正在")}
+                    try check(repo.sources.count==1 && repo.sources[0].id.hasSuffix("/182780001"))
+                    let requests=DanmakuFixtureProtocol.requests
+                    try check(requests.filter{$0.contains("/bangumi/18278")}.count==1 && !requests.contains{$0.contains("/bangumi/19249")})
+                    report.append(["case":test,"result":"success","requests":requests]);continue
+                }
                 if test.hasPrefix("extra-") {
                     if test=="extra-xml-fallback" {DanmakuFixtureProtocol.reset(xmlFallback:true)}
                     if test=="extra-first-success" {DanmakuFixtureProtocol.reset(stalledFirst:true)}
@@ -146,5 +157,42 @@ final class DanmakuFixtureProtocol: URLProtocol {
         }
         model.danmaku.clear()
         if let data=try? JSONSerialization.data(withJSONObject:report,options:[.prettyPrinted,.sortedKeys]) { try? data.write(to:URL.cachesDirectory.appending(path:"danmaku-parity.json"),options:.atomic) }
+    }
+}
+
+extension DanmakuParityValidation {
+    /// Anonymous read-only production search/detail/comment validation. No
+    /// manual selection or shared correction is sent to the gateway.
+    static func blueBoxLive(_ model:AppModel) async {
+        var report:[String:Any]=["stage":"starting","at":Date().ISO8601Format()]
+        do {
+            try model.settings.set("danmaku","apiServer",.string(DanmakuProvider.remote))
+            report["stage"]="direct-search"
+            let encoded="青之箱".addingPercentEncoding(withAllowedCharacters:.urlQueryAllowed)!
+            let (searchData,searchResponse)=try await URLSession.shared.data(from:URL(string:DanmakuProvider.remote+"/api/v2/search/anime?keyword="+encoded)!)
+            report["directSearchStatus"]=(searchResponse as? HTTPURLResponse)?.statusCode
+            report["directSearchBytes"]=searchData.count
+            report["stage"]="repository-search"
+            let repo=model.danmaku,works=try await repo.search("青之箱",manual:false)
+            report["works"]=works.count
+            var candidates:[DanmakuMatch.Candidate]=[]
+            for work in DanmakuMatch.ranked(works:works,title:"青之箱",season:1,includeUnmatched:true) {
+                let id=DanmakuMatch.scalar(work.value["bangumiId"])
+                report["stage"]="release-"+id
+                let (data,_)=try await URLSession.shared.data(from:URL(string:DanmakuProvider.remote+"/api/v2/bangumi/"+id)!)
+                let detail=try JSONDecoder().decode(JSONValue.self,from:data)["bangumi"]
+                var enriched=work.value.object!;enriched["titles"]=detail["titles"]
+                guard let scored=DanmakuMatch.ranked(works:[.object(enriched)],title:"青之箱",season:1).first else {continue}
+                let result=DanmakuMatch.episodes(detail["episodes"].array ?? [],number:1,title:"千夏前辈")
+                candidates += result.values.map{.init(work:work.value,episode:$0,score:scored.score,byTitle:result.byTitle)}
+            }
+            report["stage"]="resolve"
+            guard let match=DanmakuMatch.resolve(candidates) else {throw PlaybackValidation.Failure.incorrectOutput}
+            let id=DanmakuMatch.scalar(match.episode["episodeId"])
+            report["stage"]="comments-"+id
+            let count=try await repo.load(id,title:"青之箱 第一季第一集",server:DanmakuProvider.remote)
+            report=["episodeId":id,"comments":count,"passed":id=="182780001" && count>0]
+        } catch {report["passed"]=false;report["error"]=String(describing:error)}
+        try? JSONSerialization.data(withJSONObject:report,options:.prettyPrinted).write(to:URL.cachesDirectory.appending(path:"bluebox-live.json"))
     }
 }

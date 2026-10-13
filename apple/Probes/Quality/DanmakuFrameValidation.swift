@@ -48,3 +48,51 @@ import AppleCore
         if let data=try? JSONSerialization.data(withJSONObject:report,options:[.prettyPrinted,.sortedKeys]) {try? data.write(to:URL.cachesDirectory.appending(path:"danmaku-frames.json"),options:.atomic)}
     }
 }
+
+extension DanmakuFrameValidation {
+    static func glyphs(_ model:AppModel) async {
+        let sample="好看 什么空之箱 梦开始的地方 Blue Box"
+        let font=UIFont.systemFont(ofSize:36), color=UIColor.white
+        var variants:[UIImage]=[]
+        for mode in 0..<4 {
+            let format=UIGraphicsImageRendererFormat();format.scale=2;format.opaque=false
+            if mode==3 {format.preferredRange = .standard}
+            let image=UIGraphicsImageRenderer(size:CGSize(width:1000,height:70),format:format).image { ctx in
+                var attrs:[NSAttributedString.Key:Any]=[.font:font,.foregroundColor:color]
+                if mode==0 || mode==3 {attrs[.strokeColor]=UIColor.black;attrs[.strokeWidth] = -2.0}
+                (sample as NSString).draw(at:CGPoint(x:8,y:8),withAttributes:attrs)
+            }
+            let output=mode==2 ? DanmakuGlyph.image(text:sample,width:990,font:font,color:0xffffff,outline:0.72,shadow:0,scale:2) : image
+            variants.append(output)
+            try? output.pngData()?.write(to:URL.cachesDirectory.appending(path:"danmaku-glyph-\(mode).png"))
+        }
+        let f=UIGraphicsImageRendererFormat();f.scale=2;f.opaque=true
+        let comparison=UIGraphicsImageRenderer(size:CGSize(width:1000,height:340),format:f).image {ctx in
+            UIColor.darkGray.setFill();ctx.fill(CGRect(x:0,y:0,width:1000,height:340))
+            for (i,img) in variants.enumerated() {img.draw(at:CGPoint(x:0,y:i*85))}
+        }
+        try? comparison.pngData()?.write(to:URL.cachesDirectory.appending(path:"danmaku-glyph-comparison.png"))
+        // Compare opaque fill interiors against an unoutlined reference at the
+        // same pixel origin. Internal contour outlines must never erase them.
+        let fixed=variants[2],format=UIGraphicsImageRendererFormat();format.scale=2;format.opaque=false
+        let plain=UIGraphicsImageRenderer(size:fixed.size,format:format).image {_ in
+            (sample as NSString).draw(at:CGPoint(x:3,y:3),withAttributes:[.font:font,.foregroundColor:UIColor.white])
+        }
+        func pixels(_ image:UIImage)->[UInt8] {
+            let cg=image.cgImage!,w=cg.width,h=cg.height
+            var data=[UInt8](repeating:0,count:w*h*4)
+            data.withUnsafeMutableBytes { bytes in
+                let context=CGContext(data:bytes.baseAddress,width:w,height:h,bitsPerComponent:8,bytesPerRow:w*4,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
+                context.draw(cg,in:CGRect(x:0,y:0,width:w,height:h))
+            }
+            return data
+        }
+        let reference=pixels(plain),actual=pixels(fixed)
+        var interior=0,missing=0
+        for i in stride(from:0,to:reference.count,by:4) where reference[i]>250 && reference[i+1]>250 && reference[i+2]>250 && reference[i+3]>250 {
+            interior+=1;if actual[i]<240 || actual[i+1]<240 || actual[i+2]<240 {missing+=1}
+        }
+        let report:[String:Any]=["interiorPixels":interior,"damagedInteriorPixels":missing,"passed":interior>1000 && missing==0]
+        try? JSONSerialization.data(withJSONObject:report,options:.prettyPrinted).write(to:URL.cachesDirectory.appending(path:"danmaku-glyph.json"))
+    }
+}

@@ -96,7 +96,7 @@ import CryptoKit
         }
         model.bridge.emit("danmaku", "sourcesChanged", [snapshot])
     }
-    private func announce(_ text: String) { status = text; model.bridge.emit("danmaku", "status", [.string(text)]) }
+    private func announce(_ text: String) { model.diagnostics.record("info", "Danmaku: " + text); status = text; model.bridge.emit("danmaku", "status", [.string(text)]) }
     var snapshot: JSONValue { .array(sources.map { .object(["id": .string($0.id), "title": .string($0.title), "enabled": .bool($0.enabled), "delay": .number($0.delay), "count": .number(Double($0.comments.count))]) }) }
     func clear() { revision &+= 1; generation &+= 1; playbackGeneration &+= 1; mediaURL=nil; job?.cancel(); job = nil; sources = []; timelines = [:]; item = .null; announce("") }
     func autoMatch(_ metadata: JSONValue, mediaURL: URL? = nil) {
@@ -132,13 +132,19 @@ import CryptoKit
                 guard token == generation, !Task.isCancelled else { return }
                 guard let episodeNumber=number(metadata["IndexNumber"]), episodeNumber.isFinite, (0...10000).contains(episodeNumber), episodeNumber.rounded()==episodeNumber else { announce("无法解析剧集信息，请手动匹配弹幕"); return }
                 let works=try await search(title,manual:false)
-                let ranked=DanmakuMatch.ranked(works:works,title:title,season:number(metadata["ParentIndexNumber"]).flatMap { $0.isFinite && (0...1000).contains($0) && $0.rounded()==$0 ? Int($0) : nil })
+                let season=number(metadata["ParentIndexNumber"]).flatMap { $0.isFinite && (0...1000).contains($0) && $0.rounded()==$0 ? Int($0) : nil }
+                let ranked=DanmakuMatch.ranked(works:works,title:title,season:season,includeUnmatched:true)
+                model.diagnostics.record("info", "Danmaku metadata S\(season ?? -1)E\(Int(episodeNumber)); releases=\(works.count), seasonEligible=\(ranked.count)")
                 var matches: [DanmakuMatch.Candidate]=[]
                 for work in ranked {
                     guard token == generation, !Task.isCancelled else { return }
-                    guard let records=try? await episodes(scalar(work.value["bangumiId"]),server:work.value["_server"].string) else { continue }
-                    let result=DanmakuMatch.episodes(records,number:Int(episodeNumber),title:metadata["Name"].string ?? "")
-                    matches += result.values.map { .init(work:work.value,episode:$0,score:work.score,byTitle:result.byTitle) }
+                    guard let detail=try? await release(scalar(work.value["bangumiId"]),server:work.value["_server"].string),
+                          var enriched=work.value.object else {continue}
+                    enriched["titles"]=detail["titles"]
+                    guard let scored=DanmakuMatch.ranked(works:[.object(enriched)],title:title,season:season).first else {continue}
+                    let result=DanmakuMatch.episodes(detail["episodes"].array ?? [],number:Int(episodeNumber),title:metadata["Name"].string ?? "")
+                    model.diagnostics.record("info", "Danmaku release \(scalar(work.value["bangumiId"])); score=\(scored.score), episodes=\(result.values.count), titleMatched=\(result.byTitle)")
+                    matches += result.values.map { .init(work:work.value,episode:$0,score:scored.score,byTitle:result.byTitle) }
                 }
                 guard token == generation, !Task.isCancelled else { return }
                 if let match=DanmakuMatch.resolve(matches) {
@@ -170,11 +176,17 @@ import CryptoKit
         }
         guard succeeded else { throw URLError(.badServerResponse) };return results
     }
-    func episodes(_ id: String, server: String? = nil) async throws -> [JSONValue] {
-        guard id.range(of:"^(?:[0-9]+|tmdb-[A-Za-z0-9-]+)$",options:.regularExpression) != nil,id.count<=100 else { throw CoreError.invalidRequest }
+    private func release(_ id:String,server:String?) async throws -> JSONValue {
+        guard id.range(of:"^(?:[0-9]+|tmdb-[A-Za-z0-9-]+)$",options:.regularExpression) != nil,id.count<=100 else {throw CoreError.invalidRequest}
         let token=playbackGeneration,origin=server ?? base
-        let values=try await fetch("/api/v2/bangumi/"+id,server:origin)["bangumi"]["episodes"].array ?? []
-        guard token==playbackGeneration,!Task.isCancelled else { throw CancellationError() }
+        let value=try await fetch("/api/v2/bangumi/"+id,server:origin)["bangumi"]
+        guard token==playbackGeneration,!Task.isCancelled else {throw CancellationError()}
+        return value
+    }
+    func episodes(_ id: String, server: String? = nil) async throws -> [JSONValue] {
+        let token=playbackGeneration,origin=server ?? base
+        let values=try await release(id,server:origin)["episodes"].array ?? []
+        guard token==playbackGeneration,!Task.isCancelled else {throw CancellationError()}
         return scoped(values,server:origin,token:token).map { value in var object=value.object!;object["_bangumi"] = .string(id);return .object(object) }
     }
     private func encoded(_ value: String) -> String { value.addingPercentEncoding(withAllowedCharacters:.alphanumerics) ?? "" }

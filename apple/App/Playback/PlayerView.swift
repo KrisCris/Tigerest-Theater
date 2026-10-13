@@ -49,6 +49,10 @@ struct PlayerView: View {
     var body: some View {
         ZStack {
             Color.black
+            PlayerKeyboardInput(enabled:!showTutorial && !showDanmaku && !importSubtitle) {
+                guard !player.locked else { revealUnlock(); return }
+                act((player.engine?.flag("pause") ?? player.paused) ? "play" : "pause")
+            }.frame(width:0,height:0).allowsHitTesting(false)
             GestureVideoView(player: player, tapped: { if player.locked { revealUnlock() } else { controls.toggle(); scheduleHide() } }, feedback: gestureFeedback)
                 .accessibilityIdentifier("playerVideo").accessibilityLabel("视频画面")
             DanmakuOverlay(repository:player.model.danmaku,player:player).allowsHitTesting(false)
@@ -72,7 +76,7 @@ struct PlayerView: View {
                         HStack(spacing: 40) {
                             Button { player.adjacent(-1) } label: { Image(systemName: "backward.end.fill") }.accessibilityLabel("上一集")
                             Button { act("seekTo", [.number(max(0, player.position - 10) * 1000)]) } label: { Image(systemName: "gobackward.10") }
-                            Button { act(player.paused ? "play" : "pause") } label: { Image(systemName: player.paused ? "play.fill" : "pause.fill").font(.largeTitle) }.accessibilityLabel(player.paused ? "播放" : "暂停").keyboardShortcut(.space, modifiers: [])
+                            Button { act(player.paused ? "play" : "pause") } label: { Image(systemName: player.paused ? "play.fill" : "pause.fill").font(.largeTitle) }.accessibilityLabel(player.paused ? "播放" : "暂停")
                             Button { act("seekTo", [.number((player.position + 10) * 1000)]) } label: { Image(systemName: "goforward.10") }
                             Button { player.adjacent(1) } label: { Image(systemName: "forward.end.fill") }.accessibilityLabel("下一集")
                         }.font(.title2)
@@ -211,4 +215,35 @@ private struct DanmakuPlaybackStatus: View {
             Text(repository.status).font(.caption).foregroundStyle(.secondary).lineLimit(2).accessibilityIdentifier("danmakuStatus")
         }
     }
+}
+
+/// Keep the player in the responder chain when its visible OSD is removed.
+/// Suspend during sheets so spaces in search fields remain ordinary text input.
+private struct PlayerKeyboardInput: UIViewRepresentable {
+    let enabled:Bool
+    let toggle:()->Void
+    func makeUIView(context:Context) -> PlayerKeyboardResponder { PlayerKeyboardResponder() }
+    func updateUIView(_ view:PlayerKeyboardResponder,context:Context) {
+        view.toggle=toggle;view.acceptsKeyboard=enabled
+    }
+    static func dismantleUIView(_ view:PlayerKeyboardResponder,coordinator:()) {view.acceptsKeyboard=false;view.toggle=nil}
+}
+private final class PlayerKeyboardResponder: UIView {
+    var toggle:(()->Void)?
+    var acceptsKeyboard=false {
+        didSet {
+            guard acceptsKeyboard != oldValue else {return}
+            if acceptsKeyboard {becomeFirstResponder()} else {resignFirstResponder()}
+        }
+    }
+    override var canBecomeFirstResponder:Bool {acceptsKeyboard}
+    override func didMoveToWindow() {super.didMoveToWindow();if window != nil && acceptsKeyboard {becomeFirstResponder()}}
+    override var keyCommands:[UIKeyCommand]? {
+        guard acceptsKeyboard else {return nil}
+        let command=UIKeyCommand(input:" ",modifierFlags:[],action:#selector(togglePlayback))
+        command.wantsPriorityOverSystemBehavior=true
+        command.discoverabilityTitle="播放 / 暂停"
+        return [command]
+    }
+    @objc private func togglePlayback() {toggle?()}
 }

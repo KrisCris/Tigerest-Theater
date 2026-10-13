@@ -164,3 +164,34 @@ extension WebHostTests {
         XCTAssertTrue(app.staticTexts["弹幕匹配开关与偏移通过"].waitForExistence(timeout: 10), app.debugDescription)
     }
 }
+
+extension WebHostTests {
+    @MainActor func testSpacePausesAfterOSDAutoHideWithoutReloading() {
+        let app=XCUIApplication();app.launchArguments=["--ui-testing","-TigerestPlaybackGesturesSeen","YES"];app.launch()
+        app.buttons["连接自建 EMBY 服务器"].tap()
+        let field=app.textFields["服务器地址"];field.tap();field.typeText("http://127.0.0.1:18768/sub/")
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout:20))
+        app.buttons["验证实体键盘"].tap()
+        XCTAssertTrue(app.buttons["暂停"].waitForExistence(timeout:8))
+        XCTAssertTrue(app.buttons["暂停"].waitForNonExistence(timeout:6))
+        app.typeKey(" ",modifierFlags:[])
+        XCTAssertTrue(app.buttons["播放"].waitForExistence(timeout:2), "隐藏 OSD 后空格必须暂停")
+        let position=app.staticTexts["playbackTime"].label
+        XCTAssertFalse(position.hasPrefix("0:00:00"));XCTAssertFalse(position.hasPrefix("0:00:02"))
+        app.buttons["弹幕"].tap()
+        let search=app.textFields["搜索作品"];XCTAssertTrue(search.waitForExistence(timeout:3));search.tap();search.typeText("Blue Box")
+        XCTAssertEqual(search.value as? String,"Blue Box","搜索框内空格必须作为文本输入")
+        app.buttons["完成"].tap()
+        XCTAssertTrue(app.buttons["播放"].waitForExistence(timeout:3))
+        app.buttons["锁定"].tap()
+        app.typeKey(" ",modifierFlags:[])
+        let unlock=app.buttons["长按解除防误触锁"]
+        XCTAssertTrue(unlock.waitForExistence(timeout:2));unlock.press(forDuration:0.8)
+        XCTAssertTrue(app.buttons["播放"].waitForExistence(timeout:2),"锁定状态的空格不能改变播放")
+        app.typeKey(" ",modifierFlags:[])
+        XCTAssertTrue(app.buttons["暂停"].waitForExistence(timeout:2))
+        app.buttons["退出播放"].tap()
+        XCTAssertTrue(app.staticTexts["键盘播放次数 1"].waitForExistence(timeout:3), "空格不可穿透重新载入底层网页的剧集")
+    }
+}

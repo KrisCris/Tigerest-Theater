@@ -22,10 +22,17 @@ Prepare native RIFE with `apple/tools/prepare_native_rife.py` before generating 
 
 Add `--rife-playback-probe` to the quality probe launch arguments. Supply locally generated Caches fixtures `device-rife-1080.mp4` (12 s, 1080p/24, BT.709 SDR, AAC), `device-fixture.mp4` (720p/30), and `device-rife-long.mp4` (60 s). The report `rife-playback.json` checks actual filter output, audio, seek, EOF, shader coexistence and sustained memory. `baseline.png` / `rife-native.png` capture decoded/rendered playback frames via `screenshot-raw`; no production media is used.
 
-For the request pipeline, use `--danmaku-parity-probe` instead. It replaces only the isolated test model's URLSession with URLProtocol fixtures: every request is intercepted, including mapping writes, and no real credentials are used. Inspect `danmaku-parity.json`; all nineteen cases must succeed. `apple/Tests/pc_danmaku_golden.py` separately executes the shipped PC Lua matcher and official-header builder (LuaJIT required) and generates the cross-language matching and signature-digest oracles consumed by AppleCore tests.
+For the request pipeline, use `--danmaku-parity-probe` instead. It replaces only the isolated test model's URLSession with URLProtocol fixtures: every request is intercepted, including mapping writes, and no real credentials are used. Inspect `danmaku-parity.json`; all twenty cases must succeed. `apple/Tests/pc_danmaku_golden.py` separately executes the shipped PC Lua matcher and official-header builder (LuaJIT required) and generates the cross-language matching and signature-digest oracles consumed by AppleCore tests.
 
 Always restore the normal project and app after either probe, as described above.
 
 ## Danmaku display cadence
 
 Use `--danmaku-frame-probe` with the quality probe arguments and the local 720p/30 `device-fixture.mp4`. It imports 1200 generated comments into UITestProfiles and reports `danmaku-frames.json`: callback and movement FPS, p95 interval, pause freeze, ±300 ms seeks and 2× speed. This measures application rendering cadence, not compositor presentation or production-stream performance. Always restore and launch the normal app afterward.
+
+
+## Danmaku glyphs and production read-only check
+
+`--danmaku-glyph-probe` renders the same CJK/Latin text using the old attributed stroke, plain fill, production silhouette/fill renderer and a color-range control. `danmaku-glyph-comparison.png` preserves that row order; `danmaku-glyph.json` must have zero damaged opaque interior pixels. Run on a physical device with CJK fonts; the minimal simulator image lacks those fonts.
+
+`--bluebox-live-probe` is explicitly different from the network-isolated parity fixture. It makes anonymous GET requests to the configured public NAS API for 青之箱 S1E1 search, release details and comments, and writes `bluebox-live.json`. It does not read production Profiles, send credentials or submit any shared correction. A failed online result must be reported separately from fixture results. Restore the normal app afterward.

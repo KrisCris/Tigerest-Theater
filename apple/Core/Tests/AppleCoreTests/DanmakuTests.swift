@@ -118,3 +118,8 @@ private func DanmakuProvidersFixture() -> [DanmakuProvider] {
     #expect(clock.position(mediaTime:2,hostTime:20,playing:true,rate:1,epoch:1)==2)
     #expect(clock.position(mediaTime:1,hostTime:20.1,playing:true,rate:1,epoch:2)==1)
 }
+
+@Test func officialAliasesMatchBlueBoxWithoutCrossingSeasons() throws {
+    let rows=try JSONDecoder().decode([JSONValue].self,from:Data(#"[{"bangumiId":"18278","type":"tvseries","animeTitle":"蓝箱","titles":[{"title":"青之箱"}]},{"bangumiId":"19249","type":"tvseries","animeTitle":"青之箱 第二季","titles":[{"title":"青之箱"}]}]"#.utf8))
+    #expect(DanmakuMatch.choose(works:rows,title:"青之箱",season:1).map{$0["bangumiId"].string!} == ["18278"])
+}

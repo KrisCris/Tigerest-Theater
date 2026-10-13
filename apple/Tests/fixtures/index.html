@@ -1,7 +1,10 @@
 <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>iPad 受控验收</title></head><body style="background:#101218;color:white;font:22px system-ui;padding:32px">
 <h1>受控 Emby 页面夹具</h1><p id="status">等待原生桥接</p><button id="play" style="font:inherit;padding:20px" onclick="playback()">验证播放循环</button><button style="font:inherit;padding:20px" onclick="download()">验证离线下载</button><button style="font:inherit;padding:20px" onclick="window.tigerestOpenOfflineLibrary()">打开离线媒体</button><button style="font:inherit;padding:20px" onclick="verifyQueue()">验证选集</button><button style="font:inherit;padding:20px" onclick="verifySubtitles()">验证字幕设置</button><button style="font:inherit;padding:20px" onclick="verifyVolume()">验证音量保留</button><button style="font:inherit;padding:20px" onclick="startGestures()">验证播放手势</button><a href="http://localhost:18768/foreign.html">外站跳转</a>
 <button style="font:inherit;padding:20px" onclick="verifyAssets()">验证首页资源</button><button style="font:inherit;padding:20px" onclick="verifyQuality()">验证主设置画质</button><button style="font:inherit;padding:20px" onclick="verifyDanmaku()">验证弹幕</button><button style="font:inherit;padding:20px" onclick="verifyTransition()">验证返回转场</button>
+<button style="font:inherit;padding:20px" onclick="this.focus();startKeyboard()">验证实体键盘</button>
 <script>
+let keyboardLoads=0;
+async function startKeyboard(){keyboardLoads++;await api.player.load(location.origin+'/fixture.mp4',{autoplay:true,startMilliseconds:2000},{type:'video',title:'键盘暂停验证'},1,-1);status.textContent='键盘播放次数 '+keyboardLoads;}
 let api;const status=document.querySelector('#status');
 (async()=>{try{api=await window.apiPromise;if(!window.tigerestIPadApi||jmpInfo.platform!=='ipad')throw Error('missing platform');await api.settings.setValue('video','cache',150);if(await api.settings.value('video','cache')!==150)throw Error('setting');let rejected=false;try{await api.settings.setValue('video','cache','wrong')}catch(_){rejected=true}if(!rejected)throw Error('type');status.textContent='桥接校验通过'}catch(e){status.textContent='失败 '+e.message}})();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));

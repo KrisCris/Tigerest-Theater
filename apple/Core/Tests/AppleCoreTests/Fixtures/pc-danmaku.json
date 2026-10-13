@@ -305,5 +305,158 @@
       }
     ],
     "expected": ""
+  },
+  {
+    "name": "bluebox-official-alias",
+    "title": "青之箱",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "千夏前辈",
+    "works": [
+      {
+        "bangumiId": "18278",
+        "animeTitle": "蓝箱",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "182780001",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话 千夏前辈"
+          }
+        ],
+        "titles": [
+          {
+            "title": "蓝箱"
+          },
+          {
+            "title": "Ao no Hako"
+          },
+          {
+            "title": "アオのハコ"
+          },
+          {
+            "title": "Blue Box"
+          },
+          {
+            "title": "青春之箱"
+          },
+          {
+            "title": "青之箱"
+          }
+        ]
+      },
+      {
+        "bangumiId": "19249",
+        "animeTitle": "青之箱 第二季",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "192490001",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话"
+          }
+        ],
+        "titles": [
+          {
+            "title": "青之箱"
+          }
+        ]
+      }
+    ],
+    "required": "http://fixture/182780001",
+    "expected": "http://fixture/182780001"
+  },
+  {
+    "name": "alias-cannot-cross-season",
+    "title": "青之箱",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "19249",
+        "animeTitle": "青之箱 第二季",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "192490001",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话"
+          }
+        ],
+        "titles": [
+          {
+            "title": "青之箱"
+          }
+        ]
+      }
+    ],
+    "required": "",
+    "expected": ""
+  },
+  {
+    "name": "alias-cannot-resolve-ambiguous-releases",
+    "title": "青之箱",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "千夏前辈",
+    "works": [
+      {
+        "bangumiId": "18278",
+        "animeTitle": "蓝箱",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "182780001",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话 千夏前辈"
+          }
+        ],
+        "titles": [
+          {
+            "title": "蓝箱"
+          },
+          {
+            "title": "Ao no Hako"
+          },
+          {
+            "title": "アオのハコ"
+          },
+          {
+            "title": "Blue Box"
+          },
+          {
+            "title": "青春之箱"
+          },
+          {
+            "title": "青之箱"
+          }
+        ]
+      },
+      {
+        "bangumiId": "999",
+        "animeTitle": "其他作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "999001",
+            "episodeNumber": "1",
+            "episodeTitle": "千夏前辈"
+          }
+        ],
+        "titles": [
+          {
+            "title": "青之箱"
+          }
+        ]
+      }
+    ],
+    "required": "",
+    "expected": ""
   }
 ]
