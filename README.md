@@ -127,6 +127,12 @@ RIFE 默认关闭，需要大河内置播放配置：
 
 项目动态与支持入口：[大河李斯特视频工作室 / 大老师的 B站主页](https://space.bilibili.com/12562485)。
 
+## 贡献者
+
+- [大河李斯特（Tigerest）](https://github.com/Tigerest)：项目维护、开发与发布。
+- [Claude](https://github.com/claude)：AI 辅助开发。
+- [Codex](https://github.com/codex)：AI 辅助开发、调试与验证。
+
 ## 开发与许可
 
 客户端源码在本仓库维护，评论和弹幕服务端单独维护。公开客户端源码不包含服务器资源、账号或访问权限。
