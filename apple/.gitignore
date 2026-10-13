@@ -6,3 +6,7 @@ Generated/
 xcuserdata/
 Local.xcconfig
 reports/*.json
+DerivedDataSimulator/
+__pycache__/
+.DS_Store
+.swiftpm/
