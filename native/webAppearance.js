@@ -620,10 +620,17 @@ function findTigerestPage(start) {
     return start?.closest?.(TIGEREST_PAGE_SELECTOR) || null;
 }
 
+function tigerestSharedTransitionBusy() {
+    // Appearance runs in Qt's ApplicationWorld; transitions run in MainWorld.
+    // The DOM flag is shared between them, unlike window properties.
+    return document.body?.classList.contains('tigerest-motion-busy')
+        || window.TigerestHomeTransitions?.busy;
+}
+
 function animateTigerestPage(page) {
     if (!page) return;
     page.classList.remove(TIGEREST_PAGE_PENDING_CLASS);
-    if (window.TigerestHomeTransitions?.busy || tigerestMotionPreference.matches
+    if (tigerestSharedTransitionBusy() || tigerestMotionPreference.matches
         || Date.now() < tigerestSuppressPageAnimationUntil
         || page.classList.contains(TIGEREST_PAGE_ENTER_CLASS)) return;
 
@@ -645,7 +652,7 @@ function animateTigerestPage(page) {
 
 function scheduleTigerestPageAnimation(page) {
     if (!page) return;
-    if (window.TigerestHomeTransitions?.busy || tigerestMotionPreference.matches
+    if (tigerestSharedTransitionBusy() || tigerestMotionPreference.matches
         || Date.now() < tigerestSuppressPageAnimationUntil
         || page.classList.contains(TIGEREST_PAGE_ENTER_CLASS)) {
         page.classList.remove(TIGEREST_PAGE_PENDING_CLASS);

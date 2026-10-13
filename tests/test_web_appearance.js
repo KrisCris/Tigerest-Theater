@@ -630,6 +630,37 @@ function testAnimatesNewlyInsertedPage() {
     assert.ok(page.classList.contains('tigerest-page-enter'));
 }
 
+function testTransitionCoordinationAcrossScriptWorlds() {
+    for (const beginsDuringDelay of [false, true]) {
+        const {context, document, runTimers} = runAppearance();
+        const page = new FakeElement('div', ['mainAnimatedPage']);
+        // Qt injects the transition engine in MainWorld and appearance in
+        // ApplicationWorld. Their globals differ; only the DOM is shared.
+        const mainWorld = vm.createContext({document, window: {}});
+        const begin = () => vm.runInContext(`
+            window.TigerestHomeTransitions = {busy: true};
+            document.body.classList.add('tigerest-motion-busy');
+        `, mainWorld);
+        if (!beginsDuringDelay) begin();
+        document.dispatchEvent({type: 'viewshow', target: page});
+        if (beginsDuringDelay) begin();
+        assert.strictEqual(context.window.TigerestHomeTransitions, undefined);
+        runTimers();
+        assert.ok(!page.classList.contains('tigerest-page-enter'),
+            'isolated-world appearance overlaps a shared-element transition');
+        assert.ok(!page.classList.contains('tigerest-page-pending'),
+            'suppressed entrance leaves the destination page hidden');
+        vm.runInContext(`
+            window.TigerestHomeTransitions.busy = false;
+            document.body.classList.remove('tigerest-motion-busy');
+        `, mainWorld);
+        document.dispatchEvent({type: 'viewshow', target: page});
+        runTimers();
+        assert.ok(page.classList.contains('tigerest-page-enter'),
+            'ordinary page entrance remains suppressed after the transition');
+    }
+}
+
 function testIgnoresBubbledChildAnimationEnd() {
     const {document, runTimers} = runAppearance();
     const page = new FakeElement('div', ['mainAnimatedPage']);
@@ -941,6 +972,7 @@ testDoesNotAnimateWhenCardsLoadInsideCurrentPage();
 testOnlyAnimatesPageVisibilityChanges();
 testNestedViewShowDoesNotReplayTheWholePage();
 testAnimatesNewlyInsertedPage();
+testTransitionCoordinationAcrossScriptWorlds();
 testIgnoresBubbledChildAnimationEnd();
 testTimeoutCleansUpPageAnimation();
 testMajorPageAnimationDoesNotScaleVirtualGridWidth();
