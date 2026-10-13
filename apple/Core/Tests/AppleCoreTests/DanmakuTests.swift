@@ -134,3 +134,14 @@ private func DanmakuProvidersFixture() -> [DanmakuProvider] {
     #expect(lookups.filter{$0.value["_server"].string=="a"}.count==6)
     #expect(lookups.filter{$0.value["_server"].string=="b"}.count==2)
 }
+
+@Test func equalScoreAliasReadsPreserveSearchOrder() {
+    let rows:[JSONValue]=(1...8).map { index in
+        .object(["bangumiId":.string(String(100+index)),"type":.string("tvseries"),
+                 "animeTitle":.string("Unrelated catalog \(index)"),"_server":.string("a")])
+    }
+    let ranked=DanmakuMatch.ranked(works:rows,title:"Fixture series",season:1,includeUnmatched:true)
+    #expect(ranked.count==8 && Set(ranked.map(\.score)).count==1 && ranked.allSatisfy{$0.score<0.85})
+    let lookups=DanmakuMatch.detailLookups(ranked)
+    #expect(lookups.map{$0.value["bangumiId"].string!} == ["101","102","103","104","105"])
+}

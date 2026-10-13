@@ -978,6 +978,28 @@ function cases.alias_detail_reads_are_bounded_below_the_title_threshold()
         'Bounding alias reads must still select the strong release')
 end
 
+function cases.equal_score_alias_reads_preserve_search_order()
+    local s = sandbox(true)
+    s.emit('file-loaded')
+    local animes = {}
+    for index = 1, 8 do
+        animes[index] = {type = 'tvseries', animeTitle = 'Unrelated catalog ' .. index, bangumiId = tostring(100 + index)}
+    end
+    s.respond(1, {animes = animes})
+    local looked_up = {}
+    for request = 2, 6 do
+        local args = assert(s.request_args[request], 'Expected bounded alias detail request')
+        local id = assert(args[#args]:match('/bangumi/(%d+)$'), 'Expected release detail URL')
+        looked_up[#looked_up + 1] = id
+        s.respond(request, {bangumi = {titles = id == '102' and {{title = 'Fixture series'}} or {},
+            episodes = {{episodeNumber = '3', episodeTitle = 'Episode 3', episodeId = tonumber(id) * 10000 + 3}}}})
+    end
+    assert(s.request_args[7] and s.request_args[7][#s.request_args[7]]:find('/comment/1020003?', 1, true),
+        'The second search result must remain in the five alias reads and supply its uniquely matching episode')
+    assert(table.concat(looked_up, ',') == '101,102,103,104,105',
+        'Equal title scores must preserve provider search order before the five-release limit')
+end
+
 function cases.generic_episode_titles_keep_a_valid_candidate_when_other_results_are_incomplete()
     for _, conflict in ipairs({'duplicate', 'incomplete', 'failed', 'provider', 'missing-date', 'invalid-date'}) do
         local s = sandbox(true)

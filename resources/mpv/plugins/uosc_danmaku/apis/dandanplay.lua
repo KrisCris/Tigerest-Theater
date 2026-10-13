@@ -401,19 +401,25 @@ local function match_anime()
         local data = utils.parse_json(out)
         if type(data) ~= 'table' or type(data.animes) ~= 'table' then incomplete = true; return end
         local works, seen = {}, {}
-        for _, anime in ipairs(data.animes) do
+        for search_order, anime in ipairs(data.animes) do
             if type(anime) ~= 'table' then incomplete = true
             elseif anime.type == anime_type then
                 local score = title_score(anime.animeTitle)
                 if score then
                     if valid_api_id(anime.bangumiId) then
                         local id = tostring(anime.bangumiId)
-                        if not seen[id] then seen[id] = true; works[#works + 1] = {anime = anime, score = score} end
+                        if not seen[id] then
+                            seen[id] = true
+                            works[#works + 1] = {anime = anime, score = score, search_order = search_order}
+                        end
                     else incomplete = true end
                 end
             end
         end
-        table.sort(works, function(a, b) return a.score > b.score end)
+        table.sort(works, function(a, b)
+            if a.score == b.score then return a.search_order < b.search_order end
+            return a.score > b.score
+        end)
         -- Below the primary-title threshold only detail aliases can admit a
         -- release. Bound those sequential reads; strong titles are all checked.
         local bounded, weak = {}, 0
