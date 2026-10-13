@@ -42,6 +42,17 @@ public enum DanmakuMatch {
         }.sorted { $0.score>$1.score }
     }
     public static func choose(works: [JSONValue], title: String, season: Int) -> [JSONValue] { ranked(works:works,title:title,season:season).map(\.value) }
+    /// Below the primary-title threshold only detail aliases can admit a release.
+    /// Same bound as the PC matcher: every strong title, at most five weak releases per provider.
+    public static func detailLookups(_ ranked: [Work], weakLimit: Int = 5) -> [Work] {
+        var weakReads=[String:Int]()
+        return ranked.filter { work in
+            guard work.score<0.85 else { return true }
+            let provider=work.value["_server"].string ?? ""
+            weakReads[provider, default:0] += 1
+            return weakReads[provider, default:0]<=weakLimit
+        }
+    }
     public static func episodes(_ episodes: [JSONValue], number: Int, title: String) -> (values: [JSONValue], byTitle: Bool) {
         let expected=episodeTitle(title)
         var seen=Set<String>()

@@ -136,7 +136,7 @@ import CryptoKit
                 let ranked=DanmakuMatch.ranked(works:works,title:title,season:season,includeUnmatched:true)
                 model.diagnostics.record("info", "Danmaku metadata S\(season ?? -1)E\(Int(episodeNumber)); releases=\(works.count), seasonEligible=\(ranked.count)")
                 var matches: [DanmakuMatch.Candidate]=[]
-                for work in ranked {
+                for work in DanmakuMatch.detailLookups(ranked) {
                     guard token == generation, !Task.isCancelled else { return }
                     guard let detail=try? await release(scalar(work.value["bangumiId"]),server:work.value["_server"].string),
                           var enriched=work.value.object else {continue}

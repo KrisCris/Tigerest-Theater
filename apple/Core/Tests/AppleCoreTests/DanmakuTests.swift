@@ -123,3 +123,14 @@ private func DanmakuProvidersFixture() -> [DanmakuProvider] {
     let rows=try JSONDecoder().decode([JSONValue].self,from:Data(#"[{"bangumiId":"18278","type":"tvseries","animeTitle":"蓝箱","titles":[{"title":"青之箱"}]},{"bangumiId":"19249","type":"tvseries","animeTitle":"青之箱 第二季","titles":[{"title":"青之箱"}]}]"#.utf8))
     #expect(DanmakuMatch.choose(works:rows,title:"青之箱",season:1).map{$0["bangumiId"].string!} == ["18278"])
 }
+
+@Test func aliasDetailReadsAreBoundedPerProvider() {
+    func row(_ id:Int,_ title:String,_ server:String) -> JSONValue {
+        .object(["bangumiId":.string(String(id)),"type":.string("tvseries"),"animeTitle":.string(title),"_server":.string(server)])
+    }
+    let rows:[JSONValue]=[row(42,"Fixture series","a")]+(1...8).map{row(100+$0,"Unrelated catalog \($0)","a")}+(1...2).map{row(200+$0,"Unrelated catalog \($0)","b")}
+    let lookups=DanmakuMatch.detailLookups(DanmakuMatch.ranked(works:rows,title:"Fixture series",season:1,includeUnmatched:true))
+    #expect(lookups.first?.value["bangumiId"].string=="42")
+    #expect(lookups.filter{$0.value["_server"].string=="a"}.count==6)
+    #expect(lookups.filter{$0.value["_server"].string=="b"}.count==2)
+}

@@ -414,6 +414,14 @@ local function match_anime()
             end
         end
         table.sort(works, function(a, b) return a.score > b.score end)
+        -- Below the primary-title threshold only detail aliases can admit a
+        -- release. Bound those sequential reads; strong titles are all checked.
+        local bounded, weak = {}, 0
+        for _, work in ipairs(works) do
+            if work.score >= 0.85 then bounded[#bounded + 1] = work
+            elseif weak < 5 then weak = weak + 1; bounded[#bounded + 1] = work end
+        end
+        works = bounded
         if #works == 0 then return end
         pending_candidates = pending_candidates + 1
         local function try_candidate(index)

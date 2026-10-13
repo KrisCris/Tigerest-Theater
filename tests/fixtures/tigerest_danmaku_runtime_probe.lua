@@ -959,6 +959,25 @@ function cases.authoritative_alias_matches_blue_box_without_crossing_seasons()
         'Official release aliases must allow 青之箱 S1E1 to select 蓝箱 without reading season two')
 end
 
+function cases.alias_detail_reads_are_bounded_below_the_title_threshold()
+    local s = sandbox(true)
+    s.emit('file-loaded')
+    local animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}
+    for index = 1, 8 do
+        animes[#animes + 1] = {type = 'tvseries', animeTitle = 'Unrelated catalog ' .. index, bangumiId = tostring(100 + index)}
+    end
+    s.respond(1, {animes = animes})
+    s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = 'Episode 3', episodeId = 420003}}}})
+    for index = 3, 7 do s.respond(index, {bangumi = {titles = {}, episodes = {}}}) end
+    local details = 0
+    for _, args in ipairs(s.request_args) do
+        if args[#args]:find('/bangumi/', 1, true) then details = details + 1 end
+    end
+    assert(details == 6, 'A strong title plus at most five weak releases may be read for aliases, got ' .. details)
+    assert(s.request_args[8] and s.request_args[8][#s.request_args[8]]:find('/comment/420003?', 1, true),
+        'Bounding alias reads must still select the strong release')
+end
+
 function cases.generic_episode_titles_keep_a_valid_candidate_when_other_results_are_incomplete()
     for _, conflict in ipairs({'duplicate', 'incomplete', 'failed', 'provider', 'missing-date', 'invalid-date'}) do
         local s = sandbox(true)
