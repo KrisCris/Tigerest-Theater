@@ -37,3 +37,10 @@ import Testing
     let e=watch.stalled(position:5,now:90,paused:false)
     #expect(!a); #expect(b); #expect(!c); #expect(!d); #expect(!e)
 }
+
+@Test func temporaryRateNeverSlowsDownFasterPlayback() {
+    var speed = TemporarySpeed()
+    let boost = speed.begin(current: 3), restored = speed.end()
+    #expect(boost == 3)
+    #expect(restored == 3)
+}

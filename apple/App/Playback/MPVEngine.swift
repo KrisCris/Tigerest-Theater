@@ -6,6 +6,7 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
 /// Owns exactly one media generation. Event polling is serialized on the main actor.
 @MainActor final class MPVEngine {
     private var handle: OpaquePointer?
+    private var originalSettings: [String: String] = [:]
     let layer: CAMetalLayer
     init(layer: CAMetalLayer) throws {
         self.layer = layer
@@ -32,6 +33,11 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
     func set(_ name: String, _ value: String) throws {
         guard let handle else { throw CoreError.invalidRequest }
         try check(mpv_set_property_string(handle, name, value),operation:name)
+    }
+    /// Restore a cleared client preference to the value present in the playback core.
+    func setting(_ name: String, _ value: String?) throws {
+        if originalSettings[name] == nil { originalSettings[name] = string(name) }
+        try set(name, value ?? originalSettings[name]!)
     }
     func string(_ name: String) -> String {
         guard let handle, let pointer = mpv_get_property_string(handle, name) else { return "" }

@@ -17,7 +17,7 @@ public enum PlaybackContract {
 public struct TemporarySpeed {
     private var saved: Double?
     public init() {}
-    public mutating func begin(current: Double) -> Double? { guard saved == nil else { return nil }; saved = current; return 2 }
+    public mutating func begin(current: Double) -> Double? { guard saved == nil else { return nil }; saved = current; return max(2, current) }
     public mutating func end() -> Double? { defer { saved = nil }; return saved }
 }
 public struct EpisodeQueue: Sendable {

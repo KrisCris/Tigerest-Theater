@@ -32,3 +32,31 @@ extension WebHostTests {
         XCTAssertTrue(app.staticTexts["离线夹具"].waitForExistence(timeout:5))
     }
 }
+
+extension WebHostTests {
+    @MainActor func testQueueSelectionUsesWebPlaylistId() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.buttons["连接自建 EMBY 服务器"].tap()
+        let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
+        app.buttons["验证选集"].tap()
+        XCTAssertTrue(app.buttons["下一集"].waitForExistence(timeout: 10))
+        app.buttons["下一集"].tap()
+        XCTAssertTrue(app.staticTexts["选集身份校验通过"].waitForExistence(timeout: 10))
+    }
+}
+
+extension WebHostTests {
+    @MainActor func testSubtitleSettingsReachPlayerAndReset() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.buttons["连接自建 EMBY 服务器"].tap()
+        let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
+        app.buttons["验证字幕设置"].tap()
+        let result = app.staticTexts.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "字幕设置校验通过", "字幕设置失败")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 15))
+        XCTAssertEqual(result.label, "字幕设置校验通过")
+    }
+}

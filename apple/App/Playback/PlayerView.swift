@@ -33,11 +33,11 @@ struct PlayerView: View {
                     Spacer()
                     if !player.locked {
                         HStack(spacing: 40) {
-                            Button { player.adjacent(-1) } label: { Image(systemName: "backward.end.fill") }
+                            Button { player.adjacent(-1) } label: { Image(systemName: "backward.end.fill") }.accessibilityLabel("上一集")
                             Button { act("seekTo", [.number(max(0, player.position - 10) * 1000)]) } label: { Image(systemName: "gobackward.10") }
                             Button { act(player.paused ? "play" : "pause") } label: { Image(systemName: player.paused ? "play.fill" : "pause.fill").font(.largeTitle) }.keyboardShortcut(.space, modifiers: [])
                             Button { act("seekTo", [.number((player.position + 10) * 1000)]) } label: { Image(systemName: "goforward.10") }
-                            Button { player.adjacent(1) } label: { Image(systemName: "forward.end.fill") }
+                            Button { player.adjacent(1) } label: { Image(systemName: "forward.end.fill") }.accessibilityLabel("下一集")
                         }.font(.title2)
                         Spacer()
                         Slider(value: Binding(get: { seeking ? scrub : player.position }, set: { scrub = $0 }), in: 0...max(1, player.duration), onEditingChanged: { editing in seeking = editing; if !editing { act("seekTo", [.number(scrub * 1000)]) } })
@@ -46,6 +46,16 @@ struct PlayerView: View {
                             Spacer()
                             Menu("\(player.rate, specifier: "%.2g")×") { ForEach([0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4], id: \.self) { rate in Button("\(rate, specifier: "%.2g")×") { act("setPlaybackRate", [.number(rate * 1000)]) } } }
                             Button("弹幕") { showDanmaku = true }
+                            Menu("选集") {
+                                ForEach(Array(player.queue.enumerated()), id: \.offset) { _, item in
+                                    if let id = item["PlaylistItemId"].string {
+                                        Button { player.selectQueueItem(id) } label: {
+                                            if id == player.currentID { Label(item["Name"].string ?? "当前媒体", systemImage: "play.fill") }
+                                            else { Text(item["Name"].string ?? "媒体") }
+                                        }
+                                    }
+                                }
+                            }.disabled(player.queue.isEmpty)
                             Menu("音轨") { trackMenu("audio", method: "setAudioStream") }
                             Menu("字幕") { Button("关闭") { act("setSubtitleStream", [.number(-1)]) }; trackMenu("sub", method: "setSubtitleStream"); Button("导入字幕") { importSubtitle = true }; Button("提前 0.5 秒") { delay(-0.5) }; Button("延后 0.5 秒") { delay(0.5) } }
                             Menu("画质") { Button("渲染与着色器") { showQuality=true }; ForEach([0, 20000000, 10000000, 4000000], id: \.self) { bitrate in Button(bitrate == 0 ? "原始画质" : "\(bitrate / 1000000) Mbps") { player.model.bridge.emit("player", "streamingBitrateRequested", [.number(Double(bitrate))]) } } }

@@ -60,7 +60,6 @@ import AppleCore
             guard let url = arg(0).string else { throw CoreError.invalidAddress }; try validateMedia(url)
             stop(notify: false)
             metadata = arg(2); title = metadata["title"].string ?? metadata["metadata"]["Name"].string ?? "正在播放"
-            currentID = metadata["metadata"]["Id"].string ?? ""
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetoothA2DP])
             try session.setActive(true)
@@ -105,7 +104,7 @@ import AppleCore
         case "getWebPlaylist": return .array(queue)
         case "getCurrentWebPlaylistItemId": return .string(currentID)
         case "setWebPlaylist": queue = arg(0).array ?? []; currentID = arg(1).string ?? currentID; emit("webPlaylistChanged", [.array(queue), .string(currentID)])
-        case "clearQueue": queue = []; emit("webPlaylistChanged", [.array([]), .string(currentID)])
+        case "clearQueue": break // Internal gapless queue only; Emby owns the visible playlist.
         case "queueMedia": throw CoreError.invalidRequest
         case "setVideoRectangle": emit("onVideoRecangleChanged")
         case "streamSwitch", "setVideoOnlyMode": break
@@ -128,6 +127,7 @@ import AppleCore
                 do {
                     if startSeconds > 0 { try engine.command(["seek", String(startSeconds), "absolute+exact"]) }
                     try track("aid", audio); try track("sid", subtitle)
+                    try applyAspect()
                 } catch { notice = "部分音轨或字幕设置未能应用" }
                 emit(paused ? "paused" : "playing"); emit("videoPlaybackActive", [.bool(!paused)])
             case .ended: finish(generation); return
@@ -165,8 +165,12 @@ import AppleCore
     func beginTemporarySpeed() { guard active, !paused, let speed = temporary.begin(current: rate) else { return }; try? engine?.set("speed", String(speed)) }
     func endTemporarySpeed() { if let rate = temporary.end() { try? engine?.set("speed", String(rate)) } }
     func adjacent(_ delta: Int) {
-        let ids = queue.compactMap { $0["Id"].string ?? $0["id"].string }
-        if let id = EpisodeQueue(ids: ids, current: currentID).neighbor(delta) { model.bridge.emit("input", "playlistItemRequested", [.string(id)]) }
+        let ids = queue.compactMap { $0["PlaylistItemId"].string }
+        if let id = EpisodeQueue(ids: ids, current: currentID).neighbor(delta) { selectQueueItem(id) }
+    }
+    func selectQueueItem(_ id: String) {
+        guard queue.contains(where: { $0["PlaylistItemId"].string == id }) else { return }
+        model.bridge.emit("input", "playlistItemRequested", [.string(id)])
     }
     func updateNowPlaying() { guard active else { return }; MPNowPlayingInfoCenter.default().nowPlayingInfo = [MPMediaItemPropertyTitle: title, MPMediaItemPropertyPlaybackDuration: duration, MPNowPlayingInfoPropertyElapsedPlaybackTime: position, MPNowPlayingInfoPropertyPlaybackRate: paused ? 0 : rate] }
     @objc private func interruption(_ note: Notification) {
@@ -182,18 +186,48 @@ import AppleCore
     @objc private func routeChanged(_ note: Notification) {
         if note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { _ = try? dispatch("pause", []) }
     }
-    func diagnostics() -> JSONValue { .object(["version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("vo") ?? ""), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
+    func diagnostics() -> JSONValue { .object(["version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("vo") ?? ""), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
     func applySettings() throws {
         guard let engine else { return }
         let settings = model.settings
         func text(_ section: String, _ key: String) -> String { let v = settings.get(section, key); return v.string ?? v.number.map(String.init(describing:)) ?? v.bool.map { $0 ? "yes" : "no" } ?? "" }
         let hardware = text("video", "hardwareDecoding")
         let mapping = ["hwdec": hardware == "disabled" ? "no" : hardware == "copy" ? "videotoolbox-copy" : "videotoolbox", "demuxer-max-bytes": String(Int((settings.get("video", "cache").number ?? 100) * 1048576)), "video-sync": text("video", "sync_mode"), "alang": text("mpv", "audioLanguage"), "slang": text("mpv", "subtitleLanguage"), "cache-pause": text("mpv", "cachePause"), "deband": text("mpv", "deband"), "tone-mapping": text("mpv", "toneMapping"), "audio-channels": text("audio", "channels"), "deinterlace": text("video", "deinterlace"), "audio-delay": String((settings.get("video", "audio_delay.normal").number ?? 0) / 1000), "sub-font": text("subtitles", "font"), "sub-ass-override": text("subtitles", "ass_style_override")]
-        for (key, value) in mapping where !value.isEmpty { try engine.set(key, value) }
+        for (key, value) in mapping { try engine.setting(key, value.isEmpty ? nil : value) }
+        try applySubtitles()
+        try applyAspect()
         try engine.set("af", settings.get("audio", "normalize").bool == true ? "lavfi=[dynaudnorm]" : "")
         if let data=try? Data(contentsOf:model.profiles.directory.appending(path:"quality.json")),let custom=try? JSONDecoder().decode([String:String].self,from:data) {
             let validated=try MPVConfigurationPolicy.parse(custom.map { $0.key+"="+$0.value }.joined(separator:"\n"),shaderRoot:model.profiles.directory.appending(path:"Shaders"))
             for (key,value) in validated {try engine.set(key,value)}
         }
+    }
+    private func applySubtitles() throws {
+        guard let engine else { return }
+        func value(_ key: String) -> JSONValue { model.settings.get("subtitles", key) }
+        let size = value("size").number ?? -1, border = value("border_size").number ?? -1
+        try engine.setting("sub-scale", size >= 0 ? String(size / 32) : nil)
+        try engine.setting("sub-border-size", border >= 0 ? String(border) : nil)
+        try engine.setting("sub-ass-style-overrides", value("ass_scale_border_and_shadow").bool == true ? "ScaledBorderAndShadow=yes" : "ScaledBorderAndShadow=no")
+        for (key, property) in [("color", "sub-color"), ("border_color", "sub-border-color")] {
+            let color = value(key).string ?? ""
+            try engine.setting(property, color.isEmpty ? nil : color)
+        }
+        let color = value("background_color").string ?? "", alpha = value("background_transparency").string ?? ""
+        try engine.setting("sub-back-color", !color.isEmpty && !alpha.isEmpty ? "#" + alpha + color.dropFirst() : nil)
+        let placement = (value("placement").string ?? "").split(separator: ",")
+        try engine.setting("sub-align-x", placement.count == 2 ? String(placement[0]) : nil)
+        try engine.setting("sub-pos", placement.count == 2 ? (placement[1] == "bottom" ? "100" : "10") : nil)
+    }
+    private func applyAspect() throws {
+        guard let engine else { return }
+        let mode = model.settings.get("video", "aspect").string ?? "normal"
+        guard mode != "custom" else { return }
+        let sourceAspect = engine.number("video-params/aspect")
+        let force = mode == "force_4_3" ? "4:3" : (mode == "force_16_9" || (mode == "force_16_9_if_4_3" && abs(sourceAspect - 4 / 3) < 0.1) ? "16:9" : "no")
+        try engine.set("video-unscaled", mode == "noscaling" ? "yes" : "no")
+        try engine.set("video-aspect-override", force)
+        try engine.set("keepaspect", mode == "stretch" ? "no" : "yes")
+        try engine.set("panscan", mode == "zoom" ? "1" : "0")
     }
 }

@@ -16,7 +16,7 @@ import AppleCore
             switch request.method {
             case "value": return model.settings.get(section, key)
             case "setValue": try model.settings.set(section, key, arg(2)); try model.player.applySettings(); return .bool(true)
-            case "resetToDefault": try model.settings.reset(section); return .bool(true)
+            case "resetToDefault": try model.settings.reset(section); try model.player.applySettings(); return .bool(true)
             default: throw CoreError.invalidRequest
             }
         case "window":
