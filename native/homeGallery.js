@@ -211,7 +211,7 @@
         const eyebrow = element('p', 'tg-home-eyebrow');
         eyebrow.append(element('span', '', 'YOUR LIBRARY /'), document.createTextNode(' '), element('span', '', '我的媒体'));
         navHeading.append(eyebrow);
-        if (!window.tigerestAndroidApi && !window.api?.system?.isAndroid) {
+        if (window.jmpInfo?.capabilities?.desktopWindowControls !== false && !window.tigerestAndroidApi && !window.api?.system?.isAndroid) {
             this.root.classList.add('tg-home-has-window-control');
             const windowMode = element('button', 'tg-home-window-mode');
             windowMode.type = 'button'; windowMode.dataset.tigerestWindowMode = '';

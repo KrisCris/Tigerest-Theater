@@ -51,5 +51,9 @@ withBrowser({...iconFont?{'/emby-icons.woff2':{type:'font/woff2',path:path.resol
  new Function('window','document',${JSON.stringify(gallery)})(fixture,mobileDoc);
  window.mobileHome=new fixture.TigerestHomeGallery(mobileDoc.querySelector('main'),{apiProvider:()=>null});`);
  assert.equal(await evaluate(`mobileDoc.querySelectorAll('#tigerest-window-mode-button,[data-tigerest-window-mode]').length`),0,'Android mounts no desktop fullscreen controls');
+ await evaluate(`mobileHome.destroy();fixture.tigerestAndroidApi=null;fixture.tigerestIPadApi={};fixture.jmpInfo.capabilities={desktopWindowControls:false,downloads:true};
+ new Function('window','document','MutationObserver',${JSON.stringify(controls+'\ninstallWindowModeEntry();')})(fixture,mobileDoc,frame.contentWindow.MutationObserver);
+ window.ipadHome=new fixture.TigerestHomeGallery(mobileDoc.querySelector('main'),{apiProvider:()=>null});`);
+ assert.equal(await evaluate(`mobileDoc.querySelectorAll('#tigerest-window-mode-button,[data-tigerest-window-mode]').length`),0,'iPad mounts no desktop fullscreen controls');
  console.log('window controls: shared state, delayed native completion, failure/retry, F11, remount, preference isolation, observer stability, compact toolbar and Android absence passed');
 },{visible:true}).catch(error=>{console.error(error);process.exitCode=1});
