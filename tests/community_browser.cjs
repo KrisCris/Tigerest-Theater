@@ -30,9 +30,11 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         const id=require('node:crypto').randomUUID().replaceAll('-','');
         const folder=path.join(profile,'profiles',id);fs.mkdirSync(folder,{recursive:true});
         fs.writeFileSync(path.join(folder,'profile.json'),JSON.stringify({name:'MessagesFixture'}));
-        fs.writeFileSync(path.join(folder,'Tigerest Theater.conf'),JSON.stringify({version:configVersion,sections:{
+        // Match CMakeModules/NameConfiguration.cmake on each native platform.
+        const settingsFile=path.join(folder,['win32','darwin'].includes(process.platform)?'Tigerest Theater.conf':'tigerest-theater.conf');
+        fs.writeFileSync(settingsFile,JSON.stringify({version:configVersion,sections:{
             ...settings,main:{...settings.main,enableWindowsTrayIcon:false},path:{...settings.path,startupurl_desktop:url}}}));
-        if(prepareProfile)await prepareProfile(profile,folder);
+        if(prepareProfile)await prepareProfile(profile,folder,settingsFile);
     }
     const args=webengine?['--config-dir',profile,'--profile','MessagesFixture',...(gpu?[]:['--disable-gpu']),'--remote-debugging-port','127.0.0.1:'+port]
         :['--headless','--disable-gpu','--remote-debugging-port=0','--user-data-dir='+profile,url];

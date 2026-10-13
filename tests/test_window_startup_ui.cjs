@@ -2,7 +2,6 @@
 // home preference, and manual window controls must not change that preference.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const path = require('node:path');
 const withBrowser = require('./community_browser.cjs');
 
 (async () => {
@@ -48,7 +47,7 @@ const withBrowser = require('./community_browser.cjs');
             assert.equal(persisted.sections.home.startupFullscreen, !initial, 'preference persisted to disk');
             results.push({initial, ...result, savedPreference: !initial});
         }, {settings: {home: {startupFullscreen: initial}, main: {fullscreen: !initial}},
-            prepareProfile: async (_, folder) => {settingsFile = path.join(folder, 'Tigerest Theater.conf');}});
+            prepareProfile: async (_, folder, file) => {settingsFile = file;}});
 
         await withBrowser({'/': {type: 'text/html', body: '<!doctype html><title>Isolated preference restart</title>'}}, async ({evaluate}) => {
             const restarted = await evaluate(`(async () => {
