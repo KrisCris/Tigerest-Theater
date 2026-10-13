@@ -17,8 +17,15 @@ jobs:
     - name: Install build dependencies from debian/control
       run: |
         sudo apt-get update
-        sudo apt-get install --yes devscripts equivs ninja-build lcov
+        sudo apt-get install --yes devscripts equivs ninja-build lcov xvfb xauth
         sudo mk-build-deps -i -r -t "apt-get --yes" debian/control
+        # Build-Depends do not install the QML plugins used when launching tests.
+        sudo apt-get install --yes \
+          qml6-module-qtquick qml6-module-qtqml \
+          qml6-module-qtwebengine qml6-module-qtwebchannel \
+          qml6-module-qtquick-controls qml6-module-qtquick-dialogs \
+          qml6-module-qtquick-window qml6-module-qtqml-workerscript \
+          qml6-module-qtquick-templates qml6-module-qt-labs-platform
 
     - name: Configure
       run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_STATIC_MPVQT=ON -DCOVERAGE=ON
@@ -28,8 +35,8 @@ jobs:
 
     - name: Run tests
       run: |
-        cd build
-        ctest --output-on-failure
+        xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+          ctest --test-dir build --output-on-failure
 
     - name: Collect coverage
       run: |

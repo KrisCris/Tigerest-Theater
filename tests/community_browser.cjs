@@ -40,7 +40,7 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
     let startup='';child.stdout.on('data',d=>startup=(startup+d).slice(-2000));child.stderr.on('data',d=>startup=(startup+d).slice(-2000));
         const startupDeadline=Date.now()+startupTimeout;
         while(Date.now()<startupDeadline){
-            assert.equal(child.exitCode,null,'browser exited: '+startup);
+            assert.ok(child.exitCode===null&&child.signalCode===null,'browser exited ('+(child.signalCode??child.exitCode)+'): '+startup);
             try{
                 if(!webengine)port=fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0];
                 await fetch('http://127.0.0.1:'+port+'/json/list');break;
@@ -80,7 +80,7 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         await work({url,call,evaluate,webengine,process:child,profile});
     }finally{
         socket?.close();
-        if(child&&child.exitCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}
+        if(child&&child.exitCode===null&&child.signalCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}
         await new Promise(r=>server.close(r));await delay(150);
         assert.equal(path.dirname(path.resolve(profile)),path.resolve(os.tmpdir()));
         assert.ok(path.basename(profile).startsWith('tigerest-messages-'));

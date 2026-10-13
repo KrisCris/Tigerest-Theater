@@ -464,6 +464,9 @@ endif()
 
 find_program(Node_EXECUTABLE node)
 if(Node_EXECUTABLE)
+  add_test(NAME test_community_browser
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_community_browser.cjs)
+  set_tests_properties(test_community_browser PROPERTIES TIMEOUT 10)
   add_test(NAME test_home_data
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_home_data.js
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_home_backdrop.js
