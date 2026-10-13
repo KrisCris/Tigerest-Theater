@@ -14,7 +14,7 @@
     const rasterRoot=()=>document.body.classList.contains('tg-home-active')?backgroundRoot():document.body;
     const cacheReady=()=>!!cached&&cached.root===backgroundRoot()&&cached.epoch===epoch&&cached.stamp===stamp();
     function invalidate(schedule=true){
-        ++epoch;cached?.bitmap.close();cached?.wrapper?.remove();cached=null;warming?.controller.abort();warming=null;
+        ++epoch;cached?.bitmap?.close();cached?.wrapper?.remove();cached=null;warming?.controller.abort();warming=null;
         clearTimeout(warmTimer);warmTimer=null;
         if(schedule&&!active&&!reduced())warmTimer=setTimeout(()=>prewarm(),180);
     }
@@ -40,7 +40,8 @@
     const homeActive=()=>document.body.classList.contains('tg-home-active');
     // Only a return to home shows the crisp DOM copy. Home transitions animate
     // the live gallery and poster transitions use the small bitmap or a lens.
-    const snapshotWanted=()=>!homeActive();
+    const nativeGlass=()=>window.jmpInfo?.platform==='ipad';
+    const snapshotWanted=()=>nativeGlass()||!homeActive();
     function idle(signal){
         return new Promise(resolve=>{
             if(signal.aborted)return resolve(false);
@@ -58,7 +59,7 @@
         // before a click. A return promotes this wrapper in place.
         Object.assign(wrapper.style,{position:'fixed',inset:'0',opacity:'0',pointerEvents:'none',zIndex:'-2147483000',overflow:'hidden',contain:'layout paint'});
         wrapper.append(light);document.body.append(wrapper);sync(warmJob);light.getBoundingClientRect();
-        Object.assign(cached,{light,wrapper});
+        Object.assign(cached,{light,wrapper,copies:warmJob.copies});
     }
     function prewarm(){
         changes(observer?.takeRecords()||[]);
@@ -73,9 +74,12 @@
             if(cacheReady())return true;
             if(!await settled(task.root,signal))return false;
             task.phase='build';
-            const result=await window.TigerestHomeBackdrop.build(rasterRoot(),signal);
+            // WebKit does not reliably blur OffscreenCanvas; its 240px raster also
+            // omits CSS backdrop images/gradients. Cache a full-resolution DOM scene
+            // on iPad, keeping its CSS and letting the compositor produce the glass.
+            const result=nativeGlass()?{bitmap:null,width:0,height:0}:await window.TigerestHomeBackdrop.build(rasterRoot(),signal);
             if(!result)return false;
-            if(!valid()){result.bitmap.close();return false;}
+            if(!valid()){result.bitmap?.close();return false;}
             cached={...result,root:task.root,epoch,stamp:task.stamp,light:null,wrapper:null};return true;
         })().catch(()=>false);
         task.promise=task.raster.then(async ready=>{
@@ -96,8 +100,8 @@
       .tigerest-motion-layer{position:fixed;inset:0;z-index:2147483000;pointer-events:none!important;overflow:hidden;contain:layout paint}
       .tigerest-motion-veil,.tigerest-motion-scene,.tigerest-motion-frozen{position:absolute;inset:0}
       .tigerest-motion-veil{background:#0b0d12}
-      .tigerest-motion-frozen{filter:blur(7px)}
-      .tigerest-motion-lens{-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)}
+      .tigerest-motion-frozen{filter:blur(var(--tigerest-motion-blur,7px))}
+      .tigerest-motion-lens{-webkit-backdrop-filter:blur(var(--tigerest-motion-blur,7px));backdrop-filter:blur(var(--tigerest-motion-blur,7px))}
       .tigerest-motion-scene>canvas{position:absolute;inset:0;width:100%;height:100%}
       .tigerest-motion-poster{position:fixed;z-index:2147483001;pointer-events:none;transform-origin:0 0;overflow:hidden;background-size:cover;background-position:center;will-change:transform}
       @media(max-width:900px){
@@ -211,8 +215,10 @@
         }
         const originals = [originalRoot,...originalRoot.querySelectorAll('*')], copies = [copyRoot,...copyRoot.querySelectorAll('*')];
         const scrolls = [];
+        job.copies=new WeakMap();
         originals.forEach((node,i) => {
             const clone = copies[i];
+            if(clone)job.copies.set(node,clone);
             if (clone !== body && !body.contains(clone)) return;
             // Stylesheets can declare important entrance animations. A universal
             // shadow override cannot beat those selectors; freeze each element.
@@ -265,6 +271,27 @@
         return {cover,copy};
     }
     async function bitmap(job,view,source=false){
+        if(nativeGlass()) {
+            // Never reuse a low-resolution worker raster on the tablet. A warm
+            // DOM scene belongs to exactly one route, viewport and mutation epoch.
+            const hit=source&&cacheReady()&&cached.light;
+            let scene;
+            if(hit) {
+                scene=cached.light;cached.light=null;
+                cached.wrapper?.remove();cached.wrapper=null;
+                scene.style.removeProperty('filter');
+                for(const n of scene.shadowRoot?.querySelectorAll('[data-tigerest-scroll]')||[]) {
+                    const [x,y]=JSON.parse(n.getAttribute('data-tigerest-scroll'));
+                    (job.syncs||=[]).push(()=>{n.scrollLeft=x;n.scrollTop=y;});
+                }
+                // The independently flying poster must not remain in the scene.
+                for(const h of job.held) {
+                    cached.copies?.get(h.node)?.style.setProperty('visibility','hidden');
+                }
+            } else scene=frozen(job);
+            job.metric.cacheHit=!!hit;job.metric.backgroundRenderer='dom-glass';
+            view.bitmap=scene;view.group.append(scene);sync(job);return;
+        }
         let result=source&&cacheReady()?cached:null,owned=false;
         if(source){job.metric.cacheHit=!!result;job.metric.syncRasterMs=0;}
         if(!result&&source&&warming){

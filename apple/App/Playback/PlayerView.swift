@@ -34,7 +34,8 @@ struct PlayerView: View {
     @State private var seeking = false
     @State private var importSubtitle = false
     @State private var showDanmaku = false
-    @State private var showQuality = false
+    @State private var unlockVisible = false
+    @State private var unlockTask: Task<Void, Never>?
     @State private var gestureMessage = ""
     @State private var interacting = false
     @State private var hideTask: Task<Void, Never>?
@@ -48,9 +49,9 @@ struct PlayerView: View {
     var body: some View {
         ZStack {
             Color.black
-            GestureVideoView(player: player, tapped: { controls.toggle(); scheduleHide() }, feedback: gestureFeedback)
+            GestureVideoView(player: player, tapped: { if player.locked { revealUnlock() } else { controls.toggle(); scheduleHide() } }, feedback: gestureFeedback)
                 .accessibilityIdentifier("playerVideo").accessibilityLabel("视频画面")
-            DanmakuOverlay(repository:player.model.danmaku,player:player)
+            DanmakuOverlay(repository:player.model.danmaku,player:player).allowsHitTesting(false)
             if player.buffering { ProgressView().controlSize(.large) }
             if !gestureMessage.isEmpty {
                 Text(gestureMessage).font(.title3.monospacedDigit()).multilineTextAlignment(.center)
@@ -94,16 +95,20 @@ struct PlayerView: View {
                             }.disabled(player.queue.isEmpty)
                             Menu("音轨") { trackMenu("audio", method: "setAudioStream") }
                             Menu("字幕") { Button("关闭") { act("setSubtitleStream", [.number(-1)]) }; trackMenu("sub", method: "setSubtitleStream"); Button("导入字幕") { importSubtitle = true }; Button("提前 0.5 秒") { delay(-0.5) }; Button("延后 0.5 秒") { delay(0.5) } }
-                            Menu("画质") { Button("渲染与着色器") { showQuality=true }; ForEach([0, 20000000, 10000000, 4000000], id: \.self) { bitrate in Button(bitrate == 0 ? "原始画质" : "\(bitrate / 1000000) Mbps") { player.model.bridge.emit("player", "streamingBitrateRequested", [.number(Double(bitrate))]) } } }
+                            Menu("码率") { ForEach([0, 20000000, 10000000, 4000000], id: \.self) { bitrate in Button(bitrate == 0 ? "原始画质" : "\(bitrate / 1000000) Mbps") { player.model.bridge.emit("player", "streamingBitrateRequested", [.number(Double(bitrate))]) } } }
                         }.font(.callout)
                         if !player.notice.isEmpty { Text(player.notice).font(.caption) }
+                        DanmakuPlaybackStatus(repository: player.model.danmaku)
                     }
                 }.buttonStyle(PlayerTouchButtonStyle()).padding(28)
             }
-            if player.locked {
+            if player.locked && unlockVisible {
                 HStack {
-                    Button {} label: { Label("长按解锁", systemImage: "lock.fill").padding(14).background(.black.opacity(0.75), in: Capsule()) }
+                    Button { revealUnlock() } label: { Label("长按解锁", systemImage: "lock.fill").padding(14).background(.black.opacity(0.75), in: Capsule()) }
                         .simultaneousGesture(LongPressGesture(minimumDuration: 0.6).onEnded { _ in unlock() })
+                        .simultaneousGesture(DragGesture(minimumDistance: 0)
+                            .onChanged { _ in unlockTask?.cancel() }
+                            .onEnded { _ in if player.locked { revealUnlock() } })
                         .accessibilityLabel("长按解除防误触锁")
                         .accessibilityAction(named: Text("解除防误触锁")) { unlock() }
                     Spacer()
@@ -111,20 +116,22 @@ struct PlayerView: View {
             }
         }.ignoresSafeArea().foregroundStyle(.white)
             .onAppear { if !tutorialSeen { presentTutorial() }; scheduleHide() }
-            .onDisappear { hideTask?.cancel(); feedbackTask?.cancel(); player.endTemporarySpeed() }
-            .onChange(of: [seeking, showTutorial, showQuality, showDanmaku, importSubtitle]) { _, _ in scheduleHide() }
-            .onChange(of: player.locked) { _, _ in feedbackTask?.cancel(); gestureMessage = "" }
+            .onDisappear { unlockTask?.cancel(); hideTask?.cancel(); feedbackTask?.cancel(); player.endTemporarySpeed() }
+            .onChange(of: [seeking, showTutorial, showDanmaku, importSubtitle]) { _, _ in scheduleHide() }
+            .onChange(of: player.locked) { _, locked in
+                feedbackTask?.cancel(); gestureMessage = ""
+                if locked { revealUnlock() } else { unlockTask?.cancel(); unlockVisible = false }
+            }
             .onChange(of: player.paused) { _, paused in if paused && !player.locked { controls = true }; scheduleHide() }
             .onChange(of: scenePhase) { _, phase in if phase != .active { hideTask?.cancel(); gestureMessage = ""; interacting = false } }
             .sheet(isPresented: $showTutorial, onDismiss: finishTutorial) {
                 NavigationStack {
                     ScrollView {
-                        Text("轻点画面：显示或隐藏控制栏\n\n双击画面：播放或暂停\n\n左右滑动：预览快进或快退，松手跳转\n\n左侧上下滑动：调整本次播放的亮度，退出后恢复\n\n右侧上下滑动：调整系统媒体音量\n\n长按空白画面：临时 2× 播放，松手恢复原速度；原速度超过 2× 时保持原速度\n\n锁定后，长按解锁按钮恢复操作\n\n请从画面内部开始滑动，屏幕边缘留给系统手势。")
+                        Text("轻点画面：显示或隐藏控制栏\n\n双击画面：播放或暂停\n\n左右滑动：预览快进或快退，松手跳转\n\n左侧上下滑动：调整本次播放的亮度，退出后恢复\n\n右侧上下滑动：调整系统媒体音量\n\n长按空白画面：临时 2× 播放，松手恢复原速度；原速度超过 2× 时保持原速度\n\n锁定后提示会自动隐藏；轻点画面唤回按钮，长按解锁恢复操作\n\n请从画面内部开始滑动，屏幕边缘留给系统手势。")
                             .frame(maxWidth: .infinity, alignment: .leading).padding(24)
                     }.navigationTitle("播放手势").toolbar { Button("知道了") { showTutorial = false } }
                 }.presentationDetents([.large])
             }
-            .sheet(isPresented:$showQuality) { QualitySettings(player:player) }
             .sheet(isPresented:$showDanmaku) { DanmakuControls(repository:player.model.danmaku) }
             .fileImporter(isPresented: $importSubtitle, allowedContentTypes: [.data]) { result in
                 do {
@@ -136,6 +143,13 @@ struct PlayerView: View {
                     act("setSubtitleStream", [.string("#," + target.absoluteString)])
                 } catch { player.notice = "字幕导入失败，请检查文件格式" }
             }
+    }
+    private func revealUnlock() {
+        unlockTask?.cancel(); unlockVisible = true
+        unlockTask = Task { @MainActor in
+            do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            unlockVisible = false
+        }
     }
     private func unlock() { player.setTouchLocked(false); controls = true; scheduleHide() }
     private func gestureFeedback(_ text: String, _ touching: Bool) {
@@ -152,11 +166,11 @@ struct PlayerView: View {
     private func scheduleHide() {
         hideTask?.cancel()
         guard controls, !player.paused, !player.locked, !interacting, !seeking,
-              !showTutorial, !showQuality, !showDanmaku, !importSubtitle else { return }
+              !showTutorial, !showDanmaku, !importSubtitle else { return }
         hideTask = Task { @MainActor in
             do { try await Task.sleep(for: .milliseconds(3500)) } catch { return }
             guard !player.paused, !player.locked, !interacting, !seeking,
-                  !showTutorial, !showQuality, !showDanmaku, !importSubtitle else { return }
+                  !showTutorial, !showDanmaku, !importSubtitle else { return }
             controls = false
         }
     }
@@ -187,5 +201,14 @@ private struct PlayerTouchButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle()).opacity(configuration.isPressed ? 0.55 : 1)
+    }
+}
+
+private struct DanmakuPlaybackStatus: View {
+    @ObservedObject var repository: DanmakuRepository
+    var body: some View {
+        if !repository.status.isEmpty {
+            Text(repository.status).font(.caption).foregroundStyle(.secondary).lineLimit(2).accessibilityIdentifier("danmakuStatus")
+        }
     }
 }

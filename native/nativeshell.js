@@ -1179,6 +1179,12 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         groupHead.append(groupTitle, reset);
         group.appendChild(groupHead);
 
+        if (section === 'mpv' && window.tigerestIPadApi) {
+            const advanced = element('button', 'tgs-reset', '导入着色器与播放诊断');
+            advanced.type = 'button';
+            advanced.addEventListener('click', () => window.api.system.openQualitySettings());
+            group.appendChild(advanced);
+        }
         if (section === 'video' && mpvDiagnostics.rife) {
             rifeCallout = element('div', 'tgs-callout');
             updateRifeStatus();

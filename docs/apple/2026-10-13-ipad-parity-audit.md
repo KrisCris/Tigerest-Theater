@@ -69,3 +69,6 @@ Xcode 27.2 beta 的设备签名构建和 codesign 严格校验通过；已覆盖
 ## 追加：Android 手势与 Mac 画质 / RIFE
 
 用户明确要求手势至少与安卓版对齐，并尝试植入 Mac shader 与 RIFE。实现与分层验证详见 [手势与画质记录](2026-10-13-ipad-gestures-quality.md)。RIFE 已完成 iPad 真机 Core ML/Metal 中间帧推理，正常播放器尚无完整帧适配通路；不得将推理微基准写成已支持视频补帧。
+
+
+后续进展：2026-10-14 的界面反馈、弹幕 PC 规则对齐与原生 RIFE 播放接入见 [验证记录](2026-10-14-ipad-feedback-verification.md)。本表中的早期差距以该记录的已验证范围为增量更新，仍不代表全平台移植完成。

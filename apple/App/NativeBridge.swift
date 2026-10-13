@@ -15,8 +15,17 @@ import AppleCore
             let section = arg(0).string ?? "", key = arg(1).string ?? ""
             switch request.method {
             case "value": return model.settings.get(section, key)
-            case "setValue": try model.settings.set(section, key, arg(2)); try model.player.applySettings(); return .bool(true)
-            case "resetToDefault": try model.settings.reset(section); try model.player.applySettings(); return .bool(true)
+            case "setValue":
+                if section == "mpv", key == "shaderPreset" {
+                    guard let preset=QualitySelection.ids[arg(2).string ?? ""] else {throw CoreError.invalidSetting}
+                    try model.player.selectQuality(QualitySelection(preset:preset))
+                } else {try model.settings.set(section, key, arg(2));try model.player.applySettings()}
+                model.danmaku.applySettings(); return .bool(true)
+            case "resetToDefault":
+                try model.settings.reset(section)
+                if section == "mpv" {try model.player.selectQuality(QualitySelection())}
+                else {try model.player.applySettings()}
+                model.danmaku.applySettings();return .bool(true)
             default: throw CoreError.invalidRequest
             }
         case "window":
@@ -48,6 +57,7 @@ import AppleCore
             case "hello": return .string("大河影院 iPad")
             case "getUserAgent": return .string(model.web.view.customUserAgent ?? "TigerestTheater/2.6.0")
             case "openServerSettings": model.openServerSettings(); return .null
+            case "openQualitySettings": model.showQuality = true; return .null
             case "openProfiles": model.showProfiles = true; return .null
             case "openOfflineLibrary": model.showOffline = true; return .null
             case "systemInformation": return .object(["platform": .string("ipad"), "version": .string(UIDevice.current.systemVersion)])

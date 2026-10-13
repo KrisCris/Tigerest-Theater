@@ -15,3 +15,17 @@ Generate the normal project, then run `Quality/prepare.py` and build. The opt-in
 For the SSim downscale case, also supply `--downscale-probe` and `Library/Caches/device-fixture-4k.mp4`. Reports are `quality-probe.json` and `quality-probe-downscale.json` in Caches. Verify actual shader pass descriptions, hot reset/reapply, audio output, and brightness/volume restoration. Simulator screen brightness and system volume are unsupported; device verification is required.
 
 Run `apple/tools/generate_project.py` again to remove all validation sources/flags, then build, verify signing, reinstall, and launch without test arguments. Do not deliver the probe build to the user as the normal app.
+
+## Playback RIFE and PC danmaku parity
+
+Prepare native RIFE with `apple/tools/prepare_native_rife.py` before generating the project. This verifies the exact mpv commit and compiled model hashes, and preserves the pinned SPM artifacts. See `docs/apple/2026-10-14-ipad-feedback-verification.md` for supported formats and ABI constraints.
+
+Add `--rife-playback-probe` to the quality probe launch arguments. Supply locally generated Caches fixtures `device-rife-1080.mp4` (12 s, 1080p/24, BT.709 SDR, AAC), `device-fixture.mp4` (720p/30), and `device-rife-long.mp4` (60 s). The report `rife-playback.json` checks actual filter output, audio, seek, EOF, shader coexistence and sustained memory. `baseline.png` / `rife-native.png` capture decoded/rendered playback frames via `screenshot-raw`; no production media is used.
+
+For the request pipeline, use `--danmaku-parity-probe` instead. It replaces only the isolated test model's URLSession with URLProtocol fixtures: every request is intercepted, including mapping writes, and no real credentials are used. Inspect `danmaku-parity.json`; all nineteen cases must succeed. `apple/Tests/pc_danmaku_golden.py` separately executes the shipped PC Lua matcher and official-header builder (LuaJIT required) and generates the cross-language matching and signature-digest oracles consumed by AppleCore tests.
+
+Always restore the normal project and app after either probe, as described above.
+
+## Danmaku display cadence
+
+Use `--danmaku-frame-probe` with the quality probe arguments and the local 720p/30 `device-fixture.mp4`. It imports 1200 generated comments into UITestProfiles and reports `danmaku-frames.json`: callback and movement FPS, p95 interval, pause freeze, ±300 ms seeks and 2× speed. This measures application rendering cadence, not compositor presentation or production-stream performance. Always restore and launch the normal app afterward.

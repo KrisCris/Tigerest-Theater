@@ -492,6 +492,132 @@
 			<key>package</key>
 			<string>91C29761F7EEF29E6DC06BF8</string>
 		</dict>
+		<key>6B9AF8604B8E01F0D6FA89F9</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.c.c</string>
+			<key>path</key>
+			<string>NativeRIFE/vf_tigerest_rife.c</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>4E9C712A4D1FECE569FCA043</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>6B9AF8604B8E01F0D6FA89F9</string>
+		</dict>
+		<key>8EC36EC682A40B0C657E04C4</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.cpp.objcpp</string>
+			<key>path</key>
+			<string>NativeRIFE/NativeRIFE.mm</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>7F1F9EB30F9BBCDB38FFE691</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>8EC36EC682A40B0C657E04C4</string>
+		</dict>
+		<key>FCF19CFB2067FAAE19F52A60</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.c.c</string>
+			<key>path</key>
+			<string>Generated/NativeRIFE/user_filters.c</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>343D8A807638D6B32766DA98</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>FCF19CFB2067FAAE19F52A60</string>
+		</dict>
+		<key>7A114A0CF5DC1FAAE46BF09E</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.cpp.objcpp</string>
+			<key>path</key>
+			<string>../src/player/interpolation/RifeEngine.mm</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>58448CCDC67395AD655AB8FE</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>7A114A0CF5DC1FAAE46BF09E</string>
+		</dict>
+		<key>6156F6FBE9966162E46029C0</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.cpp.objcpp</string>
+			<key>path</key>
+			<string>../src/player/interpolation/RifeMetalWarp.mm</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>DFCA459EFD6C7F7F07D7CECA</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>6156F6FBE9966162E46029C0</string>
+		</dict>
+		<key>6CD29CB503CA703D25BF51D9</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.cpp.objcpp</string>
+			<key>path</key>
+			<string>../src/player/interpolation/RifeCoarseMetal.mm</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>424E2DA648634479081F6EF0</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>6CD29CB503CA703D25BF51D9</string>
+		</dict>
+		<key>3AF843C0B03FD9397EF6752C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>folder</string>
+			<key>path</key>
+			<string>Generated/RifeModel</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>A02024E3BCA7E6CE19D8E2A1</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>3AF843C0B03FD9397EF6752C</string>
+		</dict>
 		<key>05C78377BDB0B6342769023E</key>
 		<dict>
 			<key>isa</key>
@@ -523,6 +649,12 @@
 				<string>37A6B38777EDBE5A7376DC3C</string>
 				<string>F93C911B286FE4163A8E9A1E</string>
 				<string>FED2B16E96709BD237C9DA5B</string>
+				<string>4E9C712A4D1FECE569FCA043</string>
+				<string>7F1F9EB30F9BBCDB38FFE691</string>
+				<string>343D8A807638D6B32766DA98</string>
+				<string>58448CCDC67395AD655AB8FE</string>
+				<string>DFCA459EFD6C7F7F07D7CECA</string>
+				<string>424E2DA648634479081F6EF0</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>
@@ -536,6 +668,7 @@
 			<key>files</key>
 			<array>
 				<string>56A8D05600A8536CF5036A94</string>
+				<string>A02024E3BCA7E6CE19D8E2A1</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>
@@ -617,12 +750,49 @@
 				<string>YES</string>
 				<key>GENERATE_INFOPLIST_FILE</key>
 				<string>NO</string>
+				<key>HEADER_SEARCH_PATHS</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+				</array>
+				<key>HEADER_SEARCH_PATHS[sdk=iphoneos*]</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/device</string>
+				</array>
+				<key>HEADER_SEARCH_PATHS[sdk=iphonesimulator*]</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/simulator</string>
+				</array>
+				<key>CLANG_CXX_LANGUAGE_STANDARD</key>
+				<string>c++17</string>
+				<key>CLANG_ENABLE_OBJC_ARC</key>
+				<string>YES</string>
+				<key>GCC_C_LANGUAGE_STANDARD</key>
+				<string>gnu11</string>
+				<key>OTHER_LDFLAGS</key>
+				<string>$(inherited) -framework CoreML -framework Metal</string>
+				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
+				<string>$(inherited) RIFE_NATIVE DEBUG</string>
 				<key>ONLY_ACTIVE_ARCH</key>
 				<string>YES</string>
 				<key>SWIFT_OPTIMIZATION_LEVEL</key>
 				<string>-Onone</string>
-				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
-				<string>DEBUG</string>
 			</dict>
 		</dict>
 		<key>1B104479E55E37CF8A63CBDF</key>
@@ -663,6 +833,45 @@
 				<string>YES</string>
 				<key>GENERATE_INFOPLIST_FILE</key>
 				<string>NO</string>
+				<key>HEADER_SEARCH_PATHS</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+				</array>
+				<key>HEADER_SEARCH_PATHS[sdk=iphoneos*]</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/device</string>
+				</array>
+				<key>HEADER_SEARCH_PATHS[sdk=iphonesimulator*]</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/simulator</string>
+				</array>
+				<key>CLANG_CXX_LANGUAGE_STANDARD</key>
+				<string>c++17</string>
+				<key>CLANG_ENABLE_OBJC_ARC</key>
+				<string>YES</string>
+				<key>GCC_C_LANGUAGE_STANDARD</key>
+				<string>gnu11</string>
+				<key>OTHER_LDFLAGS</key>
+				<string>$(inherited) -framework CoreML -framework Metal</string>
+				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
+				<string>$(inherited) RIFE_NATIVE</string>
 				<key>ONLY_ACTIVE_ARCH</key>
 				<string>NO</string>
 				<key>SWIFT_OPTIMIZATION_LEVEL</key>
@@ -802,14 +1011,51 @@
 				<string>YES</string>
 				<key>GENERATE_INFOPLIST_FILE</key>
 				<string>YES</string>
+				<key>HEADER_SEARCH_PATHS</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+				</array>
+				<key>HEADER_SEARCH_PATHS[sdk=iphoneos*]</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/device</string>
+				</array>
+				<key>HEADER_SEARCH_PATHS[sdk=iphonesimulator*]</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/simulator</string>
+				</array>
+				<key>CLANG_CXX_LANGUAGE_STANDARD</key>
+				<string>c++17</string>
+				<key>CLANG_ENABLE_OBJC_ARC</key>
+				<string>YES</string>
+				<key>GCC_C_LANGUAGE_STANDARD</key>
+				<string>gnu11</string>
+				<key>OTHER_LDFLAGS</key>
+				<string>$(inherited) -framework CoreML -framework Metal</string>
+				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
+				<string>$(inherited) RIFE_NATIVE DEBUG</string>
 				<key>TEST_TARGET_NAME</key>
 				<string>TigerestTheater</string>
 				<key>ONLY_ACTIVE_ARCH</key>
 				<string>YES</string>
 				<key>SWIFT_OPTIMIZATION_LEVEL</key>
 				<string>-Onone</string>
-				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
-				<string>DEBUG</string>
 			</dict>
 		</dict>
 		<key>A188B1844D481F2A55033242</key>
@@ -850,6 +1096,45 @@
 				<string>YES</string>
 				<key>GENERATE_INFOPLIST_FILE</key>
 				<string>YES</string>
+				<key>HEADER_SEARCH_PATHS</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+				</array>
+				<key>HEADER_SEARCH_PATHS[sdk=iphoneos*]</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/device</string>
+				</array>
+				<key>HEADER_SEARCH_PATHS[sdk=iphonesimulator*]</key>
+				<array>
+					<string>$(inherited)</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/mpv/filters</string>
+					<string>$(SRCROOT)/NativeRIFE</string>
+					<string>$(SRCROOT)/../src/player/interpolation</string>
+					<string>$(SRCROOT)/Generated/NativeRIFE/simulator</string>
+				</array>
+				<key>CLANG_CXX_LANGUAGE_STANDARD</key>
+				<string>c++17</string>
+				<key>CLANG_ENABLE_OBJC_ARC</key>
+				<string>YES</string>
+				<key>GCC_C_LANGUAGE_STANDARD</key>
+				<string>gnu11</string>
+				<key>OTHER_LDFLAGS</key>
+				<string>$(inherited) -framework CoreML -framework Metal</string>
+				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
+				<string>$(inherited) RIFE_NATIVE</string>
 				<key>TEST_TARGET_NAME</key>
 				<string>TigerestTheater</string>
 				<key>ONLY_ACTIVE_ARCH</key>
@@ -954,6 +1239,13 @@
 				<string>51576657CDBAAF22ED43C8EF</string>
 				<string>67E7B97EAFD0AA3CBDC83FD6</string>
 				<string>EA4EA786C5BC9B7737331310</string>
+				<string>6B9AF8604B8E01F0D6FA89F9</string>
+				<string>8EC36EC682A40B0C657E04C4</string>
+				<string>FCF19CFB2067FAAE19F52A60</string>
+				<string>7A114A0CF5DC1FAAE46BF09E</string>
+				<string>6156F6FBE9966162E46029C0</string>
+				<string>6CD29CB503CA703D25BF51D9</string>
+				<string>3AF843C0B03FD9397EF6752C</string>
 				<string>E3C3E8FB911DB112998F819A</string>
 				<string>0A3E27B8CA818264D75C8D81</string>
 			</array>
@@ -975,7 +1267,7 @@
 				<key>SWIFT_OPTIMIZATION_LEVEL</key>
 				<string>-Onone</string>
 				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
-				<string>DEBUG</string>
+				<string> DEBUG</string>
 			</dict>
 		</dict>
 		<key>0B0C687DF8B6B8DC790B519C</key>

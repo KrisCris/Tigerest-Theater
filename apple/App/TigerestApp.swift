@@ -26,6 +26,7 @@ struct RootView: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.background)
             }
         }
+        .sheet(isPresented: $model.showQuality) { QualitySettings(player: model.player) }
         .sheet(isPresented: Binding(get: { model.showConnection && model.server != nil }, set: { model.showConnection = $0 })) { OnboardingView(model: model) }
         .sheet(isPresented: Binding(get: { model.showOffline && model.server != nil && !model.showConnection }, set: { model.showOffline = $0 })) { OfflineLibraryView(coordinator:model.downloads,model:model) }
         .sheet(isPresented: Binding(get: { model.showProfiles && model.server != nil && !model.showConnection }, set: { model.showProfiles = $0 })) { ProfileManagerView(model:model) }

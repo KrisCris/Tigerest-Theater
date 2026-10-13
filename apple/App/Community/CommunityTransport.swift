@@ -6,14 +6,14 @@ final class NoRedirectSession: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
     static func make() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 15; config.timeoutIntervalForResource = 20
+        config.timeoutIntervalForRequest = 15; config.timeoutIntervalForResource = 35
         config.httpCookieStorage = nil; config.urlCredentialStorage = nil
         return URLSession(configuration: config, delegate: NoRedirectSession(), delegateQueue: nil)
     }
 }
 @MainActor final class CommunityTransport {
     unowned let model: AppModel
-    let http = NoRedirectSession.make()
+    var http = NoRedirectSession.make()
     private var tasks: [String: Task<Void, Never>] = [:]
     private(set) var session: JSONValue = .object([:])
     private(set) var trusted = "", mappingStatus = 0

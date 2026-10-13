@@ -11,6 +11,7 @@ import AppleCore
     @Published var showConnection = false
     @Published var showOffline = false
     @Published var showProfiles = false
+    @Published var showQuality = false
     @Published var error: String?
     @Published var loading = false
     @Published var connectionFailure: String?
@@ -40,7 +41,7 @@ import AppleCore
         value.changed={ [weak self] snapshot in guard let self,self.profiles.currentID==id else {return};self.bridge.emit("system","downloadsChanged",[snapshot]) }
         downloadRegistry[id]=value;return value
     }
-    func setEmbySession(_ value: JSONValue) { embySession=value;downloads.setOwner(value) }
+    func setEmbySession(_ value: JSONValue) { if embySession != value { danmaku.authorizationChanged() };embySession=value;downloads.setOwner(value) }
     func playOffline(_ record: DownloadRecord, coordinator: DownloadCoordinator) throws {
         guard record.status=="completed" else {throw CoreError.invalidRequest}
         try player.dispatch("load",[.string(coordinator.localURL(record).absoluteString),.object(["autoplay":.bool(true),"startMilliseconds":.number((record.progress?.position ?? 0)*1000)]),.object(["title":.string(record.title),"type":.string("video")]),.number(1),.number(-1)])

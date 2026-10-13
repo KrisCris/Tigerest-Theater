@@ -10,6 +10,9 @@ import AppleCore
     }
     static func run(_ model: AppModel) async {
         guard ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
+        if ProcessInfo.processInfo.arguments.contains("--danmaku-frame-probe") { await DanmakuFrameValidation.run(model); return }
+        if ProcessInfo.processInfo.arguments.contains("--rife-playback-probe") { await RifePlaybackValidation.run(model); return }
+        if ProcessInfo.processInfo.arguments.contains("--danmaku-parity-probe") { await DanmakuParityValidation.run(model); return }
         let downscale = ProcessInfo.processInfo.arguments.contains("--downscale-probe")
         let fixture = downscale ? "device-fixture-4k.mp4" : "device-fixture.mp4"
         let reportName = downscale ? "quality-probe-downscale.json" : "quality-probe.json"

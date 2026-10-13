@@ -5,3 +5,6 @@ body { overscroll-behavior:none; }
 .tgs-dialog { max-height:calc(100dvh - 32px); }
 button,input,select { touch-action:manipulation; }
 @media(max-width:700px){ .tgs-layout{display:block!important} .tgs-sidebar{display:flex;overflow:auto;width:100%!important} .tgs-main{min-width:0} }
+
+/* Blur in CSS pixels at full resolution, without magnifying a thumbnail. */
+html { --tigerest-motion-blur: 5px; }

@@ -97,7 +97,9 @@ extension WebHostTests {
         let video = app.otherElements["playerVideo"]
         video.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).doubleTap()
         video.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.3)).press(forDuration: 0.1, thenDragTo: video.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.3)))
-        XCTAssertTrue(unlock.exists)
+        XCTAssertTrue(unlock.waitForNonExistence(timeout: 5), "锁定提示应自动隐藏，即使暂停也不能永久遮挡")
+        video.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).tap()
+        XCTAssertTrue(unlock.waitForExistence(timeout: 2), "锁定时轻点画面应唤回解锁按钮")
         unlock.press(forDuration: 0.8)
         XCTAssertTrue(app.buttons["锁定"].waitForExistence(timeout: 3))
         XCTAssertEqual(app.staticTexts["playbackTime"].label, "0:00:00 / 0:00:12")
@@ -139,5 +141,26 @@ extension WebHostTests {
         XCTAssertTrue(app.buttons["锁定"].waitForNonExistence(timeout: 2))
         point.tap()
         XCTAssertTrue(app.buttons["锁定"].waitForExistence(timeout: 2))
+    }
+}
+
+extension WebHostTests {
+    @MainActor func testBundledArtSettingsDanmakuAndReturnTransition() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
+        app.buttons["连接自建 EMBY 服务器"].tap()
+        let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
+        for (button, result) in [("验证首页资源", "四张首页图片加载通过"), ("验证主设置画质", "主设置画质校验通过"), ("验证返回转场", "返回转场全分辨率与清理通过")] {
+            app.buttons[button].tap()
+            XCTAssertTrue(app.staticTexts[result].waitForExistence(timeout: 15), app.debugDescription)
+        }
+        app.buttons["验证弹幕"].tap()
+        XCTAssertTrue(app.staticTexts["danmakuStatus"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["danmakuStatus"].wait(for: \.label, toEqual: "已载入 3 条弹幕", timeout: 15), app.debugDescription)
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "danmaku-rendered"; screenshot.lifetime = .keepAlways; add(screenshot)
+        XCTAssertFalse(app.buttons["画质"].exists)
+        app.buttons["退出播放"].tap()
+        XCTAssertTrue(app.staticTexts["弹幕匹配开关与偏移通过"].waitForExistence(timeout: 10), app.debugDescription)
     }
 }

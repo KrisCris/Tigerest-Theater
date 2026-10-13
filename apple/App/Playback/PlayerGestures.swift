@@ -77,7 +77,8 @@ import AppleCore
         if notify { feedback("", false) }
     }
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        guard player.active, !player.locked, let view else { return false }
+        guard player.active, let view else { return false }
+        if player.locked { return gestureRecognizer is UITapGestureRecognizer && (gestureRecognizer as? UITapGestureRecognizer)?.numberOfTapsRequired == 1 }
         let point = touch.location(in: view), inset = view.safeAreaInsets
         return PlaybackGestureSession.accepts(x: point.x - inset.left, y: point.y - inset.top,
             width: view.bounds.width - inset.left - inset.right, height: view.bounds.height - inset.top - inset.bottom)

@@ -6,7 +6,13 @@ ROOT=Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=18768);parser.add_argument('--media',type=Path,required=True);args=parser.parse_args()
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path.startswith('/sub/System/Info/Public'):
+        if self.path.startswith('/api/v2/search/anime'):
+            data=json.dumps({'success':True,'animes':[{'type':'tvseries','bangumiId':'123','animeTitle':'弹幕验收作品'}]}).encode();mime='application/json'
+        elif self.path.startswith('/api/v2/bangumi/123'):
+            data=json.dumps({'success':True,'bangumi':{'episodes':[{'episodeId':1230001,'episodeNumber':'1','episodeTitle':'第1话 开始'}]}}).encode();mime='application/json'
+        elif self.path.startswith('/api/v2/comment/1230001'):
+            data=json.dumps({'success':True,'comments':[{'p':'0,1,16777215','m':'滚动弹幕验收'},{'p':'1,5,16776960','m':'顶部弹幕验收'},{'p':'1,4,65280','m':'底部弹幕验收'}]},ensure_ascii=False).encode();mime='application/json'
+        elif self.path.startswith('/sub/System/Info/Public'):
             data=json.dumps({'Id':'fixture','Version':'4.9'}).encode();mime='application/json'
         elif self.path.startswith('/sub/web/index.html'):
             data=(ROOT/'Tests/fixtures/index.html').read_bytes();mime='text/html; charset=utf-8'

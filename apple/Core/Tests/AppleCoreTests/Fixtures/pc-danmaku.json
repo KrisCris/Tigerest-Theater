@@ -1,0 +1,309 @@
+[
+  {
+    "name": "title-priority",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "终点",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话 起点"
+          },
+          {
+            "episodeId": "12",
+            "episodeNumber": "2",
+            "episodeTitle": "第2话 终点"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/12"
+  },
+  {
+    "name": "ambiguous-title",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "终点",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "终点"
+          },
+          {
+            "episodeId": "12",
+            "episodeNumber": "2",
+            "episodeTitle": "终点"
+          }
+        ]
+      }
+    ],
+    "expected": ""
+  },
+  {
+    "name": "deduplicate-rows",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "起点",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "起点"
+          },
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "起点"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/11"
+  },
+  {
+    "name": "exclude-credits",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "OP",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "C1",
+            "episodeTitle": "OP"
+          },
+          {
+            "episodeId": "12",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话 起点"
+          },
+          {
+            "episodeId": "13",
+            "episodeNumber": "1",
+            "episodeTitle": "opening theme"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/12"
+  },
+  {
+    "name": "season-period",
+    "title": "作品",
+    "season": 2,
+    "number": 1,
+    "episodeTitle": "第1集",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      },
+      {
+        "bangumiId": "2",
+        "animeTitle": "作品 第二期",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "21",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/21"
+  },
+  {
+    "name": "english-season",
+    "title": "The Story",
+    "season": 3,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "The Story Third Season",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/11"
+  },
+  {
+    "name": "closest-work",
+    "title": "转生后的大圣女极力隐瞒圣女的身份",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "转生后的大圣女，极力隐瞒圣女的身份",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      },
+      {
+        "bangumiId": "2",
+        "animeTitle": "转生后的大圣女 极力隐藏圣女身份",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "21",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/11"
+  },
+  {
+    "name": "provider-local-identities",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      },
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://second",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": ""
+  },
+  {
+    "name": "special-release",
+    "title": "作品",
+    "season": 0,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品 特别篇",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "特别篇"
+          }
+        ]
+      },
+      {
+        "bangumiId": "2",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "21",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/11"
+  },
+  {
+    "name": "wrong-type",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "movie",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": ""
+  }
+]

@@ -19,9 +19,32 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
             for (name, value) in options { try check(mpv_set_option_string(handle, name, value), operation: name) }
             var pointer = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
             try check(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &pointer))
+            #if PLAYBACK_VALIDATION
+            if ProcessInfo.processInfo.arguments.contains("--rife-playback-probe") {
+                try check(mpv_set_option_string(handle, "log-file", URL.cachesDirectory.appending(path:"rife-mpv.log").path))
+                try check(mpv_set_option_string(handle, "msg-level", "all=warn"))
+            }
+            #endif
             try check(mpv_initialize(handle))
         } catch { mpv_terminate_destroy(handle); self.handle = nil; throw error }
     }
+    #if PLAYBACK_VALIDATION
+    func fixturePNG() -> Data? {
+        guard let handle else {return nil}
+        let words:[String]=["screenshot-raw","video","rgba"];let args=words.map{strdup($0)};defer{args.forEach{free($0)}}
+        var pointers=args.map{UnsafePointer<CChar>($0)}+[nil],node=mpv_node()
+        guard mpv_command_ret(handle,&pointers,&node)>=0 else {return nil}
+        defer{mpv_free_node_contents(&node)}
+        guard let list=node.u.list?.pointee,node.format==MPV_FORMAT_NODE_MAP else{return nil}
+        var fields:[String:mpv_node]=[:]
+        for i in 0..<Int(list.num) {if let key=list.keys?[i],let value=list.values?[i]{fields[String(cString:key)]=value}}
+        guard let w=fields["w"]?.u.int64,let h=fields["h"]?.u.int64,let stride=fields["stride"]?.u.int64,
+              fields["data"]?.format==MPV_FORMAT_BYTE_ARRAY,let bytes=fields["data"]?.u.ba?.pointee,let pointer=bytes.data,
+              let provider=CGDataProvider(data:Data(bytes:pointer,count:bytes.size) as CFData),
+              let image=CGImage(width:Int(w),height:Int(h),bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:Int(stride),space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo(rawValue:CGImageAlphaInfo.last.rawValue),provider:provider,decode:nil,shouldInterpolate:false,intent:.defaultIntent) else{return nil}
+        return UIImage(cgImage:image).pngData()
+    }
+    #endif
     func close() { if let handle { self.handle = nil; mpv_terminate_destroy(handle) } }
     private func check(_ code: Int32, operation: String = "初始化") throws { if code < 0 { throw MPVFailure(operation:operation,code:code) } }
     func command(_ args: [String]) throws {
@@ -86,13 +109,14 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
         default: return .null
         }
     }
-    enum Event { case loaded, ended, failed }
+    enum Event { case loaded, restarted, ended, failed }
     func events() -> [Event] {
         guard let handle else { return [] }
         var result: [Event] = []
         for _ in 0..<64 {
             guard let event = mpv_wait_event(handle, 0)?.pointee, event.event_id != MPV_EVENT_NONE else { break }
             if event.event_id == MPV_EVENT_FILE_LOADED { result.append(.loaded) }
+            if event.event_id == MPV_EVENT_PLAYBACK_RESTART { result.append(.restarted) }
             if event.event_id == MPV_EVENT_END_FILE, let data = event.data {
                 let end = data.assumingMemoryBound(to: mpv_event_end_file.self).pointee
                 if end.reason == MPV_END_FILE_REASON_EOF { result.append(.ended) }

@@ -12,6 +12,8 @@ struct QualityPreset: Decodable, Identifiable {
     }()
 }
 struct QualitySelection: Codable {
+    static let ids = ["native": "native", "default": "tigerest-default", "liveaction": "tigerest-liveaction", "aggressive": "tigerest-aggressive-test"]
+    static func setting(for preset: String) -> String { ids.first { $0.value == preset }?.key ?? "native" }
     var preset = "native"
     var custom: [String: String] = [:]
     static func read(_ root: URL) -> Self {
@@ -22,14 +24,19 @@ struct QualitySelection: Codable {
     func save(_ root: URL) throws { try JSONEncoder().encode(self).write(to: root.appending(path: "quality.json"), options: .atomic) }
 }
 extension PlaybackController {
-    var qualitySelection: QualitySelection { QualitySelection.read(model.profiles.directory) }
+    var qualitySelection: QualitySelection {
+        var result = QualitySelection.read(model.profiles.directory)
+        result.preset = QualitySelection.ids[model.settings.get("mpv", "shaderPreset").string ?? "native"] ?? "native"
+        return result
+    }
     func selectQuality(_ selection: QualitySelection) throws {
         guard selection.preset == "native" || QualityPreset.bundled.contains(where: { $0.id == selection.preset }) else { throw CoreError.invalidSetting }
         _ = try MPVConfigurationPolicy.parse(selection.custom.map { $0.key + "=" + $0.value }.joined(separator: "\n"), shaderRoot: model.profiles.directory.appending(path: "Shaders"))
         let previous = qualitySelection
-        do { try selection.save(model.profiles.directory); try applySettings() }
+        do { try selection.save(model.profiles.directory); try model.settings.set("mpv", "shaderPreset", .string(QualitySelection.setting(for: selection.preset))); try applySettings() }
         catch {
             try? previous.save(model.profiles.directory)
+            try? model.settings.set("mpv", "shaderPreset", .string(QualitySelection.setting(for: previous.preset)))
             try? applySettings()
             throw error
         }

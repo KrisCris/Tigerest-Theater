@@ -14,5 +14,23 @@ for obj in list(o.values()):
         for phase in obj['buildPhases']:
             if o[phase]['isa']=='PBXSourcesBuildPhase' and build not in o[phase]['files']:o[phase]['files'].append(build)
         for config in o[obj['buildConfigurationList']]['buildConfigurations']:
-            o[config]['buildSettings']['SWIFT_ACTIVE_COMPILATION_CONDITIONS']='DEBUG PLAYBACK_VALIDATION'
+            o[config]['buildSettings']['SWIFT_ACTIVE_COMPILATION_CONDITIONS']=o[config]['buildSettings'].get('SWIFT_ACTIVE_COMPILATION_CONDITIONS','')+' PLAYBACK_VALIDATION'
+ref=add('rife-playback-probe','PBXFileReference',path='Probes/Quality/RifePlaybackValidation.swift',sourceTree='<group>',lastKnownFileType='sourcecode.swift')
+build=add('rife-playback-probe-build','PBXBuildFile',fileRef=ref)
+for obj in list(o.values()):
+    if obj.get('isa')=='PBXNativeTarget' and obj['name']=='TigerestTheater':
+        for phase in obj['buildPhases']:
+            if o[phase]['isa']=='PBXSourcesBuildPhase' and build not in o[phase]['files']:o[phase]['files'].append(build)
+ref=add('danmaku-parity-probe','PBXFileReference',path='Probes/Quality/DanmakuParityValidation.swift',sourceTree='<group>',lastKnownFileType='sourcecode.swift')
+build=add('danmaku-parity-probe-build','PBXBuildFile',fileRef=ref)
+for obj in list(o.values()):
+    if obj.get('isa')=='PBXNativeTarget' and obj['name']=='TigerestTheater':
+        for phase in obj['buildPhases']:
+            if o[phase]['isa']=='PBXSourcesBuildPhase' and build not in o[phase]['files']:o[phase]['files'].append(build)
+ref=add('danmaku-frame-probe','PBXFileReference',path='Probes/Quality/DanmakuFrameValidation.swift',sourceTree='<group>',lastKnownFileType='sourcecode.swift')
+build=add('danmaku-frame-probe-build','PBXBuildFile',fileRef=ref)
+for obj in list(o.values()):
+    if obj.get('isa')=='PBXNativeTarget' and obj['name']=='TigerestTheater':
+        for phase in obj['buildPhases']:
+            if o[phase]['isa']=='PBXSourcesBuildPhase' and build not in o[phase]['files']:o[phase]['files'].append(build)
 path.write_bytes(plistlib.dumps(project,sort_keys=False))

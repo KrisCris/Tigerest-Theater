@@ -1,5 +1,6 @@
 <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>iPad 受控验收</title></head><body style="background:#101218;color:white;font:22px system-ui;padding:32px">
 <h1>受控 Emby 页面夹具</h1><p id="status">等待原生桥接</p><button id="play" style="font:inherit;padding:20px" onclick="playback()">验证播放循环</button><button style="font:inherit;padding:20px" onclick="download()">验证离线下载</button><button style="font:inherit;padding:20px" onclick="window.tigerestOpenOfflineLibrary()">打开离线媒体</button><button style="font:inherit;padding:20px" onclick="verifyQueue()">验证选集</button><button style="font:inherit;padding:20px" onclick="verifySubtitles()">验证字幕设置</button><button style="font:inherit;padding:20px" onclick="verifyVolume()">验证音量保留</button><button style="font:inherit;padding:20px" onclick="startGestures()">验证播放手势</button><a href="http://localhost:18768/foreign.html">外站跳转</a>
+<button style="font:inherit;padding:20px" onclick="verifyAssets()">验证首页资源</button><button style="font:inherit;padding:20px" onclick="verifyQuality()">验证主设置画质</button><button style="font:inherit;padding:20px" onclick="verifyDanmaku()">验证弹幕</button><button style="font:inherit;padding:20px" onclick="verifyTransition()">验证返回转场</button>
 <script>
 let api;const status=document.querySelector('#status');
 (async()=>{try{api=await window.apiPromise;if(!window.tigerestIPadApi||jmpInfo.platform!=='ipad')throw Error('missing platform');await api.settings.setValue('video','cache',150);if(await api.settings.value('video','cache')!==150)throw Error('setting');let rejected=false;try{await api.settings.setValue('video','cache','wrong')}catch(_){rejected=true}if(!rejected)throw Error('type');status.textContent='桥接校验通过'}catch(e){status.textContent='失败 '+e.message}})();
@@ -23,4 +24,19 @@ async function startGestures(){
   baseline=(await api.player.mpvDiagnostics()).brightness;status.textContent='手势夹具就绪';
 }
 
+async function verifyAssets(){try{await Promise.all(['anime','movies','series','favorites'].map(name=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>img.naturalWidth>100?resolve():reject(Error('尺寸异常'));img.onerror=()=>reject(Error(name+'图片失败'));img.src='tigerest://bundle/home-art/'+name+'.png'})));status.textContent='四张首页图片加载通过'}catch(e){status.textContent='首页图片失败 '+e.message}}
+async function verifyQuality(){try{const setting=jmpInfo.settingsDescriptions.mpv.find(x=>x.key==='shaderPreset');if(!setting||setting.options.length!==4)throw Error('主设置缺少选项');await api.settings.setValue('mpv','shaderPreset','liveaction');if((await api.player.mpvDiagnostics()).qualityPreset!=='tigerest-liveaction')throw Error('选择未应用');await api.settings.resetToDefault('mpv');if((await api.player.mpvDiagnostics()).qualityPreset!=='native')throw Error('恢复无效');status.textContent='主设置画质校验通过'}catch(e){status.textContent='主设置画质失败 '+e.message}}
+async function verifyDanmaku(){try{await api.settings.setValue('danmaku','apiServer',location.origin);await api.settings.setValue('mpv','enableDanmaku',false);await api.player.load(location.origin+'/fixture.mp4',{autoplay:false,startMilliseconds:4000},{type:'video',title:'弹幕验收',metadata:{Id:'danmaku-fixture',SeriesName:'弹幕验收作品',ParentIndexNumber:'1',IndexNumber:'1',Name:'开始'}},1,-1);await api.danmaku.setEnabled(true);await until(async()=>{const sources=await api.danmaku.sources();return sources.length===1&&sources[0].count===3});await api.danmaku.setSource(location.origin+'/1230001',false,1.5);let sources=await api.danmaku.sources();if(sources[0].enabled||sources[0].delay!==1.5)throw Error('来源设置无效');await api.danmaku.setSource(location.origin+'/1230001',true,0);status.textContent='弹幕匹配开关与偏移通过'}catch(e){await api.player.stop();status.textContent='弹幕失败 '+e.message}}
+async function verifyTransition(){
+ try{
+ const before=document.createElement('div');before.className='page view-item-item';before.style.cssText='position:fixed;inset:0;background:linear-gradient(120deg,#506ca0,#603830);z-index:9;color:white;padding:40px';
+ before.innerHTML='<h1>详情背景</h1><img id="motion-source" src="tigerest://bundle/home-art/anime.png" style="width:200px;height:280px;object-fit:cover"><p>完整分辨率毛玻璃场景</p>';
+ document.body.append(before);await before.querySelector('img').decode();await TigerestHomeTransitions.prewarm();
+ const after=before.cloneNode(true);after.style.background='linear-gradient(120deg,#205a45,#34456a)';after.querySelector('h1').textContent='海报墙背景';const target=after.querySelector('img');target.id='motion-target';target.style.cssText+=';width:100px;height:140px;margin-left:280px;margin-top:200px';
+ await TigerestHomeTransitions.poster({source:before.querySelector('img'),direction:'return',navigate:async()=>{before.classList.add('hide');before.style.display='none';document.body.append(after)},findTarget:()=>target});
+ const result=TigerestHomeTransitions.last;before.remove();after.remove();
+ if(result.backgroundRenderer!=='dom-glass'||result.surfaces.length||result.landingErrorPx>2||document.querySelector('.tigerest-motion-layer,.tigerest-motion-poster'))throw Error(JSON.stringify(result));
+ status.textContent='返回转场全分辨率与清理通过';
+ }catch(e){status.textContent='转场失败 '+e.message}
+}
 </script></body></html>

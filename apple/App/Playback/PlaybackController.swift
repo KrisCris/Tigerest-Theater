@@ -8,6 +8,7 @@ import AppleCore
     let systemVolume = SystemMediaVolume()
     @Published private(set) var interactionRevision: UInt64 = 0
     private(set) var engine: MPVEngine?
+    private(set) var danmakuEpoch: UInt64 = 0
     private var state = PlaybackState(), temporary = TemporarySpeed(), watchdog = PlaybackWatchdog()
     private var timer: Timer?, startSeconds = 0.0, loaded = false
     private var audio: JSONValue = .number(1), subtitle: JSONValue = .number(-1)
@@ -78,6 +79,9 @@ import AppleCore
             let next = try MPVEngine(layer: surface.metal); engine = next
             do {
                 try applySettings()
+                #if RIFE_NATIVE
+                if model.settings.get("video", "aiRife").bool == true { try next.command(["vf", "add", "@tigerest-rife:tigerest-rife"]) }
+                #endif
                 try next.set("volume", String(preferredVolume))
                 try next.set("mute", preferredMuted ? "yes" : "no")
                 audio = arg(3); subtitle = arg(4)
@@ -95,7 +99,7 @@ import AppleCore
             model.diagnostics.record("info", "Player load requested"); state.begin(); active = true; locked = false; loaded = false; position = 0; duration = 0; watchdog = PlaybackWatchdog()
             UIApplication.shared.isIdleTimerDisabled = true
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
-            model.danmaku.autoMatch(metadata["metadata"]); emit("windowVisible", [.bool(true)]); emit("onMetaData", [metadata, .string(url)])
+            model.danmaku.autoMatch(metadata["metadata"],mediaURL:URL(string:url)); emit("windowVisible", [.bool(true)]); emit("onMetaData", [metadata, .string(url)])
         case "stop": stop(notify: true)
         case "pause": endTemporarySpeed(); state.userPaused(); interruptionIntent = nil; try engine?.set("pause", "yes")
         case "play": try engine?.set("pause", "no")
@@ -151,6 +155,10 @@ import AppleCore
                     try applyAspect()
                 } catch { notice = "部分音轨或字幕设置未能应用" }
                 emit(paused ? "paused" : "playing"); emit("videoPlaybackActive", [.bool(!paused)])
+            case .restarted:
+                // Reset with the newly observed playback position, never with
+                // the stale position present when an asynchronous seek starts.
+                danmakuEpoch &+= 1
             case .ended: finish(generation); return
             case .failed: fail("无法播放此媒体，请检查格式和网络"); return
             }
@@ -176,7 +184,7 @@ import AppleCore
         model.diagnostics.record("info", "Player stop; notify=" + String(notify))
         if let (coordinator,id)=model.offlinePlayback { coordinator.saveProgress(id,seconds:position); model.offlinePlayback=nil }
         let wasActive = state.finish(generation: state.generation)
-        model.danmaku.clear(); timer?.invalidate(); timer = nil; temporary = TemporarySpeed()
+        danmakuEpoch &+= 1; model.danmaku.clear(); timer?.invalidate(); timer = nil; temporary = TemporarySpeed()
         engine?.close(); engine = nil; active = false; loaded = false
         interactionRevision &+= 1
         UIApplication.shared.isIdleTimerDisabled = false
@@ -231,7 +239,7 @@ import AppleCore
     @objc private func routeChanged(_ note: Notification) {
         if note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { _ = try? dispatch("pause", []) }
     }
-    func diagnostics() -> JSONValue { .object(["qualityPreset": .string(qualitySelection.preset), "shaderPaths": engine?.json("glsl-shaders") ?? .array([]), "renderPasses": engine?.json("vo-passes") ?? .null, "brightness": .number(brightness), "systemVolume": .number(systemVolume.value), "version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false)]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
+    func diagnostics() -> JSONValue { .object(["nativeRife": engine?.json("vf-metadata/tigerest-rife") ?? .null,"qualityPreset": .string(qualitySelection.preset), "shaderPaths": engine?.json("glsl-shaders") ?? .array([]), "renderPasses": engine?.json("vo-passes") ?? .null, "brightness": .number(brightness), "systemVolume": .number(systemVolume.value), "version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false)]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
     func applySettings() throws {
         guard let engine else { return }
         try engine.resetQuality()

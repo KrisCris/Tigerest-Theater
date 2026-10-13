@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate the deterministic Xcode project without a package-manager dependency."""
-import hashlib, plistlib, json, subprocess
+import hashlib, plistlib, json, subprocess, os
 from pathlib import Path
 from sync_resources import sync
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +13,7 @@ def file(path, kind):
 def configurations(name, settings):
     configs=[]
     for mode in ['Debug','Release']:
-        configs.append(obj(name+mode,'XCBuildConfiguration',name=mode,**({'baseConfigurationReference':file('Local.xcconfig','text.xcconfig')} if name != 'project' else {}),buildSettings={**settings,'ONLY_ACTIVE_ARCH':'YES' if mode=='Debug' else 'NO','SWIFT_OPTIMIZATION_LEVEL':'-Onone' if mode=='Debug' else '-O', **({'SWIFT_ACTIVE_COMPILATION_CONDITIONS':'DEBUG'} if mode=='Debug' else {})}))
+        configs.append(obj(name+mode,'XCBuildConfiguration',name=mode,**({'baseConfigurationReference':file('Local.xcconfig','text.xcconfig')} if name != 'project' else {}),buildSettings={**settings,'ONLY_ACTIVE_ARCH':'YES' if mode=='Debug' else 'NO','SWIFT_OPTIMIZATION_LEVEL':'-Onone' if mode=='Debug' else '-O', **({'SWIFT_ACTIVE_COMPILATION_CONDITIONS':settings.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS','')+' DEBUG'} if mode=='Debug' else {})}))
     return obj(name+'config','XCConfigurationList',buildConfigurations=configs,defaultConfigurationIsVisible=0,defaultConfigurationName='Release')
 def generate():
     existing=ROOT/'TigerestTheater.xcodeproj/project.pbxproj'
@@ -40,9 +40,20 @@ def generate():
     if (ROOT/'App/Playback/MPVEngine.swift').exists():
         mpv=obj('mpv','XCRemoteSwiftPackageReference',repositoryURL='https://github.com/mpvkit/MPVKit.git',requirement={'kind':'revision','revision':'d9194243bdc68b87d8989376ab52aee7da6c8e0b'})
         packages.append(mpv);libs.append(obj('mpvlib','XCSwiftPackageProductDependency',productName='MPVKit',package=mpv))
-    phases=[obj('srcphase','PBXSourcesBuildPhase',buildActionMask=2147483647,files=sources,runOnlyForDeploymentPostprocessing=0),obj('resphase','PBXResourcesBuildPhase',buildActionMask=2147483647,files=[resource],runOnlyForDeploymentPostprocessing=0),obj('frameworkphase','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[obj(x+'link','PBXBuildFile',productRef=x) for x in libs],runOnlyForDeploymentPostprocessing=0)]
+    native_rife=(ROOT/'Generated/NativeRIFE/source.json').exists()
+    resources=[resource]
+    if native_rife:
+        native_sources=[*sorted((ROOT/'NativeRIFE').glob('*.c')),*sorted((ROOT/'NativeRIFE').glob('*.mm')),ROOT/'Generated/NativeRIFE/user_filters.c',*[ROOT.parent/'src/player/interpolation'/f'{name}.mm' for name in ['RifeEngine','RifeMetalWarp','RifeCoarseMetal']]]
+        for path in native_sources:
+            relative=os.path.relpath(path,ROOT)
+            ref=file(relative,'sourcecode.c.c' if path.suffix=='.c' else 'sourcecode.cpp.objcpp');files.append(ref);sources.append(obj(relative+'build','PBXBuildFile',fileRef=ref))
+        ref=file('Generated/RifeModel','folder');files.append(ref);resources.append(obj('rife-model-resource','PBXBuildFile',fileRef=ref))
+    phases=[obj('srcphase' ,'PBXSourcesBuildPhase',buildActionMask=2147483647,files=sources,runOnlyForDeploymentPostprocessing=0),obj('resphase','PBXResourcesBuildPhase',buildActionMask=2147483647,files=resources,runOnlyForDeploymentPostprocessing=0),obj('frameworkphase','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[obj(x+'link','PBXBuildFile',productRef=x) for x in libs],runOnlyForDeploymentPostprocessing=0)]
     settings={'PRODUCT_NAME':'TigerestTheater','PRODUCT_BUNDLE_IDENTIFIER':'top.tigerest.theater.ipad','INFOPLIST_FILE':'Config/Info.plist','SWIFT_VERSION':'5.0','IPHONEOS_DEPLOYMENT_TARGET':'26.0','TARGETED_DEVICE_FAMILY':'2','CODE_SIGN_STYLE':'Automatic','SDKROOT':'iphoneos','SUPPORTED_PLATFORMS':'iphoneos iphonesimulator','SUPPORTS_MACCATALYST':'NO','CLANG_ENABLE_MODULES':'YES','LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks','ENABLE_USER_SCRIPT_SANDBOXING':'YES','GENERATE_INFOPLIST_FILE':'NO'}
-    target=obj('app','PBXNativeTarget',name='TigerestTheater',productName='TigerestTheater',productReference=product,productType='com.apple.product-type.application',buildConfigurationList=configurations('app',settings),buildPhases=phases,buildRules=[],dependencies=[],packageProductDependencies=libs)
+    if native_rife:
+        include=['$(inherited)','$(SRCROOT)/Generated/NativeRIFE','$(SRCROOT)/Generated/NativeRIFE/mpv','$(SRCROOT)/Generated/NativeRIFE/mpv/filters','$(SRCROOT)/NativeRIFE','$(SRCROOT)/../src/player/interpolation']
+        settings.update({'HEADER_SEARCH_PATHS':include,'HEADER_SEARCH_PATHS[sdk=iphoneos*]':include+['$(SRCROOT)/Generated/NativeRIFE/device'],'HEADER_SEARCH_PATHS[sdk=iphonesimulator*]':include+['$(SRCROOT)/Generated/NativeRIFE/simulator'],'CLANG_CXX_LANGUAGE_STANDARD':'c++17','CLANG_ENABLE_OBJC_ARC':'YES','GCC_C_LANGUAGE_STANDARD':'gnu11','OTHER_LDFLAGS':'$(inherited) -framework CoreML -framework Metal','SWIFT_ACTIVE_COMPILATION_CONDITIONS':'$(inherited) RIFE_NATIVE'})
+    target=obj('app' ,'PBXNativeTarget',name='TigerestTheater',productName='TigerestTheater',productReference=product,productType='com.apple.product-type.application',buildConfigurationList=configurations('app',settings),buildPhases=phases,buildRules=[],dependencies=[],packageProductDependencies=libs)
     testFiles=[]
     for path in sorted((ROOT/'UITests').glob('*.swift')):
         relative=str(path.relative_to(ROOT));ref=file(relative,'sourcecode.swift');files.append(ref);testFiles.append(obj(relative+'build','PBXBuildFile',fileRef=ref))

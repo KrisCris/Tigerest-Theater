@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 final class AssetSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
         guard task.request.httpMethod == "GET", let url = task.request.url,
-              url.host == "bundle", let root = Bundle.main.resourceURL?.appending(path: "Web") else {
+              url.host == "bundle", let root = Bundle.main.resourceURL?.appending(path: "Web").standardizedFileURL else {
             task.didFailWithError(URLError(.unsupportedURL)); return
         }
         let file = root.appending(path: url.path).standardizedFileURL
