@@ -13,6 +13,8 @@ import AppleCore
     @Published var showProfiles = false
     @Published var error: String?
     @Published var loading = false
+    @Published var connectionFailure: String?
+    private var connectionTask: Task<Void, Never>?
     let diagnostics = DiagnosticsLog()
     lazy var danmaku = DanmakuRepository(model: self)
     lazy var community = CommunityTransport(model: self)
@@ -45,6 +47,7 @@ import AppleCore
         offlinePlayback=(coordinator,record.id)
     }
     func selectProfile(_ id: UUID) throws {
+        connectionTask?.cancel(); connectionFailure = nil
         player.stop(notify:true);community.clear();web.close()
         try profiles.select(id)
         settings=try SettingsStore(directory:profiles.directory)
@@ -53,11 +56,54 @@ import AppleCore
         server=try? ServerAddress(settings.get("main","userWebClient").string ?? "")
         web=WebHost(model:self);showConnection=server==nil;start();objectWillChange.send()
     }
-    func connect(_ input: String) throws {
-        let address = try ServerAddress(input)
+    func connect(_ input: String, mode: String) async throws {
+        let profile = profiles.currentID
+        let address = try await checkServer(input)
+        try Task.checkCancellation()
+        guard profile == profiles.currentID else { throw CancellationError() }
+        try saveConnection(address, mode: mode)
+    }
+    func checkServer(_ input: String) async throws -> ServerAddress {
+        let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let address = try ServerAddress(value.contains("://") ? value : "http://" + value)
+        var request = URLRequest(url: address.endpoint("System/Info/Public"))
+        request.timeoutInterval = 5
+        let (body, response) = try await community.data(request, limit: 65536)
+        let info = try JSONDecoder().decode(JSONValue.self, from: body)
+        guard response.statusCode == 200, info["Id"].string != nil || info["Version"].string != nil else { throw URLError(.badServerResponse) }
+        return address
+    }
+    func connectDedicated() async throws {
+        let profile = profiles.currentID
+        let presets = ServerPresets.bundled
+        let candidates = ServerPresets.onLocalSubnet(presets.localIP) ? [presets.local, presets.remote] : [presets.remote]
+        for (index, candidate) in candidates.enumerated() {
+            do { try await connect(candidate, mode: "tigerest"); return }
+            catch {
+                try Task.checkCancellation()
+                guard profile == profiles.currentID else { throw CancellationError() }
+                if index == candidates.count - 1 { throw error }
+            }
+        }
+    }
+    private func saveConnection(_ address: ServerAddress, mode: String) throws {
         try settings.set("main", "userWebClient", .string(address.baseURL.absoluteString))
-        server = address; showConnection = false; error = nil
+        try settings.set("main", "serverConnectionMode", .string(mode))
+        server = address; showConnection = false; error = nil; connectionFailure = nil
+        setEmbySession(.null)
         web.open(address)
     }
-    func start() { if let server { web.open(server) } }
+    func start() {
+        connectionTask?.cancel(); connectionFailure = nil
+        guard let server else { return }
+        let mode = settings.get("main", "serverConnectionMode").string ?? ""
+        if mode == "tigerest" || (mode.isEmpty && ServerPresets.bundled.contains(server)) {
+            loading = true
+            connectionTask = Task {
+                do { try await connectDedicated() }
+                catch { if !Task.isCancelled { loading = false; connectionFailure = "专属服务器暂时无法连接，请检查网络后重试，也可以先打开离线媒体。" } }
+            }
+        } else { web.open(server) }
+    }
+    func openServerSettings() { connectionTask?.cancel(); loading = false; showConnection = true }
 }

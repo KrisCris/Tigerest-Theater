@@ -1,6 +1,6 @@
 (function(global) {
     'use strict';
-    if (global.TigerestUpdate) return;
+    if (global.TigerestUpdate || global.jmpInfo?.capabilities?.selfUpdate === false) return;
     let api, started, state = {}, dialog, style, title, details, notes, progress, actions, entry, entryDot, observer;
     let disposed = false, autoInstall = false, installInFlight = false, detailsOpen = false, revision = 0;
     function invoke(name, ...args) {

@@ -69,7 +69,7 @@ import AppleCore
             guard let self else { return }
             let response: JSONValue
             do { response = .object(["id": .number(Double(request.id)), "result": try await model.bridge.handle(request)]) }
-            catch { response = .object(["id": .number(Double(request.id)), "error": .string((error as? CoreError)?.localizedDescription ?? "客户端操作失败，请重试")]) }
+            catch { response = .object(["id": .number(Double(request.id)), "error": .string((error as? CoreError)?.localizedDescription ?? (error as? MPVFailure)?.message ?? "客户端操作失败，请重试")]) }
             guard !Task.isCancelled, self.policy?.isCurrent(epoch) == true else { return }
             tasks[request.id] = nil; emit(response)
         }
@@ -84,12 +84,12 @@ import AppleCore
         guard let url = action.request.url, Self.origin(url) == policy?.origin else { decisionHandler(.cancel); return }
         decisionHandler(.allow)
     }
-    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { resetPage(); model.loading = true }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { model.loading = false }
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { resetPage(); model.loading = true; model.connectionFailure = nil }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { model.loading = false; model.connectionFailure = nil }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { model.error = "网页进程已结束，请点重新载入。"; model.loading = false }
-    private func failed(_ error: Error) { model.loading = false; if (error as NSError).code != NSURLErrorCancelled { model.error = "服务器页面加载失败，请检查地址和网络后重试。（\((error as NSError).code)）" } }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { model.connectionFailure = "页面已关闭，请重试以重新打开媒体库。"; model.loading = false }
+    private func failed(_ error: Error) { model.loading = false; if (error as NSError).code != NSURLErrorCancelled { model.connectionFailure = "服务器页面加载失败，请检查地址和网络后重试。（\((error as NSError).code)）" } }
 }
 struct WebView: UIViewRepresentable {
     let host: WebHost

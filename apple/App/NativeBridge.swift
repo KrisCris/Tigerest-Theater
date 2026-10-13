@@ -37,7 +37,7 @@ import AppleCore
             case "setReportDiagnosticsScope": model.diagnostics.setScope(arg(0).string ?? ""); return .bool(true)
             case "collectReportDiagnostics": return model.diagnostics.collect()
             case "debugInformation": return model.player.diagnostics()
-            case "isAddressOnLocalSubnet": return .bool(false)
+            case "isAddressOnLocalSubnet": return .bool(ServerPresets.onLocalSubnet(arg(0).string ?? ""))
             case "cancelServerConnectivity": return .bool(true)
             case "checkServerConnectivity":
                 let address = try ServerAddress(arg(0).string ?? "")
@@ -47,7 +47,9 @@ import AppleCore
                 emit("system", "serverConnectivityResult", [arg(0), .bool(success), .string(address.endpoint("web/index.html").absoluteString), .string(success ? "" : "无法连接 Emby 服务器")]); return .bool(success)
             case "hello": return .string("大河影院 iPad")
             case "getUserAgent": return .string(model.web.view.customUserAgent ?? "TigerestTheater/2.6.0")
-            case "openServerSettings": model.showConnection = true; return .null
+            case "openServerSettings": model.openServerSettings(); return .null
+            case "openProfiles": model.showProfiles = true; return .null
+            case "openOfflineLibrary": model.showOffline = true; return .null
             case "systemInformation": return .object(["platform": .string("ipad"), "version": .string(UIDevice.current.systemVersion)])
             case "openExternalUrl":
                 guard let text = arg(0).string, let url = URL(string: text), ["https", "http"].contains(url.scheme), url.user == nil, url.password == nil else { throw CoreError.invalidAddress }

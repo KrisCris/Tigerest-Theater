@@ -566,7 +566,8 @@ async function showLegacySettingsModal() {
         resetSavedServer.addEventListener("click", async () => {
             window.jmpInfo.settings.main.userWebClient = '';
             window.jmpInfo.settings.main.serverConnectionMode = '';
-            window.location.href = jmpInfo.scriptPath + "/find-webclient.html";
+            if (window.tigerestIPadApi) window.api.system.openServerSettings();
+            else window.location.href = jmpInfo.scriptPath + "/find-webclient.html";
         });
         group.appendChild(resetSavedServer);
     }
@@ -1284,6 +1285,11 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
                 window.tigerestOpenOfflineLibrary();
             });
             if (!window.tigerestAndroidApi) actions.appendChild(offline);
+            if (window.tigerestIPadApi) {
+                const profiles = element('button', 'tgs-action', '管理配置档');
+                profiles.addEventListener('click', () => { close(); window.api.system.openProfiles(); });
+                actions.appendChild(profiles);
+            }
             group.appendChild(actions);
         }
 

@@ -2,6 +2,7 @@ import UIKit
 import Metal
 import Libmpv
 import AppleCore
+struct MPVFailure: Error { let operation: String; let code: Int32; var message: String { "播放器无法应用 \(operation)（\(code)）" } }
 /// Owns exactly one media generation. Event polling is serialized on the main actor.
 @MainActor final class MPVEngine {
     private var handle: OpaquePointer?
@@ -11,15 +12,16 @@ import AppleCore
         guard let handle = mpv_create() else { throw CoreError.invalidRequest }
         self.handle = handle
         do {
-            let options = ["config":"no", "ytdl":"no", "vo":"gpu-next", "gpu-api":"vulkan", "gpu-context":"moltenvk", "hwdec":"videotoolbox", "idle":"yes", "keep-open":"yes", "osc":"no", "input-default-bindings":"no", "tls-verify":"yes", "save-position-on-quit":"no", "tls-ca-file":Bundle.main.resourceURL!.appending(path:"Web/cacert.pem").path]
-            for (name, value) in options { try check(mpv_set_option_string(handle, name, value)) }
+            // The pinned iOS MPVKit disables Lua; ytdl/osc script options do not exist.
+            let options = ["config":"no", "vo":"gpu-next", "gpu-api":"vulkan", "gpu-context":"moltenvk", "hwdec":"videotoolbox", "idle":"yes", "keep-open":"yes", "input-default-bindings":"no", "tls-verify":"yes", "save-position-on-quit":"no", "tls-ca-file":Bundle.main.resourceURL!.appending(path:"Web/cacert.pem").path]
+            for (name, value) in options { try check(mpv_set_option_string(handle, name, value), operation: name) }
             var pointer = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
             try check(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &pointer))
             try check(mpv_initialize(handle))
         } catch { mpv_terminate_destroy(handle); self.handle = nil; throw error }
     }
     func close() { if let handle { self.handle = nil; mpv_terminate_destroy(handle) } }
-    private func check(_ code: Int32) throws { if code < 0 { throw CoreError.invalidRequest } }
+    private func check(_ code: Int32, operation: String = "初始化") throws { if code < 0 { throw MPVFailure(operation:operation,code:code) } }
     func command(_ args: [String]) throws {
         guard let handle else { throw CoreError.invalidRequest }
         let strings = args.map { strdup($0) }
@@ -29,7 +31,7 @@ import AppleCore
     }
     func set(_ name: String, _ value: String) throws {
         guard let handle else { throw CoreError.invalidRequest }
-        try check(mpv_set_property_string(handle, name, value))
+        try check(mpv_set_property_string(handle, name, value),operation:name)
     }
     func string(_ name: String) -> String {
         guard let handle, let pointer = mpv_get_property_string(handle, name) else { return "" }

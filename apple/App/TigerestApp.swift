@@ -13,24 +13,22 @@ struct RootView: View {
     var body: some View {
         ZStack(alignment: .top) {
             Color(red: 0.035, green: 0.045, blue: 0.065).ignoresSafeArea()
-            if model.server != nil { WebView(host: model.web).ignoresSafeArea(edges: .bottom) }
+            if model.server != nil { WebView(host: model.web).id(model.profiles.currentID).ignoresSafeArea(edges: .bottom) }
             if model.server == nil { OnboardingView(model: model) }
             if model.loading { ProgressView().padding(12).background(.regularMaterial, in: Capsule()) }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack {
-                Button("服务器", systemImage: "server.rack") { model.showConnection = true }
-                Spacer()
-                Button("配置", systemImage:"person.crop.rectangle") { model.showProfiles=true }
-                Spacer()
-                Button("重新载入", systemImage: "arrow.clockwise") { model.start() }.disabled(model.server == nil)
-                Spacer()
-                Button("离线媒体", systemImage: "arrow.down.circle") { model.showOffline = true }
-            }.font(.callout).padding(.horizontal, 24).padding(.vertical, 10).background(.ultraThinMaterial)
+            if let failure = model.connectionFailure {
+                ContentUnavailableView {
+                    Label("暂时无法打开媒体库", systemImage: "wifi.exclamationmark")
+                } description: { Text(failure) } actions: {
+                    Button("重试") { model.start() }.buttonStyle(.borderedProminent)
+                    Button("选择服务器") { model.openServerSettings() }
+                    Button("离线媒体") { model.showOffline = true }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.background)
+            }
         }
         .sheet(isPresented: Binding(get: { model.showConnection && model.server != nil }, set: { model.showConnection = $0 })) { OnboardingView(model: model) }
-        .sheet(isPresented: $model.showOffline) { OfflineLibraryView(coordinator:model.downloads,model:model) }
-        .sheet(isPresented:$model.showProfiles) { ProfileManagerView(model:model) }
+        .sheet(isPresented: Binding(get: { model.showOffline && model.server != nil && !model.showConnection }, set: { model.showOffline = $0 })) { OfflineLibraryView(coordinator:model.downloads,model:model) }
+        .sheet(isPresented: Binding(get: { model.showProfiles && model.server != nil && !model.showConnection }, set: { model.showProfiles = $0 })) { ProfileManagerView(model:model) }
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) { Button("好") { model.error = nil } } message: { Text(model.error ?? "") }
         .overlay { PlayerPresentation(player: model.player) }
         .onAppear { model.start() }
