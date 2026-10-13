@@ -2,8 +2,30 @@ import SwiftUI
 import AppleCore
 struct PlayerSurface: UIViewRepresentable {
     let player: PlaybackController
-    func makeUIView(context: Context) -> MetalSurface { player.surface }
+    func makeUIView(context: Context) -> MetalSurface {
+        player.surface.addSubview(player.systemVolume.view)
+        return player.surface
+    }
     func updateUIView(_ view: MetalSurface, context: Context) { view.setNeedsLayout() }
+}
+struct GestureVideoView: View {
+    @StateObject private var gestures: PlayerGestureCoordinator
+    let tapped: () -> Void
+    let feedback: (String, Bool) -> Void
+    init(player: PlaybackController, tapped: @escaping () -> Void, feedback: @escaping (String, Bool) -> Void) {
+        _gestures = StateObject(wrappedValue: PlayerGestureCoordinator(player: player, tapped: tapped, feedback: feedback))
+        self.tapped = tapped; self.feedback = feedback
+    }
+    var body: some View {
+        ZStack {
+            PlayerSurface(player: gestures.player).allowsHitTesting(false)
+            Color.clear.contentShape(Rectangle())
+            .gesture(VideoGesture(kind: .tap, handler: gestures, tapped: tapped, feedback: feedback))
+            .gesture(VideoGesture(kind: .doubleTap, handler: gestures, tapped: tapped, feedback: feedback))
+            .gesture(VideoGesture(kind: .pan, handler: gestures, tapped: tapped, feedback: feedback))
+            .gesture(VideoGesture(kind: .hold, handler: gestures, tapped: tapped, feedback: feedback))
+        }.onDisappear { gestures.detach() }
+    }
 }
 struct PlayerView: View {
     @ObservedObject var player: PlaybackController
@@ -13,36 +35,50 @@ struct PlayerView: View {
     @State private var importSubtitle = false
     @State private var showDanmaku = false
     @State private var showQuality = false
+    @State private var gestureMessage = ""
+    @State private var interacting = false
+    @State private var hideTask: Task<Void, Never>?
+    @State private var feedbackTask: Task<Void, Never>?
+    @State private var showTutorial = false
+    @State private var tutorialResumeIntent: UInt64?
+    @State private var tutorialRevision: UInt64 = 0
+    @AppStorage("TigerestPlaybackGesturesSeen") private var tutorialSeen = false
+    @Environment(\.scenePhase) private var scenePhase
     private func act(_ method: String, _ args: [JSONValue] = []) { do { try player.dispatch(method, args) } catch { player.notice = "播放操作未完成" } }
     var body: some View {
         ZStack {
             Color.black
-            PlayerSurface(player: player)
-                .contentShape(Rectangle()).onTapGesture(count: 2) { if !player.locked { act(player.paused ? "play" : "pause") } }
-                .onTapGesture { controls.toggle() }
-                .onLongPressGesture(minimumDuration: 0.35, pressing: { pressing in if !pressing { player.endTemporarySpeed() } }) { if !player.locked { player.beginTemporarySpeed() } }
+            GestureVideoView(player: player, tapped: { controls.toggle(); scheduleHide() }, feedback: gestureFeedback)
+                .accessibilityIdentifier("playerVideo").accessibilityLabel("视频画面")
             DanmakuOverlay(repository:player.model.danmaku,player:player)
             if player.buffering { ProgressView().controlSize(.large) }
-            if controls {
+            if !gestureMessage.isEmpty {
+                Text(gestureMessage).font(.title3.monospacedDigit()).multilineTextAlignment(.center)
+                    .padding(20).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 14))
+                    .allowsHitTesting(false).accessibilityIdentifier("playerGestureFeedback")
+            }
+            if controls && !player.locked {
+                LinearGradient(colors: [.black.opacity(0.6), .clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom).allowsHitTesting(false)
                 VStack(spacing: 20) {
                     HStack {
-                        if !player.locked { Button { act("stop") } label: { Image(systemName: "chevron.down").font(.title2) }; Text(player.title).font(.headline).lineLimit(1) }
+                        if !player.locked { Button { act("stop") } label: { Image(systemName: "chevron.down").font(.title2) }.accessibilityLabel("退出播放"); Text(player.title).font(.headline).lineLimit(1) }
                         Spacer()
-                        Button { player.locked.toggle() } label: { Image(systemName: player.locked ? "lock.fill" : "lock.open") }
+                        Button { presentTutorial() } label: { Image(systemName: "hand.draw") }.accessibilityLabel("手势教程")
+                        Button { player.setTouchLocked(true); controls = false } label: { Image(systemName: "lock.open") }.accessibilityLabel("锁定")
                     }
                     Spacer()
                     if !player.locked {
                         HStack(spacing: 40) {
                             Button { player.adjacent(-1) } label: { Image(systemName: "backward.end.fill") }.accessibilityLabel("上一集")
                             Button { act("seekTo", [.number(max(0, player.position - 10) * 1000)]) } label: { Image(systemName: "gobackward.10") }
-                            Button { act(player.paused ? "play" : "pause") } label: { Image(systemName: player.paused ? "play.fill" : "pause.fill").font(.largeTitle) }.keyboardShortcut(.space, modifiers: [])
+                            Button { act(player.paused ? "play" : "pause") } label: { Image(systemName: player.paused ? "play.fill" : "pause.fill").font(.largeTitle) }.accessibilityLabel(player.paused ? "播放" : "暂停").keyboardShortcut(.space, modifiers: [])
                             Button { act("seekTo", [.number((player.position + 10) * 1000)]) } label: { Image(systemName: "goforward.10") }
                             Button { player.adjacent(1) } label: { Image(systemName: "forward.end.fill") }.accessibilityLabel("下一集")
                         }.font(.title2)
                         Spacer()
                         Slider(value: Binding(get: { seeking ? scrub : player.position }, set: { scrub = $0 }), in: 0...max(1, player.duration), onEditingChanged: { editing in seeking = editing; if !editing { act("seekTo", [.number(scrub * 1000)]) } })
                         HStack {
-                            Text("\(time(player.position)) / \(time(player.duration))").monospacedDigit()
+                            Text("\(time(player.position)) / \(time(player.duration))").monospacedDigit().accessibilityIdentifier("playbackTime")
                             Spacer()
                             Menu("\(player.rate, specifier: "%.2g")×") { ForEach([0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4], id: \.self) { rate in Button("\(rate, specifier: "%.2g")×") { act("setPlaybackRate", [.number(rate * 1000)]) } } }
                             Button("弹幕") { showDanmaku = true }
@@ -62,9 +98,32 @@ struct PlayerView: View {
                         }.font(.callout)
                         if !player.notice.isEmpty { Text(player.notice).font(.caption) }
                     }
-                }.padding(28).background(LinearGradient(colors: [.black.opacity(0.6), .clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom))
+                }.buttonStyle(PlayerTouchButtonStyle()).padding(28)
+            }
+            if player.locked {
+                HStack {
+                    Button {} label: { Label("长按解锁", systemImage: "lock.fill").padding(14).background(.black.opacity(0.75), in: Capsule()) }
+                        .simultaneousGesture(LongPressGesture(minimumDuration: 0.6).onEnded { _ in unlock() })
+                        .accessibilityLabel("长按解除防误触锁")
+                        .accessibilityAction(named: Text("解除防误触锁")) { unlock() }
+                    Spacer()
+                }.padding(28)
             }
         }.ignoresSafeArea().foregroundStyle(.white)
+            .onAppear { if !tutorialSeen { presentTutorial() }; scheduleHide() }
+            .onDisappear { hideTask?.cancel(); feedbackTask?.cancel(); player.endTemporarySpeed() }
+            .onChange(of: [seeking, showTutorial, showQuality, showDanmaku, importSubtitle]) { _, _ in scheduleHide() }
+            .onChange(of: player.locked) { _, _ in feedbackTask?.cancel(); gestureMessage = "" }
+            .onChange(of: player.paused) { _, paused in if paused && !player.locked { controls = true }; scheduleHide() }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { hideTask?.cancel(); gestureMessage = ""; interacting = false } }
+            .sheet(isPresented: $showTutorial, onDismiss: finishTutorial) {
+                NavigationStack {
+                    ScrollView {
+                        Text("轻点画面：显示或隐藏控制栏\n\n双击画面：播放或暂停\n\n左右滑动：预览快进或快退，松手跳转\n\n左侧上下滑动：调整本次播放的亮度，退出后恢复\n\n右侧上下滑动：调整系统媒体音量\n\n长按空白画面：临时 2× 播放，松手恢复原速度；原速度超过 2× 时保持原速度\n\n锁定后，长按解锁按钮恢复操作\n\n请从画面内部开始滑动，屏幕边缘留给系统手势。")
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(24)
+                    }.navigationTitle("播放手势").toolbar { Button("知道了") { showTutorial = false } }
+                }.presentationDetents([.large])
+            }
             .sheet(isPresented:$showQuality) { QualitySettings(player:player) }
             .sheet(isPresented:$showDanmaku) { DanmakuControls(repository:player.model.danmaku) }
             .fileImporter(isPresented: $importSubtitle, allowedContentTypes: [.data]) { result in
@@ -78,6 +137,43 @@ struct PlayerView: View {
                 } catch { player.notice = "字幕导入失败，请检查文件格式" }
             }
     }
+    private func unlock() { player.setTouchLocked(false); controls = true; scheduleHide() }
+    private func gestureFeedback(_ text: String, _ touching: Bool) {
+        feedbackTask?.cancel(); interacting = touching
+        if !text.isEmpty { gestureMessage = text }
+        else {
+            feedbackTask = Task { @MainActor in
+                do { try await Task.sleep(for: .milliseconds(800)) } catch { return }
+                gestureMessage = ""
+            }
+        }
+        if touching { hideTask?.cancel() } else { scheduleHide() }
+    }
+    private func scheduleHide() {
+        hideTask?.cancel()
+        guard controls, !player.paused, !player.locked, !interacting, !seeking,
+              !showTutorial, !showQuality, !showDanmaku, !importSubtitle else { return }
+        hideTask = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(3500)) } catch { return }
+            guard !player.paused, !player.locked, !interacting, !seeking,
+                  !showTutorial, !showQuality, !showDanmaku, !importSubtitle else { return }
+            controls = false
+        }
+    }
+    private func presentTutorial() {
+        guard !player.locked else { return }
+        player.endTemporarySpeed(); hideTask?.cancel()
+        let resume = !player.paused
+        if resume { act("pause") }
+        tutorialResumeIntent = resume ? player.pauseIntent : nil
+        tutorialRevision = player.interactionRevision; showTutorial = true
+    }
+    private func finishTutorial() {
+        tutorialSeen = true
+        if let intent = tutorialResumeIntent, intent == player.pauseIntent,
+           tutorialRevision == player.interactionRevision, player.active, scenePhase == .active { act("play") }
+        tutorialResumeIntent = nil; scheduleHide()
+    }
     @ViewBuilder private func trackMenu(_ type: String, method: String) -> some View {
         ForEach(Array(player.tracks.filter { $0["type"].string == type }.enumerated()), id: \.offset) { _, track in
             Button(track["title"].string ?? track["lang"].string ?? "轨道 \(Int(track["id"].number ?? 0))") { act(method, [.number(track["id"].number ?? -1)]) }
@@ -85,4 +181,11 @@ struct PlayerView: View {
     }
     private func delay(_ change: Double) { act("setSubtitleDelay", [.number(((player.engine?.number("sub-delay") ?? 0) + change) * 1000)]) }
     private func time(_ value: Double) -> String { let v = Int(max(0, value)); return String(format: "%d:%02d:%02d", v / 3600, v / 60 % 60, v % 60) }
+}
+
+private struct PlayerTouchButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle()).opacity(configuration.isPressed ? 0.55 : 1)
+    }
 }

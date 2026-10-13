@@ -7,6 +7,7 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
 @MainActor final class MPVEngine {
     private var handle: OpaquePointer?
     private var originalSettings: [String: String] = [:]
+    private var qualityBaseline: [String: String] = [:]
     let layer: CAMetalLayer
     init(layer: CAMetalLayer) throws {
         self.layer = layer
@@ -14,7 +15,7 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
         self.handle = handle
         do {
             // The pinned iOS MPVKit disables Lua; ytdl/osc script options do not exist.
-            let options = ["config":"no", "vo":"gpu-next", "gpu-api":"vulkan", "gpu-context":"moltenvk", "hwdec":"videotoolbox", "idle":"yes", "keep-open":"yes", "input-default-bindings":"no", "tls-verify":"yes", "save-position-on-quit":"no", "tls-ca-file":Bundle.main.resourceURL!.appending(path:"Web/cacert.pem").path]
+            let options = ["profile":"high-quality", "config":"no", "vo":"gpu-next", "gpu-api":"vulkan", "gpu-context":"moltenvk", "hwdec":"videotoolbox", "idle":"yes", "keep-open":"yes", "input-default-bindings":"no", "tls-verify":"yes", "save-position-on-quit":"no", "tls-ca-file":Bundle.main.resourceURL!.appending(path:"Web/cacert.pem").path]
             for (name, value) in options { try check(mpv_set_option_string(handle, name, value), operation: name) }
             var pointer = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
             try check(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &pointer))
@@ -32,12 +33,28 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
     }
     func set(_ name: String, _ value: String) throws {
         guard let handle else { throw CoreError.invalidRequest }
-        try check(mpv_set_property_string(handle, name, value),operation:name)
+        if name == "glsl-shaders", value.isEmpty {
+            // A string empty value produces [""] on mpv; send a real empty list.
+            var list = mpv_node_list(), node = mpv_node()
+            node.format = MPV_FORMAT_NODE_ARRAY
+            try withUnsafeMutablePointer(to: &list) { pointer in
+                node.u.list = pointer
+                try check(mpv_set_property(handle, name, MPV_FORMAT_NODE, &node), operation: name)
+            }
+        } else { try check(mpv_set_property_string(handle, name, value), operation: name) }
     }
     /// Restore a cleared client preference to the value present in the playback core.
     func setting(_ name: String, _ value: String?) throws {
         if originalSettings[name] == nil { originalSettings[name] = string(name) }
         try set(name, value ?? originalSettings[name]!)
+    }
+    func qualitySetting(_ key: String, _ value: String) throws {
+        if qualityBaseline[key] == nil { qualityBaseline[key] = string(key) }
+        try set(key, value)
+    }
+    func resetQuality() throws {
+        for (key, value) in qualityBaseline { try set(key, value) }
+        qualityBaseline.removeAll()
     }
     func string(_ name: String) -> String {
         guard let handle, let pointer = mpv_get_property_string(handle, name) else { return "" }
@@ -59,7 +76,9 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
         case MPV_FORMAT_INT64: return .number(Double(node.u.int64))
         case MPV_FORMAT_DOUBLE: return .number(node.u.double_)
         case MPV_FORMAT_NODE_ARRAY, MPV_FORMAT_NODE_MAP:
-            guard let list = node.u.list?.pointee, let values = list.values, list.num >= 0, list.num < 100_000 else { return .null }
+            guard let list = node.u.list?.pointee, list.num >= 0, list.num < 100_000 else { return .null }
+            if list.num == 0 { return node.format == MPV_FORMAT_NODE_ARRAY ? .array([]) : .object([:]) }
+            guard let values = list.values else { return .null }
             if node.format == MPV_FORMAT_NODE_ARRAY { return .array((0..<Int(list.num)).map { value(values[$0]) }) }
             var result: [String: JSONValue] = [:]
             for index in 0..<Int(list.num) { if let key = list.keys?[index] { result[String(cString: key)] = value(values[index]) } }

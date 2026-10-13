@@ -262,6 +262,24 @@
 			<key>fileRef</key>
 			<string>84D0F82359E836610BE997B8</string>
 		</dict>
+		<key>5B8AEDB78AC5863C73B7B3CF</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>App/Playback/PlayerGestures.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>DAB1BC4EB5486139CFECA740</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>5B8AEDB78AC5863C73B7B3CF</string>
+		</dict>
 		<key>F899441FA4DA687A76B19558</key>
 		<dict>
 			<key>isa</key>
@@ -279,6 +297,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>F899441FA4DA687A76B19558</string>
+		</dict>
+		<key>43A0510670D1271895546F76</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>App/Playback/QualityPresets.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>CFAB690FBFEDB01F175F75D1</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>43A0510670D1271895546F76</string>
 		</dict>
 		<key>339C3C77D4AEE813549FB71A</key>
 		<dict>
@@ -478,7 +514,9 @@
 				<string>63C0321580E3E722F9581EC6</string>
 				<string>450776072C75D11BC119C1C5</string>
 				<string>7872592D7F15604A66201D66</string>
+				<string>DAB1BC4EB5486139CFECA740</string>
 				<string>56C7666253D33DED3DE617BE</string>
+				<string>CFAB690FBFEDB01F175F75D1</string>
 				<string>D70AC1CAFF891EC05F90EA92</string>
 				<string>681D570F8347F0D499AF8C12</string>
 				<string>77FB5B6B87B252FF950EBBF6</string>
@@ -906,7 +944,9 @@
 				<string>D6AEB21F842D664D51957399</string>
 				<string>626B60F0A60A0AD76EF234D3</string>
 				<string>84D0F82359E836610BE997B8</string>
+				<string>5B8AEDB78AC5863C73B7B3CF</string>
 				<string>F899441FA4DA687A76B19558</string>
+				<string>43A0510670D1271895546F76</string>
 				<string>339C3C77D4AEE813549FB71A</string>
 				<string>8BA29A3008F63FBD47FB56B7</string>
 				<string>E00B640A8BFBAB35463BF8E2</string>

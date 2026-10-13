@@ -5,11 +5,15 @@ import AppleCore
 @MainActor final class PlaybackController: NSObject, ObservableObject {
     unowned let model: AppModel
     let surface = MetalSurface(frame: .zero)
+    let systemVolume = SystemMediaVolume()
+    @Published private(set) var interactionRevision: UInt64 = 0
     private(set) var engine: MPVEngine?
     private var state = PlaybackState(), temporary = TemporarySpeed(), watchdog = PlaybackWatchdog()
     private var timer: Timer?, startSeconds = 0.0, loaded = false
     private var audio: JSONValue = .number(1), subtitle: JSONValue = .number(-1)
-    private var priorBrightness: CGFloat?
+    private var preferredVolume = 100.0, preferredMuted = false
+    private var volumeProfile: UUID?
+    private var priorBrightness: (screen: UIScreen, value: CGFloat)?
     private var interruptionIntent: UInt64?
     private var remoteTargets: [(MPRemoteCommand, Any)] = []
     @Published var active = false
@@ -24,11 +28,13 @@ import AppleCore
     @Published var tracks: [JSONValue] = []
     @Published var queue: [JSONValue] = []
     var currentID = "", metadata: JSONValue = .null
+    var pauseIntent: UInt64 { state.pauseIntent }
     init(model: AppModel) {
         self.model = model
         super.init()
         NotificationCenter.default.addObserver(self, selector: #selector(interruption(_:)), name: AVAudioSession.interruptionNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(routeChanged(_:)), name: AVAudioSession.routeChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(suspendInteraction), name: UIApplication.willResignActiveNotification, object: nil)
         let center = MPRemoteCommandCenter.shared()
         func bind(_ command: MPRemoteCommand, _ method: String) {
             let target = command.addTarget { [weak self] _ in Task { @MainActor in _ = try? self?.dispatch(method, []) }; return .success }
@@ -55,6 +61,10 @@ import AppleCore
     }
     @discardableResult func dispatch(_ method: String, _ args: [JSONValue]) throws -> JSONValue {
         func arg(_ index: Int) -> JSONValue { args.indices.contains(index) ? args[index] : .null }
+        if volumeProfile != model.profiles.currentID {
+            volumeProfile = model.profiles.currentID; preferredVolume = 100; preferredMuted = false
+        }
+        if ["load", "stop", "play", "pause", "seekTo"].contains(method) { model.diagnostics.record("info", "Player command: " + method) }
         switch method {
         case "load":
             guard let url = arg(0).string else { throw CoreError.invalidAddress }; try validateMedia(url)
@@ -68,6 +78,8 @@ import AppleCore
             let next = try MPVEngine(layer: surface.metal); engine = next
             do {
                 try applySettings()
+                try next.set("volume", String(preferredVolume))
+                try next.set("mute", preferredMuted ? "yes" : "no")
                 audio = arg(3); subtitle = arg(4)
                 startSeconds = try PlaybackContract.seconds(arg(1)["startMilliseconds"].number ?? 0)
                 paused = arg(1)["autoplay"].bool == false; rate = model.settings.get("video", "default_playback_speed").number ?? 1
@@ -81,7 +93,6 @@ import AppleCore
                 try next.command(["loadfile", url, "replace"])
             } catch { next.close(); engine = nil; throw error }
             model.diagnostics.record("info", "Player load requested"); state.begin(); active = true; locked = false; loaded = false; position = 0; duration = 0; watchdog = PlaybackWatchdog()
-            priorBrightness = surface.window?.screen.brightness
             UIApplication.shared.isIdleTimerDisabled = true
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
             model.danmaku.autoMatch(metadata["metadata"]); emit("windowVisible", [.bool(true)]); emit("onMetaData", [metadata, .string(url)])
@@ -90,10 +101,18 @@ import AppleCore
         case "play": try engine?.set("pause", "no")
         case "seekTo": try engine?.command(["seek", String(try PlaybackContract.seconds(arg(0).number ?? 0)), "absolute+exact"]); watchdog = PlaybackWatchdog()
         case "setPlaybackRate": endTemporarySpeed(); try engine?.set("speed", String(try PlaybackContract.rate(arg(0).number ?? 1000)))
-        case "setVolume": try engine?.set("volume", String(min(100, max(0, arg(0).number ?? 100))))
-        case "setMuted": try engine?.set("mute", arg(0).bool == true ? "yes" : "no")
-        case "volume": return .number(engine?.number("volume") ?? 100)
-        case "muted": return .bool(engine?.flag("mute") ?? false)
+        case "setVolume":
+            guard let value = arg(0).number, value.isFinite else { throw CoreError.invalidRequest }
+            let next = min(100, max(0, value))
+            try engine?.set("volume", String(next)); preferredVolume = next
+            emit("volumeChanged", [.number(next)])
+        case "setMuted":
+            guard let value = arg(0).bool else { throw CoreError.invalidRequest }
+            try engine?.set("mute", value ? "yes" : "no"); preferredMuted = value
+        case "volume": return .number(engine?.number("volume") ?? preferredVolume)
+        case "muted": return .bool(engine?.flag("mute") ?? preferredMuted)
+        case "notifyVolumeChange":
+            if let value = arg(0).number, value.isFinite { emit("volumeChanged", [.number(min(100, max(0, value * 100)))]) }
         case "getPosition": return .number(position * 1000)
         case "getDuration": return .number(duration * 1000)
         case "getSubtitleStreams": return metadata["media"]["subtitleStreams"].array.map(JSONValue.array) ?? .array([])
@@ -114,7 +133,7 @@ import AppleCore
         case "notifyMetadata": if let text = arg(0)["Name"].string { title = text }; updateNowPlaying()
         case "notifyStreamingBitrateResult": notice = arg(1).bool == true ? "画质已切换" : "画质切换失败"
         default:
-            guard ["notifyShuffleChange", "notifyRepeatChange", "notifyFullscreenChange", "notifyRateChange", "notifyQueueChange", "notifyPlaybackStop", "notifyDurationChange", "notifyPlaybackState", "notifyPosition", "notifySeek", "notifyVolumeChange"].contains(method) else { throw CoreError.invalidRequest }
+            guard ["notifyShuffleChange", "notifyRepeatChange", "notifyFullscreenChange", "notifyRateChange", "notifyQueueChange", "notifyPlaybackStop", "notifyDurationChange", "notifyPlaybackState", "notifyPosition", "notifySeek"].contains(method) else { throw CoreError.invalidRequest }
             updateNowPlaying()
         }
         return .bool(true)
@@ -148,24 +167,48 @@ import AppleCore
         updateNowPlaying()
     }
     private func finish(_ generation: UInt64) {
+        model.diagnostics.record("info", "Player reached end of file")
         guard state.finish(generation: generation) else { return }
         stop(notify: false); emit("finished"); emit("stopped")
     }
     private func fail(_ message: String) { stop(notify: false); emit("error", [.string(message)]); emit("stopped"); model.error = message }
     func stop(notify: Bool) {
+        model.diagnostics.record("info", "Player stop; notify=" + String(notify))
         if let (coordinator,id)=model.offlinePlayback { coordinator.saveProgress(id,seconds:position); model.offlinePlayback=nil }
         let wasActive = state.finish(generation: state.generation)
         model.danmaku.clear(); timer?.invalidate(); timer = nil; temporary = TemporarySpeed()
         engine?.close(); engine = nil; active = false; loaded = false
+        interactionRevision &+= 1
         UIApplication.shared.isIdleTimerDisabled = false
-        if let priorBrightness { surface.window?.screen.brightness = priorBrightness }; priorBrightness = nil
+        restoreBrightness()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         emit("windowVisible", [.bool(false)])
         if notify && wasActive { emit("canceled"); emit("stopped") }
     }
-    func beginTemporarySpeed() { guard active, !paused, let speed = temporary.begin(current: rate) else { return }; try? engine?.set("speed", String(speed)) }
+    @discardableResult func beginTemporarySpeed() -> Bool {
+        guard active, !paused, !locked, let speed = temporary.begin(current: rate) else { return false }
+        do { try engine?.set("speed", String(speed)); return true }
+        catch { _ = temporary.end(); return false }
+    }
     func endTemporarySpeed() { if let rate = temporary.end() { try? engine?.set("speed", String(rate)) } }
+    var brightness: Double { Double(surface.window?.screen.brightness ?? 0.5) }
+    func setBrightness(_ value: Double) {
+        guard let screen = surface.window?.screen, value.isFinite else { return }
+        if priorBrightness == nil { priorBrightness = (screen, screen.brightness) }
+        screen.brightness = CGFloat(min(1, max(0.02, value)))
+    }
+    private func restoreBrightness() {
+        if let priorBrightness { priorBrightness.screen.brightness = priorBrightness.value }
+        priorBrightness = nil
+    }
+    func setTouchLocked(_ value: Bool) {
+        model.diagnostics.record("info", "Touch lock=" + String(value))
+        endTemporarySpeed(); interactionRevision &+= 1; locked = value
+    }
+    @objc private func suspendInteraction() {
+        endTemporarySpeed(); restoreBrightness(); interactionRevision &+= 1
+    }
     func adjacent(_ delta: Int) {
         let ids = queue.compactMap { $0["PlaylistItemId"].string }
         if let id = EpisodeQueue(ids: ids, current: currentID).neighbor(delta) { selectQueueItem(id) }
@@ -188,9 +231,10 @@ import AppleCore
     @objc private func routeChanged(_ note: Notification) {
         if note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { _ = try? dispatch("pause", []) }
     }
-    func diagnostics() -> JSONValue { .object(["version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false)]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
+    func diagnostics() -> JSONValue { .object(["qualityPreset": .string(qualitySelection.preset), "shaderPaths": engine?.json("glsl-shaders") ?? .array([]), "renderPasses": engine?.json("vo-passes") ?? .null, "brightness": .number(brightness), "systemVolume": .number(systemVolume.value), "version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false)]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
     func applySettings() throws {
         guard let engine else { return }
+        try engine.resetQuality()
         let settings = model.settings
         func text(_ section: String, _ key: String) -> String { let v = settings.get(section, key); return v.string ?? v.number.map(String.init(describing:)) ?? v.bool.map { $0 ? "yes" : "no" } ?? "" }
         let hardware = text("video", "hardwareDecoding")
@@ -201,11 +245,9 @@ import AppleCore
         // Match PlayerComponent::setAudioConfiguration. The iOS FFmpeg build
         // omits dynaudnorm; an unsupported filter silently disables audio.
         try engine.set("audio-normalize-downmix", settings.get("audio", "normalize").bool == true ? "yes" : "no")
-        if let data=try? Data(contentsOf:model.profiles.directory.appending(path:"quality.json")),let custom=try? JSONDecoder().decode([String:String].self,from:data) {
-            let validated=try MPVConfigurationPolicy.parse(custom.map { $0.key+"="+$0.value }.joined(separator:"\n"),shaderRoot:model.profiles.directory.appending(path:"Shaders"))
-            for (key,value) in validated {try engine.set(key,value)}
-        }
+        try applyQuality()
     }
+
     private func applySubtitles() throws {
         guard let engine else { return }
         func value(_ key: String) -> JSONValue { model.settings.get("subtitles", key) }

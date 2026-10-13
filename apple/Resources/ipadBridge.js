@@ -26,7 +26,7 @@
    danmaku:'search episodes match load loadUrl importFile setSource sources setEnabled',
   };
   const notifications={
-   player:'playing paused finished canceled stopped error stateChanged videoPlaybackActive windowVisible updateDuration playbackRateChanged positionUpdate onVideoRecangleChanged onMetaData bufferedRangesUpdated buffering streamingBitrateRequested subtitleStreamRequested webPlaylistChanged',
+   player:'volumeChanged playing paused finished canceled stopped error stateChanged videoPlaybackActive windowVisible updateDuration playbackRateChanged positionUpdate onVideoRecangleChanged onMetaData bufferedRangesUpdated buffering streamingBitrateRequested subtitleStreamRequested webPlaylistChanged',
    settings:'sectionValueUpdate groupUpdate',system:'serverConnectivityResult appUpdateChanged communityResponse downloadsChanged',window:'fullScreenSwitched',input:'hostInput playlistItemRequested volumeChanged rateChanged positionSeek',danmaku:'status sourcesChanged',
   };
   const api={};

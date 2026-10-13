@@ -1,8 +1,9 @@
 import XCTest
+import UIKit
 final class WebHostTests: XCTestCase {
     @MainActor func testOnboardingAndOfflineEntryAreAvailableWithoutNetwork() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing"]
+        app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["连接大河李斯特专属 EMBY 服务器"].waitForExistence(timeout:10))
         app.buttons["连接自建 EMBY 服务器"].tap()
@@ -12,8 +13,20 @@ final class WebHostTests: XCTestCase {
     }
 }
 extension WebHostTests {
+    @MainActor func testVolumeAndMuteSurvivePlayerReplacement() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
+        app.buttons["连接自建 EMBY 服务器"].tap()
+        let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
+        app.buttons["验证音量保留"].tap()
+        let result = app.staticTexts.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "音量保留校验通过", "音量保留失败")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 15))
+        XCTAssertEqual(result.label, "音量保留校验通过")
+    }
+
     @MainActor func testControlledBridgePlaybackAndDownload() {
-        let app=XCUIApplication();app.launchArguments=["--ui-testing"];app.launch()
+        let app=XCUIApplication();app.launchArguments=["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"];app.launch()
         app.buttons["连接自建 EMBY 服务器"].tap()
         let field=app.textFields["服务器地址"]
         XCTAssertTrue(field.waitForExistence(timeout:10));field.tap();field.typeText("http://127.0.0.1:18768/sub/")
@@ -35,7 +48,7 @@ extension WebHostTests {
 
 extension WebHostTests {
     @MainActor func testQueueSelectionUsesWebPlaylistId() {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
         app.buttons["连接自建 EMBY 服务器"].tap()
         let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
@@ -49,7 +62,7 @@ extension WebHostTests {
 
 extension WebHostTests {
     @MainActor func testSubtitleSettingsReachPlayerAndReset() {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
         app.buttons["连接自建 EMBY 服务器"].tap()
         let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
@@ -58,5 +71,73 @@ extension WebHostTests {
         let result = app.staticTexts.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "字幕设置校验通过", "字幕设置失败")).firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 15))
         XCTAssertEqual(result.label, "字幕设置校验通过")
+    }
+}
+
+
+extension WebHostTests {
+    @MainActor private func openGestureFixture() -> XCUIApplication {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
+        app.buttons["连接自建 EMBY 服务器"].tap()
+        let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
+        app.buttons["验证播放手势"].tap()
+        XCTAssertTrue(app.buttons["锁定"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["playbackTime"].wait(for: \.label, toEqual: "0:00:00 / 0:00:12", timeout: 3))
+        return app
+    }
+    @MainActor func testTouchLockRequiresLongPressToUnlock() {
+        let app = openGestureFixture()
+        app.buttons["锁定"].tap()
+        let unlock = app.buttons["长按解除防误触锁"]
+        XCTAssertTrue(unlock.waitForExistence(timeout: 2), app.debugDescription)
+        unlock.tap()
+        XCTAssertTrue(unlock.exists, "短按不能解除防误触锁")
+        let video = app.otherElements["playerVideo"]
+        video.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).doubleTap()
+        video.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.3)).press(forDuration: 0.1, thenDragTo: video.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.3)))
+        XCTAssertTrue(unlock.exists)
+        unlock.press(forDuration: 0.8)
+        XCTAssertTrue(app.buttons["锁定"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["playbackTime"].label, "0:00:00 / 0:00:12")
+    }
+    @MainActor func testHorizontalSeekAndBrightnessGestureFeedback() {
+        let app = openGestureFixture()
+        let video = app.otherElements["playerVideo"]
+        XCTAssertTrue(video.exists)
+        let start = video.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.32))
+        let end = video.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.32))
+        start.press(forDuration: 0.1, thenDragTo: end)
+        let position = app.staticTexts["playbackTime"]
+        XCTAssertTrue(position.wait(for: \.label, toEqual: "0:00:02 / 0:00:12", timeout: 3) || position.label == "0:00:03 / 0:00:12", position.label)
+        let brightStart = video.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
+        brightStart.press(forDuration: 0.1, thenDragTo: video.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.2)))
+        XCTAssertTrue(app.staticTexts["playerGestureFeedback"].label.hasPrefix("亮度"))
+        app.buttons["退出播放"].tap()
+        XCTAssertTrue(app.buttons["验证播放手势"].exists)
+    }
+    @MainActor func testStationaryHoldRestoresPlaybackSpeed() {
+        let app = openGestureFixture()
+        app.buttons["播放"].tap()
+        let video = app.otherElements["playerVideo"]
+        video.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.32)).press(forDuration: 0.9)
+        app.buttons["退出播放"].tap()
+        XCTAssertTrue(app.staticTexts["长按倍速及恢复通过"].waitForExistence(timeout: 4))
+    }
+}
+
+extension WebHostTests {
+    @MainActor func testVideoTapAndDoubleTapControlPlayback() {
+        let app = openGestureFixture()
+        let point = app.otherElements["playerVideo"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        point.doubleTap()
+        XCTAssertTrue(app.buttons["暂停"].waitForExistence(timeout: 2))
+        point.doubleTap()
+        XCTAssertTrue(app.buttons["播放"].waitForExistence(timeout: 2))
+        point.tap()
+        XCTAssertTrue(app.buttons["锁定"].waitForNonExistence(timeout: 2))
+        point.tap()
+        XCTAssertTrue(app.buttons["锁定"].waitForExistence(timeout: 2))
     }
 }

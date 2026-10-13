@@ -2,6 +2,7 @@
 """Build the iPad payload only from version-controlled application assets."""
 import argparse, hashlib, json, shutil, subprocess, re
 from pathlib import Path
+from quality_resources import sync_quality
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = 'mpvVideoPlayer mpvAudioPlayer inputPlugin sessionNavigationPlugin communityClient communityBridge communitySession communityAvatar communityPublicClient communityAccount communityMessages communityPlugin connectivityHelper nativeshell offline homeData homeGallery homeBackdrop homeTransitions homeMotion embycompat webAppearance updatePlugin'.split()
 def sync(output):
@@ -26,6 +27,7 @@ def sync(output):
     presets={'remote':remote,'local':f'http://{local_ip}:{port}/','localIP':local_ip}
     (output/'server_defaults.json').write_text(json.dumps(presets,indent=2)+'\n')
     manifest['files']['server_defaults.json']=hashlib.sha256((output/'server_defaults.json').read_bytes()).hexdigest()
+    sync_quality(ROOT,output,manifest)
     (output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,default=ROOT/'apple/Generated/Web');args=parser.parse_args();sync(args.output)

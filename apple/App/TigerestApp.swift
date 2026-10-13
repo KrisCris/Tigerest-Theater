@@ -13,7 +13,7 @@ struct RootView: View {
     var body: some View {
         ZStack(alignment: .top) {
             Color(red: 0.035, green: 0.045, blue: 0.065).ignoresSafeArea()
-            if model.server != nil { WebView(host: model.web).id(model.profiles.currentID).ignoresSafeArea(edges: .bottom) }
+            if model.server != nil { LibraryPresentation(host: model.web, player: model.player).id(model.profiles.currentID).ignoresSafeArea(edges: .bottom) }
             if model.server == nil { OnboardingView(model: model) }
             if model.loading { ProgressView().padding(12).background(.regularMaterial, in: Capsule()) }
             if let failure = model.connectionFailure {
@@ -32,6 +32,17 @@ struct RootView: View {
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) { Button("好") { model.error = nil } } message: { Text(model.error ?? "") }
         .overlay { PlayerPresentation(player: model.player) }
         .onAppear { model.start() }
+        #if PLAYBACK_VALIDATION
+        .task { if ProcessInfo.processInfo.arguments.contains("--device-quality-probe") { await PlaybackValidation.run(model) } }
+        #endif
+    }
+}
+
+struct LibraryPresentation: View {
+    let host: WebHost
+    @ObservedObject var player: PlaybackController
+    var body: some View {
+        WebView(host: host).allowsHitTesting(!player.active).accessibilityHidden(player.active)
     }
 }
 
