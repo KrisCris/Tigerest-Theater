@@ -50,14 +50,16 @@
             signal.addEventListener('abort',abort,{once:true});
         });
     }
-    function snapshot(){
+    async function snapshot(signal,valid){
         const warmJob={},light=frozen(warmJob,false),wrapper=document.createElement('div');
         wrapper.className='tigerest-motion-cache';wrapper.inert=true;wrapper.setAttribute('aria-hidden','true');
         // Attach once offscreen so stylesheet parsing/layout also happens
         // before a click. A return promotes this wrapper in place.
         Object.assign(wrapper.style,{position:'fixed',inset:'0',opacity:'0',pointerEvents:'none',zIndex:'-2147483000',overflow:'hidden',contain:'layout paint'});
         wrapper.append(light);document.body.append(wrapper);sync(warmJob);light.getBoundingClientRect();
-        Object.assign(cached,{light,wrapper,copies:warmJob.copies});
+        // Offer it to a click only once its stylesheets have loaded.
+        if(!await copyStyled(light,signal,2500)||!valid()||!cacheReady()||cached.light){wrapper.remove();return false;}
+        Object.assign(cached,{light,wrapper,copies:warmJob.copies});return true;
     }
     function prewarm(){
         changes(observer?.takeRecords()||[]);
@@ -83,8 +85,8 @@
             // usually follows a scroll or hover, and never during a transition.
             task.phase='snapshot';
             if(!await idle(signal)||active||!valid()||!cacheReady())return cacheReady();
-            if(!cached.light)snapshot();
-            return true;
+            if(!cached.light)await snapshot(signal,valid);
+            return cacheReady();
         }).catch(()=>false).finally(()=>{if(warming===task)warming=null;});
         return task.promise;
     }
@@ -267,6 +269,9 @@
         document.querySelectorAll('style,link[rel="stylesheet"]').forEach(node => {
             if (node.closest('.tigerest-motion-layer,.tigerest-motion-cache')) return;
             if (home && node.tagName === 'LINK') return;
+            // A sheet that failed, is still loading or is disabled does not style the
+            // live page either; copying it would only keep the copy from being ready.
+            if (node.tagName === 'LINK' && (!node.sheet || node.sheet.disabled)) return;
             const copy = node.cloneNode(true);
             if (copy.tagName === 'STYLE') copy.textContent = copy.textContent.replace(/:root\b/g,'.tigerest-motion-html');
             else copy.href = node.href;
@@ -292,20 +297,33 @@
         wrapper.classList.add('tigerest-motion-layer');Object.assign(wrapper.style,{opacity:'1',zIndex:'2147483000',background:'#0b0d12'});job.layers.push(wrapper);
         return {cover:wrapper,copy:light};
     }
-    // Returns an opaque cover holding a crisp copy of the current page.
-    function outgoing(job){
+    // Returns an opaque cover holding a crisp copy of the current page, or null
+    // when a fresh copy's stylesheets do not load in time. The live page stays
+    // visible while a fresh copy waits, so nothing unstyled is ever shown.
+    async function outgoing(job){
         const ready=promote(job);
         job.metric.lightCacheHit=!!ready;
         if(ready)return ready;
-        const cover=layer(job),copy=frozen(job,false);cover.style.background='#0b0d12';cover.append(copy);sync(job);
-        return {cover,copy};
+        const cover=layer(job),copy=frozen(job,false);cover.style.background='#0b0d12';cover.style.opacity='0';cover.append(copy);sync(job);
+        if(!await copyStyled(copy,job.signal,160)){cover.remove();job.metric.copy='unstyled';return null;}
+        cover.style.opacity='';return {cover,copy};
     }
-    function sheetsLoaded(job,links,timeout){
+    // A copy may be shown only once every copied <link> sheet has loaded. Any
+    // failed sheet, timeout or abort means "not ready": it is never shown.
+    function copyStyled(copy,signal,timeout){
+        const links=Array.from(copy.shadowRoot.querySelectorAll('link[rel="stylesheet"]')).filter(link=>!link.sheet);
+        if(signal.aborted)return Promise.resolve(false);
+        if(!links.length)return Promise.resolve(true);
         return new Promise(resolve=>{
-            let left=links.length;if(!left)return resolve(true);
-            const timer=setTimeout(()=>resolve(false),timeout);
-            const one=()=>{if(--left===0){clearTimeout(timer);resolve(!job.signal.aborted);}};
-            for(const link of links){link.addEventListener('load',one,{once:true});link.addEventListener('error',one,{once:true});}
+            let left=links.length,done=false;
+            const finish=value=>{
+                if(done)return;done=true;clearTimeout(timer);signal.removeEventListener('abort',abort);
+                for(const link of links){link.removeEventListener('load',loaded);link.removeEventListener('error',failed);}
+                resolve(value&&!signal.aborted);
+            };
+            const loaded=()=>{if(--left===0)finish(true);},failed=()=>finish(false),abort=()=>finish(false),timer=setTimeout(failed,timeout);
+            signal.addEventListener('abort',abort,{once:true});
+            for(const link of links){link.addEventListener('load',loaded,{once:true});link.addEventListener('error',failed,{once:true});}
         });
     }
     // A crisp, opaque copy of the old page beneath the blur layers. The real
@@ -315,9 +333,8 @@
         if(ready){ready.cover.classList.add('tigerest-motion-freeze');job.metric.freeze='snapshot';return ready.cover;}
         const cover=layer(job,below),copy=frozen(job,false);
         cover.classList.add('tigerest-motion-freeze');cover.style.background='#0b0d12';cover.style.opacity='0';cover.append(copy);sync(job);
-        // Never show the copy unstyled: wait briefly for copied <link> sheets.
-        const links=Array.from(copy.shadowRoot.querySelectorAll('link[rel="stylesheet"]')).filter(link=>!link.sheet);
-        if(!await sheetsLoaded(job,links,160)||job.signal.aborted){cover.remove();job.metric.freeze='late';return null;}
+        // Never show the copy unstyled: wait briefly for its copied <link> sheets.
+        if(!await copyStyled(copy,job.signal,160)){cover.remove();job.metric.freeze='late';return null;}
         cover.style.opacity='';job.metric.freeze='copy';return cover;
     }
     // Start the route in the second frame: the first frame after a click only
@@ -405,7 +422,8 @@
                     await bitmap(job,fromScene,true);
                     if(!fromScene.bitmap&&!job.signal.aborted){
                         // No worker raster (or it failed): cover with the blurred DOM copy instead.
-                        job.metric.domFallback=true;fromScene.group.append(frozen(job));sync(job);
+                        job.metric.domFallback=true;const copy=frozen(job);copy.style.opacity='0';fromScene.group.append(copy);sync(job);
+                        if(await copyStyled(copy,job.signal,160))copy.style.opacity='';else copy.remove();
                     }
                     await animate(job,hot?fromScene.bitmap:veil,[{opacity:0},{opacity:1}],{duration:Math.max(80,210-(performance.now()-job.start)),easing:soft});
                 })()]);
@@ -486,7 +504,8 @@
             // Fly the parts of a frozen home copy out (prepared at idle, so usually
             // free on click). It hides the real home, so the library route and its
             // data start on the next frame instead of after the 410 ms fly-out.
-            const {cover,copy}=outgoing(job), shadow=copy.shadowRoot, previous=page();
+            const out=await outgoing(job);if(!out)return job.signal.aborted?undefined:simple(job,navigate);
+            const {cover,copy}=out, shadow=copy.shadowRoot, previous=page();
             const nav=shadow.querySelector('.tg-home-nav'), rail=shadow.querySelector('.tg-home-rail'), stage=shadow.querySelector('.tg-home-stage');
             const accelerated='cubic-bezier(.65,0,.85,.25)', soon=routeSoon(job,navigate);
             await Promise.all([
@@ -499,14 +518,18 @@
             const call=await soon, result=await (call?call.route:navigate());
             const target=await wait(job,()=>{const n=page();return n && (n!==previous || (samePage && !gallery.active)) ? n : null;});
             if (target && !job.signal.aborted) {
-                await sleep(job,100);const incoming=frozen(job,false);cover.replaceChildren(incoming);sync(job);
+                await sleep(job,100);const incoming=frozen(job,false);incoming.style.opacity='0';cover.replaceChildren(incoming);sync(job);
+                // Unstyled, the copy would flash; reveal the real page instead.
+                if(!await copyStyled(incoming,job.signal,160)){incoming.remove();await animate(job,cover,[{opacity:1},{opacity:0}],{duration:220});return result;}
+                incoming.style.opacity='';
                 await animate(job,incoming,[{opacity:0,transform:'scale(.82)',offset:0},{opacity:1,transform:'scale(1.008)',offset:.82},{opacity:1,transform:'none',offset:1}],{duration:460,easing:'cubic-bezier(.16,.8,.22,1)'});
             }
             return result;
         }); },
         homeReturn({navigate,findGallery}) { return run('homeReturn',async job => {
             if (reduced()) return simple(job,navigate);
-            const {cover,copy}=outgoing(job);
+            const out=await outgoing(job);if(!out)return job.signal.aborted?undefined:simple(job,navigate);
+            const {cover,copy}=out;
             const shrink=animate(job,copy,[{opacity:1,transform:'none'},{opacity:0,transform:'scale(.82)'}],{duration:320,easing:'cubic-bezier(.6,0,.8,.4)'});
             // The home route and its data start under the cover. If the gallery
             // begins its own entrance before the cover lifts, pause it there and
