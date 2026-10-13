@@ -10,6 +10,7 @@ import SwiftUI
 }
 struct RootView: View {
     @ObservedObject var model: AppModel
+    @State private var playbackActive = false
     var body: some View {
         ZStack(alignment: .top) {
             Color(red: 0.035, green: 0.045, blue: 0.065).ignoresSafeArea()
@@ -32,6 +33,8 @@ struct RootView: View {
         .sheet(isPresented: Binding(get: { model.showProfiles && model.server != nil && !model.showConnection }, set: { model.showProfiles = $0 })) { ProfileManagerView(model:model) }
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) { Button("好") { model.error = nil } } message: { Text(model.error ?? "") }
         .overlay { PlayerPresentation(player: model.player) }
+        .statusBarHidden(playbackActive)
+        .onReceive(model.player.$active.removeDuplicates()) { playbackActive = $0 }
         .onAppear { model.start() }
         #if PLAYBACK_VALIDATION
         .task { if ProcessInfo.processInfo.arguments.contains("--device-quality-probe") { await PlaybackValidation.run(model) } }

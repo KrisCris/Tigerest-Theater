@@ -48,19 +48,69 @@ extension WebHostTests {
 
 extension WebHostTests {
     @MainActor func testQueueSelectionUsesWebPlaylistId() {
+        let app = openQueueFixture()
+        XCTAssertTrue(app.staticTexts["第一项"].waitForExistence(timeout: 10))
+        app.buttons["下一集"].tap()
+        XCTAssertTrue(app.staticTexts["重复媒体第二项"].waitForExistence(timeout: 10), "换集须通过共享 inputPlugin 真正加载另一播放列表项")
+        app.buttons["上一集"].tap()
+        XCTAssertTrue(app.staticTexts["第一项"].waitForExistence(timeout: 10))
+        app.buttons["选集"].tap()
+        XCTAssertTrue(app.buttons["S01E01 · 第一项"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["S01E02 · 重复媒体第二项"].exists)
+        app.buttons["S02E03 · 跨季第三项"].tap()
+        XCTAssertTrue(app.staticTexts["跨季第三项"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["下一集"].isEnabled, "末项不能继续向后跳转")
+        app.buttons["上一集"].tap()
+        XCTAssertTrue(app.staticTexts["重复媒体第二项"].waitForExistence(timeout: 10))
+        app.buttons["上一集"].tap()
+        XCTAssertTrue(app.staticTexts["第一项"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["上一集"].isEnabled, "首项不能继续向前跳转")
+    }
+
+    @MainActor func testEpisodeMenuWorksDuringPlayback() {
+        let app = openQueueFixture()
+        XCTAssertTrue(app.staticTexts["第一项"].waitForExistence(timeout: 10))
+        app.buttons["播放"].tap()
+        app.buttons["选集"].tap()
+        let episode = app.buttons["S01E02 · 重复媒体第二项"]
+        XCTAssertTrue(episode.waitForExistence(timeout: 2))
+        // Deliberately keep choosing beyond the OSD's 3.5-second hide deadline.
+        Thread.sleep(forTimeInterval: 4)
+        XCTAssertTrue(episode.exists, "选择期间不能被控制栏自动隐藏收掉")
+        XCTAssertFalse(statusBarContent.exists, "选集浮层也不能露出系统顶栏")
+        episode.tap()
+        XCTAssertTrue(app.staticTexts["重复媒体第二项"].waitForExistence(timeout: 10))
+    }
+
+    @MainActor func testPlaybackHidesStatusBarUntilExit() {
+        let app = openQueueFixture()
+        XCTAssertTrue(app.staticTexts["第一项"].waitForExistence(timeout: 10))
+        XCTAssertTrue(statusBarContent.waitForNonExistence(timeout: 5), "暂停及 OSD 显示时也应隐藏系统顶栏")
+        app.buttons["播放"].tap()
+        XCTAssertTrue(statusBarContent.waitForNonExistence(timeout: 5))
+        app.buttons["退出播放"].tap()
+        XCTAssertTrue(statusBarContent.waitForExistence(timeout: 5), "退出播放器后应恢复系统顶栏")
+    }
+
+    // iPadOS retains empty status-bar containers in SpringBoard even when hidden.
+    // Assert its actual clock/battery content rather than the container's existence.
+    @MainActor private var statusBarContent: XCUIElement {
+        XCUIApplication(bundleIdentifier: "com.apple.springboard").statusBars
+            .descendants(matching: .any).matching(NSPredicate(format: "label != ''")).firstMatch
+    }
+
+    @MainActor private func openQueueFixture() -> XCUIApplication {
+        continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
+        XCTAssertTrue(statusBarContent.waitForExistence(timeout: 5))
         app.buttons["连接自建 EMBY 服务器"].tap()
         let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
         app.buttons["验证选集"].tap()
-        XCTAssertTrue(app.buttons["下一集"].waitForExistence(timeout: 10))
-        app.buttons["下一集"].tap()
-        XCTAssertTrue(app.staticTexts["选集身份校验通过"].waitForExistence(timeout: 10))
+        return app
     }
-}
 
-extension WebHostTests {
     @MainActor func testSubtitleSettingsReachPlayerAndReset() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
         app.buttons["连接自建 EMBY 服务器"].tap()

@@ -168,8 +168,11 @@ import AppleCore
         if nextPaused != paused { paused = nextPaused; emit(paused ? "paused" : "playing"); emit("videoPlaybackActive", [.bool(!paused)]) }
         if nextDuration != duration { duration = nextDuration; emit("updateDuration", [.number(duration * 1000)]) }
         if nextRate > 0, nextRate != rate { rate = nextRate; emit("playbackRateChanged", [.number(rate)]) }
-        position = max(0, engine.number("time-pos")); buffering = engine.flag("paused-for-cache") || !loaded
-        tracks = engine.json("track-list").array ?? []
+        let nextPosition = max(0, engine.number("time-pos")), nextBuffering = engine.flag("paused-for-cache") || !loaded
+        let nextTracks = engine.json("track-list").array ?? []
+        if nextPosition != position { position = nextPosition }
+        if nextBuffering != buffering { buffering = nextBuffering }
+        if nextTracks != tracks { tracks = nextTracks }
         emit("positionUpdate", [.number(position * 1000)]); emit("buffering", [.number(buffering ? 0 : 100)])
         if watchdog.stalled(position: position, now: ProcessInfo.processInfo.systemUptime, paused: paused) { fail("播放超过 30 秒没有进展，请检查网络后重试"); return }
         updateNowPlaying()
@@ -217,9 +220,12 @@ import AppleCore
     @objc private func suspendInteraction() {
         endTemporarySpeed(); restoreBrightness(); interactionRevision &+= 1
     }
-    func adjacent(_ delta: Int) {
+    func adjacentID(_ delta: Int) -> String? {
         let ids = queue.compactMap { $0["PlaylistItemId"].string }
-        if let id = EpisodeQueue(ids: ids, current: currentID).neighbor(delta) { selectQueueItem(id) }
+        return EpisodeQueue(ids: ids, current: currentID).neighbor(delta)
+    }
+    func adjacent(_ delta: Int) {
+        if let id = adjacentID(delta) { selectQueueItem(id) }
     }
     func selectQueueItem(_ id: String) {
         guard queue.contains(where: { $0["PlaylistItemId"].string == id }) else { return }

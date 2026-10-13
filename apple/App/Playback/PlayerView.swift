@@ -34,6 +34,7 @@ struct PlayerView: View {
     @State private var seeking = false
     @State private var importSubtitle = false
     @State private var showDanmaku = false
+    @State private var showQueue = false
     @State private var unlockVisible = false
     @State private var unlockTask: Task<Void, Never>?
     @State private var gestureMessage = ""
@@ -49,7 +50,7 @@ struct PlayerView: View {
     var body: some View {
         ZStack {
             Color.black
-            PlayerKeyboardInput(enabled:!showTutorial && !showDanmaku && !importSubtitle) {
+            PlayerKeyboardInput(enabled:!showTutorial && !showDanmaku && !showQueue && !importSubtitle) {
                 guard !player.locked else { revealUnlock(); return }
                 act((player.engine?.flag("pause") ?? player.paused) ? "play" : "pause")
             }.frame(width:0,height:0).allowsHitTesting(false)
@@ -75,10 +76,12 @@ struct PlayerView: View {
                     if !player.locked {
                         HStack(spacing: 40) {
                             Button { player.adjacent(-1) } label: { Image(systemName: "backward.end.fill") }.accessibilityLabel("上一集")
+                                .disabled(player.adjacentID(-1) == nil)
                             Button { act("seekTo", [.number(max(0, player.position - 10) * 1000)]) } label: { Image(systemName: "gobackward.10") }
                             Button { act(player.paused ? "play" : "pause") } label: { Image(systemName: player.paused ? "play.fill" : "pause.fill").font(.largeTitle) }.accessibilityLabel(player.paused ? "播放" : "暂停")
                             Button { act("seekTo", [.number((player.position + 10) * 1000)]) } label: { Image(systemName: "goforward.10") }
                             Button { player.adjacent(1) } label: { Image(systemName: "forward.end.fill") }.accessibilityLabel("下一集")
+                                .disabled(player.adjacentID(1) == nil)
                         }.font(.title2)
                         Spacer()
                         Slider(value: Binding(get: { seeking ? scrub : player.position }, set: { scrub = $0 }), in: 0...max(1, player.duration), onEditingChanged: { editing in seeking = editing; if !editing { act("seekTo", [.number(scrub * 1000)]) } })
@@ -87,16 +90,25 @@ struct PlayerView: View {
                             Spacer()
                             Menu("\(player.rate, specifier: "%.2g")×") { ForEach([0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4], id: \.self) { rate in Button("\(rate, specifier: "%.2g")×") { act("setPlaybackRate", [.number(rate * 1000)]) } } }
                             Button("弹幕") { showDanmaku = true }
-                            Menu("选集") {
-                                ForEach(Array(player.queue.enumerated()), id: \.offset) { _, item in
-                                    if let id = item["PlaylistItemId"].string {
-                                        Button { player.selectQueueItem(id) } label: {
-                                            if id == player.currentID { Label(item["Name"].string ?? "当前媒体", systemImage: "play.fill") }
-                                            else { Text(item["Name"].string ?? "媒体") }
-                                        }
-                                    }
+                            Button("选集") { showQueue = true }
+                                .disabled(player.queue.isEmpty)
+                                .popover(isPresented: $showQueue) {
+                                    NavigationStack {
+                                        List {
+                                            ForEach(Array(player.queue.enumerated()), id: \.offset) { _, item in
+                                                if let id = item["PlaylistItemId"].string {
+                                                    Button { player.selectQueueItem(id); showQueue = false } label: {
+                                                        if id == player.currentID { Label(queueLabel(item), systemImage: "play.fill") }
+                                                        else { Text(queueLabel(item)) }
+                                                    }
+                                                }
+                                            }
+                                        }.navigationTitle("选集").navigationBarTitleDisplayMode(.inline)
+                                            .toolbar { Button("完成") { showQueue = false } }
+                                    }.buttonStyle(.plain)
+                                        .frame(minWidth: 280, idealWidth: 360, maxWidth: 420, minHeight: 260, idealHeight: 440, maxHeight: 560)
+                                        .presentationCompactAdaptation(.popover)
                                 }
-                            }.disabled(player.queue.isEmpty)
                             Menu("音轨") { trackMenu("audio", method: "setAudioStream") }
                             Menu("字幕") { Button("关闭") { act("setSubtitleStream", [.number(-1)]) }; trackMenu("sub", method: "setSubtitleStream"); Button("导入字幕") { importSubtitle = true }; Button("提前 0.5 秒") { delay(-0.5) }; Button("延后 0.5 秒") { delay(0.5) } }
                             Menu("码率") { ForEach([0, 20000000, 10000000, 4000000], id: \.self) { bitrate in Button(bitrate == 0 ? "原始画质" : "\(bitrate / 1000000) Mbps") { player.model.bridge.emit("player", "streamingBitrateRequested", [.number(Double(bitrate))]) } } }
@@ -121,7 +133,7 @@ struct PlayerView: View {
         }.ignoresSafeArea().foregroundStyle(.white)
             .onAppear { if !tutorialSeen { presentTutorial() }; scheduleHide() }
             .onDisappear { unlockTask?.cancel(); hideTask?.cancel(); feedbackTask?.cancel(); player.endTemporarySpeed() }
-            .onChange(of: [seeking, showTutorial, showDanmaku, importSubtitle]) { _, _ in scheduleHide() }
+            .onChange(of: [seeking, showTutorial, showDanmaku, showQueue, importSubtitle]) { _, _ in scheduleHide() }
             .onChange(of: player.locked) { _, locked in
                 feedbackTask?.cancel(); gestureMessage = ""
                 if locked { revealUnlock() } else { unlockTask?.cancel(); unlockVisible = false }
@@ -170,11 +182,11 @@ struct PlayerView: View {
     private func scheduleHide() {
         hideTask?.cancel()
         guard controls, !player.paused, !player.locked, !interacting, !seeking,
-              !showTutorial, !showDanmaku, !importSubtitle else { return }
+              !showTutorial, !showDanmaku, !showQueue, !importSubtitle else { return }
         hideTask = Task { @MainActor in
             do { try await Task.sleep(for: .milliseconds(3500)) } catch { return }
             guard !player.paused, !player.locked, !interacting, !seeking,
-                  !showTutorial, !showDanmaku, !importSubtitle else { return }
+                  !showTutorial, !showDanmaku, !showQueue, !importSubtitle else { return }
             controls = false
         }
     }
@@ -191,6 +203,16 @@ struct PlayerView: View {
         if let intent = tutorialResumeIntent, intent == player.pauseIntent,
            tutorialRevision == player.interactionRevision, player.active, scenePhase == .active { act("play") }
         tutorialResumeIntent = nil; scheduleHide()
+    }
+    private func queueLabel(_ item: JSONValue) -> String {
+        let code = [("S", "ParentIndexNumber"), ("E", "IndexNumber")].compactMap { prefix, key -> String? in
+            guard let raw = item[key].number ?? item[key].string.flatMap(Double.init),
+                  let number = Int(exactly: raw), number >= 0 else { return nil }
+            return prefix + (number < 10 ? "0" : "") + String(number)
+        }.joined()
+        let name = item["Name"].string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let title = name.isEmpty ? "媒体" : name
+        return code.isEmpty ? title : "\(code) · \(title)"
     }
     @ViewBuilder private func trackMenu(_ type: String, method: String) -> some View {
         ForEach(Array(player.tracks.filter { $0["type"].string == type }.enumerated()), id: \.offset) { _, track in
