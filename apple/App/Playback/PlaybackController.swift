@@ -61,7 +61,9 @@ import AppleCore
             stop(notify: false)
             metadata = arg(2); title = metadata["title"].string ?? metadata["metadata"]["Name"].string ?? "正在播放"
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetoothA2DP])
+            // Playback already permits AirPlay/A2DP. Their explicit options are for
+            // playAndRecord and produce paramErr (-50) on physical iPads.
+            try session.setCategory(.playback, mode: .moviePlayback)
             try session.setActive(true)
             let next = try MPVEngine(layer: surface.metal); engine = next
             do {
@@ -186,7 +188,7 @@ import AppleCore
     @objc private func routeChanged(_ note: Notification) {
         if note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { _ = try? dispatch("pause", []) }
     }
-    func diagnostics() -> JSONValue { .object(["version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("vo") ?? ""), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
+    func diagnostics() -> JSONValue { .object(["version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false)]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
     func applySettings() throws {
         guard let engine else { return }
         let settings = model.settings
@@ -196,7 +198,9 @@ import AppleCore
         for (key, value) in mapping { try engine.setting(key, value.isEmpty ? nil : value) }
         try applySubtitles()
         try applyAspect()
-        try engine.set("af", settings.get("audio", "normalize").bool == true ? "lavfi=[dynaudnorm]" : "")
+        // Match PlayerComponent::setAudioConfiguration. The iOS FFmpeg build
+        // omits dynaudnorm; an unsupported filter silently disables audio.
+        try engine.set("audio-normalize-downmix", settings.get("audio", "normalize").bool == true ? "yes" : "no")
         if let data=try? Data(contentsOf:model.profiles.directory.appending(path:"quality.json")),let custom=try? JSONDecoder().decode([String:String].self,from:data) {
             let validated=try MPVConfigurationPolicy.parse(custom.map { $0.key+"="+$0.value }.joined(separator:"\n"),shaderRoot:model.profiles.directory.appending(path:"Shaders"))
             for (key,value) in validated {try engine.set(key,value)}
