@@ -12,7 +12,7 @@
     ];
 
     // In app mode, Emby sends a first run without a known server to Emby
-    // Connect. Record the server chosen at startup so its own sign-in opens.
+    // Connect. Record the server the user chose so its own sign-in opens.
     function chosenServer() {
         const localAddress = 'http://192.168.5.150:8095';
         const remoteAddress = 'http://nas.tigerest.top:8095';
@@ -25,9 +25,10 @@
             IsLocalServer: true,
             LastConnectionMode: 0
         });
-        let chosen;
-        try { chosen = new URL(window.jmpInfo?.settings?.main?.userWebClient || ''); } catch (error) { return null; }
-        if (chosen.origin !== window.location.origin) return null;
+        // Only a server's own web client is loaded here, after the user chose
+        // that server. The injected settings are a start-up snapshot, so they
+        // cannot identify a server entered during this session.
+        if (!/^https?:$/.test(window.location.protocol) || !/\/web(?:\/|$)/i.test(window.location.pathname)) return null;
         return () => {
             // The web client lives under /web; a path before it is a reverse-proxy prefix.
             const address = window.location.origin + window.location.pathname.replace(/\/web(?:\/.*)?$/i, '');
@@ -37,7 +38,7 @@
             request.send();
             const info = request.status === 200 ? JSON.parse(request.responseText) : null;
             // Manual mode keeps the address and port the user entered.
-            return info?.Id ? {Id: info.Id, Name: info.ServerName || chosen.host, ManualAddress: address, LastConnectionMode: 2} : null;
+            return info?.Id ? {Id: info.Id, Name: info.ServerName || window.location.host, ManualAddress: address, LastConnectionMode: 2} : null;
         };
     }
 
