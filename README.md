@@ -4,11 +4,18 @@
 
 [下载正式版](https://github.com/Tigerest/Tigerest-Theater/releases/latest) · [使用教程](https://github.com/Tigerest/Tigerest-Theater/wiki) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/Tigerest/Tigerest-Theater/issues) · [作者 B站](https://space.bilibili.com/12562485)
 
-**当前版本：2.6.0。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
+**当前版本：2.6.1。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
 
-**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.6.0 尚未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
+**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.6.1 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
 客户端不包含影视资源。你需要已有的 Emby 服务器地址和账号；媒体库、播放与下载权限由所连接的服务器提供。本项目是非官方 Emby 客户端，与 Emby LLC 无隶属关系。
+
+## 2.6.1 更新重点
+
+- **Windows 界面动画跟随屏幕刷新率：** 之前网页界面固定 60 帧；现在首页、媒体库、详情页转场和滚动按显示器刷新率运行，120／144／240 Hz 屏幕都会更流畅。
+- **Windows 滚轮平滑滚动：** 滚轮和网页内的平滑滚动有过渡动画，每格滚动距离加大。
+
+详细变化与验证范围见 [2.6.1 发布说明](docs/releases/2026-10-14-v2.6.1.md)。
 
 ## 2.6.0 更新重点
 
@@ -26,14 +33,14 @@
 
 | 平台 | 安装包 | 系统要求 |
 | --- | --- | --- |
-| Windows 安装版 | [2.6.0 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
-| Windows 便携版 | [2.6.0 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-x64.zip) | 同上；完整解压后运行 |
-| Android | [2.6.0 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-android.apk) | Android 15+，arm64-v8a / x86_64 |
+| Windows 安装版 | [2.6.1 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.1/TigerestTheater-2.6.1-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
+| Windows 便携版 | [2.6.1 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.1/TigerestTheater-2.6.1-x64.zip) | 同上；完整解压后运行 |
+| Android | [2.6.1 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.1/TigerestTheater-2.6.1-android.apk) | Android 15+，arm64-v8a / x86_64 |
 | Apple Silicon Mac | [2.6.0 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-arm64.dmg) | macOS 26+，M 系列芯片 |
 
 包内已包含 MPV 和基础运行库，无需另装播放器。Windows RIFE 大型组件是可选扩展；已有 NVIDIA 1.0.0 扩展可以继续使用。正式 Mac 下载仅提供 Apple Silicon 版本。
 
-[2.6.0 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-SHA256SUMS.txt)与安装包放在同一发行页。
+[2.6.1 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.1/TigerestTheater-2.6.1-SHA256SUMS.txt)与安装包放在同一发行页。Mac 2.6.1 随后发布，发布前仍提供 2.6.0。
 
 ### 第一次使用
 
@@ -141,7 +148,7 @@ RIFE 默认关闭，需要大河内置播放配置：
 - [macOS 构建](dev/macos/README.md)
 - [Android 构建](android/README.md)
 - [Windows 测试环境要求](dev/windows/TESTING.md)
-- [版本变化](CHANGELOG.md)与[本次发布说明](docs/releases/2026-10-13-v2.6.0.md)
+- [版本变化](CHANGELOG.md)与[本次发布说明](docs/releases/2026-10-14-v2.6.1.md)
 
 Windows 每次运行原生测试前，都必须在同一个 PowerShell 调用中加载测试环境脚本并完成运行库预检。测试、包启动检查、生产 API 联调和真实媒体播放的覆盖范围分别记录，不能互相替代。
 
