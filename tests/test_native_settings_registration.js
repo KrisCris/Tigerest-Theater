@@ -38,6 +38,39 @@ test('legacy settings URL remains routable without adding a menu entry', () => {
     assert.ok(registrations.has(route.controller));
 });
 
+test('settings pages load on Emby 4.10 and on Emby 4.9, which replaces plugin route content', () => {
+    const {context,registrations}=modules();
+    const blobs=new Map();
+    context.Blob=class { constructor(parts,options){ this.text=parts.join(''); this.type=options.type; } };
+    context.URL={createObjectURL:blob=>{ const address=`blob:https://media.example:23333/${blobs.size}`; blobs.set(address,blob); return address; }};
+    const plugin=new (registrations.get('tigerest/settings.js').factory())();
+    const mapPath=route=>'tigerest/'+route.path;
+    // Emby 4.10 pluginmanager.js: route.contentPath||(route.contentPath=pluginManager.mapPath(plugin,route.path))
+    for(const route of plugin.getRoutes()){
+        route.contentPath||(route.contentPath=mapPath(route));
+        assert.equal(Object.assign({},route).contentPath,'none',route.path);
+    }
+    assert.equal(blobs.size,0,'Emby 4.10 builds the settings frame itself');
+    // Emby 4.9 pluginmanager.js: route.contentPath=pluginManager.mapPath(plugin,route.path)
+    const routes=plugin.getRoutes();
+    for(const route of routes){
+        route.contentPath=mapPath(route);
+        // approuter.js loadContentUrl() and the Alameda text loader.
+        let url=Object.assign({},route).contentPath;
+        assert.ok(url.includes('://'),`${route.path} is loaded as given, not from the web client folder`);
+        url+=(url.indexOf('?')===-1?'?':'&')+'v=4.9.3.0';
+        const requested=new URL(url); requested.hash='';
+        const page=blobs.get(requested.href);
+        assert.ok(page,`${route.path} requests the frame without the cache argument`);
+        assert.equal(page.type,'text/html');
+        // The frame Emby 4.10 approuter.js builds for templateType 'settings'.
+        assert.equal(page.text,'<div is="emby-scroller" class="view flex flex-direction-column scrollFrameY flex-grow" data-mousewheel="true" data-horizontal="false" data-forcescrollbar="true" data-focusscroll="true" data-bindheader="true">'
+            +'<div class="scrollSlider flex-grow flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page settingsContainer"><div class="readOnlyContent auto-center padded-top">'
+            +'</div></div></div>');
+    }
+    assert.equal(blobs.size,1,'all settings routes share one frame');
+});
+
 test('only supported categories appear once in native settings menus', () => {
     const {context,registrations}=modules();
     const plugin=new (registrations.get('tigerest/settings.js').factory())();

@@ -127,6 +127,17 @@
         };
     }
 
+    // Emby's settings frame, as Emby 4.10 builds it around a 'none' template.
+    // Emby 4.9 loads a route's content by address and uses it as given only
+    // when it contains "://"; the cache argument it appends falls after the
+    // '#', outside the request.
+    function settingsFrameAddress() {
+        const frame = '<div is="emby-scroller" class="view flex flex-direction-column scrollFrameY flex-grow" data-mousewheel="true" data-horizontal="false" data-forcescrollbar="true" data-focusscroll="true" data-bindheader="true">'
+            + '<div class="scrollSlider flex-grow flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page settingsContainer">'
+            + '<div class="readOnlyContent auto-center padded-top"></div></div></div>';
+        return URL.createObjectURL(new Blob([frame], {type: 'text/html'})) + '#';
+    }
+
     let registered = false;
     const registeredDefines = new WeakSet();
     function registerModules(defineModule = window.define) {
@@ -177,19 +188,29 @@
             return { default: HomeTab };
         });
 
+        // Emby 4.10 keeps a plugin route's own content and builds the settings
+        // frame around the empty 'none' template. Emby 4.9 replaces it with a
+        // page beside the plugin, which does not exist, so those versions load
+        // the same frame as a page of its own.
+        let settingsFrame = null;
+        const settingsContent = route => {
+            let content = 'none';
+            return Object.defineProperty(route, 'contentPath', {configurable: true, enumerable: true,
+                get: () => content,
+                set: () => { content = settingsFrame ||= settingsFrameAddress(); }});
+        };
         defineModule('tigerest/settings.js', [], function () {
             return class TigerestSettingsPlugin {
                 constructor() { this.id = 'tigerest-native-settings'; }
                 getRoutes() {
                     window.tigerestInstallSettingsMenu?.();
-                    const base = {contentPath: 'none', templateType: 'settings', settingsTheme: true,
-                        icon: '&#xe8b8;'};
+                    const base = {templateType: 'settings', settingsTheme: true, icon: '&#xe8b8;'};
                     // Keep old links routable, but only category routes belong
                     // to Emby's shared settings drawer/overview menu filter.
-                    return [{...base, path: 'settings.html', order: 25,
+                    return [settingsContent({...base, path: 'settings.html', order: 25,
                         title: (window.tigerestAndroidApi || window.tigerestIPadApi) ? '客户端设置' : 'MPV 播放设置',
-                        controller: 'tigerest/settings-view.js'},
-                        ...(window.tigerestSettingsCategories?.() || []).map((section, index) => ({
+                        controller: 'tigerest/settings-view.js'}),
+                        ...(window.tigerestSettingsCategories?.() || []).map((section, index) => settingsContent({
                             ...base, type: 'settings', settingsType: 'app',
                             path: `settings/${section.key}.html`, title: section.title, icon: section.icon,
                             order: 25 + (index + 1) / 100,
