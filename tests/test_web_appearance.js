@@ -187,6 +187,7 @@ function makeDocument({headReady = true} = {}) {
     document.body.isConnected = true;
     document.documentElement.isConnected = true;
     document.documentElement.append(document.body);
+    document.body.append(new FakeElement('div', ['backgroundContainer']));
     return document;
 }
 
@@ -630,6 +631,37 @@ function testAnimatesNewlyInsertedPage() {
     assert.ok(page.classList.contains('tigerest-page-enter'));
 }
 
+function testTransitionCoordinationAcrossScriptWorlds() {
+    for (const beginsDuringDelay of [false, true]) {
+        const {context, document, runTimers} = runAppearance();
+        const page = new FakeElement('div', ['mainAnimatedPage']);
+        // Qt injects the transition engine in MainWorld and appearance in
+        // ApplicationWorld. Their globals differ; only the DOM is shared.
+        const mainWorld = vm.createContext({document, window: {}});
+        const begin = () => vm.runInContext(`
+            window.TigerestHomeTransitions = {busy: true};
+            document.body.classList.add('tigerest-motion-busy');
+        `, mainWorld);
+        if (!beginsDuringDelay) begin();
+        document.dispatchEvent({type: 'viewshow', target: page});
+        if (beginsDuringDelay) begin();
+        assert.strictEqual(context.window.TigerestHomeTransitions, undefined);
+        runTimers();
+        assert.ok(!page.classList.contains('tigerest-page-enter'),
+            'isolated-world appearance overlaps a shared-element transition');
+        assert.ok(!page.classList.contains('tigerest-page-pending'),
+            'suppressed entrance leaves the destination page hidden');
+        vm.runInContext(`
+            window.TigerestHomeTransitions.busy = false;
+            document.body.classList.remove('tigerest-motion-busy');
+        `, mainWorld);
+        document.dispatchEvent({type: 'viewshow', target: page});
+        runTimers();
+        assert.ok(page.classList.contains('tigerest-page-enter'),
+            'ordinary page entrance remains suppressed after the transition');
+    }
+}
+
 function testIgnoresBubbledChildAnimationEnd() {
     const {document, runTimers} = runAppearance();
     const page = new FakeElement('div', ['mainAnimatedPage']);
@@ -712,8 +744,8 @@ function testUsesPageArtworkForAmbientBackground() {
 
     context.updateTigerestAmbient(page);
 
-    const firstImage = document.documentElement.style.getPropertyValue('--tgs-ambient-image-a')
-        || document.documentElement.style.getPropertyValue('--tgs-ambient-image-b');
+    const firstImage = document.querySelector('.backgroundContainer').style.getPropertyValue('--tgs-ambient-image-a')
+        || document.querySelector('.backgroundContainer').style.getPropertyValue('--tgs-ambient-image-b');
     assert.strictEqual(firstImage, 'url("https://media.example/poster.jpg")');
     const css = document.getElementById('tigerest-appearance-style').textContent;
     assert.ok(css.includes('var(--tgs-ambient-image-a)') && css.includes('var(--tgs-ambient-image-b)'),
@@ -722,8 +754,40 @@ function testUsesPageArtworkForAmbientBackground() {
 }
 
 function activeAmbientImage(document) {
+    const background = document.querySelector('.backgroundContainer');
     const slot = document.documentElement.classList.contains('tigerest-ambient-phase-b') ? 'b' : 'a';
-    return document.documentElement.style.getPropertyValue(`--tgs-ambient-image-${slot}`);
+    return background.style.getPropertyValue(`--tgs-ambient-image-${slot}`);
+}
+
+function testAmbientStateSurvivesBackgroundReplacementWithoutPageInheritance() {
+    const {context, document, mutationObservers} = runAppearance();
+    const page = new FakeElement('div', ['page']);
+    const artwork = new FakeElement('div', ['cardImageContainer']);
+    page.append(artwork);
+    for (const name of ['a', 'b']) {
+        artwork.computedBackgroundImage = `url("https://media.example/${name}.jpg")`;
+        context.updateTigerestAmbient(page);
+    }
+    const previous = document.querySelector('.backgroundContainer');
+    assert.strictEqual(activeAmbientImage(document), 'url("https://media.example/b.jpg")');
+    for (const slot of ['a', 'b']) {
+        assert.strictEqual(document.documentElement.style.getPropertyValue(`--tgs-ambient-image-${slot}`), '',
+            'ambient updates must not invalidate inherited properties throughout the page');
+    }
+    previous.remove();
+    const wrapper = new FakeElement();
+    const replacement = new FakeElement('div', ['backgroundContainer']);
+    wrapper.append(replacement);
+    document.body.append(wrapper);
+    mutationObservers[0].callback([{type:'childList', target:document.body, addedNodes:[wrapper]}]);
+    assert.strictEqual(activeAmbientImage(document), 'url("https://media.example/b.jpg")',
+        'a replacement background must retain the last successfully loaded artwork');
+    assert.strictEqual(replacement.style.getPropertyValue('--tgs-ambient-image-a'),
+        previous.style.getPropertyValue('--tgs-ambient-image-a'), 'the outgoing crossfade layer is retained');
+    replacement.className = 'backgroundContainer withBackdrop';
+    mutationObservers[0].callback([{type:'attributes', target:replacement, oldValue:'backgroundContainer'}]);
+    assert.strictEqual(activeAmbientImage(document), 'url("https://media.example/b.jpg")',
+        'server class replacement must preserve the active image slot');
 }
 
 function testAmbientCrossfadesAndAvoidsPreviousArtwork() {
@@ -941,12 +1005,14 @@ testDoesNotAnimateWhenCardsLoadInsideCurrentPage();
 testOnlyAnimatesPageVisibilityChanges();
 testNestedViewShowDoesNotReplayTheWholePage();
 testAnimatesNewlyInsertedPage();
+testTransitionCoordinationAcrossScriptWorlds();
 testIgnoresBubbledChildAnimationEnd();
 testTimeoutCleansUpPageAnimation();
 testMajorPageAnimationDoesNotScaleVirtualGridWidth();
 testPendingPageCannotRemainPermanentlyHidden();
 testDetailHeaderHasBreathingRoom();
 testUsesPageArtworkForAmbientBackground();
+testAmbientStateSurvivesBackgroundReplacementWithoutPageInheritance();
 testAmbientCrossfadesAndAvoidsPreviousArtwork();
 testAmbientRotatesFromRememberedArtworkOnAnEmptyTab();
 testFailedOrTimedOutArtworkKeepsTheCurrentBackground();

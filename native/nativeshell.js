@@ -19,7 +19,7 @@ const features = [
 const getPlugins = () => {
     const basePlugins = [
         'inputPlugin',
-        ...(window.tigerestAndroidApi ? [] : ['updatePlugin'])
+        ...((window.tigerestAndroidApi || (window.jmpInfo?.capabilities?.selfUpdate === false && window.jmpInfo?.capabilities?.updateCheck !== true)) ? [] : ['updatePlugin'])
     ];
 
     const mpvEnabled = jmpInfo.settings?.main?.enableMPV !== false;
@@ -226,6 +226,7 @@ async function createApi() {
         await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, {once: true}));
     }
 
+    if (window.tigerestIPadApi) return window.tigerestIPadApi;
     if (window.tigerestAndroidApi) return window.tigerestAndroidApi;
 
     const channel = await new Promise((resolve) => {
@@ -565,7 +566,8 @@ async function showLegacySettingsModal() {
         resetSavedServer.addEventListener("click", async () => {
             window.jmpInfo.settings.main.userWebClient = '';
             window.jmpInfo.settings.main.serverConnectionMode = '';
-            window.location.href = jmpInfo.scriptPath + "/find-webclient.html";
+            if (window.tigerestIPadApi) window.api.system.openServerSettings();
+            else window.location.href = jmpInfo.scriptPath + "/find-webclient.html";
         });
         group.appendChild(resetSavedServer);
     }
@@ -752,7 +754,7 @@ function getTigerestSettingsCategories() {
             subtitle: '直接传入 mpv.conf 选项'
         }
     };
-    if (window.tigerestAndroidApi) {
+    if (window.tigerestAndroidApi || window.tigerestIPadApi) {
         sectionMeta.main.subtitle = '服务器、窗口与网页浏览';
         sectionMeta.audio.subtitle = '声道与音量均衡';
         sectionMeta.mpv.title = '播放器';
@@ -991,7 +993,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
 
     const header = element('div', 'tgs-header');
     const heading = element('div');
-    const headingTitle = element('h2', 'tgs-title', window.tigerestAndroidApi ? '客户端设置' : 'MPV 播放设置');
+    const headingTitle = element('h2', 'tgs-title', (window.tigerestAndroidApi || window.tigerestIPadApi) ? '客户端设置' : 'MPV 播放设置');
     headingTitle.id = 'tgs-settings-title';
     heading.appendChild(headingTitle);
     heading.appendChild(element('div', 'tgs-subtitle', '常规配置即时应用；带“需重启”标记的项目在下次启动生效'));
@@ -1177,6 +1179,12 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         groupHead.append(groupTitle, reset);
         group.appendChild(groupHead);
 
+        if (section === 'mpv' && window.tigerestIPadApi) {
+            const advanced = element('button', 'tgs-reset', '导入着色器与播放诊断');
+            advanced.type = 'button';
+            advanced.addEventListener('click', () => window.api.system.openQualitySettings());
+            group.appendChild(advanced);
+        }
         if (section === 'video' && mpvDiagnostics.rife) {
             rifeCallout = element('div', 'tgs-callout');
             updateRifeStatus();
@@ -1187,7 +1195,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
                 settings: jmpInfo.settings.video, save: (key, value) => saveSetting('video', key, value), notify: showSaved});
             if (rifeExtensionPanel) group.appendChild(rifeExtensionPanel.node);
         }
-        if (section === 'mpv' && !window.tigerestAndroidApi) {
+        if (section === 'mpv' && !window.tigerestAndroidApi && !window.tigerestIPadApi) {
             const activeMode = jmpInfo.mpvConfigMode === 'system' ? '系统用户配置' : '大河内置配置';
             const activeRoot = jmpInfo.mpvConfigDir || '尚未解析';
             const shaderFiles = Array.isArray(mpvDiagnostics.shaderFiles) ? mpvDiagnostics.shaderFiles : [];
@@ -1272,7 +1280,8 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
                 resetServer.addEventListener('click', () => {
                     window.jmpInfo.settings.main.userWebClient = '';
                     window.jmpInfo.settings.main.serverConnectionMode = '';
-                    window.location.href = jmpInfo.scriptPath + '/find-webclient.html';
+                    if (window.tigerestIPadApi) window.api.system.openServerSettings();
+                    else window.location.href = jmpInfo.scriptPath + '/find-webclient.html';
                 });
                 actions.appendChild(resetServer);
             }
@@ -1282,6 +1291,11 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
                 window.tigerestOpenOfflineLibrary();
             });
             if (!window.tigerestAndroidApi) actions.appendChild(offline);
+            if (window.tigerestIPadApi) {
+                const profiles = element('button', 'tgs-action', '管理配置档');
+                profiles.addEventListener('click', () => { close(); window.api.system.openProfiles(); });
+                actions.appendChild(profiles);
+            }
             group.appendChild(actions);
         }
 
@@ -1541,7 +1555,7 @@ function installMpvSettingsEntry() {
 }
 
 function installWindowModeEntry() {
-    if (window.tigerestAndroidApi || window.api?.system?.isAndroid) return;
+    if (window.jmpInfo?.capabilities?.desktopWindowControls === false || window.tigerestAndroidApi || window.api?.system?.isAndroid) return;
     if (!document.head || !document.documentElement) {
         setTimeout(installWindowModeEntry, 50);
         return;

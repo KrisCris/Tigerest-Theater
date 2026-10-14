@@ -1,6 +1,6 @@
 (function(global) {
     'use strict';
-    if (global.TigerestUpdate) return;
+    if (global.TigerestUpdate || (global.jmpInfo?.capabilities?.selfUpdate === false && global.jmpInfo?.capabilities?.updateCheck !== true)) return;
     let api, started, state = {}, dialog, style, title, details, notes, progress, actions, entry, entryDot, observer;
     let disposed = false, autoInstall = false, installInFlight = false, detailsOpen = false, revision = 0;
     function invoke(name, ...args) {
@@ -148,12 +148,12 @@
         const status = state.status;
         if (!detailsOpen) return;
         create();
-        title.textContent = ({available:'发现新版本',checking:'检查更新',downloading:'正在下载更新',ready:'更新已准备好',installing:'正在打开安装程序',current:'检查完成',error:'更新未完成'})[status] || '客户端更新';
+        title.textContent = ({available:'发现新版本',checking:'检查更新',downloading:'正在下载更新',ready:'更新已准备好',installing:'正在打开安装程序',current:'检查完成',unpublished:'iPad 版本发布情况',error:'更新未完成'})[status] || '客户端更新';
         const version = state.version ? `当前版本 ${state.currentVersion || '—'} → ${state.version}` : `当前版本 ${state.currentVersion || '—'}`;
         const percent = state.size>0 ? Math.min(100,Math.max(0,Math.round((state.received||0)*100/state.size))) : 0;
         const bytes = value => Number(value)>=1048576 ? `${(Number(value)/1048576).toFixed(1)} MB` : `${(Math.max(0,Number(value)||0)/1024).toFixed(1)} KB`;
         const transfer = `${bytes(state.received)} / ${bytes(state.size)}`;
-        const message = status === 'current' ? '当前平台暂无可安装的新正式版。' :
+        const message = state.checkOnly && !['checking','error'].includes(status) ? [state.message,state.status==='unpublished' && state.projectVersion ? `项目最新正式版 ${state.projectVersion}` : ''].filter(Boolean).join('\n') : status === 'current' ? '当前平台暂无可安装的新正式版。' :
             status === 'checking' ? '正在检查正式发布，请稍候…' :
             status === 'downloading' ? state.retrying ? `${transfer}。${state.retryDelay || 1} 秒后第 ${state.retryAttempt || 1}/${state.retryLimit || 5} 次自动重试。${state.resumable?'已保留进度，将继续下载。':''}` :
                 `已下载 ${percent}%（${transfer}）${percent===100?'，正在校验…':state.speed>0?` · ${bytes(state.speed)}/s`:''}` :
@@ -165,9 +165,11 @@
         notes.hidden = !notes.textContent || ['checking','current','downloading'].includes(status);
         progress.hidden = status !== 'downloading'; progress.value=percent;
         actions.replaceChildren();
-        if (status === 'available' || status === 'error' && state.version && state.size>0) {
+        if (state.checkOnly && ['available','current','unpublished'].includes(status)) {
+            button('查看发布说明','release',()=>invoke('openExternalUrl',state.releaseUrl));
+        } else if (!state.checkOnly && (status === 'available' || status === 'error' && state.version && state.size>0)) {
             button(state.resumable?'继续下载':status==='error'?'重试下载':'立即更新','download',async()=>{autoInstall=true;await invoke('downloadAppUpdate');});
-        } else if (status === 'ready') {
+        } else if (status === 'ready' && !state.checkOnly) {
             button(state.installLabel || '安装更新','install',()=>install(false));
         } else if (status === 'error') {
             button('重新检查','check',()=>check());
@@ -182,7 +184,7 @@
         revision++; state=next;
         if (state.status==='error') autoInstall=false;
         render();
-        if (state.status==='ready' && !installInFlight && (autoInstall || state.installAfterDownload)) {
+        if (!state.checkOnly && state.status==='ready' && !installInFlight && (autoInstall || state.installAfterDownload)) {
             autoInstall=false;
             install(true).catch(error=>receive({...state,status:'error',manual:true,error:error.message}));
         }
@@ -194,7 +196,9 @@
             api=value; api.system.appUpdateChanged?.connect(receive);
             const seen=revision, initial=await invoke('appUpdateState');
             if (revision===seen) receive(initial);
-            await invoke('checkForUpdates',false);
+            // API readiness must not wait for a slow startup network check.
+            // Its progress/results arrive through appUpdateChanged.
+            invoke('checkForUpdates',false).catch(()=>{});
         }).catch(()=>{});
         return started;
     }

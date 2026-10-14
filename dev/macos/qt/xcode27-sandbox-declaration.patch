@@ -1,0 +1,13 @@
+--- a/src/3rdparty/chromium/sandbox/mac/seatbelt.cc
++++ b/src/3rdparty/chromium/sandbox/mac/seatbelt.cc
+@@ -10,6 +10,10 @@
+ extern "C" {
+ #include <sandbox.h>
+ 
++// The macOS 27 SDK removed this declaration, but libSystem still exports the
++// same named profile. Preserve Chromium 130's existing symbol and semantics.
++extern const char kSBXProfilePureComputation[];
++
+ int sandbox_init_with_parameters(const char* profile,
+                                  uint64_t flags,
+                                  const char* const parameters[],

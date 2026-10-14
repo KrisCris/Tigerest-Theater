@@ -1,0 +1,21 @@
+--- a/src/core/configure/BUILD.root.gn.in
++++ b/src/core/configure/BUILD.root.gn.in
+@@ -76,6 +76,7 @@
+   ]
+   include_dirs = [
+     @GN_INCLUDE_DIRS@,
++    rebase_path(target_gen_dir),
+     rebase_path("${target_gen_dir}/.moc/")
+   ]
+ }
+--- a/src/3rdparty/chromium/tools/json_schema_compiler/feature_compiler.py
++++ b/src/3rdparty/chromium/tools/json_schema_compiler/feature_compiler.py
+@@ -986,7 +986,7 @@
+         'header_file_path':
+         header_file_path,
+         'header_guard':
+-        (header_file_path.replace('/', '_').replace('.', '_').upper()),
++        re.sub(r'[^A-Za-z0-9_]', '_', header_file_path).upper(),
+         'method_name':
+         self._method_name,
+         'source_files':

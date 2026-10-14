@@ -1,0 +1,45 @@
+--- a/src/core/render_widget_host_view_qt.cpp
++++ b/src/core/render_widget_host_view_qt.cpp
+@@ -52,6 +52,7 @@
+ 
+ #if defined(Q_OS_MACOS)
+ #include "ui/resources/grit/ui_resources.h"
++#include <CoreGraphics/CGDirectDisplay.h>
+ #endif
+ 
+ #include <QGuiApplication>
+@@ -876,6 +877,23 @@
+     if (!window)
+         return false;
+ 
++#if defined(Q_OS_MACOS)
++    // Qt's indexed display IDs are not CoreGraphics display IDs. Without the
++    // actual native ID Chromium falls back to its default 60 Hz timer.
++    int64_t vsyncDisplayId = display::kInvalidDisplayId;
++    if (QScreen *screen = window->screen()) {
++        const QPoint center = screen->geometry().center();
++        CGDirectDisplayID displayId = kCGNullDirectDisplay;
++        uint32_t count = 0;
++        if (CGGetDisplaysWithPoint(CGPointMake(center.x(), center.y()), 1,
++                                   &displayId, &count) == kCGErrorSuccess && count)
++            vsyncDisplayId = displayId;
++    }
++    // If mapping fails (for example during display removal), discard the old
++    // display link and let Chromium use its normal fallback until the next update.
++    m_uiCompositor->SetVSyncDisplayID(vsyncDisplayId);
++#endif
++
+     display::ScreenInfos newScreenInfos = screenInfosFromQtForUpdate(window->screen());
+ 
+     // We always want to use the scale from our current window
+--- a/src/core/render_widget_host_view_qt_delegate_item.cpp
++++ b/src/core/render_widget_host_view_qt_delegate_item.cpp
+@@ -339,6 +339,8 @@
+             m_windowConnections.append(connect(value.window, &QQuickWindow::afterFrameEnd, this,
+                                                &RenderWidgetHostViewQtDelegateItem::onAfterFrameEnd,
+                                                Qt::DirectConnection));
++            m_windowConnections.append(connect(value.window, &QWindow::screenChanged, this,
++                    [this] { m_client->visualPropertiesChanged(); }));
+             m_windowConnections.append(connect(value.window, SIGNAL(xChanged(int)), SLOT(onWindowPosChanged())));
+             m_windowConnections.append(
+                     connect(value.window, SIGNAL(yChanged(int)), SLOT(onWindowPosChanged())));

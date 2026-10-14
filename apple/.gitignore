@@ -1,0 +1,12 @@
+.build/
+.cache/
+DerivedData/
+Generated/
+*.xcuserstate
+xcuserdata/
+Local.xcconfig
+reports/*.json
+DerivedDataSimulator/
+__pycache__/
+.DS_Store
+.swiftpm/

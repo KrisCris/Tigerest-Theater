@@ -328,7 +328,7 @@ local function match_episode(anime, episode_num, expected_title, api_server, cal
         local supported = by_title and titled or numbered
         msg.debug(('Auto-match release: titles=%d numbers=%d credits_excluded=%d incomplete=%s')
             :format(#titled, #numbered, excluded_credits, tostring(malformed)))
-        callback(supported, malformed, by_title)
+        callback(supported, malformed, by_title, data.bangumi)
     end, nil, {per_request_timeout = 15})
 end
 
@@ -346,27 +346,31 @@ local function match_anime()
         expected_title = episode_title(mp.get_property_native('user-data/tigerest/emby/episode-name'))
     end
 
-    local function title_score(anime_title)
+    local function title_score(anime_title, primary_title)
         local raw = tostring(anime_title or ''):gsub('^%s*(.-)%s*$', '%1')
             :gsub('%s*%(.-%)%s*$', ''):gsub('%s*【.-】.*$', '')
         local base, query_season = work_title_and_season(title)
-        local candidate, explicit_season = work_title_and_season(raw)
+        local candidate, alias_season = work_title_and_season(raw)
+        local release = tostring(primary_title or raw):gsub('^%s*(.-)%s*$', '%1')
+            :gsub('%s*%(.-%)%s*$', ''):gsub('%s*【.-】.*$', '')
+        local _, explicit_season = work_title_and_season(release)
         if base == '' or candidate == '' then return nil end
-        local special = raw:lower():find('ova', 1, true) or raw:lower():find('oad', 1, true)
-            or raw:lower():find('special', 1, true) or raw:find('特别篇', 1, true) or raw:find('特別篇', 1, true)
-            or raw:find('番外', 1, true)
+        local special = release:lower():find('ova', 1, true) or release:lower():find('oad', 1, true)
+            or release:lower():find('special', 1, true) or release:find('特别篇', 1, true) or release:find('特別篇', 1, true)
+            or release:find('番外', 1, true)
         local season = tonumber(season_num)
         if query_season and season and season > 0 and query_season ~= season then return nil end
         if season == 0 and not special then return nil end
         if season and season > 0 and special and not title:lower():find('ova', 1, true)
             and not title:lower():find('oad', 1, true) then return nil end
         if explicit_season and season and explicit_season ~= season then return nil end
+        if alias_season and season and alias_season ~= season then return nil end
         if season and season > 1 and explicit_season ~= season then return nil end
         local special_title = match_text(raw:gsub('[oO][vV][aA]', ''):gsub('[oO][aA][dD]', '')
             :gsub('[sS][pP][eE][cC][iI][aA][lL]', ''):gsub('特别篇', ''):gsub('特別篇', ''):gsub('番外', ''))
         local score = ((explicit_season and base == candidate) or (season == 0 and special_title == base)) and 1
             or math.min(1, jaro_winkler(base, candidate))
-        return score >= 0.85 and score or nil
+        return score
     end
 
     local function finish()
@@ -397,27 +401,48 @@ local function match_anime()
         local data = utils.parse_json(out)
         if type(data) ~= 'table' or type(data.animes) ~= 'table' then incomplete = true; return end
         local works, seen = {}, {}
-        for _, anime in ipairs(data.animes) do
+        for search_order, anime in ipairs(data.animes) do
             if type(anime) ~= 'table' then incomplete = true
             elseif anime.type == anime_type then
                 local score = title_score(anime.animeTitle)
                 if score then
                     if valid_api_id(anime.bangumiId) then
                         local id = tostring(anime.bangumiId)
-                        if not seen[id] then seen[id] = true; works[#works + 1] = {anime = anime, score = score} end
+                        if not seen[id] then
+                            seen[id] = true
+                            works[#works + 1] = {anime = anime, score = score, search_order = search_order}
+                        end
                     else incomplete = true end
                 end
             end
         end
-        table.sort(works, function(a, b) return a.score > b.score end)
+        table.sort(works, function(a, b)
+            if a.score == b.score then return a.search_order < b.search_order end
+            return a.score > b.score
+        end)
+        -- Below the primary-title threshold only detail aliases can admit a
+        -- release. Bound those sequential reads; strong titles are all checked.
+        local bounded, weak = {}, 0
+        for _, work in ipairs(works) do
+            if work.score >= 0.85 then bounded[#bounded + 1] = work
+            elseif weak < 5 then weak = weak + 1; bounded[#bounded + 1] = work end
+        end
+        works = bounded
         if #works == 0 then return end
         pending_candidates = pending_candidates + 1
         local function try_candidate(index)
             local work = works[index]
             if not work then pending_candidates = pending_candidates - 1; finish(); return end
-            match_episode(work.anime, episode_num, expected_title, server, function(episodes, uncertain, by_title)
+            match_episode(work.anime, episode_num, expected_title, server, function(episodes, uncertain, by_title, release)
                 incomplete = incomplete or uncertain
-                for _, episode in ipairs(episodes) do
+                -- Search results can use a different language's primary title.
+                -- Only aliases from this release's detail endpoint are authoritative.
+                for _, alias in ipairs(type(release) == 'table' and type(release.titles) == 'table' and release.titles or {}) do
+                    if type(alias) == 'table' and type(alias.title) == 'string' then
+                        work.score = math.max(work.score, title_score(alias.title, work.anime.animeTitle) or 0)
+                    end
+                end
+                for _, episode in ipairs(work.score >= 0.85 and episodes or {}) do
                     -- IDs are deployment-local: only duplicate rows from this release/provider collapse.
                     local key = server .. '\0' .. tostring(work.anime.bangumiId) .. '\0' .. tostring(episode.episodeId)
                     candidates[key] = {anime = work.anime, episode = episode, server = server, score = work.score, by_title = by_title}

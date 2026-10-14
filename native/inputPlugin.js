@@ -85,7 +85,7 @@ class inputPlugin {
                     console.error('PlayerMedia: episode selection failed:', error);
                 });
             };
-            if (api.system.isAndroid && api.input.playlistItemRequested) {
+            if ((api.system.isAndroid || api.system.isIPad) && api.input.playlistItemRequested) {
                 api.input.playlistItemRequested.connect(selectPlaylistItem);
             }
 

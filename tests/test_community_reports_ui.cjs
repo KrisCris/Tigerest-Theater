@@ -26,7 +26,7 @@ withBrowser({
   const report={id:'report1',category:'subtitle_error',description:'十二分钟之后中文字幕比声音提前三秒。',context:{positionSeconds:720,platform:'Android'},status:'resolved',createdAt:'2026-10-08T01:00:00Z',resolvedAt:'2026-10-08T02:00:00Z',resolution:'<img src=x onerror="window.unsafe=true"> 字幕已校准。',location:null,availability:'unavailable'};
   window.fetch=async(url,options)=>{
    const u=new URL(url),p=u.pathname.replace('/community/v1','');calls.push({p,method:options.method,body:options.body,headers:options.headers});
-   const ok=data=>Response.json({data});
+   const ok=data=>new Response(JSON.stringify({data}),{headers:{'Content-Type':'application/json'}});
    if(p==='/me/messages'&&options.method==='POST'){const body=JSON.parse(options.body);for(const id of body.messageIds||['repair1','reply1'])read.add(id);unread=2-read.size;return ok({markedCount:1,unreadCount:unread});}
    if(p==='/me/messages'){
     const data={items:[{id:'repair1',type:'report_resolved',createdAt:report.resolvedAt,isRead:read.has('repair1'),readAt:null,availability:'unavailable',location:null,report,reply:null,originalComment:null},{id:'reply1',type:'comment_reply',createdAt:report.createdAt,isRead:read.has('reply1'),readAt:null,availability:'available',location:{...location,topicId:'topic',rootId:'root',commentId:'comment'},report:null,reply:{id:'comment',state:'visible',body:'这是一条评论回复。',author:{name:'作者'}},originalComment:{state:'visible',body:'我的原评论'}}],nextCursor:null,unreadCount:unread,readThroughToken:'unified-snapshot'};
