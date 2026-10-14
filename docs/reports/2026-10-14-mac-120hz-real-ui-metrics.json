@@ -1,0 +1,136 @@
+{
+  "production-ui-baseline-visible": [
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 92.51625904552557,
+      "p95": 16.69999999999709,
+      "worst": 149.89999999999418,
+      "total": 1094.6999999284744
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 115.56998131208763,
+      "p95": 9.10000000000582,
+      "worst": 41.69999999999709,
+      "total": 2037.1000000238419
+    },
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 90.2371124124018,
+      "p95": 16.69999999999709,
+      "worst": 191.60000000000582,
+      "total": 1049.6000000238419
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.03958691910499,
+      "p95": 9,
+      "worst": 33.30000000000291,
+      "total": 2031.0999999046326
+    },
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 90.22845075830269,
+      "p95": 16.69999999999709,
+      "worst": 191.6999999999971,
+      "total": 1045.5999999046326
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.00468018720765,
+      "p95": 8.900000000008731,
+      "worst": 33.40000000000873,
+      "total": 2055.399999976158
+    }
+  ],
+  "production-ui-compiled-cancel": [
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 105.41652382584854,
+      "p95": 17.200000000000728,
+      "worst": 33.400000000001455,
+      "total": 1161.2999999523163
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.05931331733355,
+      "p95": 9,
+      "worst": 25.200000000000728,
+      "total": 2041.5999999046326
+    },
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 112.29484595450643,
+      "p95": 10.19999999999709,
+      "worst": 33.20000000000073,
+      "total": 1044.3000000715256
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.05931331733376,
+      "p95": 9.200000000000728,
+      "worst": 33.400000000001455,
+      "total": 2038.0999999046326
+    },
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 113.17073170731707,
+      "p95": 10,
+      "worst": 33.29999999999927,
+      "total": 1032.5999999046326
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.53666847745559,
+      "p95": 10,
+      "worst": 17.900000000001455,
+      "total": 2028
+    }
+  ],
+  "production-ui-compiled-phases": [
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 89.54121665281984,
+      "p95": 24.39999999999418,
+      "worst": 91.60000000000582,
+      "total": 1081.5
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 116.55928785717782,
+      "p95": 9.80000000000291,
+      "worst": 25,
+      "total": 2035.8999999761581
+    },
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 114.15747877841805,
+      "p95": 10.30000000000291,
+      "worst": 33.30000000000291,
+      "total": 1022.8999999761581
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.52506049083962,
+      "p95": 9.80000000000291,
+      "worst": 25,
+      "total": 2026.8000000715256
+    }
+  ]
+}
