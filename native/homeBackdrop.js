@@ -10,7 +10,7 @@
         const entry = decoded.get(key); if (!entry) return;
         decoded.delete(key); pixels -= entry.pixels; entry.bitmap.close();
     }
-    function imageKey(node, options) {
+    function imageKey(node) {
         try {
             const source = new URL(node.currentSrc || node.src, location.href);
             // Emby's image tag changes with the artwork. Ordinary mutable URLs
@@ -18,15 +18,15 @@
             const versioned = /\/Items\/[^/]+\/Images\/[^/]+(?:\/\d+)?$/i.test(source.pathname) && source.searchParams.get('tag');
             if (!['qrc:', 'data:', 'blob:'].includes(source.protocol) &&
                 !(['http:', 'https:'].includes(source.protocol) && versioned)) return null;
-            return JSON.stringify([source.href, node.naturalWidth, node.naturalHeight, options.resizeWidth, options.resizeHeight]);
+            return JSON.stringify([source.href, node.naturalWidth, node.naturalHeight]);
         } catch { return null; }
     }
     async function resizedImage(node, options) {
-        const key = imageKey(node, options), entry = key && decoded.get(key);
-        if (entry) {
+        const key = imageKey(node), entry = key && decoded.get(key);
+        if (entry && entry.bitmap.width >= options.resizeWidth && entry.bitmap.height >= options.resizeHeight) {
             decoded.delete(key); decoded.set(key, entry);
-            try { return await createImageBitmap(entry.bitmap); }
-            catch { forget(key); }
+            try { return await createImageBitmap(entry.bitmap, options); }
+            catch { if (decoded.get(key) === entry) forget(key); }
         }
         const bitmap = await createImageBitmap(node, options), size = bitmap.width * bitmap.height;
         if (!key || disposed || size > maxPixels) return bitmap;
@@ -34,6 +34,12 @@
         try { copy = await createImageBitmap(bitmap); }
         catch { return bitmap; } // Preserve native non-origin-clean image fallback.
         if (disposed) { bitmap.close(); return copy; }
+        // Concurrent captures can finish out of order. Keep the largest useful
+        // raster; the same backdrop also appears in a smaller home hero panel.
+        const newer = decoded.get(key);
+        if (newer && newer.bitmap.width >= bitmap.width && newer.bitmap.height >= bitmap.height) {
+            bitmap.close(); return copy;
+        }
         forget(key);
         decoded.set(key, {bitmap, pixels: size}); pixels += size;
         while (decoded.size > maxEntries || pixels > maxPixels) forget(decoded.keys().next().value);

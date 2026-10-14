@@ -28,7 +28,7 @@ function bitmapFixture(){
  };
  context.createImageBitmap=async(source,options)=>{
   if(source.tagName==='IMG'){decodes++;const b=bitmap(options.resizeWidth,options.resizeHeight);originals.push(b);return b;}
-  copies++;assert.equal(source.closed,false,'the retained bitmap must still be alive');return bitmap(source.width,source.height);
+  copies++;assert.equal(source.closed,false,'the retained bitmap must still be alive');return bitmap(options?.resizeWidth??source.width,options?.resizeHeight??source.height);
  };
  context.window=context;vm.runInNewContext(fs.readFileSync(__dirname+'/../native/homeBackdrop.js','utf8'),context);
  return {context,originals,all,get decodes(){return decodes;},get copies(){return copies;},
@@ -80,4 +80,19 @@ test('disposing during a pending decode does not repopulate the cache',async()=>
  f.context.createImageBitmap=async(...args)=>{await new Promise(r=>setTimeout(r,5));return original(...args);};
  const pending=f.build('qrc:/late.png');f.context.TigerestHomeBackdrop.dispose();await pending;
  assert.ok(f.originals.every(b=>b.closed),'late build inputs are released rather than retained after disposal');
+});
+
+test('a retained larger artwork also serves smaller background previews',async()=>{
+ const f=bitmapFixture(),src='http://fixture/Items/one/Images/Backdrop/0?tag=one';
+ await f.build(src,2400,3600);await f.build(src,120,180);
+ assert.equal(f.decodes,1,'the same hero artwork should not need another source decode for its smaller panel');
+ f.context.TigerestHomeBackdrop.dispose();assert.ok(f.originals.every(b=>b.closed));
+});
+
+test('a smaller concurrent decode cannot displace a retained larger raster',async()=>{
+ const f=bitmapFixture(),src='http://fixture/Items/one/Images/Primary?tag=concurrent';
+ await Promise.all([f.build(src,2400,3600),f.build(src,120,180)]);
+ const before=f.decodes;await f.build(src,2400,3600);
+ assert.equal(f.decodes,before,'finishing a small capture must not force another large-image source decode');
+ f.context.TigerestHomeBackdrop.dispose();assert.ok(f.originals.every(b=>b.closed));
 });
