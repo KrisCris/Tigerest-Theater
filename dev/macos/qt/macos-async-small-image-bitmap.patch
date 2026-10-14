@@ -1,0 +1,182 @@
+--- a/src/3rdparty/chromium/third_party/blink/renderer/core/html/canvas/image_element_base.cc
++++ b/src/3rdparty/chromium/third_party/blink/renderer/core/html/canvas/image_element_base.cc
+@@ -4,9 +4,11 @@
+ 
+ #include "third_party/blink/renderer/core/html/canvas/image_element_base.h"
+ 
++#include "build/build_config.h"
+ #include "third_party/blink/renderer/core/css/style_engine.h"
+ #include "third_party/blink/renderer/core/dom/dom_exception.h"
+ #include "third_party/blink/renderer/core/dom/node_computed_style.h"
++#include "third_party/blink/renderer/core/execution_context/execution_context.h"
+ #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+ #include "third_party/blink/renderer/core/frame/web_feature.h"
+ #include "third_party/blink/renderer/core/imagebitmap/image_bitmap.h"
+@@ -208,6 +210,24 @@
+         GetElement().GetDocument().GetTaskRunner(TaskType::kInternalDefault),
+         PreferredColorScheme(), exception_state, options);
+   }
++#if BUILDFLAG(IS_MAC)
++  // Small explicitly resized artwork is used for animated UI backdrops. The
++  // synchronous constructor redecodes the full original, even if the <img> was
++  // already decoded. Preserve its transformations while moving that extraction
++  // off the renderer thread. Other sources/sizes keep the existing path.
++  if (image_content->GetImage()->IsBitmapImage() &&
++      image_content->GetImage()->HasData() && options->hasResizeWidth() &&
++      options->hasResizeHeight() && options->resizeWidth() <= 240 &&
++      options->resizeHeight() <= 512) {
++    // Completion belongs to the caller even if the source image came from a
++    // different document that is detached while decoding is in flight.
++    return ImageBitmap::CreateEncodedAsync(
++        this, crop_rect, script_state,
++        ExecutionContext::From(script_state)->GetTaskRunner(
++            TaskType::kInternalDefault),
++        exception_state, options);
++  }
++#endif
+   return ImageBitmapSource::FulfillImageBitmap(
+       script_state, MakeGarbageCollected<ImageBitmap>(this, crop_rect, options),
+       options, exception_state);
+--- a/src/3rdparty/chromium/third_party/blink/renderer/core/imagebitmap/image_bitmap.cc
++++ b/src/3rdparty/chromium/third_party/blink/renderer/core/imagebitmap/image_bitmap.cc
+@@ -50,6 +50,7 @@
+ #include "third_party/blink/renderer/platform/scheduler/public/main_thread.h"
+ #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
+ #include "third_party/blink/renderer/platform/scheduler/public/worker_pool.h"
++#include "third_party/blink/renderer/platform/wtf/cross_thread_copier.h"
+ #include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
+ #include "third_party/blink/renderer/platform/wtf/cross_thread_copier_gfx.h"
+ #include "third_party/blink/renderer/platform/wtf/cross_thread_copier_skia.h"
+@@ -1073,6 +1074,101 @@
+   return promise;
+ }
+ 
++namespace {
++void DecodeBitmapOnWorker(
++    Vector<char> encoded,
++    bool premultiply_alpha,
++    bool high_bit_depth,
++    bool color_space_conversion,
++    scoped_refptr<base::SequencedTaskRunner> task_runner,
++    WTF::CrossThreadOnceFunction<void(sk_sp<SkImage>)> callback) {
++  DCHECK(!IsMainThread());
++  auto decoder = ImageDecoder::Create(
++      SegmentReader::CreateFromSkData(
++          SkData::MakeWithoutCopy(encoded.data(), encoded.size())), true,
++      premultiply_alpha ? ImageDecoder::kAlphaPremultiplied
++                        : ImageDecoder::kAlphaNotPremultiplied,
++      high_bit_depth ? ImageDecoder::kHighBitDepthToHalfFloat
++                     : ImageDecoder::kDefaultBitDepth,
++      color_space_conversion ? ColorBehavior::kTag : ColorBehavior::kIgnore,
++      cc::AuxImage::kDefault, Platform::GetMaxDecodedImageBytes());
++  auto frame = decoder ? ImageBitmap::GetSkImageFromDecoder(std::move(decoder))
++                       : nullptr;
++  PostCrossThreadTask(*task_runner, FROM_HERE,
++                      CrossThreadBindOnce(std::move(callback), std::move(frame)));
++}
++}  // namespace
++
++ScriptPromise<ImageBitmap> ImageBitmap::CreateEncodedAsync(
++    ImageElementBase* image,
++    std::optional<gfx::Rect> crop_rect,
++    ScriptState* script_state,
++    scoped_refptr<base::SequencedTaskRunner> task_runner,
++    ExceptionState& exception_state,
++    const ImageBitmapOptions* options) {
++  scoped_refptr<Image> input = image->CachedImage()->GetImage();
++  DCHECK(input->IsBitmapImage());
++  auto parsed = std::make_unique<ParsedOptions>(
++      ParseOptions(options, crop_rect, image->BitmapSourceSize()));
++  if (DstBufferSizeHasOverflow(*parsed)) {
++    exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
++                                     "The ImageBitmap could not be allocated.");
++    return EmptyPromise();
++  }
++  // The DOM resource and its mutable SharedBuffer stay on the original thread.
++  // Copy encoded bytes, options, orientation and origin status at call time.
++  Vector<char> encoded = input->HasData()
++      ? input->Data()->CopyAs<Vector<char>>() : Vector<char>();
++  if (encoded.empty()) {
++    exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
++                                     "The source image could not be decoded.");
++    return EmptyPromise();
++  }
++  const bool premultiply_alpha = parsed->premultiply_alpha;
++  const bool color_space_conversion = parsed->has_color_space_conversion;
++  const bool high_bit_depth =
++      input->PaintImageForCurrentFrame().GetColorType() == kRGBA_F16_SkColorType;
++  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver<ImageBitmap>>(
++      script_state, exception_state.GetContext());
++  auto promise = resolver->Promise();
++  worker_pool::PostTask(
++      FROM_HERE,
++      CrossThreadBindOnce(
++          &DecodeBitmapOnWorker, std::move(encoded), premultiply_alpha,
++          high_bit_depth, color_space_conversion, std::move(task_runner),
++          CrossThreadBindOnce(&ResolveEncodedPromiseOnOriginalThread,
++                              MakeUnwrappingCrossThreadHandle(resolver),
++                              !image->WouldTaintOrigin(), std::move(parsed),
++                              input->CurrentFrameOrientation().Orientation())));
++  return promise;
++}
++
++void ImageBitmap::ResolveEncodedPromiseOnOriginalThread(
++    ScriptPromiseResolver<ImageBitmap>* resolver,
++    bool origin_clean,
++    std::unique_ptr<ParsedOptions> parsed,
++    ImageOrientationEnum orientation,
++    sk_sp<SkImage> frame) {
++  DCHECK(IsMainThread());
++  if (!resolver->GetScriptState()->ContextIsValid())
++    return;
++  scoped_refptr<StaticBitmapImage> image;
++  if (frame) {
++    parsed->source_is_unpremul = frame->alphaType() == kUnpremul_SkAlphaType;
++    image = CropImageAndApplyColorSpaceConversion(
++        UnacceleratedStaticBitmapImage::Create(std::move(frame), orientation),
++        *parsed);
++  }
++  if (!image) {
++    resolver->Reject(MakeGarbageCollected<DOMException>(
++        DOMExceptionCode::kInvalidStateError,
++        "The source image could not be decoded."));
++    return;
++  }
++  image->SetOriginClean(origin_clean);
++  resolver->Resolve(MakeGarbageCollected<ImageBitmap>(std::move(image)));
++}
++
+ void ImageBitmap::close() {
+   if (!image_ || is_neutered_)
+     return;
+--- a/src/3rdparty/chromium/third_party/blink/renderer/core/imagebitmap/image_bitmap.h
++++ b/src/3rdparty/chromium/third_party/blink/renderer/core/imagebitmap/image_bitmap.h
+@@ -47,6 +47,14 @@
+       mojom::blink::PreferredColorScheme,
+       ExceptionState&,
+       const ImageBitmapOptions* = ImageBitmapOptions::Create());
++  // Snapshot encoded raster data on the calling thread and decode it off-thread.
++  static ScriptPromise<ImageBitmap> CreateEncodedAsync(
++      ImageElementBase*,
++      std::optional<gfx::Rect>,
++      ScriptState*,
++      scoped_refptr<base::SequencedTaskRunner>,
++      ExceptionState&,
++      const ImageBitmapOptions*);
+   static sk_sp<SkImage> GetSkImageFromDecoder(std::unique_ptr<ImageDecoder>);
+ 
+   ImageBitmap(ImageElementBase*,
+@@ -144,6 +152,13 @@
+ 
+  private:
+   void UpdateImageBitmapMemoryUsage();
++  static void ResolveEncodedPromiseOnOriginalThread(
++      ScriptPromiseResolver<ImageBitmap>*,
++      bool origin_clean,
++      std::unique_ptr<ParsedOptions>,
++      ImageOrientationEnum,
++      sk_sp<SkImage>);
++
+   static void ResolvePromiseOnOriginalThread(
+       ScriptPromiseResolver<ImageBitmap>*,
+       bool origin_clean,

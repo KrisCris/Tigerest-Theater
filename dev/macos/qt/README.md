@@ -10,7 +10,7 @@ Source archive: [QtWebEngine 6.9.3](https://download.qt.io/archive/qt/6.9/6.9.3/
 
 SHA256: `d50b3b11d51dd876418cc36b4d6c96b4721e0aab773a3dd6beda606d46da8966`
 
-Apply all four patches in this directory to the extracted source with `patch -p1`. Besides the display-link change, they restore an SDK declaration, select the actual architecture's linker response file for a single-architecture Mac build, and make out-of-tree generated extension headers discoverable with valid include guards. These compatibility changes retain the existing enabled features.
+Apply the four compatibility/display patches in this directory to the extracted source with `patch -p1`. Besides the display-link change, they restore an SDK declaration, select the actual architecture's linker response file for a single-architecture Mac build, and make out-of-tree generated extension headers discoverable with valid include guards. These compatibility changes retain the existing enabled features.
 
 Build outside the repository and installed application. Use the existing Qt 6.9.3 SDK's `qt-cmake` and `libexec/gn` (version `6.9.3.qtwebengine.qt.io`), Xcode 27, an isolated Python 3.9 environment with html5lib 1.1, and these CMake settings:
 
@@ -77,3 +77,23 @@ When testing a temporary 60 Hz mode with `CGDisplaySetDisplayMode`, keep the req
 Use `--viewport=fullscreen` for an additional measurement at the real client viewport without CDP size emulation. The collector pre-rolls rAF before invoking the action so its first delay is retained, and reports startup latency separately. Do not discard preparation hitches when reporting aggregate performance. The standalone full-screen preview scrolls at 120 rAF/s; transition averages remain ~109–118, with occasional route-preparation hitches and larger first-run stalls. These are scheduling measurements, not physical presentation.
 
 For local delivery, keep `launch-preview.command` beside `Applications/Tigerest Theater.app`. It uses a separate configuration root and a uniquely named profile (also separating local IPC sockets). Run it to open the preview; do not directly launch the inner app against the installed player's default profile. The preview requires its own login. It does not replace the installed application.
+
+## Small raster decode experiment
+
+`macos-async-small-image-bitmap.patch` is an additional optional experiment. It moves original bitmap decoding for explicit output sizes up to 240×512 off the renderer thread on macOS, while preserving the existing crop/resize/color/alpha processing and origin status. The DOM resource itself never crosses threads; its encoded bytes and metadata are captured at call time. It does not add network requests or change the SVG/other-size paths. It has passed local pixel/security, transition and native playback checks; it remains optional and is not a release default.
+
+The pinned Chromium raster constructor explicitly redecodes image frame zero synchronously. See [the upstream ImageBitmap implementation](https://chromium.googlesource.com/chromium/src/+/16bdaadbeabe2d8b61297cc160bb0c642a76a7a6/third_party/blink/renderer/core/imagebitmap/image_bitmap.cc); use the locally pinned source when applying this patch. The existing Blob/SVG worker paths provided the lifetime pattern for the experiment.
+
+Generate a local corpus (Pillow is required), then run the same probe against the unmodified and modified engine. Store the first JSON as the pixel reference; the expected-corpus hashes must match. A supplied ICC profile is kept only in the local generated corpus.
+
+```sh
+python3 dev/macos/qt/generate-bitmap-fixtures.py --output=/absolute/empty/corpus \
+  --icc-profile='/System/Library/ColorSync/Profiles/Display P3.icc'
+node tests/bench_image_bitmap.cjs '<client>' --webengine \
+  --fixtures=/absolute/empty/corpus --output=/absolute/before.json
+node tests/bench_image_bitmap.cjs '<candidate-client>' --webengine \
+  --fixtures=/absolute/empty/corpus --output=/absolute/after.json \
+  --expect=/absolute/before.json --assert-async
+```
+
+The reference includes 18 exact pixel checks (alpha, ICC, EXIF, crops, filters, 16-bit input, animated frame zero and src mutation), cross-origin readback/transfer checks, a destroyed-caller exercise, and surviving-parent completion with matching pixels after the source iframe is removed. Completion is scheduled on the caller execution context, independent of the source document lifetime. The timing gate checks the synchronous part of large-JPEG extraction against the 8.33 ms UI budget. Native results are 73.5 ms before and 2.0 ms in the standalone candidate, with matching pixels. Forced empty-cache real-library home→detail runs improved from 76.77/85.16 to 109.56/117.18 rAF/s (worst interval 209.7→32.2 ms), but ordinary warm navigation did not show a clear gain. This is not a whole-interface 120 fps claim. See the dated report and sanitized async-bitmap metrics for both positive and negative evidence.
