@@ -1,6 +1,13 @@
 (function () {
     'use strict';
     const stamp = value => Date.parse(value || '') || 0;
+    const fields = 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating,PresentationUniqueKey';
+    const images = {EnableUserData: true, EnableImageTypes: 'Primary,Backdrop,Thumb', ImageTypeLimit: 1};
+    const types = {music: 'MusicAlbum', books: 'Book,AudioBook', audiobooks: 'MusicAlbum,AudioBook',
+        musicvideos: 'MusicVideo', games: 'Game', playlists: 'Playlist', photos: 'Photo,PhotoAlbum'};
+    const playable = library => types[library.CollectionType] || 'Episode,Movie,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game';
+    // Series built from one episode carry only its series name and artwork.
+    const stubs = new WeakSet();
     function check(signal) {
         if (signal && signal.aborted) {
             const error = new Error('Home request cancelled');
@@ -9,12 +16,14 @@
         }
     }
     function seriesFromEpisode(episode) {
-        return {
+        const series = {
             Id: episode.SeriesId, Type: 'Series', Name: episode.SeriesName || episode.Name,
             ImageTags: episode.SeriesPrimaryImageTag ? { Primary: episode.SeriesPrimaryImageTag } : {},
             ParentBackdropItemId: episode.ParentBackdropItemId,
             ParentBackdropImageTags: episode.ParentBackdropImageTags
         };
+        stubs.add(series);
+        return series;
     }
     const isCount = value => Number.isSafeInteger(value) && value >= 0;
     function withWatchState(cards) {
@@ -40,65 +49,128 @@
     HomeData.prototype.load = async function (library, signal, order = 'resume') {
         order = HomeData.normalizeOrder(order);
         if (order !== 'resume') return withWatchState(await this.loadOrdered(library, signal, order));
-        const api = this.api, user = api.getCurrentUserId(), cards = new Map(), pages = new Set();
-        const favorites = library.kind === 'favorites';
-        // A favorite Series need not have favorited Episodes. Filter resume
+        const api = this.api, user = api.getCurrentUserId(), favorites = library.kind === 'favorites';
+        // A favorite Series need not have favorited Episodes. Filter playback
         // records by their destination work, rather than IsFavorite on each episode.
-        const favoriteCards = favorites ? await this.loadOrdered(library, signal, 'recent', Infinity) : null;
-        const allowed = favoriteCards && new Set(favoriteCards.map(card => card.item.Id));
-        const query = {Recursive: true, SortBy: 'DatePlayed,SortName', SortOrder: 'Descending', Limit: 100,
-            Fields: 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating,PresentationUniqueKey',
-            EnableUserData: true, EnableImageTypes: 'Primary,Backdrop,Thumb', ImageTypeLimit: 1};
-        if (!favorites) query.ParentId = library.Id;
-        const hasResumeEndpoint = typeof api.getResumableItems === 'function';
+        const favoriteScan = favorites ? await this.collect(library, signal, 'recent', Infinity) : null;
+        const allowed = favoriteScan && new Set(favoriteScan.cards.map(card => card.item.Id));
+        const [resumed, played, recent] = await Promise.all([this.history(library, signal, 'resume', allowed),
+            this.history(library, signal, 'played', allowed), favoriteScan || this.collect(library, signal, 'recent', 24)]);
+        check(signal);
+        // Watched works lead the row: by their last play, or by a newer episode
+        // that arrived afterwards and is still unwatched. Works never played follow.
+        const cards = new Map(), scanned = new Map(recent.cards.map(card => [card.item.Id, card]));
+        const watched = (work, at) => {
+            if (!cards.has(work.Id)) {
+                const known = scanned.get(work.Id);
+                cards.set(work.Id, {item: known ? known.item : work, addedAt: known ? known.addedAt : work.DateCreated || '',
+                    latestEpisode: known ? known.latestEpisode : null, lastPlayed: at});
+            }
+            return cards.get(work.Id);
+        };
+        resumed.records.forEach(record => { watched(record.work, record.at).resumeItem = record.item; });
+        played.records.forEach(record => {
+            const card = watched(record.work, record.at);
+            // The progress bar describes the most recent play, not an abandoned older episode.
+            if (record.at > card.lastPlayed) { card.lastPlayed = record.at; delete card.resumeItem; }
+        });
+        const arrived = (card, episode) => {
+            if (episode && episode.UserData?.Played !== true && stamp(episode.DateCreated) > card.lastPlayed) card.newEpisode = episode;
+        };
+        cards.forEach(card => arrived(card, card.latestEpisode));
+        // Episodes outside the recent window and works older than the loaded
+        // history each need one small request. Bound them to what can reach the row.
+        const historyCutoff = Math.max(resumed.cutoff, played.cutoff);
+        const unknownLatest = recent.complete ? [] : Array.from(cards.values()).filter(card => card.item.Type === 'Series'
+            && !card.latestEpisode && card.lastPlayed < recent.oldest).sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 8);
+        const unknownHistory = historyCutoff ? recent.cards.filter(card => !cards.has(card.item.Id) && card.latestEpisode
+            && card.latestEpisode.UserData?.Played !== true && stamp(card.latestEpisode.DateCreated) > historyCutoff).slice(0, 8) : [];
+        const episodes = {Recursive: true, IncludeItemTypes: 'Episode', Limit: 1, Fields: 'DateCreated', EnableUserData: true, EnableImages: false};
+        const queue = unknownLatest.map(card => async () => {
+            const result = await api.getItems(user, {...episodes, ParentId: card.item.Id, SortBy: 'DateCreated,SortName', SortOrder: 'Descending',
+                IsMissing: false, IsVirtualUnaired: false, IsPlaceHolder: false, ExcludeLocationTypes: 'Virtual'}, signal);
+            const latest = (result.Items || [])[0];
+            if (latest) { card.latestEpisode = latest; card.addedAt = latest.DateCreated || card.addedAt; arrived(card, latest); }
+        }).concat(unknownHistory.map(known => async () => {
+            const result = await api.getItems(user, {...episodes, ParentId: known.item.Id, IsPlayed: true, SortBy: 'DatePlayed,SortName', SortOrder: 'Descending'}, signal);
+            const last = (result.Items || [])[0];
+            if (last?.UserData?.Played === true) arrived(watched(known.item, stamp(last.UserData.LastPlayedDate)), known.latestEpisode);
+        }));
+        await Promise.all(Array.from({length: Math.min(6, queue.length)}, async () => {
+            while (queue.length) {
+                check(signal);
+                try { await queue.shift()(); } catch (error) { check(signal); /* Keep the order known without this work. */ }
+            }
+        }));
+        check(signal);
+        const activity = card => Math.max(card.lastPlayed, card.newEpisode ? stamp(card.newEpisode.DateCreated) : 0);
+        const continuing = Array.from(cards.values()).sort((a, b) => activity(b) - activity(a)).slice(0, 24);
+        continuing.forEach(card => {
+            if (card.newEpisode) { card.latestEpisode = card.newEpisode; card.addedAt = card.newEpisode.DateCreated || card.addedAt; }
+        });
+        await this.hydrateSeries(continuing, signal);
+        check(signal);
+        return withWatchState(continuing.concat(recent.cards.filter(card => !cards.has(card.item.Id))).slice(0, 24));
+    };
+    // One record per work from the newest play: 'resume' reads partly played
+    // items, 'played' completed ones. A work absent from the records was last
+    // played at or before the returned cutoff; 0 means nothing was left unread.
+    HomeData.prototype.history = async function (library, signal, kind, allowed) {
+        const api = this.api, user = api.getCurrentUserId(), records = new Map(), pages = new Set();
+        const query = {Recursive: true, SortBy: 'DatePlayed,SortName', SortOrder: 'Descending', Limit: 100, Fields: fields, ...images};
+        if (library.kind !== 'favorites') query.ParentId = library.Id;
+        if (kind === 'played') Object.assign(query, {IsPlayed: true, IncludeItemTypes: playable(library)});
+        const endpoint = kind === 'resume' && typeof api.getResumableItems === 'function';
+        let complete = false, oldest = 0;
         try {
-            for (let page = 0; cards.size < 24; page++) {
+            for (let page = 0; records.size < 24 && page < 10; page++) {
                 check(signal);
                 const options = {...query, StartIndex: page * 100};
-                const result = hasResumeEndpoint ? await api.getResumableItems(user, options, signal)
-                    : await api.getItems(user, {...options, Filters: 'IsResumable'}, signal);
+                const result = endpoint ? await api.getResumableItems(user, options, signal)
+                    : await api.getItems(user, kind === 'resume' ? {...options, Filters: 'IsResumable'} : options, signal);
                 check(signal);
                 const items = result.Items || [], key = items.map(item => item.Id).join(',');
-                if (pages.has(key)) break;
+                if (pages.has(key)) { complete = true; break; }
                 pages.add(key);
                 for (const item of items) {
-                    if (!hasResumeEndpoint && !(item.UserData?.PlaybackPositionTicks > 0 || item.UserData?.PlayedPercentage > 0)) continue;
+                    const data = item.UserData || {}, at = stamp(data.LastPlayedDate);
+                    if (at && (!oldest || at < oldest)) oldest = at;
+                    // Recency needs a play date; a played flag alone cannot place a work.
+                    if (kind === 'played' ? data.Played !== true || !at
+                        : !endpoint && !(data.PlaybackPositionTicks > 0 || data.PlayedPercentage > 0)) continue;
                     const isEpisode = item.Type === 'Episode' && item.SeriesId, work = isEpisode ? seriesFromEpisode(item) : item;
                     if (!work.Id || (allowed && !allowed.has(work.Id))) continue;
-                    const prior = cards.get(work.Id);
-                    if (!prior || stamp(item.UserData?.LastPlayedDate) > stamp(prior.resumeItem.UserData?.LastPlayedDate))
-                        cards.set(work.Id, {item: work, addedAt: item.DateCreated || '', latestEpisode: isEpisode ? item : null, resumeItem: item});
+                    const prior = records.get(work.Id);
+                    if (!prior || at > prior.at) records.set(work.Id, {work, item, at});
                 }
-                if (items.length < 100 || (result.TotalRecordCount != null && (page + 1) * 100 >= result.TotalRecordCount)) break;
+                if (items.length < 100 || (result.TotalRecordCount != null && (page + 1) * 100 >= result.TotalRecordCount)) { complete = true; break; }
             }
-        } catch (error) { check(signal); /* An older/offline resume endpoint still permits a recent home. */ }
-        const continuing = Array.from(cards.values()).sort((a, b) => stamp(b.resumeItem.UserData?.LastPlayedDate) - stamp(a.resumeItem.UserData?.LastPlayedDate)).slice(0, 24);
-        await this.hydrateSeries(continuing, query, signal);
-        const filler = continuing.length < 24 ? (favoriteCards || await this.loadOrdered(library, signal, 'recent')) : [];
-        check(signal);
-        return withWatchState(continuing.concat(filler.filter(card => !cards.has(card.item.Id))).slice(0, 24));
+        } catch (error) { check(signal); complete = true; /* An older/offline endpoint still permits the rest of the home. */ }
+        return {records: Array.from(records.values()), cutoff: complete ? 0 : oldest};
     };
-    HomeData.prototype.hydrateSeries = async function (cards, query, signal) {
-        const series = cards.filter(card => card.latestEpisode);
+    HomeData.prototype.hydrateSeries = async function (cards, signal) {
+        const series = cards.filter(card => stubs.has(card.item));
         if (!series.length) return;
         try {
             const result = await this.api.getItems(this.api.getCurrentUserId(), {Ids: series.map(card => card.item.Id).join(','),
-                Fields: query.Fields, EnableUserData: true, EnableImageTypes: query.EnableImageTypes, ImageTypeLimit: 1}, signal);
+                Fields: fields, ...images}, signal);
             check(signal);
             const byId = new Map(series.map(card => [card.item.Id, card]));
             (result.Items || []).forEach(item => { const card = byId.get(item.Id); if (card) card.item = item; });
         } catch (error) { check(signal); /* Keep the series destination when metadata is unavailable. */ }
     };
     HomeData.prototype.loadOrdered = async function (library, signal, order, limit = 24) {
+        return (await this.collect(library, signal, order, limit)).cards.slice(0, limit);
+    };
+    // Every scanned work, sorted. For the recent order, complete means no work
+    // was left unread; otherwise no episode after oldest (a timestamp) is missing.
+    HomeData.prototype.collect = async function (library, signal, order, limit) {
         const api = this.api, user = api.getCurrentUserId();
         const favorites = library.kind === 'favorites';
-        const types = { music: 'MusicAlbum', books: 'Book,AudioBook', audiobooks: 'MusicAlbum,AudioBook',
-            musicvideos: 'MusicVideo', games: 'Game', playlists: 'Playlist', photos: 'Photo,PhotoAlbum' };
         const query = {
             Recursive: true, SortBy: (order === 'release' ? 'PremiereDate' : order === 'rating' ? 'CommunityRating' : 'DateCreated') + ',SortName', SortOrder: 'Descending', Limit: 100,
-            Fields: 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating,PresentationUniqueKey',
-            EnableUserData: true, EnableImageTypes: 'Primary,Backdrop,Thumb', ImageTypeLimit: 1,
-            IncludeItemTypes: favorites ? 'Series,Movie,Episode,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game' : (types[library.CollectionType] || 'Episode,Movie,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game')
+            Fields: fields, ...images,
+            IncludeItemTypes: favorites ? 'Series,Movie,Episode,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game' : playable(library)
         };
         if (order !== 'recent' && !favorites) query.IncludeItemTypes = library.CollectionType === 'tvshows' ? 'Series'
             : types[library.CollectionType] || 'Series,Movie,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game';
@@ -106,26 +178,30 @@
         else query.ParentId = library.Id;
         const cards = new Map();
         const seenPages = new Set();
+        let complete = favorites, oldest = 0;
         for (let page = 0; ; page++) {
             check(signal);
             const result = await api.getItems(user, Object.assign({}, query, { StartIndex: page * 100 }), signal);
             check(signal);
             const items = result.Items || [];
             const pageKey = items.map(item => item.Id).join(',');
-            if (seenPages.has(pageKey)) break; // Protect against a server ignoring StartIndex.
+            if (seenPages.has(pageKey)) { complete = true; break; } // Protect against a server ignoring StartIndex.
             seenPages.add(pageKey);
             items.forEach(item => {
                 const episode = item.Type === 'Episode' && item.SeriesId;
                 const work = episode ? seriesFromEpisode(item) : item;
+                const added = stamp(item.DateCreated);
+                if (added && (!oldest || added < oldest)) oldest = added;
                 if (!work.Id) return;
                 const prior = cards.get(work.Id);
-                if (!prior || stamp(item.DateCreated) > stamp(prior.addedAt)) {
+                if (!prior || added > stamp(prior.addedAt)) {
                     cards.set(work.Id, { item: work, addedAt: item.DateCreated || '', latestEpisode: episode ? item : null });
                 }
             });
-            if ((!favorites && cards.size >= limit) || items.length < 100 || (result.TotalRecordCount != null && (page + 1) * 100 >= result.TotalRecordCount)) break;
+            if (items.length < 100 || (result.TotalRecordCount != null && (page + 1) * 100 >= result.TotalRecordCount)) { complete = true; break; }
+            if (!favorites && cards.size >= limit) break;
         }
-        await this.hydrateSeries(Array.from(cards.values()), query, signal);
+        await this.hydrateSeries(Array.from(cards.values()), signal);
         if (favorites && order === 'recent') {
             const queue = Array.from(cards.values()).filter(card => card.item.Type === 'Series');
             // Bound parallel requests on libraries with many favorite series.
@@ -134,7 +210,7 @@
                     const card = queue.shift();
                     check(signal);
                     try {
-                        const result = await api.getItems(user, { ParentId: card.item.Id, Recursive: true, IncludeItemTypes: 'Episode', SortBy: 'DateCreated', SortOrder: 'Descending', Limit: 1, Fields: query.Fields }, signal);
+                        const result = await api.getItems(user, { ParentId: card.item.Id, Recursive: true, IncludeItemTypes: 'Episode', SortBy: 'DateCreated', SortOrder: 'Descending', Limit: 1, Fields: fields, EnableUserData: true }, signal);
                         check(signal);
                         const latest = (result.Items || [])[0];
                         if (latest) { card.addedAt = latest.DateCreated || card.addedAt; card.latestEpisode = latest; }
@@ -145,7 +221,7 @@
         check(signal);
         const score = card => order === 'rating' ? Number(card.item.CommunityRating) || 0
             : order === 'release' ? stamp(card.item.PremiereDate || (card.item.ProductionYear ? card.item.ProductionYear + '-01-01' : '')) : stamp(card.addedAt);
-        return Array.from(cards.values()).sort((a, b) => score(b) - score(a)).slice(0, limit);
+        return {cards: Array.from(cards.values()).sort((a, b) => score(b) - score(a)), complete, oldest};
     };
     HomeData.prototype.loadWatchProgress = async function (cards, signal, onProgress) {
         const api = this.api, user = api.getCurrentUserId();

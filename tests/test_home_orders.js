@@ -18,9 +18,66 @@ test('continuing episodes collapse to the series while retaining the latest play
  const cards=await source(a).load({Id:'tv',CollectionType:'tvshows'});
  assert.deepEqual(Array.from(cards,c=>c.item.Id),['show','fill']);assert.equal(cards[0].item.Type,'Series');assert.equal(cards[0].resumeItem.Id,'latest');assert.equal(cards[0].item.Overview,'series plot');
 });
-test('24 continuing works do not trigger a recent-library query',async()=>{
- const a=api();a.getResumableItems=async()=>({Items:Array.from({length:24},(_,i)=>movie('watch-'+i,'2020-01-01'))});
- const cards=await source(a).load({Id:'movies'});assert.equal(cards.length,24);assert.equal(a.calls.length,0);
+const played=(Id,SeriesId,date)=>({Id,SeriesId,Type:'Episode',SeriesName:SeriesId,DateCreated:'2026-01-01',UserData:{Played:true,LastPlayedDate:date}});
+const playedMovie=(Id,date)=>movie(Id,'2026-01-01',{UserData:{Played:true,LastPlayedDate:date}});
+const added=(Id,SeriesId,date,Played=false)=>({Id,SeriesId,Type:'Episode',SeriesName:SeriesId,DateCreated:date,IndexNumber:2,ParentIndexNumber:1,UserData:{Played}});
+const hoursBefore=(day,hours)=>new Date(Date.parse(day)-hours*3600e3).toISOString();
+const slice=(items,q)=>({Items:items.slice(q.StartIndex||0,(q.StartIndex||0)+q.Limit),TotalRecordCount:items.length});
+// A library whose playback history, recent additions and single-series
+// queries answer separately, as an Emby server does.
+function server({resume=[],history=[],recent=[],series=()=>[]}){
+ const a=api();a.getResumableItems=async(user,q)=>{a.calls.push({resume:true,user,q});return slice(resume,q);};
+ a.getItems=async(user,q)=>{a.calls.push({user,q});
+  if(q.Ids)return {Items:q.Ids.split(',').map(Id=>({Id,Type:'Series',Name:'Series '+Id}))};
+  if(q.ParentId!=='library')return {Items:series(q)};
+  return slice(q.IsPlayed?history:recent,q);};
+ return a;
+}
+test('watched works lead by their latest play and works never played follow, even newer ones',async()=>{
+ const a=server({resume:[movie('paused','2020-01-01',{UserData:{PlaybackPositionTicks:5,LastPlayedDate:'2026-10-05'}})],
+  history:[played('s1','show','2026-10-08')],recent:[movie('fresh','2026-10-12'),added('show-2','show','2026-09-01',true)]});
+ const cards=await source(a).load({Id:'library',CollectionType:'tvshows'});
+ assert.deepEqual(Array.from(cards,c=>c.item.Id),['show','paused','fresh']);
+ assert.equal(cards[0].item.Name,'Series show');assert.equal(cards[0].resumeItem,undefined);assert.equal(cards[0].newEpisode,undefined);
+ assert.equal(cards[1].resumeItem.Id,'paused');
+ const history=a.calls.find(c=>c.q.IsPlayed);assert.equal(history.q.ParentId,'library');assert.match(history.q.SortBy,/^DatePlayed/);assert.equal(history.q.SortOrder,'Descending');
+ assert.ok(a.calls.every(c=>c.q.ParentId==='library'||c.q.Ids),'no single-series request when history and additions are complete');
+});
+test('an unwatched episode added after the last play brings its series forward',async()=>{
+ const a=server({history:[played('caught-1','caught','2026-10-07'),playedMovie('film','2026-10-05'),played('show-1','show','2026-09-01')],
+  recent:[added('show-2','show','2026-10-10'),added('caught-skipped','caught','2026-10-06')]});
+ const cards=await source(a).load({Id:'library'});
+ assert.deepEqual(Array.from(cards,c=>c.item.Id),['show','caught','film']);
+ assert.equal(cards[0].newEpisode.Id,'show-2');assert.equal(cards[0].latestEpisode.Id,'show-2');assert.equal(cards[0].addedAt,'2026-10-10');
+ assert.equal(cards[1].newEpisode,undefined,'an episode that arrived before the last play is not new');
+});
+test('the progress bar follows only the most recent play of a work',async()=>{
+ const a=server({resume:[episode('current-3','current','2026-10-06'),episode('abandoned','show','2026-10-01')],
+  history:[played('show-5','show','2026-10-05'),played('current-2','current','2026-10-02')]});
+ const cards=await source(a).load({Id:'library'});
+ assert.deepEqual(Array.from(cards,c=>c.item.Id),['current','show']);
+ assert.equal(cards[0].resumeItem.Id,'current-3');assert.equal(cards[1].resumeItem,undefined);
+});
+test('a series last watched before the loaded history is recognised when a new episode arrives',async()=>{
+ const history=Array.from({length:150},(_,i)=>playedMovie('film-'+i,hoursBefore('2026-10-10',i)));
+ const a=server({history,recent:[added('returning-new','returning','2026-10-12'),added('stranger-new','stranger','2026-10-11')],
+  series:q=>q.ParentId==='returning'?[played('returning-1','returning','2026-03-01')]:[]});
+ const cards=await source(a).load({Id:'library'});
+ assert.equal(cards.length,24);assert.equal(cards[0].item.Id,'returning');assert.equal(cards[0].newEpisode.Id,'returning-new');
+ assert.equal(cards[1].item.Id,'film-0');assert.ok(!cards.some(c=>c.item.Id==='stranger'),'a series never played stays behind watched works');
+ const check=a.calls.find(c=>c.q.ParentId==='returning');
+ assert.equal(check.q.IsPlayed,true);assert.equal(check.q.Limit,1);assert.match(check.q.SortBy,/^DatePlayed/);
+ assert.equal(a.calls.filter(c=>c.q.IsPlayed&&c.q.ParentId==='library').length,1,'history stops once the row is full');
+});
+test('a watched series whose newest episode is older than the recent window asks for that episode',async()=>{
+ const recent=Array.from({length:200},(_,i)=>movie('new-'+i,hoursBefore('2026-10-12',i)));
+ const a=server({history:[playedMovie('film','2026-09-20'),played('watched-1','watched','2026-09-01')],recent,
+  series:q=>q.ParentId==='watched'&&!q.IsPlayed?[added('watched-2','watched','2026-09-25')]:[]});
+ const cards=await source(a).load({Id:'library'});
+ assert.deepEqual(Array.from(cards.slice(0,3),c=>c.item.Id),['watched','film','new-0']);
+ assert.equal(cards[0].newEpisode.Id,'watched-2');
+ const check=a.calls.find(c=>c.q.ParentId==='watched');
+ assert.match(check.q.SortBy,/^DateCreated/);assert.equal(check.q.IsMissing,false);assert.equal(check.q.ExcludeLocationTypes,'Virtual');
 });
 test('duplicate continuing episodes are paged until the next work is reached',async()=>{
  const a=api(),items=Array.from({length:101},(_,i)=>episode('ep-'+i,'show','2026-10-10')).concat(movie('second','2020-01-01'));
@@ -36,10 +93,14 @@ test('resume errors fall back to current-library recent additions',async()=>{
  const a=api();a.getResumableItems=async()=>{throw Error('older server');};a.getItems=async()=>({Items:[movie('new','2026-10-10')]});
  assert.equal((await source(a).load({Id:'library'}))[0].item.Id,'new');
 });
-test('cancelling a resume request never runs the filler query or returns old data',async()=>{
- const a=api(),abort=new AbortController();let release;a.getResumableItems=()=>new Promise(r=>release=r);a.getItems=()=>{a.calls.push('filler');return new Promise(r=>release=r);};
- const pending=source(a).load({Id:'library'},abort.signal),rejected=assert.rejects(pending,e=>e.name==='AbortError');abort.abort();release({Items:[movie('old','2026-10-10')]});
- await rejected;assert.equal(a.calls.length,0);
+test('cancelling the home load returns no old data and starts no further request',async()=>{
+ const a=api(),abort=new AbortController(),pending=[];
+ a.getResumableItems=(user,q)=>{a.calls.push({resume:true,q});return new Promise(r=>pending.push(r));};
+ a.getItems=(user,q)=>{a.calls.push({user,q});return new Promise(r=>pending.push(r));};
+ const load=source(a).load({Id:'library'},abort.signal),rejected=assert.rejects(load,e=>e.name==='AbortError');
+ const started=a.calls.length;abort.abort();
+ pending.forEach(release=>release({Items:[episode('old','show','2026-10-10')]}));
+ await rejected;assert.equal(a.calls.length,started,'no further page, series check or metadata request');
 });
 test('release and rating request work-level series and sort using their corresponding fields',async()=>{
  for(const [mode,field] of [['release','PremiereDate'],['rating','CommunityRating']]){

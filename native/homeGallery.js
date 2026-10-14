@@ -195,7 +195,7 @@
     }
     function subtitle(card) {
         const episode = card.latestEpisode;
-        return [watchProgress(card), card.item.ProductionYear, episode ? '最新入库 · S' + (episode.ParentIndexNumber || 1) + ':E' + (episode.IndexNumber || '?') + ' ' + (episode.Name || '') : '', card.addedAt ? '入库 ' + card.addedAt.slice(0, 10) : ''].filter(Boolean).join('  ·  ');
+        return [watchProgress(card), card.item.ProductionYear, episode ? (card.newEpisode === episode ? '新一集未看' : '最新入库') + ' · S' + (episode.ParentIndexNumber || 1) + ':E' + (episode.IndexNumber || '?') + ' ' + (episode.Name || '') : '', card.addedAt ? '入库 ' + card.addedAt.slice(0, 10) : ''].filter(Boolean).join('  ·  ');
     }
     function Gallery(host, options) {
         this.host = host; this.options = options; this.generation = 0; this.selection = 0;
