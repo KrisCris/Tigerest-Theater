@@ -12,7 +12,13 @@ import Qt.labs.platform as Labs
 Window
 {
   id: mainWindow
-  title: "Tigerest Theater / 大河影院"
+  readonly property bool automatedTestWindow: {
+    const args = Qt.application.arguments
+    const profile = args.indexOf("--profile")
+    return profile >= 0 && (args[profile + 1] === "Mac120HzProductionProbe" ||
+                            args[profile + 1] === "MessagesFixture")
+  }
+  title: automatedTestWindow ? "大河影院 · 自动测试（临时窗口）" : "Tigerest Theater / 大河影院"
   objectName: "mainWindow"
   width: 1280
   height: 720

@@ -26,7 +26,10 @@
             (root?.contains(m.target)||m.target.matches?.('.mainAnimatedPage,.page,.skinHeader,.backdropContainer,.backgroundContainer'))))invalidate();
     }
     function settled(root,signal){
-        const animations=(root.getAnimations?.({subtree:true})||[]).filter(a=>
+        // The ambient layers live outside the page/home root. Freeze their
+        // settled opacity/transform, not an intermediate crossfade frame.
+        const roots=[root,...document.querySelectorAll('.backgroundContainer')];
+        const animations=[...new Set(roots.flatMap(node=>node.getAnimations?.({subtree:true})||[]))].filter(a=>
             (a.playState==='running'||a.pending)&&a.effect?.getComputedTiming().endTime<=2500);
         if(!animations.length)return Promise.resolve(true);
         return new Promise(resolve=>{
@@ -238,6 +241,11 @@
                 else if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA') clone.value = node.value;
                 if (node.tagName === 'INPUT') { clone.checked = node.checked; clone.indeterminate = node.indeterminate; }
             } else clone = node.cloneNode(false);
+            if (node.tagName === 'CANVAS' && node.width && node.height) {
+                // cloneNode copies a canvas's dimensions, not its backing image.
+                // drawImage also preserves origin restrictions without readback.
+                try { clone.getContext('2d').drawImage(node,0,0); } catch {}
+            }
             pairs.push([node,clone]);
             if (node.matches('.card')) {
                 const r = box(node);
@@ -269,7 +277,8 @@
             // The home has its own complete stylesheet. Avoid reparsing all of Emby's
             // cached view styles and cloning hidden views for every poster press.
             for (const node of document.querySelectorAll('.backgroundContainer,.backdropContainer')) {
-                const copy=node.cloneNode(true), r=box(node), s=getComputedStyle(node);
+                const copy=copyTree(node), r=box(node), s=getComputedStyle(node);
+                if (!copy) continue;
                 Object.assign(copy.style,{position:'fixed',left:r.x+'px',top:r.y+'px',width:r.width+'px',height:r.height+'px',opacity:s.opacity,filter:s.filter});
                 body.prepend(copy);
             }

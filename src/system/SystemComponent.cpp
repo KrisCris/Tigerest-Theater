@@ -1058,6 +1058,9 @@ QString SystemComponent::getNativeShellScript()
     ":/web-client/extension/homeMotion.js",
     ":/web-client/extension/embycompat.js"
   };
+#ifdef Q_OS_MAC
+  scriptPaths.append(":/web-client/extension/ambientBackdrop.js");
+#endif
 
   cachedScript = jmpInfoDeclaration;
   for (const QString& scriptPath : scriptPaths) {

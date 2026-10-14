@@ -7,6 +7,7 @@ const routes={
 };
 routes['/backdrop.js']={path:path.join(root,'native/homeBackdrop.js')};if(!embedded)routes['/'].body=routes['/'].body.replace('<script src="/transitions.js">','<script src="/backdrop.js"></script><script src="/transitions.js">');
 withBrowser(routes,async({evaluate,call,url})=>{
+ await evaluate('window.TigerestAmbientBackdrop?.dispose();true');
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
  assert.equal(await evaluate('typeof TigerestHomeTransitions.prewarm'),'function','current page can prewarm the expensive background');
  await evaluate(`window.motionFrame=predicate=>new Promise((resolve,reject)=>{const deadline=performance.now()+8000;const observe=()=>{const result=predicate();if(result)return resolve(result);if(performance.now()>deadline)return reject(Error('motion phase was not observed'));requestAnimationFrame(observe);};requestAnimationFrame(observe);});window.state={params:{topParentId:'library'},contextPath:'/tv?topParentId=library'};window.libraryRoot=document.querySelector('#library');libraryRoot.querySelector('.itemsContainer').getItemFromElement=()=>({Id:'work',Type:'Movie'});window.show=name=>{document.querySelectorAll('.page').forEach(n=>n.classList.toggle('hide',n.id!==name));state.contextPath=name==='detail'?'/item?id=work':'/tv?topParentId=library';state.params=name==='detail'?{id:'work'}:{topParentId:'library'};};window.router={showItem:()=>show('detail'),back:()=>window.returnGate?new Promise(resolve=>{window.releaseReturn=()=>{show('library');resolve();};}):show('library'),goHome:()=>{},getRouteUrl:()=>'/tv?topParentId=library'};TigerestHomeMotion.attach({router,pageJs:{replace:()=>show('library')},manager:{currentApiClient:()=>({serverId:()=> 'fixture',getCurrentUserId:()=> 'one'})},viewManager:{currentViewInfo:()=>state}});`);
@@ -14,6 +15,32 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.deepEqual(edgePixels.corner,[40,84,200,255],'blur clamps the viewport edges instead of revealing a different page through alpha');
  assert.deepEqual(edgePixels.center,[40,84,200,255]);
  assert.equal(await evaluate('TigerestHomeTransitions.prewarm()'),true);
+ // Canvas-backed ambient layers must survive freezing without becoming blank.
+ const canvasPixels=await evaluate(`(async()=>{
+  const canvas=document.createElement('canvas');canvas.id='snapshot-canvas';canvas.width=32;canvas.height=24;
+  Object.assign(canvas.style,{position:'absolute',left:'20px',top:'20px',width:'32px',height:'24px'});
+  const context=canvas.getContext('2d');context.fillStyle='rgb(29,83,147)';context.fillRect(0,0,32,24);libraryRoot.append(canvas);
+  TigerestHomeTransitions.invalidate(false);await TigerestHomeTransitions.prewarm();
+  const copy=document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot.querySelector('#snapshot-canvas');
+  const result=Array.from(copy.getContext('2d').getImageData(8,8,1,1).data);canvas.remove();return result;
+ })()`);
+ assert.deepEqual(canvasPixels,[29,83,147,255],'frozen canvas retains its displayed pixels');
+ const ambientSnapshot=await evaluate(`(async()=>{
+  const background=document.createElement('div');background.className='backgroundContainer';
+  const canvas=document.createElement('canvas');canvas.id='ambient-snapshot-canvas';canvas.width=32;canvas.height=24;
+  const source=document.createElement('canvas');source.width=32;source.height=24;const paint=source.getContext('2d');paint.fillStyle='rgb(51,121,181)';paint.fillRect(0,0,32,24);
+  canvas.getContext('bitmaprenderer').transferFromImageBitmap(await createImageBitmap(source));background.append(canvas);document.body.append(background);
+  const home=document.createElement('div');home.className='tg-home-host';home.textContent='Home fixture';document.body.append(home);document.body.classList.add('tg-home-active');
+  const oldInfo=window.jmpInfo;window.jmpInfo={...oldInfo,platform:'ipad'};
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  TigerestHomeTransitions.invalidate(false);const animation=canvas.animate([{opacity:0},{opacity:1}],{duration:900,fill:'both'});
+  await TigerestHomeTransitions.prewarm();
+  const shadow=document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot,copy=shadow.querySelector('#ambient-snapshot-canvas');
+  const result={pixels:Array.from(copy.getContext('2d').getImageData(8,8,1,1).data),opacity:getComputedStyle(copy).opacity};
+  animation.cancel();background.remove();home.remove();document.body.classList.remove('tg-home-active');window.jmpInfo=oldInfo;TigerestHomeTransitions.invalidate(false);return result;
+ })()`);
+ assert.deepEqual(ambientSnapshot.pixels,[51,121,181,255],'home background preserves bitmap-renderer canvas pixels');
+ assert.equal(ambientSnapshot.opacity,'1','prewarming waits for the ambient fade outside the page root');
  // Frozen snapshots must preserve a customized built-in's appearance and
  // form/scroll state without constructing another live application control.
  const staticControls=await evaluate(`(async()=>{
