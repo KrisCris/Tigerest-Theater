@@ -1,7 +1,50 @@
 (function () {
     'use strict';
-    // Rasterize only small decoded images in a worker. Full-size poster decoding
-    // and Canvas clipping used to block the first animation frame on the UI thread.
+    window.TigerestHomeBackdrop?.dispose?.();
+    // createImageBitmap(HTMLImageElement) still decodes large originals on the
+    // renderer thread. Reuse only immutable artwork, keeping small owned copies
+    // for worker transfer so finishing/aborting a build cannot close the cache.
+    const decoded = new Map(), maxEntries = 64, maxPixels = 4 * 1024 * 1024;
+    let pixels = 0, disposed = false;
+    function forget(key) {
+        const entry = decoded.get(key); if (!entry) return;
+        decoded.delete(key); pixels -= entry.pixels; entry.bitmap.close();
+    }
+    function imageKey(node, options) {
+        try {
+            const source = new URL(node.currentSrc || node.src, location.href);
+            // Emby's image tag changes with the artwork. Ordinary mutable URLs
+            // must keep decoding their actual current image, even on a cache hit.
+            const versioned = /\/Items\/[^/]+\/Images\/[^/]+(?:\/\d+)?$/i.test(source.pathname) && source.searchParams.get('tag');
+            if (!['qrc:', 'data:', 'blob:'].includes(source.protocol) &&
+                !(['http:', 'https:'].includes(source.protocol) && versioned)) return null;
+            return JSON.stringify([source.href, node.naturalWidth, node.naturalHeight, options.resizeWidth, options.resizeHeight]);
+        } catch { return null; }
+    }
+    async function resizedImage(node, options) {
+        const key = imageKey(node, options), entry = key && decoded.get(key);
+        if (entry) {
+            decoded.delete(key); decoded.set(key, entry);
+            try { return await createImageBitmap(entry.bitmap); }
+            catch { forget(key); }
+        }
+        const bitmap = await createImageBitmap(node, options), size = bitmap.width * bitmap.height;
+        if (!key || disposed || size > maxPixels) return bitmap;
+        let copy;
+        try { copy = await createImageBitmap(bitmap); }
+        catch { return bitmap; } // Preserve native non-origin-clean image fallback.
+        if (disposed) { bitmap.close(); return copy; }
+        forget(key);
+        decoded.set(key, {bitmap, pixels: size}); pixels += size;
+        while (decoded.size > maxEntries || pixels > maxPixels) forget(decoded.keys().next().value);
+        return copy;
+    }
+    function dispose() {
+        disposed = true;
+        for (const key of decoded.keys()) forget(key);
+    }
+    // Rasterize only small decoded images in a worker. The immutable-image cache
+    // above avoids repeating the main-thread source extraction on later builds.
     function paint(records,width,height,scale) {
           const canvas=new OffscreenCanvas(width,height),ctx=canvas.getContext('2d');
           ctx.scale(scale,scale);ctx.fillStyle='#0b0d12';ctx.fillRect(0,0,width/scale,height/scale);
@@ -40,7 +83,7 @@
         finally{for(const r of records)r.bitmap?.close();}
       };`;
     async function build(root, signal) {
-        if (!window.Worker || !window.OffscreenCanvas || !window.createImageBitmap) return null;
+        if (disposed || !window.Worker || !window.OffscreenCanvas || !window.createImageBitmap) return null;
         const begin = performance.now(), scale = Math.min(1,240/innerWidth);
         const width = Math.min(240,Math.round(innerWidth*scale)), height = Math.round(innerHeight*scale), records = [], images = [];
         // Skip motion layers, the held poster and Emby's hidden cached views as
@@ -67,7 +110,7 @@
                     const {node,record}=images[index++];
                     const w=Math.max(1,Math.min(240,Math.ceil(Math.max(record.w*scale,record.h*scale*node.naturalWidth/node.naturalHeight))));
                     let bitmap;
-                    try{bitmap=await createImageBitmap(node,{resizeWidth:w,resizeHeight:Math.max(1,Math.round(w*node.naturalHeight/node.naturalWidth)),resizeQuality:'low'});}
+                    try{bitmap=await resizedImage(node,{resizeWidth:w,resizeHeight:Math.max(1,Math.round(w*node.naturalHeight/node.naturalWidth)),resizeQuality:'low'});}
                     catch(error){decodeFailed=true;throw error;}
                     owned.push(bitmap);record.bitmap=bitmap;
                 }
@@ -100,5 +143,5 @@
         }catch(error){return null;}
         finally{owned.forEach(bitmap=>bitmap.close());}
     }
-    window.TigerestHomeBackdrop={build};
+    window.TigerestHomeBackdrop={build,dispose};
 }());
