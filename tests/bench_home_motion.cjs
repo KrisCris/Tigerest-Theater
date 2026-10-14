@@ -1,6 +1,8 @@
 // Manual Emby-scale latency benchmark for the home/library/detail transitions.
 // Not a CTest: timings depend on the machine. Compare runs on the same device.
-//   node tests/bench_home_motion.cjs <browser-or-client> [--webengine] [--rounds=5]
+//   node tests/bench_home_motion.cjs <browser-or-client> [--webengine] [--rounds=5] [--native-size]
+// --native-size keeps the real window size and device pixel ratio instead of 1280x720@1x;
+// --maximized restores the client window maximized.
 // Android: TIGEREST_ANDROID_FIXTURE=1 node tests/bench_home_motion.cjs
 // Uses an isolated fixture page and profile; it never touches an Emby account.
 const path=require('node:path'),withBrowser=require('./community_browser.cjs');
@@ -36,7 +38,7 @@ const routes={'/':{type:'text/html; charset=utf-8',body},'/css/a.css':{type:'tex
 // Card artwork: one deterministic SVG per query, so every card decodes separately.
 const proxy=new Proxy(routes,{get(t,k){if(typeof k==='string'&&k.startsWith('/img/'))return {type:'image/svg+xml',body:poster([...k].reduce((a,c)=>a*31+c.charCodeAt(0)>>>0,7)%360)};return t[k];}});
 withBrowser(proxy,async({evaluate,call})=>{
- if(!process.env.TIGEREST_ANDROID_FIXTURE)await call('Emulation.setDeviceMetricsOverride',{width:1280,height:720,deviceScaleFactor:1,mobile:false});
+ if(!process.env.TIGEREST_ANDROID_FIXTURE&&!process.argv.includes('--native-size'))await call('Emulation.setDeviceMetricsOverride',{width:1280,height:720,deviceScaleFactor:1,mobile:false});
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
  await new Promise(r=>setTimeout(r,800));
  await evaluate(`(async()=>{
@@ -51,13 +53,19 @@ withBrowser(proxy,async({evaluate,call})=>{
     const loaf=[],t0=performance.now();navigateLog=[];
     const loafSupported=PerformanceObserver.supportedEntryTypes?.includes('long-animation-frame'),po=new PerformanceObserver(l=>loaf.push(...l.getEntries()));if(loafSupported)po.observe({type:'long-animation-frame'});
     const firstFrame=new Promise(r=>requestAnimationFrame(()=>{const ch=new MessageChannel();ch.port1.onmessage=()=>r(performance.now()-t0);ch.port2.postMessage(0);}));
+    // Frame timestamps across the whole transition, for pacing during motion.
+    const stamps=[];let ticking=true;const tick=t=>{stamps.push(t);if(ticking)requestAnimationFrame(tick);};requestAnimationFrame(tick);
     const p=start();const syncMs=performance.now()-t0;const firstFrameMs=await firstFrame;await p;
-    await new Promise(r=>setTimeout(r,300));po.disconnect();
+    await new Promise(r=>setTimeout(r,300));po.disconnect();ticking=false;
     const m=TigerestHomeTransitions.last||{};
     const during=loaf.filter(e=>e.startTime>=t0-5);
+    const end=t0+(m.totalMs||0),iv=[];for(let i=1;i<stamps.length;i++)if(stamps[i]<=end)iv.push(stamps[i]-stamps[i-1]);
+    const sorted=[...iv].sort((a,b)=>a-b),display=sorted[sorted.length>>2]||0;
     return {syncMs,firstFrameMs,navigateMs:navigateLog[0]?navigateLog[0]-t0-routeDelay:null,flightMs:m.posterFlightStartsMs??null,posterMoveMs:m.posterFirstMotionMs??null,totalMs:m.totalMs,cacheHit:m.cacheHit,lightHit:m.lightCacheHit,captureMs:m.backgroundPhases?.[0]?.captureMs??null,
       // Long-animation-frame needs Chromium 123+; older engines report null.
-      maxFrameMs:loafSupported?Math.max(0,...during.map(e=>e.duration)):null,longFrames:loafSupported?during.filter(e=>e.duration>50).length:null};
+      motionFps:iv.length?1000*iv.length/iv.reduce((a,b)=>a+b,0):null,motionP95:sorted[Math.floor(sorted.length*.95)]??null,
+      // Frames longer than 1.5 display intervals (the fastest quartile approximates the refresh period).
+      motionDrops:iv.filter(x=>x>display*1.5).length,maxFrameMs:loafSupported?Math.max(0,...during.map(e=>e.duration)):null,longFrames:loafSupported?during.filter(e=>e.duration>50).length:null};
   };
   window.heroBusy=()=>Array.from(document.querySelector('.hero-content').children).map((n,i)=>n.animate([{opacity:0,transform:'translate3d(-52px,30px,0)'},{opacity:1,transform:'none'}],{duration:i===1?760:620,delay:160+i*140,fill:'both'}));
   return true;})()`);
@@ -87,11 +95,11 @@ withBrowser(proxy,async({evaluate,call})=>{
     rows.push(await evaluate(`measure(()=>${code})`));
    }
    const med=k=>{const v=rows.map(x=>x[k]).filter(x=>typeof x==='number').sort((a,b)=>a-b);return v.length?+v[v.length>>1].toFixed(1):null;};
-   results[name+'/'+mode]={sync:med('syncMs'),firstFrame:med('firstFrameMs'),navigate:med('navigateMs'),posterMove:med('posterMoveMs'),flight:med('flightMs'),maxFrame:med('maxFrameMs'),capture:med('captureMs'),longFrames:med('longFrames'),total:med('totalMs'),cacheHit:rows.map(x=>x.cacheHit).join(','),lightHit:rows.map(x=>x.lightHit).join(',')};
+   results[name+'/'+mode]={sync:med('syncMs'),firstFrame:med('firstFrameMs'),navigate:med('navigateMs'),posterMove:med('posterMoveMs'),flight:med('flightMs'),maxFrame:med('maxFrameMs'),capture:med('captureMs'),longFrames:med('longFrames'),total:med('totalMs'),fps:med('motionFps'),p95:med('motionP95'),drops:med('motionDrops'),cacheHit:rows.map(x=>x.cacheHit).join(','),lightHit:rows.map(x=>x.lightHit).join(',')};
   }
  }
  console.table(results);
  // Time from a page change until the bitmap and the DOM snapshot are ready.
  for(const page of ['library','home'])for(let i=0;i<3;i++){const r=await evaluate(`(async()=>{TigerestHomeTransitions.cancel();show('${page}');gallery.active=${page==='home'};await new Promise(r=>setTimeout(r,0));TigerestHomeTransitions.invalidate();const t0=performance.now();let ready=null,snap=null;while(performance.now()-t0<4000){const s=TigerestHomeTransitions.cacheState;if(s.ready&&ready===null)ready=performance.now()-t0;if((s.snapshot||(s.snapshot===undefined&&s.ready&&!s.warming))&&snap===null)snap=performance.now()-t0;if(ready!==null&&snap!==null)break;await new Promise(r=>setTimeout(r,5));}return {page:'${page}',bitmapReadyMs:ready,snapshotReadyMs:snap};})()`);console.log(JSON.stringify(r));}
  console.log(JSON.stringify(results));
-},{gpu:true,visible:true}).catch(e=>{console.error(e);process.exitCode=1;});
+},{gpu:true,visible:true,maximized:process.argv.includes('--maximized')}).catch(e=>{console.error(e);process.exitCode=1;});

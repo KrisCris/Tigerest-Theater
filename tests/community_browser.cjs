@@ -9,7 +9,7 @@ const {spawn}=require('node:child_process');
 const {setTimeout:delay}=require('node:timers/promises');
 const configVersion=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../resources/settings/settings_description.json'),'utf8')).find(section=>section.section==='__meta__').version;
 
-module.exports=async function withBrowser(routes,work,{settings={},gpu=false,visible=false,prepareProfile,startupTimeout=12000}={}){
+module.exports=async function withBrowser(routes,work,{settings={},gpu=false,visible=false,prepareProfile,startupTimeout=12000,args:extraArgs=[],maximized=false}={}){
     if(process.env.TIGEREST_ANDROID_FIXTURE) return require('../android/tests/android_browser.cjs')(routes,work,{settings});
     const executable=process.argv[2]?path.resolve(process.argv[2]):null,webengine=process.argv.includes('--webengine');
     assert.ok(executable&&fs.existsSync(executable),'supply a browser executable');
@@ -32,9 +32,11 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         fs.writeFileSync(path.join(folder,'profile.json'),JSON.stringify({name:'MessagesFixture'}));
         fs.writeFileSync(path.join(folder,'Tigerest Theater.conf'),JSON.stringify({version:configVersion,sections:{
             ...settings,main:{...settings.main,enableWindowsTrayIcon:false},path:{...settings.path,startupurl_desktop:url}}}));
+        // Restore maximized; keys mirror WindowManager::configKeyPrefix for multi-screen setups.
+        if(maximized)fs.writeFileSync(path.join(folder,'storage.json'),JSON.stringify({version:configVersion,sections:{state:Object.fromEntries([2,3,4].map(n=>[n+' screens: Window-Maximized',true]))}}));
         if(prepareProfile)await prepareProfile(profile,folder);
     }
-    const args=webengine?['--config-dir',profile,'--profile','MessagesFixture',...(gpu?[]:['--disable-gpu']),'--remote-debugging-port','127.0.0.1:'+port]
+    const args=webengine?['--config-dir',profile,'--profile','MessagesFixture',...(gpu?[]:['--disable-gpu']),...extraArgs,'--remote-debugging-port','127.0.0.1:'+port]
         :['--headless','--disable-gpu','--remote-debugging-port=0','--user-data-dir='+profile,url];
     child=spawn(executable,args,{stdio:['ignore','pipe','pipe'],windowsHide:!visible,cwd:path.dirname(executable)});
     let startup='';child.stdout.on('data',d=>startup=(startup+d).slice(-2000));child.stderr.on('data',d=>startup=(startup+d).slice(-2000));

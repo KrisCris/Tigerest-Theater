@@ -1,0 +1,56 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Frame pacing fixture</title>
+<style>
+html,body{margin:0;height:100%;background:#101318;color:#e8e6e1;font:14px/1.4 "Segoe UI",sans-serif;overflow:hidden}
+#grid{position:absolute;inset:0;overflow-y:scroll;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:18px;padding:28px;box-sizing:border-box}
+.card{position:relative;height:255px;border-radius:10px;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.45);transition:transform .22s ease,box-shadow .22s ease;
+  background:radial-gradient(circle at 30% 20%,hsla(var(--h),80%,70%,.55),transparent 60%),linear-gradient(160deg,hsl(var(--h),55%,38%),hsl(calc(var(--h) + 70),50%,16%))}
+.card:hover{transform:scale(1.06);box-shadow:0 18px 40px rgba(0,0,0,.6)}
+.card span{position:absolute;left:10px;right:10px;bottom:10px;text-shadow:0 1px 3px #000}
+#mover{position:fixed;left:0;top:42%;width:130px;height:130px;border-radius:18px;background:#e9b44c;box-shadow:0 0 30px rgba(233,180,76,.6);will-change:transform;z-index:5}
+body.css #mover{animation:slide 1.2s linear infinite alternate}
+@keyframes slide{from{transform:translateX(0)}to{transform:translateX(calc(100vw - 130px))}}
+#glass{position:fixed;inset:12% 18%;border-radius:22px;z-index:10;display:none;background:rgba(18,20,26,.42);
+  -webkit-backdrop-filter:blur(22px) saturate(1.35);backdrop-filter:blur(22px) saturate(1.35);box-shadow:0 30px 80px rgba(0,0,0,.5)}
+body.blur #glass{display:block}
+</style></head>
+<body>
+<div id="grid"></div><div id="glass"></div><div id="mover"></div>
+<script>
+const grid=document.getElementById('grid');
+for(let i=0;i<480;i++){const c=document.createElement('div');c.className='card';c.style.setProperty('--h',(i*37)%360);
+  const s=document.createElement('span');s.textContent='作品 '+(i+1)+' · Fixture title';c.append(s);grid.append(c);}
+const mover=document.getElementById('mover');
+let jsAnim=false;
+function jsFrame(t){if(!jsAnim)return;const w=innerWidth-130,p=(t/1200)%2,x=(p<1?p:2-p)*w;mover.style.transform=`translateX(${x}px)`;requestAnimationFrame(jsFrame);}
+// Records requestAnimationFrame timestamps for `ms` and returns interval statistics.
+window.measure=async function(scenario,ms){
+  document.body.className='';jsAnim=false;mover.style.transform='';grid.scrollTop=0;
+  if(scenario.includes('css'))document.body.classList.add('css');
+  if(scenario.includes('blur'))document.body.classList.add('blur');
+  if(scenario.includes('js')){jsAnim=true;requestAnimationFrame(jsFrame);}
+  await new Promise(r=>setTimeout(r,400));
+  const stamps=[],lags=[];let running=true;
+  // lag: how long after its frame time the callback actually ran (BeginFrame delivery delay).
+  const tick=t=>{stamps.push(t);lags.push(performance.now()-t);if(running)requestAnimationFrame(tick);};
+  requestAnimationFrame(tick);
+  const startWall=Date.now(),scroll0=grid.scrollTop;
+  // Compositor-driven smooth scrolling, reversed each second.
+  let flip=null;if(scenario.includes('smooth')){let dir=1;const go=()=>{grid.scrollBy({top:dir*2600,behavior:'smooth'});dir=-dir;};go();flip=setInterval(go,1000);}
+  await new Promise(r=>setTimeout(r,ms));
+  running=false;jsAnim=false;clearInterval(flip);
+  const iv=[];for(let i=1;i<stamps.length;i++)iv.push(stamps[i]-stamps[i-1]);
+  const sorted=[...iv].sort((a,b)=>a-b),q=p=>sorted[Math.min(sorted.length-1,Math.floor(p*sorted.length))]||0;
+  const span=(stamps.at(-1)-stamps[0])/1000,med=q(.5);
+  return {scenario,frames:iv.length,fps:+(iv.length/span).toFixed(1),p50:+med.toFixed(2),p95:+q(.95).toFixed(2),p99:+q(.99).toFixed(2),
+    max:+(sorted.at(-1)||0).toFixed(2),janks:iv.filter(x=>x>med*1.5).length,longFrames:iv.filter(x=>x>25).length,
+    scrolled:Math.round(grid.scrollTop-scroll0),startWall,endWall:Date.now(),viewport:[innerWidth,innerHeight],dpr:devicePixelRatio,screenX,
+    lagP50:+[...lags].sort((a,b)=>a-b)[lags.length>>1].toFixed(2),lagP95:+[...lags].sort((a,b)=>a-b)[Math.floor(lags.length*.95)].toFixed(2),
+    // Delivery delay of the frame preceding each long interval.
+    lagBeforeJank:iv.flatMap((x,i)=>x>med*1.5?[+lags[i].toFixed(2)]:[]),
+    // Wall-clock time of each long interval, to line up with native frame logs.
+    jankAt:iv.flatMap((x,i)=>x>med*1.5?[Math.round(performance.timeOrigin+stamps[i+1])]:[])};
+};
+window.fixtureReady=true;
+</script>
+</body></html>
