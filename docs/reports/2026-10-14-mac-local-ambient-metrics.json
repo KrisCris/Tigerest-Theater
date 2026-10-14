@@ -1,0 +1,273 @@
+{
+  "controlledStyleUpdate": {
+    "groups": [
+      {
+        "mode": "root",
+        "costs": [
+          13.700000047683716,
+          9.100000023841858,
+          8.699999928474426,
+          8.799999952316284,
+          7.400000095367432,
+          8.800000071525574,
+          7.799999952316284,
+          6.699999928474426,
+          6.5,
+          6.600000023841858,
+          6.5,
+          6.899999976158142
+        ]
+      },
+      {
+        "mode": "local",
+        "costs": [
+          0,
+          0.20000004768371582,
+          0.19999992847442627,
+          0.19999992847442627,
+          0.20000004768371582,
+          0.09999990463256836,
+          0.2999999523162842,
+          0.20000004768371582,
+          0.2999999523162842,
+          0.19999992847442627,
+          0.20000004768371582,
+          0.2999999523162842
+        ]
+      },
+      {
+        "mode": "root",
+        "costs": [
+          4.200000047683716,
+          3.8000000715255737,
+          4.300000071525574,
+          4,
+          4.100000023841858,
+          3.799999952316284,
+          3.6999999284744263,
+          3.8000000715255737,
+          3.6999999284744263,
+          3.600000023841858,
+          4.100000023841858,
+          3.799999952316284
+        ]
+      }
+    ],
+    "descendants": 1753,
+    "backgroundChildren": 0,
+    "validImages": true,
+    "appearanceMatches": true,
+    "method": "Controlled A/B/A CSS variable update on one authenticated detail page; forces pseudo-style resolution, not end-to-end frame rate.",
+    "valid": true,
+    "styleTrace": [
+      {
+        "mode": "root",
+        "styleMs": 13.569,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 9.089,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 8.659,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 8.731,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 7.346,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 8.682,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 7.608,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 6.638,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 6.451,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 6.544,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 6.516,
+        "elements": 949
+      },
+      {
+        "mode": "root",
+        "styleMs": 6.901,
+        "elements": 949
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.092,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.208,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.206,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.162,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.138,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.138,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.241,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.192,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.234,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.169,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.177,
+        "elements": 3
+      },
+      {
+        "mode": "local",
+        "styleMs": 0.159,
+        "elements": 3
+      },
+      {
+        "mode": "root",
+        "styleMs": 4.103,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 3.714,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 4.124,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 3.852,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 3.995,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 3.664,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 3.582,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 3.791,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 3.673,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 3.606,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 4.005,
+        "elements": 574
+      },
+      {
+        "mode": "root",
+        "styleMs": 3.759,
+        "elements": 574
+      }
+    ]
+  },
+  "visualBefore": {
+    "midpointHashes": [
+      "68f2ca641980342c421ac16f9b1b39c69678cc65c04dfc965270f9191623b861",
+      "7ef4b275a2b2bafa9d8841b875404b9bdf64489dc9e9a5320f317622ea5c9240",
+      "04930b864495b912bb55fbdecee1628e759d46650be564b7618935a52e57b168"
+    ],
+    "phases": [
+      "a",
+      "b",
+      "a"
+    ],
+    "replacement": true,
+    "isolated": false
+  },
+  "visualAfter": {
+    "midpointHashes": [
+      "68f2ca641980342c421ac16f9b1b39c69678cc65c04dfc965270f9191623b861",
+      "7ef4b275a2b2bafa9d8841b875404b9bdf64489dc9e9a5320f317622ea5c9240",
+      "04930b864495b912bb55fbdecee1628e759d46650be564b7618935a52e57b168"
+    ],
+    "phases": [
+      "a",
+      "b",
+      "a"
+    ],
+    "replacement": true,
+    "isolated": true
+  }
+}

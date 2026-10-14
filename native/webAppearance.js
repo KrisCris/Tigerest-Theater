@@ -10,6 +10,7 @@ const TIGEREST_ARTWORK_SELECTOR = '.detailImageContainer, .cardImageContainer, .
 const tigerestMotionPreference = window.matchMedia?.('(prefers-reduced-motion: reduce)') || {matches: false};
 let tigerestAmbientImage = '';
 let tigerestAmbientPhase = 'b';
+const tigerestAmbientLayers = {a: 'none', b: 'none'};
 let tigerestAmbientRequest = 0;
 let tigerestAmbientGeneration = 0;
 let tigerestAmbientPool = [];
@@ -40,8 +41,6 @@ function mountTigerestAppearanceStyles() {
                 --tgs-shadow-soft: 0 10px 30px rgba(0, 0, 0, .22);
                 --tgs-radius: 14px;
                 --tgs-ease: cubic-bezier(.22, 1, .36, 1);
-                --tgs-ambient-image-a: none;
-                --tgs-ambient-image-b: none;
             }
 
             html,
@@ -108,6 +107,8 @@ function mountTigerestAppearanceStyles() {
             .emby-scrollbuttons-scrollbutton .md-icon { font-size: 26px !important; }
 
             .backgroundContainer {
+                --tgs-ambient-image-a: none;
+                --tgs-ambient-image-b: none;
                 position: fixed;
                 overflow: hidden;
                 background-color: #0b0d12 !important;
@@ -683,18 +684,29 @@ function tigerestArtworkUrl(image) {
     return match ? (match[1] || match[2] || match[3] || '').trim() : '';
 }
 
+function restoreTigerestAmbient(background) {
+    if (tigerestAmbientLayers.a === 'none' && tigerestAmbientLayers.b === 'none') return;
+    // These inherited values belong only to the background and its pseudo layers.
+    // Setting them on html also invalidates every card and hidden page.
+    for (const slot of ['a', 'b']) {
+        const property = `--tgs-ambient-image-${slot}`;
+        if (background.style.getPropertyValue(property) !== tigerestAmbientLayers[slot]) {
+            background.style.setProperty(property, tigerestAmbientLayers[slot]);
+        }
+    }
+}
+
 function applyTigerestAmbient(image, request, generation) {
     if (request !== tigerestAmbientRequest || generation !== tigerestAmbientGeneration) return;
 
     tigerestAmbientPhase = tigerestAmbientPhase === 'a' ? 'b' : 'a';
+    tigerestAmbientLayers[tigerestAmbientPhase] = image;
+    document.querySelectorAll('.backgroundContainer').forEach(restoreTigerestAmbient);
+    // Keep the phase on html so replacement layers start at the correct opacity.
+    // Unlike image properties, this selector only targets the background.
     const root = document.documentElement;
-    root.style.setProperty(`--tgs-ambient-image-${tigerestAmbientPhase}`, image);
-    root.classList.toggle?.('tigerest-ambient-phase-b', tigerestAmbientPhase === 'b');
-    if (!root.classList.toggle) {
-        if (tigerestAmbientPhase === 'b') root.classList.add('tigerest-ambient-phase-b');
-        else root.classList.remove('tigerest-ambient-phase-b');
-    }
-    root.classList.add('tigerest-has-ambient');
+    if (tigerestAmbientPhase === 'b') root.classList.add('tigerest-ambient-phase-b');
+    else root.classList.remove('tigerest-ambient-phase-b');
     tigerestAmbientImage = image;
 }
 
@@ -850,6 +862,7 @@ function observeTigerestPages() {
                 appearanceHeadChanged = true;
             }
             if (record.type === 'attributes') {
+                if (record.target.matches?.('.backgroundContainer')) restoreTigerestAmbient(record.target);
                 if (!record.target.matches?.(TIGEREST_PAGE_SELECTOR)) continue;
                 const currentClasses = record.target.classList;
                 const wasHidden = /(^|\s)hide(\s|$)/.test(record.oldValue || '');
@@ -862,6 +875,8 @@ function observeTigerestPages() {
 
             for (const node of record.addedNodes || []) {
                 if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                if (node.matches?.('.backgroundContainer')) restoreTigerestAmbient(node);
+                node.querySelectorAll?.('.backgroundContainer').forEach(restoreTigerestAmbient);
                 const page = node.matches?.(TIGEREST_PAGE_SELECTOR) ? node : null;
                 if (page && !page.classList.contains('hide')) {
                     scheduleTigerestPageAnimation(page);
