@@ -2,13 +2,13 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 function setup(){
  const file=__dirname+'/../native/homeMotion.js';assert.ok(fs.existsSync(file),'shared home motion navigation exists');
  const calls=[],history=['/home'],state={params:{},contextPath:'/home'},account={user:'one',server:'server'};
- const pop=name=>{calls.push([name]);if(history.length>1)history.pop();state.contextPath=history.at(-1);state.params={};};
+ const pop=name=>{calls.push([name]);if(history.length>1)history.pop();state.contextPath=history.at(-1);const detail=/^\/item\?id=(.+)$/.exec(state.contextPath);state.params=detail?{id:detail[1]}:{};};
  const router={showItem:async item=>{calls.push(['item',item.Id]);state.params={id:item.Id};state.contextPath='/item?id='+item.Id;history.push(state.contextPath);},back:()=>pop('back'),goHome:()=>{calls.push(['home']);history.push('/home');state.contextPath='/home';},getRouteUrl:item=>'/library?id='+item.Id+'&serverId='+item.ServerId};
  const pageJs={replace:async path=>{calls.push(['replace',path]);state.params={};state.contextPath=path;history[history.length-1]=path;},back:()=>pop('pageback')};
  const manager={currentApiClient:()=>({getCurrentUserId:()=>account.user,serverId:()=>account.server})};
- const c={console,Date,Promise,URL,URLSearchParams,setTimeout,clearTimeout,AbortController,location:{hash:'#/home'},document:{addEventListener(){},removeEventListener(){}}};c.window=c;
+ const listeners={},c={console,Date,Promise,URL,URLSearchParams,setTimeout,clearTimeout,AbortController,location:{hash:'#/home'},document:{addEventListener(type,fn){listeners[type]=fn;},removeEventListener(){}}};c.window=c;
  vm.runInNewContext(fs.readFileSync(file,'utf8'),c);const motion=c.TigerestHomeMotion,originalHome=router.goHome,dispose=motion.attach({router,pageJs,manager,viewManager:{currentViewInfo:()=>state}});
- return {motion,router,pageJs,account,state,calls,dispose,c,originalHome,history};
+ return {motion,router,pageJs,account,state,calls,dispose,c,originalHome,history,listeners};
 }
 const library={Id:'library',Type:'CollectionFolder',CollectionType:'movies'},card={item:{Id:'work',Type:'Movie'}};
 test('a work opened from home returns by replacing detail with its library, then normal home history',async()=>{
@@ -56,4 +56,37 @@ test('Android hardware back consumes owned detail/library navigation and active 
  await s.motion.openItem({card,library,navigate:()=>s.router.showItem(card.item)});assert.equal(s.motion.handleNativeBack(),true);
  await new Promise(r=>setTimeout(r,0));assert.equal(s.calls.at(-1)[0],'replace');
  s.motion.reset();s.c.TigerestHomeTransitions={busy:true};assert.equal(s.motion.handleNativeBack(),true);
+});
+// The visible Emby page, and a pointer press on a card's artwork inside it.
+function onPage(s,detail){
+ const page={classList:{contains:()=>false},getBoundingClientRect:()=>({width:800,height:600}),matches:selector=>detail&&selector==='.view-item-item',querySelectorAll:()=>[],contains:()=>true};
+ s.c.document.querySelectorAll=()=>[page];
+ return item=>{const image={isConnected:true},list={getItemFromElement:()=>item},card={dataset:{},querySelector:selector=>selector==='img.cardImage'?image:null,closest:selector=>selector==='.itemsContainer'?list:card};
+  s.listeners.pointerdown({target:{closest:()=>card}});return image;};
+}
+test('an episode pressed on its series page flies in, then back to the series, then back to the library',async()=>{
+ const s=setup(),effects=[];s.c.TigerestHomeTransitions={poster:async o=>{effects.push([o.direction,o.itemId,!!o.prepareTarget,o.source]);return o.navigate();},cancel(){}};
+ await s.motion.openItem({card:{item:{Id:'series',Type:'Series'}},library,navigate:()=>s.router.showItem({Id:'series',Type:'Series'})});
+ const episode={Id:'episode',Type:'Episode'},image=onPage(s,true)(episode);
+ await s.router.showItem(episode);
+ assert.deepEqual(effects.at(-1),['enter','episode',false,image]);assert.equal(s.state.params.id,'episode');
+ await s.router.back();
+ assert.deepEqual(effects.at(-1).slice(0,3),['return','episode',false],'a detail page has no virtual library list to prepare');
+ assert.deepEqual(s.calls.at(-1),['back']);assert.equal(s.state.params.id,'series');assert.equal(s.motion.entry.itemId,'series');
+ await s.router.back();
+ assert.deepEqual(effects.at(-1).slice(0,3),['return','series',true]);assert.deepEqual(s.calls.at(-1),['replace','/library?id=library&serverId=server']);
+ assert.equal(s.motion.entry,null);
+});
+test('episodes outside detail pages and other works on detail pages keep their original navigation',async()=>{
+ const s=setup(),effects=[];s.c.TigerestHomeTransitions={poster:async o=>{effects.push(o.itemId);return o.navigate();},cancel(){}};
+ const episode={Id:'episode',Type:'Episode'};onPage(s,false)(episode);await s.router.showItem(episode);
+ const similar={Id:'similar',Type:'Series'};onPage(s,true)(similar);await s.router.showItem(similar);
+ assert.deepEqual(effects,[]);assert.deepEqual(s.calls,[['item','episode'],['item','similar']]);
+});
+test('an episode opened from a page without a return flight returns with the original back only once it leaves',async()=>{
+ const s=setup(),effects=[];s.c.TigerestHomeTransitions={poster:async o=>{effects.push(o.direction);return o.navigate();},cancel(){}};
+ s.state.params={id:'series'};s.state.contextPath='/item?id=series';s.history.push(s.state.contextPath);
+ const episode={Id:'episode',Type:'Episode'};onPage(s,true)(episode);await s.router.showItem(episode);
+ await s.router.back();assert.deepEqual(effects,['enter','return']);assert.equal(s.motion.entry,null);
+ await s.router.back();assert.deepEqual(effects,['enter','return']);assert.deepEqual(s.calls.at(-1),['back']);
 });

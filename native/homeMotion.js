@@ -110,16 +110,18 @@
                 if (entry && entry.account !== account()) motion.reset();
                 if (matchesEntry()) {
                     const ticket = ++revision;
-                    const returning = entry, fromHome = returning.origin === 'home';
+                    const returning = entry, fromHome = returning.origin === 'home', nested = returning.origin === 'detail';
                     const navigate = () => fromHome ? options.pageJs.replace(returning.libraryPath, {}, true) : originals.back.apply(router, args);
                     let targetId = returning.itemId;
+                    // A restored detail page keeps the pressed card; another card for the same episode may precede it.
+                    const pressed = () => returning.source?.isConnected && visibleRoot().contains(returning.source) ? returning.source : null;
                     await effect('poster', {source: posterNode(returning.itemId, true), itemId: returning.itemId,
-                        findTarget: () => posterNode(targetId), prepareTarget: async signal => {
+                        findTarget: () => pressed() || posterNode(targetId), prepareTarget: nested ? undefined : async signal => {
                             targetId = await prepareLibraryPoster(returning.itemId,signal,returning.presentationKey) || targetId;
                         }, navigate, direction: 'return'});
                     if (ticket === revision && returning.account === account()) {
-                        entry = null;
-                        libraryContext = returning.homeOwned ? {library: returning.library, path: returning.libraryPath, account: returning.account,
+                        entry = returning.parent;
+                        if (!nested) libraryContext = returning.homeOwned ? {library: returning.library, path: returning.libraryPath, account: returning.account,
                             favoritesReturn: fromHome ? 'pop' : returning.favoritesReturn} : null;
                     }
                     return;
@@ -145,14 +147,20 @@
             const showItem = function (item, ...args) {
                 const pending = pressedPoster;
                 const resolved = typeof item === 'object' ? item : pending?.item;
-                const library = pending && currentLibrary();
-                if (!motion.busy && resolved && ['Movie','Series','Video'].includes(resolved.Type)
-                    && pending?.id === String(resolved.Id) && (typeof item === 'object' || String(item) === pending.id) && Date.now() - pending.at < 2000 && library) {
+                const navigate = () => originals.showItem.call(router, item, ...args);
+                const pressed = !motion.busy && resolved && pending?.id === String(resolved.Id)
+                    && (typeof item === 'object' || String(item) === pending.id) && Date.now() - pending.at < 2000;
+                const library = pressed && ['Movie','Series','Video'].includes(resolved.Type) && currentLibrary();
+                if (library) {
                     pressedPoster = null;
-                    return motion.openItem({card: {item: resolved}, library, source: pending.node,
-                        origin: 'library', navigate: () => originals.showItem.call(router, item, ...args)});
+                    return motion.openItem({card: {item: resolved}, library, source: pending.node, origin: 'library', navigate});
                 }
-                return originals.showItem.call(router, item, ...args);
+                // An episode chosen on a series or episode page flies to its own detail artwork.
+                if (pressed && resolved.Type === 'Episode' && visibleRoot().matches?.('.view-item-item')) {
+                    pressedPoster = null;
+                    return motion.openItem({card: {item: resolved}, library: null, source: pending.node, origin: 'detail', navigate});
+                }
+                return navigate();
             };
             const capture = event => {
                 const node = event.target.closest?.('.cardImageContainer,.cardOverlayContainer,img.cardImage');
@@ -172,10 +180,12 @@
         async openItem({card, library, source, navigate, origin = 'home'}) {
             if (motion.busy) return;
             if (!bindings) return navigate();
-            const previous = entry, ticket = ++revision;
+            const previous = entry, ticket = ++revision, nested = origin === 'detail';
+            // Returning from a nested detail page restores the flight back from the page below it.
+            const parent = nested && matchesEntry() ? previous : null;
             entry = {itemId: card.item.Id, presentationKey: card.item.PresentationUniqueKey, library, account: account(), origin,
-                homeOwned: origin === 'home' || !!matchesLibrary(), favoritesReturn: libraryContext?.favoritesReturn,
-                libraryPath: origin === 'home' ? libraryUrl(library) : path()};
+                homeOwned: !nested && (origin === 'home' || !!matchesLibrary()), favoritesReturn: libraryContext?.favoritesReturn,
+                libraryPath: origin === 'home' ? libraryUrl(library) : path(), parent, source: nested ? source : null};
             try {
                 return await effect('poster', {source, itemId: card.item.Id, findTarget: () => posterNode(card.item.Id, true), navigate, direction: 'enter'});
             } catch (error) { if (ticket === revision) entry = previous; throw error; }
