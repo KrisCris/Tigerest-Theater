@@ -1,26 +1,23 @@
 # Tigerest Theater / EMBY 大河版
 
-把 Emby 媒体库、MPV 播放器、弹幕和作品讨论放在一起。支持 Windows、Apple Silicon Mac 与 Android，桌面端提供画质预设、离线下载和可选 RIFE AI 补帧。
+把 Emby 媒体库、MPV 播放器、弹幕和作品讨论放在一起。支持 Windows、Apple Silicon Mac、iPad 与 Android，提供 MPV 播放、弹幕和对应平台的画质选项。
 
 [下载正式版](https://github.com/Tigerest/Tigerest-Theater/releases/latest) · [使用教程](https://github.com/Tigerest/Tigerest-Theater/wiki) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/Tigerest/Tigerest-Theater/issues) · [作者 B站](https://space.bilibili.com/12562485)
 
-**当前版本：2.6.0。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
+**Mac / iPad 当前版本：2.6.1；Windows / Android 当前下载仍为 2.6.0。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
 
 **已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.6.0 尚未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
 客户端不包含影视资源。你需要已有的 Emby 服务器地址和账号；媒体库、播放与下载权限由所连接的服务器提供。本项目是非官方 Emby 客户端，与 Emby LLC 无隶属关系。
 
-## 2.6.0 更新重点
+## 2.6.1 更新重点
 
-- **跨服务器公共评论：** 同一部作品可以一起讨论。大河用户沿用 Emby 登录；自建 Emby 用户注册独立评论账号后，可查看评论、发言和回复。
-- **头像随发言同步：** 大河头像由服务端同步，自建用户的头像来自自己当前登录的 Emby。头像同步失败可单独重试，已经发送成功的评论不会重新发送。
-- **更清楚的账户规则：** 注册和修改密码按服务端公布的规则显示；新服务为 8–128 个字符，旧服务保持 12–128。外服 Emby 登录凭据只用于自己的服务器。
-- **共享弹幕纠正：** 普通大河用户登录后即可保存手动选择的作品和集数关系，无需额外配置管理员文件。所有用户仍可读取共享匹配。
-- **音量正确记忆：** 首次默认 100，旧版遗留的 0 恢复一次；之后记住手动设置，包括主动设为 0。
-- **窗口操作：** Windows 支持左右边缘吸附、顶边最大化和拖出还原；首页「我的媒体」右侧提供全屏／窗口切换，顶部按钮统一样式。「首页 → 启动时自动全屏」默认关闭，下次启动生效。
-- **完整中文教程：** 安装、评论账号、头像、消息与报错、弹幕、字幕、补帧和故障排查均有独立 Wiki 页面。
+- **Mac 高刷新率界面：** 修复网页合成器的 60 Hz 回退，随屏幕刷新率运行；GPU-Next 下使用 Metal，减少图片解码、快照和模糊背景重绘造成的停顿。本机重复转场约 117–119 帧，首次详情准备仍可能短暂停顿。
+- **首次提供 iPad 版：** iPadOS 26+，保留专属／自建服务器选择、媒体库、详情、原生 MPV 播放、离线媒体、弹幕及客户端设置。
+- **触控和键盘：** 滑动定位、音量／亮度手势、长按倍速、锁定；修复 OSD 隐藏后的空格暂停、上一集／下一集，选集显示季集号，播放时隐藏系统状态栏。
+- **弹幕与画质：** iPad 弹幕独立按显示时钟移动，修复字形描边；搜索和别名匹配与 PC 对齐。画质预设及可选 RIFE 位于主设置。
 
-详情页统一显示「评论区」，大河的私人问题上报和评论管理继续保留。公共评论不会把私人报错公开。详细变化与验证范围见 [2.6.0 发布说明](docs/releases/2026-10-13-v2.6.0.md)。
+[iPad 安装说明](docs/apple/INSTALL.md)：发布的 IPA 未签名，需使用自己的 Apple 身份重签名；不提供 App Store／TestFlight 分发。完整范围与验证见 [2.6.1 发布说明](docs/releases/2026-10-14-v2.6.1.md)。Windows 包另行发布，本轮未提供新 Android 包。
 
 ## 下载与安装
 
@@ -29,11 +26,12 @@
 | Windows 安装版 | [2.6.0 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
 | Windows 便携版 | [2.6.0 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-x64.zip) | 同上；完整解压后运行 |
 | Android | [2.6.0 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-android.apk) | Android 15+，arm64-v8a / x86_64 |
-| Apple Silicon Mac | [2.6.0 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-arm64.dmg) | macOS 26+，M 系列芯片 |
+| Apple Silicon Mac | [2.6.1 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.1/TigerestTheater-2.6.1-arm64.dmg) | macOS 26+，M 系列芯片 |
+| iPad | [2.6.1 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.1/TigerestTheater-2.6.1-ipad.ipa) | iPadOS 26+，须自行签名安装 |
 
 包内已包含 MPV 和基础运行库，无需另装播放器。Windows RIFE 大型组件是可选扩展；已有 NVIDIA 1.0.0 扩展可以继续使用。正式 Mac 下载仅提供 Apple Silicon 版本。
 
-[2.6.0 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.0/TigerestTheater-2.6.0-SHA256SUMS.txt)与安装包放在同一发行页。
+[2.6.1 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.1/TigerestTheater-2.6.1-SHA256SUMS.txt)与 Mac／iPad 安装包放在同一发行页；旧平台包使用其对应版本的清单。
 
 ### 第一次使用
 
@@ -97,6 +95,7 @@ RIFE 默认关闭，需要大河内置播放配置：
 | --- | --- | --- |
 | Windows NVIDIA | 下载或离线导入 NVIDIA 1.0.0 扩展；三个 4.25 系列模型与可调目标帧率 | 最高逐行 SDR 4K / 60 fps；实际实时性能取决于设备和设置 |
 | Apple Silicon Mac | 模型与插件随包提供，使用 Core ML / Metal | 最高逐行 SDR 1080p / 30 fps、恒定帧率，输出两倍帧率 |
+| iPad | 随包 Core ML / Metal 原生滤镜，默认关闭 | 1920×1080、BT.709 SDR、23–30 fps，固定两倍；其他规格原帧通过 |
 | Android | 暂不提供 RIFE | 使用基础播放 |
 
 首次 Windows 引擎准备可能需要数分钟。高目标帧率、4K 和重型模型会增加负载；屏幕刷新率不代表补帧推理能力。详细安装、目标帧率计算和排查见 [RIFE 补帧](https://github.com/Tigerest/Tigerest-Theater/wiki/RIFE)。
@@ -140,8 +139,9 @@ RIFE 默认关闭，需要大河内置播放配置：
 - [Windows 构建](dev/windows/README.md)
 - [macOS 构建](dev/macos/README.md)
 - [Android 构建](android/README.md)
+- [iPad 安装与构建](docs/apple/INSTALL.md)
 - [Windows 测试环境要求](dev/windows/TESTING.md)
-- [版本变化](CHANGELOG.md)与[本次发布说明](docs/releases/2026-10-13-v2.6.0.md)
+- [版本变化](CHANGELOG.md)与[本次发布说明](docs/releases/2026-10-14-v2.6.1.md)
 
 Windows 每次运行原生测试前，都必须在同一个 PowerShell 调用中加载测试环境脚本并完成运行库预检。测试、包启动检查、生产 API 联调和真实媒体播放的覆盖范围分别记录，不能互相替代。
 

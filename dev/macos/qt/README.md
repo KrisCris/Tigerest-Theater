@@ -1,6 +1,6 @@
 # Mac display-link experiment (Qt 6.9.3)
 
-Status: built and measured in an isolated arm64 preview. It is **not enabled in release builds**. Native playback results, the final review, and remaining preview limitations are recorded in `docs/reports/2026-10-14-mac-120hz.md`.
+Status: the locally packaged arm64 **2.6.1 release includes these patches** after isolated preview validation and user acceptance. The generic `build-macos.yml` workflow still uses stock Qt and does not yet reproduce this engine; do not use its output as a replacement for the patched release. Native playback results, the final review, and remaining preview limitations are recorded in `docs/reports/2026-10-14-mac-120hz.md`.
 
 The stock Qt WebEngine compositor receives `display_id = -1` on macOS. Chromium's `ExternalBeginFrameSourceMac` then uses a 16.666 ms timer instead of a display link. On the test Mac, QScreen and CoreVideo both report 120 Hz, headed Chrome delivers ~120 rAF callbacks/s, and stock Qt delivers ~60 callbacks/s and ~60 Qt window submissions/s. Merely switching Qt Quick to Metal does not change this.
 
@@ -10,7 +10,7 @@ Source archive: [QtWebEngine 6.9.3](https://download.qt.io/archive/qt/6.9/6.9.3/
 
 SHA256: `d50b3b11d51dd876418cc36b4d6c96b4721e0aab773a3dd6beda606d46da8966`
 
-Apply the four compatibility/display patches in this directory to the extracted source with `patch -p1`. Besides the display-link change, they restore an SDK declaration, select the actual architecture's linker response file for a single-architecture Mac build, and make out-of-tree generated extension headers discoverable with valid include guards. These compatibility changes retain the existing enabled features.
+Apply all five compatibility/display/decode patches in this directory to the extracted source with `patch -p1`. Besides the display-link change, they restore an SDK declaration, select the actual architecture's linker response file for a single-architecture Mac build, and make out-of-tree generated extension headers discoverable with valid include guards. These compatibility changes retain the existing enabled features.
 
 Build outside the repository and installed application. Use the existing Qt 6.9.3 SDK's `qt-cmake` and `libexec/gn` (version `6.9.3.qtwebengine.qt.io`), Xcode 27, an isolated Python 3.9 environment with html5lib 1.1, and these CMake settings:
 
@@ -97,3 +97,7 @@ node tests/bench_image_bitmap.cjs '<candidate-client>' --webengine \
 ```
 
 The reference includes 18 exact pixel checks (alpha, ICC, EXIF, crops, filters, 16-bit input, animated frame zero and src mutation), cross-origin readback/transfer checks, a destroyed-caller exercise, and surviving-parent completion with matching pixels after the source iframe is removed. Completion is scheduled on the caller execution context, independent of the source document lifetime. The timing gate checks the synchronous part of large-JPEG extraction against the 8.33 ms UI budget. Native results are 73.5 ms before and 2.0 ms in the standalone candidate, with matching pixels. Forced empty-cache real-library home→detail runs improved from 76.77/85.16 to 109.56/117.18 rAF/s (worst interval 209.7→32.2 ms), but ordinary warm navigation did not show a clear gain. This is not a whole-interface 120 fps claim. See the dated report and sanitized async-bitmap metrics for both positive and negative evidence.
+
+## 2.6.1 release packaging
+
+Use the verified standalone patched bundle as the runtime source, rebuild the client with `VERSION=2.6.1`, and update its executable plus Info.plist. Do not run the ordinary build's `ninja install`/`macdeployqt` over this bundle: its SDK may still contain stock WebEngine. The bundled QtWebEngineCore UUID must match the patched install (`76AE7891-C29A-31D6-815F-C1505E445F07` in this build), not the official SDK. Replace local-preview metadata with `Contents/Resources/build-provenance.json` containing the final source commit, engine patch commit, patch digests and UI digests. Run `dev/macos/sign_bundle.py`, `tests/test_macos_bundle.py`, isolated launch checks, then create the normal DMG containing only the application and Applications link. No preview profile or launcher is included. The release remains ad-hoc signed, not notarized.

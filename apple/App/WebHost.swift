@@ -4,6 +4,7 @@ import AppleCore
 @MainActor final class WebHost: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     unowned let model: AppModel
     let view: WKWebView
+    private let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
     private var policy: BridgePolicy?
     private var tasks: [Int: Task<Void, Never>] = [:]
     init(model: AppModel) {
@@ -19,7 +20,7 @@ import AppleCore
         view.navigationDelegate = self; view.uiDelegate = self
         view.isOpaque = false; view.backgroundColor = .clear
         view.allowsBackForwardNavigationGestures = true
-        view.customUserAgent = "Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X) AppleWebKit/605.1.15 Version/26.0 Mobile/15E148 Safari/604.1 TigerestTheater/2.6.0"
+        view.customUserAgent = "Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X) AppleWebKit/605.1.15 Version/26.0 Mobile/15E148 Safari/604.1 TigerestTheater/\(version)"
         #if DEBUG
         view.isInspectable = true
         #endif
@@ -34,7 +35,7 @@ import AppleCore
         policy = BridgePolicy(origin: address.origin)
         do {
             let bootstrap: JSONValue = .object([
-                "version": .string("2.6.0"), "deviceName": .string("iPad"), "platform": .string("ipad"), "mode": .string("desktop"),
+                "version": .string(version), "deviceName": .string("iPad"), "platform": .string("ipad"), "mode": .string("desktop"),
                 "userAgent": .string(view.customUserAgent!), "scriptPath": .string("tigerest://bundle"), "mpvConfigMode": .string("embedded"), "mpvConfigDir": .string("iPad 应用内配置"),
                 "settings": .object(model.settings.values.mapValues(JSONValue.object)), "sections": .array(model.settings.sections), "settingsDescriptions": .object(model.settings.descriptions),
                 "capabilities": .object(["downloads": .bool(true), "nativePlayback": .bool(true), "desktopWindowControls": .bool(false), "selfUpdate": .bool(false), "updateCheck": .bool(true), "rife": .bool(SettingsStore.nativeRifeAvailable)])

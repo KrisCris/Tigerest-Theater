@@ -39,7 +39,7 @@ struct OnboardingView: View {
                     Divider()
                     Button("离线媒体", systemImage: "arrow.down.circle") { cancelConnection(); model.showOffline = true }
                     Button("管理配置档", systemImage: "person.crop.rectangle") { cancelConnection(); model.showProfiles = true }
-                    Text("iPadOS 26+ · 2.6.0 开发版").font(.caption).foregroundStyle(.secondary)
+                    Text("iPadOS 26+ · \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown")").font(.caption).foregroundStyle(.secondary)
                 }.padding(32).frame(maxWidth: 560).frame(maxWidth: .infinity)
             }
             .toolbar { if model.server != nil { Button("取消") { cancelConnection(); model.showConnection = false } } }

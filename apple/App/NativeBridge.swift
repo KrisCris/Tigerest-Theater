@@ -55,7 +55,7 @@ import AppleCore
                 let success = response.statusCode == 200 && (info["Id"].string != nil || info["Version"].string != nil)
                 emit("system", "serverConnectivityResult", [arg(0), .bool(success), .string(address.endpoint("web/index.html").absoluteString), .string(success ? "" : "无法连接 Emby 服务器")]); return .bool(success)
             case "hello": return .string("大河影院 iPad")
-            case "getUserAgent": return .string(model.web.view.customUserAgent ?? "TigerestTheater/2.6.0")
+            case "getUserAgent": return .string(model.web.view.customUserAgent ?? "TigerestTheater/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown")")
             case "openServerSettings": model.openServerSettings(); return .null
             case "openQualitySettings": model.showQuality = true; return .null
             case "openProfiles": model.showProfiles = true; return .null

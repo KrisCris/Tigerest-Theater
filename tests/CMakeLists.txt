@@ -489,6 +489,13 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_cache_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_home_motion_cache_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  if(APPLE)
+    add_test(NAME test_ambient_renderer_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_ambient_renderer_ui.cjs
+                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_ambient_renderer_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
+                         ENVIRONMENT "TIGEREST_AMBIENT_REQUIRE_EMBEDDED=1")
+  endif()
   add_test(NAME test_home_gallery_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_gallery_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
