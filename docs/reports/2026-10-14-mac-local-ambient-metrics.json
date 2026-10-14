@@ -1661,5 +1661,172 @@
       }
     ]
   },
-  "limitations": "One machine, three routes per binary, ordered baseline then candidate; load state varies. No demonstrated first-detail end-to-end gain. rAF is not physical scanout."
+  "limitations": "One machine, three routes per binary, ordered baseline then candidate; load state varies. No demonstrated first-detail end-to-end gain. rAF is not physical scanout.",
+  "diagnosticTrace": {
+    "note": "Instrumentation changes timings. GPU Skia SwapBuffers event cadence is not physical scanout. Fresh run, not ordinary benchmark.",
+    "routes": [
+      {
+        "route": 0,
+        "kind": "poster",
+        "rafFPS": 105.16402448595191,
+        "rafWorst": 58.29999999999927,
+        "longMainTasks": [
+          {
+            "atMs": 304.159,
+            "ms": 17.66,
+            "name": "XHRLoad"
+          },
+          {
+            "atMs": 338.863,
+            "ms": 64.17,
+            "name": "BlinkScheduler_PerformMicrotaskCheckpoint"
+          },
+          {
+            "atMs": 340.011,
+            "ms": 28.216,
+            "name": "EventDispatch"
+          },
+          {
+            "atMs": 340.403,
+            "ms": 27.637,
+            "name": "FunctionCall"
+          },
+          {
+            "atMs": 343.241,
+            "ms": 24.78,
+            "name": "Layout"
+          },
+          {
+            "atMs": 374.755,
+            "ms": 11.623,
+            "name": "Layout"
+          },
+          {
+            "atMs": 389.165,
+            "ms": 9.056,
+            "name": "Layout"
+          },
+          {
+            "atMs": 404.327,
+            "ms": 11.022,
+            "name": "ProxyMain::BeginMainFrame"
+          },
+          {
+            "atMs": 447.881,
+            "ms": 16.96,
+            "name": "ProxyMain::BeginMainFrame"
+          }
+        ],
+        "swaps": {
+          "count": 143,
+          "rate": 111.51327439882958,
+          "worstMs": 32.935,
+          "gapsAbove20ms": [
+            {
+              "atMs": 39.527,
+              "ms": 22.913
+            },
+            {
+              "atMs": 457.736,
+              "ms": 32.935
+            }
+          ]
+        },
+        "posterFlight": {
+          "startMs": 540.7200000789016,
+          "endMs": 1267.3860000194982,
+          "swapsPerSecond": 120.11290613176386,
+          "maxIntervalMs": 9.805000000000064,
+          "gapsAbove12ms": 0
+        }
+      },
+      {
+        "route": 1,
+        "kind": "poster",
+        "rafFPS": 113.35485323924611,
+        "rafWorst": 25,
+        "longMainTasks": [
+          {
+            "atMs": 410.784,
+            "ms": 12.908,
+            "name": "ProxyMain::BeginMainFrame"
+          },
+          {
+            "atMs": 410.993,
+            "ms": 11.469,
+            "name": "FireAnimationFrame"
+          },
+          {
+            "atMs": 410.996,
+            "ms": 11.359,
+            "name": "FunctionCall"
+          },
+          {
+            "atMs": 411.511,
+            "ms": 10.64,
+            "name": "Layout"
+          },
+          {
+            "atMs": 440.172,
+            "ms": 20.057,
+            "name": "ProxyMain::BeginMainFrame"
+          }
+        ],
+        "swaps": {
+          "count": 152,
+          "rate": 115.08970899833844,
+          "worstMs": 22.892,
+          "gapsAbove20ms": [
+            {
+              "atMs": 243.292,
+              "ms": 22.892
+            },
+            {
+              "atMs": 441.558,
+              "ms": 21.654
+            }
+          ]
+        },
+        "posterFlight": {
+          "startMs": 593.4380000159144,
+          "endMs": 1318.9830000353977,
+          "swapsPerSecond": 118.6047614928014,
+          "maxIntervalMs": 15.222999999999956,
+          "gapsAbove12ms": 1
+        }
+      },
+      {
+        "route": 2,
+        "kind": "homeReturn",
+        "rafFPS": 117.53086419753086,
+        "rafWorst": 25,
+        "longMainTasks": [
+          {
+            "atMs": 336.601,
+            "ms": 13.615,
+            "name": "ProxyMain::BeginMainFrame"
+          }
+        ],
+        "swaps": {
+          "count": 225,
+          "rate": 112.47639376579502,
+          "worstMs": 51.664,
+          "gapsAbove20ms": [
+            {
+              "atMs": 406.164,
+              "ms": 51.664
+            },
+            {
+              "atMs": 873.462,
+              "ms": 34.315
+            },
+            {
+              "atMs": 914.221,
+              "ms": 34.934
+            }
+          ]
+        }
+      }
+    ]
+  }
 }
