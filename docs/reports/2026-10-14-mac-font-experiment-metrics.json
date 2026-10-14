@@ -1,0 +1,664 @@
+{
+  "status": "experiment rejected: no consistent real-route improvement; no engine font changes shipped",
+  "measurement": "requestAnimationFrame scheduling, not physical presentation",
+  "fixture": {
+    "original": {
+      "roundTotalMs": [
+        55.5,
+        9.800000190734863,
+        11.5
+      ],
+      "roundMaxMs": [
+        20.200000047683716,
+        1.7000000476837158,
+        2
+      ],
+      "pixels": [
+        {
+          "lang": "zh",
+          "weight": 400,
+          "italic": false,
+          "width": 428.9019470214844,
+          "hash": "35b21a57"
+        },
+        {
+          "lang": "zh",
+          "weight": 400,
+          "italic": true,
+          "width": 436.6539001464844,
+          "hash": "5c2a93c7"
+        },
+        {
+          "lang": "zh",
+          "weight": 600,
+          "italic": false,
+          "width": 435.45989990234375,
+          "hash": "0de8525f"
+        },
+        {
+          "lang": "zh",
+          "weight": 600,
+          "italic": true,
+          "width": 442.6422119140625,
+          "hash": "1a676f80"
+        },
+        {
+          "lang": "zh",
+          "weight": 750,
+          "italic": false,
+          "width": 440.46380615234375,
+          "hash": "ee2e7965"
+        },
+        {
+          "lang": "zh",
+          "weight": 750,
+          "italic": true,
+          "width": 447.1197509765625,
+          "hash": "b2258cdb"
+        },
+        {
+          "lang": "ja",
+          "weight": 400,
+          "italic": false,
+          "width": 315.79547119140625,
+          "hash": "cc93f027"
+        },
+        {
+          "lang": "ja",
+          "weight": 400,
+          "italic": true,
+          "width": 315.79547119140625,
+          "hash": "54cd2bcf"
+        },
+        {
+          "lang": "ja",
+          "weight": 600,
+          "italic": false,
+          "width": 315.79547119140625,
+          "hash": "97a08a87"
+        },
+        {
+          "lang": "ja",
+          "weight": 600,
+          "italic": true,
+          "width": 315.79547119140625,
+          "hash": "19fc773a"
+        },
+        {
+          "lang": "ja",
+          "weight": 750,
+          "italic": false,
+          "width": 315.79547119140625,
+          "hash": "8aeb4ed8"
+        },
+        {
+          "lang": "ja",
+          "weight": 750,
+          "italic": true,
+          "width": 315.79547119140625,
+          "hash": "83b9f43d"
+        },
+        {
+          "lang": "ko",
+          "weight": 400,
+          "italic": false,
+          "width": 315.13983154296875,
+          "hash": "2482b207"
+        },
+        {
+          "lang": "ko",
+          "weight": 400,
+          "italic": true,
+          "width": 319.07733154296875,
+          "hash": "49a80be0"
+        },
+        {
+          "lang": "ko",
+          "weight": 600,
+          "italic": false,
+          "width": 314.59295654296875,
+          "hash": "c3bbae09"
+        },
+        {
+          "lang": "ko",
+          "weight": 600,
+          "italic": true,
+          "width": 317.60076904296875,
+          "hash": "7eefa937"
+        },
+        {
+          "lang": "ko",
+          "weight": 750,
+          "italic": false,
+          "width": 314.21014404296875,
+          "hash": "ebe6f403"
+        },
+        {
+          "lang": "ko",
+          "weight": 750,
+          "italic": true,
+          "width": 316.50701904296875,
+          "hash": "04e96fab"
+        },
+        {
+          "lang": "ar",
+          "weight": 400,
+          "italic": false,
+          "width": 163.70703125,
+          "hash": "2f880f77"
+        },
+        {
+          "lang": "ar",
+          "weight": 400,
+          "italic": true,
+          "width": 190.01171875,
+          "hash": "b1639de4"
+        },
+        {
+          "lang": "ar",
+          "weight": 600,
+          "italic": false,
+          "width": 168.998046875,
+          "hash": "0a59994b"
+        },
+        {
+          "lang": "ar",
+          "weight": 600,
+          "italic": true,
+          "width": 201.8714599609375,
+          "hash": "29a98fa7"
+        },
+        {
+          "lang": "ar",
+          "weight": 750,
+          "italic": false,
+          "width": 170.3515625,
+          "hash": "845ad91a"
+        },
+        {
+          "lang": "ar",
+          "weight": 750,
+          "italic": true,
+          "width": 213.41001892089844,
+          "hash": "d242568d"
+        },
+        {
+          "lang": "hi",
+          "weight": 400,
+          "italic": false,
+          "width": 191.36843872070312,
+          "hash": "1fef3fc4"
+        },
+        {
+          "lang": "hi",
+          "weight": 400,
+          "italic": true,
+          "width": 193.55593872070312,
+          "hash": "ad514d27"
+        },
+        {
+          "lang": "hi",
+          "weight": 600,
+          "italic": false,
+          "width": 198.00282287597656,
+          "hash": "9995de34"
+        },
+        {
+          "lang": "hi",
+          "weight": 600,
+          "italic": true,
+          "width": 199.6844482421875,
+          "hash": "63172091"
+        },
+        {
+          "lang": "hi",
+          "weight": 750,
+          "italic": false,
+          "width": 206.16030883789062,
+          "hash": "84411adc"
+        },
+        {
+          "lang": "hi",
+          "weight": 750,
+          "italic": true,
+          "width": 207.47962951660156,
+          "hash": "0e796af7"
+        },
+        {
+          "lang": "en",
+          "weight": 400,
+          "italic": false,
+          "width": 385.41015625,
+          "hash": "fccd9fe8"
+        },
+        {
+          "lang": "en",
+          "weight": 400,
+          "italic": true,
+          "width": 398.986328125,
+          "hash": "72ceb97c"
+        },
+        {
+          "lang": "en",
+          "weight": 600,
+          "italic": false,
+          "width": 397.82421875,
+          "hash": "4292b7f9"
+        },
+        {
+          "lang": "en",
+          "weight": 600,
+          "italic": true,
+          "width": 409.05792236328125,
+          "hash": "0ffe2024"
+        },
+        {
+          "lang": "en",
+          "weight": 750,
+          "italic": false,
+          "width": 407.19970703125,
+          "hash": "9040d45e"
+        },
+        {
+          "lang": "en",
+          "weight": 750,
+          "italic": true,
+          "width": 416.67315673828125,
+          "hash": "dd96917d"
+        }
+      ],
+      "validated": {
+        "afterEviction": true,
+        "afterMemoryPressure": true
+      }
+    },
+    "variationCache": {
+      "roundTotalMs": [
+        45.700000047683716,
+        4.600000023841858,
+        5.099999904632568
+      ],
+      "roundMaxMs": [
+        19.100000023841858,
+        0.8000000715255737,
+        0.5999999046325684
+      ],
+      "pixels": [
+        {
+          "lang": "zh",
+          "weight": 400,
+          "italic": false,
+          "width": 428.9019470214844,
+          "hash": "35b21a57"
+        },
+        {
+          "lang": "zh",
+          "weight": 400,
+          "italic": true,
+          "width": 436.6539001464844,
+          "hash": "5c2a93c7"
+        },
+        {
+          "lang": "zh",
+          "weight": 600,
+          "italic": false,
+          "width": 435.45989990234375,
+          "hash": "0de8525f"
+        },
+        {
+          "lang": "zh",
+          "weight": 600,
+          "italic": true,
+          "width": 442.6422119140625,
+          "hash": "1a676f80"
+        },
+        {
+          "lang": "zh",
+          "weight": 750,
+          "italic": false,
+          "width": 440.46380615234375,
+          "hash": "ee2e7965"
+        },
+        {
+          "lang": "zh",
+          "weight": 750,
+          "italic": true,
+          "width": 447.1197509765625,
+          "hash": "b2258cdb"
+        },
+        {
+          "lang": "ja",
+          "weight": 400,
+          "italic": false,
+          "width": 315.79547119140625,
+          "hash": "cc93f027"
+        },
+        {
+          "lang": "ja",
+          "weight": 400,
+          "italic": true,
+          "width": 315.79547119140625,
+          "hash": "54cd2bcf"
+        },
+        {
+          "lang": "ja",
+          "weight": 600,
+          "italic": false,
+          "width": 315.79547119140625,
+          "hash": "97a08a87"
+        },
+        {
+          "lang": "ja",
+          "weight": 600,
+          "italic": true,
+          "width": 315.79547119140625,
+          "hash": "19fc773a"
+        },
+        {
+          "lang": "ja",
+          "weight": 750,
+          "italic": false,
+          "width": 315.79547119140625,
+          "hash": "8aeb4ed8"
+        },
+        {
+          "lang": "ja",
+          "weight": 750,
+          "italic": true,
+          "width": 315.79547119140625,
+          "hash": "83b9f43d"
+        },
+        {
+          "lang": "ko",
+          "weight": 400,
+          "italic": false,
+          "width": 315.13983154296875,
+          "hash": "2482b207"
+        },
+        {
+          "lang": "ko",
+          "weight": 400,
+          "italic": true,
+          "width": 319.07733154296875,
+          "hash": "49a80be0"
+        },
+        {
+          "lang": "ko",
+          "weight": 600,
+          "italic": false,
+          "width": 314.59295654296875,
+          "hash": "c3bbae09"
+        },
+        {
+          "lang": "ko",
+          "weight": 600,
+          "italic": true,
+          "width": 317.60076904296875,
+          "hash": "7eefa937"
+        },
+        {
+          "lang": "ko",
+          "weight": 750,
+          "italic": false,
+          "width": 314.21014404296875,
+          "hash": "ebe6f403"
+        },
+        {
+          "lang": "ko",
+          "weight": 750,
+          "italic": true,
+          "width": 316.50701904296875,
+          "hash": "04e96fab"
+        },
+        {
+          "lang": "ar",
+          "weight": 400,
+          "italic": false,
+          "width": 163.70703125,
+          "hash": "2f880f77"
+        },
+        {
+          "lang": "ar",
+          "weight": 400,
+          "italic": true,
+          "width": 190.01171875,
+          "hash": "b1639de4"
+        },
+        {
+          "lang": "ar",
+          "weight": 600,
+          "italic": false,
+          "width": 168.998046875,
+          "hash": "0a59994b"
+        },
+        {
+          "lang": "ar",
+          "weight": 600,
+          "italic": true,
+          "width": 201.8714599609375,
+          "hash": "29a98fa7"
+        },
+        {
+          "lang": "ar",
+          "weight": 750,
+          "italic": false,
+          "width": 170.3515625,
+          "hash": "845ad91a"
+        },
+        {
+          "lang": "ar",
+          "weight": 750,
+          "italic": true,
+          "width": 213.41001892089844,
+          "hash": "d242568d"
+        },
+        {
+          "lang": "hi",
+          "weight": 400,
+          "italic": false,
+          "width": 191.36843872070312,
+          "hash": "1fef3fc4"
+        },
+        {
+          "lang": "hi",
+          "weight": 400,
+          "italic": true,
+          "width": 193.55593872070312,
+          "hash": "ad514d27"
+        },
+        {
+          "lang": "hi",
+          "weight": 600,
+          "italic": false,
+          "width": 198.00282287597656,
+          "hash": "9995de34"
+        },
+        {
+          "lang": "hi",
+          "weight": 600,
+          "italic": true,
+          "width": 199.6844482421875,
+          "hash": "63172091"
+        },
+        {
+          "lang": "hi",
+          "weight": 750,
+          "italic": false,
+          "width": 206.16030883789062,
+          "hash": "84411adc"
+        },
+        {
+          "lang": "hi",
+          "weight": 750,
+          "italic": true,
+          "width": 207.47962951660156,
+          "hash": "0e796af7"
+        },
+        {
+          "lang": "en",
+          "weight": 400,
+          "italic": false,
+          "width": 385.41015625,
+          "hash": "fccd9fe8"
+        },
+        {
+          "lang": "en",
+          "weight": 400,
+          "italic": true,
+          "width": 398.986328125,
+          "hash": "72ceb97c"
+        },
+        {
+          "lang": "en",
+          "weight": 600,
+          "italic": false,
+          "width": 397.82421875,
+          "hash": "4292b7f9"
+        },
+        {
+          "lang": "en",
+          "weight": 600,
+          "italic": true,
+          "width": 409.05792236328125,
+          "hash": "0ffe2024"
+        },
+        {
+          "lang": "en",
+          "weight": 750,
+          "italic": false,
+          "width": 407.19970703125,
+          "hash": "9040d45e"
+        },
+        {
+          "lang": "en",
+          "weight": 750,
+          "italic": true,
+          "width": 416.67315673828125,
+          "hash": "dd96917d"
+        }
+      ],
+      "validated": {
+        "afterEviction": true,
+        "afterMemoryPressure": true
+      }
+    },
+    "descriptorStressDistinctIntegerSizes": 96,
+    "mainThreadGenerationInvalidationTested": false
+  },
+  "realRoutes": [
+    {
+      "label": "offBefore",
+      "enabled": false,
+      "viewport": [
+        1800,
+        1130,
+        2
+      ],
+      "results": [
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 107.84075245276898,
+          "p95": 16.199999999999818,
+          "worst": 58.29999999999927,
+          "total": 1237.8999999761581,
+          "firstFrame": 8.300000000000182
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 114.24404472532825,
+          "p95": 9.899999999999636,
+          "worst": 25,
+          "total": 1240.8999999761581,
+          "firstFrame": 8.199999999999818
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 117.54291053951708,
+          "p95": 9,
+          "worst": 25,
+          "total": 2047,
+          "firstFrame": 6.799999999999272
+        }
+      ]
+    },
+    {
+      "label": "on",
+      "enabled": true,
+      "viewport": [
+        1800,
+        1130,
+        2
+      ],
+      "results": [
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 110.19508611541912,
+          "p95": 9.600000000000364,
+          "worst": 66.69999999999982,
+          "total": 1227.1999999284744,
+          "firstFrame": 8.300000000000182
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 114.04833836858006,
+          "p95": 10,
+          "worst": 24.899999999999636,
+          "total": 1320.3999999761581,
+          "firstFrame": 17
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 117.53134988935334,
+          "p95": 9.100000000000364,
+          "worst": 25,
+          "total": 2035.4000000953674,
+          "firstFrame": 16.5
+        }
+      ]
+    },
+    {
+      "label": "offAfter",
+      "enabled": false,
+      "viewport": [
+        1800,
+        1130,
+        2
+      ],
+      "results": [
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 112.15686274509804,
+          "p95": 9.899999999999636,
+          "worst": 58.30000000000018,
+          "total": 1283.2000000476837,
+          "firstFrame": 7.899999999999636
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 113.3686690223793,
+          "p95": 10.100000000000364,
+          "worst": 26.199999999999818,
+          "total": 1358.3999999761581,
+          "firstFrame": 15.100000000000364
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 118.53448275862067,
+          "p95": 9.5,
+          "worst": 24.899999999999636,
+          "total": 2044,
+          "firstFrame": 7
+        }
+      ]
+    }
+  ]
+}
