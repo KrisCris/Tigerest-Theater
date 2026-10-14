@@ -11,25 +11,47 @@
         'tigerest/settings.js'
     ];
 
-    function seedDefaultServer() {
+    // In app mode, Emby sends a first run without a known server to Emby
+    // Connect. Record the server chosen at startup so its own sign-in opens.
+    function chosenServer() {
         const localAddress = 'http://192.168.5.150:8095';
         const remoteAddress = 'http://nas.tigerest.top:8095';
-        if (window.location.origin !== localAddress && window.location.origin !== remoteAddress) return;
+        if (window.location.origin === localAddress || window.location.origin === remoteAddress) return () => ({
+            Id: '62526c3bf747439c99327ddec5fed4a8',
+            Name: 'TIGEREST-NAS',
+            ManualAddress: remoteAddress,
+            LocalAddress: localAddress,
+            RemoteAddress: remoteAddress,
+            IsLocalServer: true,
+            LastConnectionMode: 0
+        });
+        let chosen;
+        try { chosen = new URL(window.jmpInfo?.settings?.main?.userWebClient || ''); } catch (error) { return null; }
+        if (chosen.origin !== window.location.origin) return null;
+        return () => {
+            // The web client lives under /web; a path before it is a reverse-proxy prefix.
+            const address = window.location.origin + window.location.pathname.replace(/\/web(?:\/.*)?$/i, '');
+            // Emby reads its server list as it starts, so ask before continuing, once per server.
+            const request = new XMLHttpRequest();
+            request.open('GET', address + '/System/Info/Public', false);
+            request.send();
+            const info = request.status === 200 ? JSON.parse(request.responseText) : null;
+            // Manual mode keeps the address and port the user entered.
+            return info?.Id ? {Id: info.Id, Name: info.ServerName || chosen.host, ManualAddress: address, LastConnectionMode: 2} : null;
+        };
+    }
+
+    function seedDefaultServer() {
+        const server = chosenServer();
+        if (!server) return;
 
         try {
             const storageKey = 'servercredentials3';
             const credentials = JSON.parse(localStorage.getItem(storageKey) || '{}');
             if (!Array.isArray(credentials.Servers) || credentials.Servers.length === 0) {
-                credentials.Servers = [{
-                    Id: '62526c3bf747439c99327ddec5fed4a8',
-                    Name: 'TIGEREST-NAS',
-                    ManualAddress: remoteAddress,
-                    LocalAddress: localAddress,
-                    RemoteAddress: remoteAddress,
-                    IsLocalServer: true,
-                    LastConnectionMode: 0,
-                    DateLastAccessed: Date.now()
-                }];
+                const known = server();
+                if (!known) return;
+                credentials.Servers = [{...known, DateLastAccessed: Date.now()}];
                 localStorage.setItem(storageKey, JSON.stringify(credentials));
             }
             // The server is already known, so the generic first-run tour would
