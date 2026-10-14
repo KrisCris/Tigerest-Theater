@@ -7,7 +7,11 @@ param(
   [ValidateRange(1,64)][int]$Jobs = 8
 )
 $ErrorActionPreference = 'Stop'
-$patch = Join-Path $PSScriptRoot 'qtwebengine-6.9.3-d3d11-producer-sync.patch'
+# patches.txt lists the patches in application order; the runtime manifest
+# records each one so packaging can reject a runtime built from another set.
+$patches = @(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'patches.txt') |
+  Where-Object { $_.Trim() } | ForEach-Object { Join-Path $PSScriptRoot $_.Trim() })
+if ($patches.Count -eq 0) { throw 'patches.txt lists no patches.' }
 $SourceDirectory = [IO.Path]::GetFullPath($SourceDirectory)
 $BuildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
 $QtRoot = [IO.Path]::GetFullPath($QtRoot)
@@ -27,17 +31,19 @@ foreach ($command in @('git','cmake','node','bison','flex','gperf','perl')) {
 }
 if (-not (Test-Path -LiteralPath $PythonExecutable)) { throw 'Python executable not found.' }
 # Accept an already applied patch; do not duplicate it or silently ignore drift.
-$previousErrorPreference = $ErrorActionPreference
-try {
-  $ErrorActionPreference = 'Continue'
-  git -C $SourceDirectory apply --reverse --check $patch 2>$null
-  $alreadyApplied = $LASTEXITCODE -eq 0
-} finally { $ErrorActionPreference = $previousErrorPreference }
-if (-not $alreadyApplied) {
-  git -C $SourceDirectory apply --check $patch
-  if ($LASTEXITCODE -ne 0) { throw 'Source does not match this patch.' }
-  git -C $SourceDirectory apply $patch
-  if ($LASTEXITCODE -ne 0) { throw 'Could not apply patch.' }
+foreach ($patch in $patches) {
+  $previousErrorPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    git -C $SourceDirectory apply --reverse --check $patch 2>$null
+    $alreadyApplied = $LASTEXITCODE -eq 0
+  } finally { $ErrorActionPreference = $previousErrorPreference }
+  if (-not $alreadyApplied) {
+    git -C $SourceDirectory apply --check $patch
+    if ($LASTEXITCODE -ne 0) { throw "Source does not match $(Split-Path -Leaf $patch)." }
+    git -C $SourceDirectory apply $patch
+    if ($LASTEXITCODE -ne 0) { throw "Could not apply $(Split-Path -Leaf $patch)." }
+  }
 }
 New-Item -ItemType Directory -Path $BuildDirectory -Force | Out-Null
 $env:NINJAFLAGS = "-j$Jobs"
@@ -62,8 +68,9 @@ function Get-Sha256([string]$Path) {
 }
 $manifest = [pscustomobject]@{
   qtVersion = '6.9.3'
-  patchSha256 = Get-Sha256 $patch
+  patches = @($patches | ForEach-Object {
+    [pscustomobject]@{ file = Split-Path -Leaf $_; sha256 = Get-Sha256 $_ } })
   coreSha256 = Get-Sha256 (Join-Path $InstallDirectory 'bin\Qt6WebEngineCore.dll')
-} | ConvertTo-Json
+} | ConvertTo-Json -Depth 3
 [IO.File]::WriteAllText((Join-Path $InstallDirectory 'tigerest-webengine.json'),
                        $manifest, [Text.UTF8Encoding]::new($false))

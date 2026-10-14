@@ -24,10 +24,13 @@ class OpenSSLDeployment(unittest.TestCase):
                 (runtime / "bin" / name).write_bytes(b"patched-runtime")
             for directory in ("resources", "translations", "qml"):
                 (runtime / directory).mkdir()
-            patch = ROOT / "dev/windows/qtwebengine/qtwebengine-6.9.3-d3d11-producer-sync.patch"
+            patch_directory = ROOT / "dev/windows/qtwebengine"
+            patches = [line.strip() for line in (patch_directory / "patches.txt").read_text(
+                encoding="utf-8").splitlines() if line.strip()]
             (runtime / "tigerest-webengine.json").write_text(json.dumps({
                 "qtVersion": "6.9.3",
-                "patchSha256": hashlib.sha256(patch.read_bytes()).hexdigest(),
+                "patches": [{"file": name, "sha256": hashlib.sha256((patch_directory / name).read_bytes()).hexdigest()}
+                            for name in patches],
                 "coreSha256": hashlib.sha256(b"patched-runtime").hexdigest(),
             }), encoding="utf-8")
             (root / "CMakeLists.txt").write_text(f'''

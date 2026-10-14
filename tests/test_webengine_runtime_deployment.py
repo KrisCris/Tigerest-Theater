@@ -9,11 +9,14 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-PATCH = ROOT / "dev/windows/qtwebengine/qtwebengine-6.9.3-d3d11-producer-sync.patch"
+PATCH_DIRECTORY = ROOT / "dev/windows/qtwebengine"
+PATCHES = [PATCH_DIRECTORY / line.strip() for line in
+           (PATCH_DIRECTORY / "patches.txt").read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 class WebEngineDeployment(unittest.TestCase):
-    def configure(self, *, empty=False, missing=None, stock=False, version="6.9.3", bad_patch=False):
+    def configure(self, *, empty=False, missing=None, stock=False, version="6.9.3", bad_patch=False,
+                  missing_patch=False):
         with tempfile.TemporaryDirectory(prefix="tigerest-webengine-deploy-") as temporary:
             root = Path(temporary)
             # Keep the real configure/install code, with a fixture trust lock.
@@ -25,7 +28,15 @@ class WebEngineDeployment(unittest.TestCase):
                 shutil.copyfile(ROOT / "CMakeModules" / name, source / "CMakeModules" / name)
             patch_directory = source / "dev/windows/qtwebengine"
             patch_directory.mkdir(parents=True)
-            shutil.copyfile(PATCH, patch_directory / PATCH.name)
+            shutil.copyfile(PATCH_DIRECTORY / "patches.txt", patch_directory / "patches.txt")
+            for patch in PATCHES:
+                shutil.copyfile(patch, patch_directory / patch.name)
+            recorded = [{"file": patch.name, "sha256": hashlib.sha256(patch.read_bytes()).hexdigest()}
+                        for patch in PATCHES]
+            if bad_patch:
+                recorded[-1]["sha256"] = "0" * 64
+            if missing_patch:
+                recorded.pop()
             tls = root / "tls runtime"
             tls.mkdir()
             tls_lock = {"schemaVersion": 1, "files": {}}
@@ -52,7 +63,7 @@ class WebEngineDeployment(unittest.TestCase):
             if missing != "manifest":
                 (runtime / "tigerest-webengine.json").write_text(json.dumps({
                     "qtVersion": version,
-                    "patchSha256": "0" * 64 if bad_patch else hashlib.sha256(PATCH.read_bytes()).hexdigest(),
+                    "patches": recorded,
                     "coreSha256": hashlib.sha256(b"patched-runtime").hexdigest(),
                 }), encoding="utf-8")
             (root / "CMakeLists.txt").write_text(f'''
@@ -94,6 +105,9 @@ include("{ROOT.as_posix()}/CMakeModules/CompleteBundle.cmake")
     def test_source_patch_and_qt_version_are_verified(self):
         self.rejected("does not match", bad_patch=True)
         self.rejected("does not match Qt", version="6.10.3")
+
+    def test_runtime_from_a_smaller_patch_set_is_rejected(self):
+        self.rejected("patch set does not match", missing_patch=True)
 
     def test_incomplete_companion_files_are_rejected(self):
         self.rejected("Incomplete patched WebEngine", missing="QtWebEngineProcess.exe")

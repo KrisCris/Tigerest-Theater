@@ -314,6 +314,9 @@ Window
     settings.localContentCanAccessFileUrls: true
     settings.allowRunningInsecureContent: true
     settings.playbackRequiresUserGesture: false
+    // QtWebEngine defaults this off unless --enable-smooth-scrolling is passed;
+    // without it wheel scrolling and scroll-behavior:smooth jump instantly.
+    settings.scrollAnimatorEnabled: true
     profile.httpUserAgent: components.system.getUserAgent()
     profile.httpCacheType: WebEngineProfile.DiskHttpCache
     url: mainWindow.webUrl

@@ -1,0 +1,110 @@
+--- a/src/core/render_widget_host_view_qt.cpp
++++ b/src/core/render_widget_host_view_qt.cpp
+@@ -54,6 +54,13 @@
+ #include "ui/resources/grit/ui_resources.h"
+ #endif
+ 
++#if defined(Q_OS_WIN)
++#include "ui/gl/vsync_provider_win.h"
++#endif
++#include "ui/gfx/vsync_provider.h"
++
++#include <cmath>
++
+ #include <QGuiApplication>
+ #include <QPixmap>
+ #include <QScopeGuard>
+@@ -876,6 +883,8 @@
+     if (!window)
+         return false;
+ 
++    updateVSyncParameters();
++
+     display::ScreenInfos newScreenInfos = screenInfosFromQtForUpdate(window->screen());
+ 
+     // We always want to use the scale from our current window
+@@ -889,6 +898,45 @@
+     return true;
+ }
+ 
++// The offscreen ui::Compositor has no output surface reporting vsync, so viz
++// ticks its synthetic BeginFrameSource at the 60 Hz default regardless of the
++// display. Feed it the period (and on Windows the DWM vblank timebase) of the
++// screen hosting the view, refreshed periodically to follow drift and moves.
++void RenderWidgetHostViewQt::updateVSyncParameters()
++{
++    static const bool enabled = qEnvironmentVariable("TIGEREST_WEBENGINE_VSYNC") != QLatin1String("0");
++    QWindow *window = m_delegate ? m_delegate->Window() : nullptr;
++    if (!enabled || !window || !window->screen() || !window->handle())
++        return;
++    if (!m_vsyncTimer.IsRunning())
++        m_vsyncTimer.Start(FROM_HERE, base::Seconds(1),
++                           base::BindRepeating(&RenderWidgetHostViewQt::updateVSyncParameters,
++                                               base::Unretained(this)));
++    const qreal hz = window->screen()->refreshRate();
++    base::TimeTicks timebase;
++    base::TimeDelta interval;
++#if defined(Q_OS_WIN)
++    const WId id = window->winId();
++    if (!m_vsyncProvider || m_vsyncWindow != id) {
++        m_vsyncProvider = std::make_unique<gl::VSyncProviderWin>(reinterpret_cast<gfx::AcceleratedWidget>(id));
++        m_vsyncWindow = id;
++    }
++    // DWM timing describes the primary display; on a screen with another rate
++    // keep only that screen's period.
++    if (m_vsyncProvider->GetVSyncParametersIfAvailable(&timebase, &interval) && hz > 1
++        && std::abs(interval.InSecondsF() * hz - 1.0) > 0.05) {
++        timebase = base::TimeTicks();
++        interval = base::TimeDelta();
++    }
++#endif
++    if (interval.is_zero()) {
++        if (hz <= 1)
++            return;
++        interval = base::Seconds(1.0 / hz);
++    }
++    m_uiCompositor->SetDisplayVSyncParameters(timebase, interval);
++}
++
+ void RenderWidgetHostViewQt::handleWheelEvent(QWheelEvent *event)
+ {
+     if (!m_wheelAckPending) {
+--- a/src/core/render_widget_host_view_qt.h
++++ b/src/core/render_widget_host_view_qt.h
+@@ -16,6 +16,7 @@
+ #include "content/browser/renderer_host/render_widget_host_view_base.h"
+ #include "content/browser/renderer_host/text_input_manager.h"
+ #include "ui/events/gesture_detection/filtered_gesture_provider.h"
++#include "base/timer/timer.h"
+ 
+ namespace content {
+ class RenderFrameHost;
+@@ -27,6 +28,10 @@
+ class TouchSelectionController;
+ }
+ 
++namespace gfx {
++class VSyncProvider;
++}
++
+ namespace QtWebEngineCore {
+ 
+ class RenderWidgetHostViewQtDelegateClient;
+@@ -165,6 +170,7 @@
+     void notifyShown();
+     void notifyHidden();
+     bool updateScreenInfo();
++    void updateVSyncParameters();
+     void handleWheelEvent(QWheelEvent *);
+     void processMotionEvent(const ui::MotionEvent &motionEvent);
+     void resetInputManagerState() { m_imState = 0; }
+@@ -217,6 +223,9 @@
+     std::unique_ptr<ui::Compositor> m_uiCompositor;
+     viz::ParentLocalSurfaceIdAllocator m_dfhLocalSurfaceIdAllocator;
+     viz::ParentLocalSurfaceIdAllocator m_uiCompositorLocalSurfaceIdAllocator;
++    base::RepeatingTimer m_vsyncTimer;
++    std::unique_ptr<gfx::VSyncProvider> m_vsyncProvider;
++    WId m_vsyncWindow = 0;
+ 
+     // IME
+     uint m_imState = 0;

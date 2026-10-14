@@ -53,7 +53,8 @@ foreach(dir resources translations qml)
 endforeach()
 message(STATUS "Deployed patched WebEngine from ${TIGEREST_WEBENGINE_RUNTIME}")
 file(INSTALL "@PROJECT_SOURCE_DIR@/dev/windows/qtwebengine/README.md"
-             "@PROJECT_SOURCE_DIR@/dev/windows/qtwebengine/qtwebengine-6.9.3-d3d11-producer-sync.patch"
+             "@PROJECT_SOURCE_DIR@/dev/windows/qtwebengine/patches.txt"
+             ${TIGEREST_WEBENGINE_PATCH_FILES}
              "${TIGEREST_WEBENGINE_RUNTIME}/tigerest-webengine.json"
      DESTINATION "${CMAKE_INSTALL_PREFIX}/licenses/qtwebengine-tigerest")
 

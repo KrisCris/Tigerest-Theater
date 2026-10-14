@@ -1,0 +1,43 @@
+--- a/src/core/web_event_factory.cpp
++++ b/src/core/web_event_factory.cpp
+@@ -1534,11 +1534,30 @@
+ }
+ #endif
+ 
++// Pixels scrolled per wheel line. Qt's generic step of 20 gives only 60px per
++// notch at the default three lines, which feels sluggish once the scroll
++// animator is on; Windows uses 50 (150px per notch, Chrome uses 100px).
++static float wheelScrollStep()
++{
++    static const float step = [] {
++        bool ok = false;
++        const float custom = qEnvironmentVariable("TIGEREST_WEBENGINE_WHEEL_STEP").toFloat(&ok);
++        if (ok && custom > 0)
++            return custom;
++#if defined(Q_OS_WIN)
++        return 50.f;
++#else
++        return 20.f;
++#endif
++    }();
++    return step;
++}
++
+ static void setBlinkWheelEventDelta(blink::WebMouseWheelEvent &webEvent)
+ {
+     // We can't use the device specific QWheelEvent::pixelDelta(), so we calculate
+     // a pixel delta based on ticks and scroll per line.
+-    static const float cDefaultQtScrollStep = 20.f;
++    const float cDefaultQtScrollStep = wheelScrollStep();
+ 
+     static const int wheelScrollLines = QGuiApplication::styleHints()->wheelScrollLines();
+     webEvent.delta_x = webEvent.wheel_ticks_x * wheelScrollLines * cDefaultQtScrollStep;
+@@ -1547,7 +1566,7 @@
+ 
+ static QPoint getWheelEventDelta(const blink::WebGestureEvent &webEvent)
+ {
+-    static const float cDefaultQtScrollStep = 20.f;
++    const float cDefaultQtScrollStep = wheelScrollStep();
+     static const int wheelScrollLines = QGuiApplication::styleHints()->wheelScrollLines();
+     static const float deltasPerStep = static_cast<float>(QWheelEvent::DefaultDeltasPerStep);
+     return QPoint(webEvent.data.scroll_update.delta_x * deltasPerStep / (wheelScrollLines * cDefaultQtScrollStep),

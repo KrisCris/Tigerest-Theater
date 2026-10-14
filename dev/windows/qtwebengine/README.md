@@ -1,4 +1,24 @@
-# QtWebEngine 6.9.3 的 Windows D3D11 同步补丁
+# QtWebEngine 6.9.3 的 Windows 补丁
+
+`patches.txt` 按应用顺序列出本目录的补丁。构建脚本依次应用，运行库清单记录每个补丁的文件名和 SHA256；配置和打包时必须与 `patches.txt` 完全一致。
+
+| 补丁 | 作用 | 关闭对照 |
+|---|---|---|
+| `qtwebengine-6.9.3-d3d11-producer-sync.patch` | 共享纹理交给 Qt 前等待 Chromium 的 D3D11 写入完成，修复媒体库花屏 | `TIGEREST_D3D11_PRODUCER_WAIT=0` |
+| `qtwebengine-6.9.3-begin-frame-vsync.patch` | 把窗口所在屏幕的刷新率交给网页合成器，解除 60 帧上限 | `TIGEREST_WEBENGINE_VSYNC=0` |
+| `qtwebengine-6.9.3-wheel-step.patch` | Windows 鼠标滚轮每行 50 px（默认三行即每格 150 px） | `TIGEREST_WEBENGINE_WHEEL_STEP=<每行像素>` |
+
+## 网页合成器刷新率
+
+QtWebEngine 把网页画到离屏纹理再交给 Qt Quick 合成。这条路径下 Chromium 的显示合成器使用按固定间隔触发的 BeginFrame 计时器，间隔需要外部提供，而 Qt 从未提供，于是一直是默认的 1/60 秒：无论显示器多少 Hz，CSS 动画、Web Animations、`requestAnimationFrame` 和滚动都只有 60 帧。
+
+补丁在 `RenderWidgetHostViewQt` 中每秒读取一次窗口所在屏幕的 vsync 参数，交给 `ui::Compositor::SetDisplayVSyncParameters`。Windows 使用 Chromium 自带的 `gl::VSyncProviderWin` 读取 DWM 的 vblank 时间和周期；若与窗口所在屏幕的 `QScreen::refreshRate` 相差超过 5%（多屏刷新率不同时），改用 `QScreen::refreshRate`。2026-10-14 在 4K 240 Hz / RTX 4090 上，同一 DLL 开关对照：rAF 从 60 到 240 帧，首页／媒体库／详情转场从 43–60 帧到 109–213 帧。
+
+## 鼠标滚轮距离
+
+客户端在 `webview.qml` 打开 `scrollAnimatorEnabled`（QtWebEngine 默认关闭，滚轮和 `scroll-behavior: smooth` 原本瞬间跳转）。QtWebEngine 把一格滚轮换算为“系统行数 × 20 px”，默认三行只有 60 px，加上滚动动画后显得很慢；Chrome 在 Windows 上为每格 100 px。补丁把 Windows 上每行改为 50 px，仍跟随系统“每次滚动行数”设置。用户试用 60／100／150 px 后选定 150 px。
+
+## D3D11 同步
 
 部分 Windows/NVIDIA 配置在媒体库悬停、滚动和显示设置面板时出现旧画面闪回和三角形缺块。独立 Qt Quick/WebEngine 静态页面也可复现，Qt 提交显示之前的抓帧已包含错误。补丁在 Chromium producer 的 D3D11 设备完成写入后，才把共享纹理交给 Qt 的另一个 D3D11 设备读取。
 
@@ -25,7 +45,7 @@ d50b3b11d51dd876418cc36b4d6c96b4721e0aab773a3dd6beda606d46da8966
   -PythonExecutable C:/QtBuild/tools/Scripts/python.exe -Jobs 8
 ```
 
-脚本应用本目录补丁，编译 Release 组件，安装到独立目录，并记录补丁和 DLL 的 SHA256。首次完整编译 Chromium 耗时较长。
+脚本按 `patches.txt` 顺序应用本目录补丁，编译 Release 组件，安装到独立目录，并记录各补丁和 DLL 的 SHA256。首次完整编译 Chromium 耗时较长。
 
 ## 客户端开发与打包
 
