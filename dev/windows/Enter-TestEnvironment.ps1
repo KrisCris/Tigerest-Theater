@@ -5,7 +5,8 @@ param([string]$BuildDirectory = (Join-Path $PSScriptRoot '..\..\build'))
 $taskBuild = (Resolve-Path -LiteralPath $BuildDirectory -ErrorAction Stop).Path
 $taskCachePath = Join-Path $taskBuild 'CMakeCache.txt'
 if (-not (Test-Path -LiteralPath $taskCachePath)) { throw "Configure CMake first: $taskCachePath" }
-$taskCache = Get-Content -LiteralPath $taskCachePath
+# CMakeCache.txt is UTF-8; Windows PowerShell would otherwise decode non-ASCII tool paths with the ANSI code page.
+$taskCache = Get-Content -LiteralPath $taskCachePath -Encoding UTF8
 function Get-TestCacheValue([string]$Key) {
     $taskMatch = $taskCache | Select-String -Pattern ('^' + [regex]::Escape($Key) + ':[^=]+=(.*)$') | Select-Object -First 1
     if ($taskMatch) { return $taskMatch.Matches[0].Groups[1].Value }

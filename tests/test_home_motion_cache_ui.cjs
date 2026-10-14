@@ -64,7 +64,8 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.ok(started.present&&started.opacity>0&&started.old,'cold background preparation does not prevent the animation from starting: '+JSON.stringify(started));
  assert.ok(started.veil===0&&started.copies===0,'a cold click blurs the live page instead of copying it, and keeps the dark veil until the raster covers it: '+JSON.stringify(started));
  const earlyPoster=started.poster;
- assert.ok(Math.abs(earlyPoster.width-clickedPoster.width)>.25||Math.abs(earlyPoster.x-clickedPoster.x)>.25||Math.abs(earlyPoster.y-clickedPoster.y)>.25,'the poster itself moves promptly while the cold background is still preparing');
+ // Same measure as the observer: at 240 Hz the first moving frame may change only the height by more than .25 px.
+ assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(earlyPoster[k]-clickedPoster[k])))>.25,'the poster itself moves promptly while the cold background is still preparing: '+JSON.stringify(earlyPoster));
  await evaluate('window.createImageBitmap=originalBitmap;Promise.all(coldDecoders.map(release=>release()))');
  await evaluate('cold');assert.equal(await evaluate('TigerestHomeTransitions.last.syncRasterMs'),0);await evaluate('router.back()');await evaluate(`document.querySelector('#cold-backdrop-image').remove();TigerestHomeTransitions.prewarm()`);
  // A slow destination image decode must not hold the poster, keep the
