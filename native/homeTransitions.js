@@ -212,14 +212,33 @@
         const host = document.createElement('div'); host.className = 'tigerest-motion-frozen';
         if (!blur) { host.style.filter = 'none'; host.style.transform = 'none'; }
         const home = document.body.classList.contains('tg-home-active') ? document.querySelector('.tg-home-host') : null;
-        const pairs = [];
+        const pairs = [], plainPrototypes = new Map();
+        function customizedBuiltin(node) {
+            if (node.namespaceURI !== 'http://www.w3.org/1999/xhtml' || node.localName.includes('-')) return false;
+            if (node.hasAttribute('is')) return true;
+            // createElement(tag, {is}) may customize a built-in without an `is`
+            // attribute. Compare to a plain same-tag element once per tag.
+            if (!plainPrototypes.has(node.localName)) plainPrototypes.set(node.localName,Object.getPrototypeOf(document.createElement(node.localName)));
+            return Object.getPrototypeOf(node) !== plainPrototypes.get(node.localName);
+        }
         // Emby keeps old views in the body. Reject entire inactive branches
         // before copying them; cloning then removing them still constructs all
         // their controls and makes work grow with the navigation history.
         function copyTree(node) {
             if (node.nodeType !== Node.ELEMENT_NODE) return node.cloneNode(true);
             if (node.matches('.mainAnimatedPage.hide,.page.hide,.page.page-hidden,.tigerest-motion-layer,.tigerest-motion-input,.tigerest-motion-poster,.tigerest-motion-cache,script,iframe,object,embed,audio,video')) return null;
-            const clone = node.cloneNode(false); pairs.push([node,clone]);
+            let clone;
+            if (customizedBuiltin(node)) {
+                // cloneNode upgrades customized built-ins and reconnects Emby's
+                // scrollers/tabs in this static picture. Keep their attribute
+                // selectors, but create ordinary elements without an `is` option.
+                clone = document.createElement(node.localName);
+                for (const attr of node.attributes) clone.setAttributeNS(attr.namespaceURI,attr.name,attr.value);
+                if (node.tagName === 'INPUT' && node.type === 'file') clone.files = node.files;
+                else if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA') clone.value = node.value;
+                if (node.tagName === 'INPUT') { clone.checked = node.checked; clone.indeterminate = node.indeterminate; }
+            } else clone = node.cloneNode(false);
+            pairs.push([node,clone]);
             if (node.matches('.card')) {
                 const r = box(node);
                 // Keep flow boxes, including Emby's absolute virtual-list cards,

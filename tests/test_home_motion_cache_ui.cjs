@@ -14,6 +14,39 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.deepEqual(edgePixels.corner,[40,84,200,255],'blur clamps the viewport edges instead of revealing a different page through alpha');
  assert.deepEqual(edgePixels.center,[40,84,200,255]);
  assert.equal(await evaluate('TigerestHomeTransitions.prewarm()'),true);
+ // Frozen snapshots must preserve a customized built-in's appearance and
+ // form/scroll state without constructing another live application control.
+ const staticControls=await evaluate(`(async()=>{
+  window.snapshotConstructors=0;window.snapshotConnections=0;
+  customElements.define('fixture-snapshot-scroll',class extends HTMLDivElement{
+   constructor(){super();window.snapshotConstructors++;}
+   connectedCallback(){window.snapshotConnections++;}
+  },{extends:'div'});
+  customElements.define('fixture-snapshot-input',class extends HTMLInputElement{
+   constructor(){super();window.snapshotConstructors++;}
+   connectedCallback(){window.snapshotConnections++;}
+  },{extends:'input'});
+  const style=document.createElement('style');style.textContent='[is="fixture-snapshot-scroll"]{width:230px;height:100px;overflow:auto;border:3px solid rgb(31,79,121);padding:7px}';document.head.append(style);
+  const scroller=document.createElement('div',{is:'fixture-snapshot-scroll'});scroller.id='snapshot-scroll';scroller.setAttribute('is','fixture-snapshot-scroll');
+  const content=document.createElement('div');content.style.cssText='width:600px;height:800px';
+  const field=document.createElement('input',{is:'fixture-snapshot-input'});field.id='snapshot-field';field.type='checkbox';field.value='live value';field.checked=true;field.indeterminate=true;content.append(field);
+  const text=document.createElement('input',{is:'fixture-snapshot-input'});text.id='snapshot-text';text.value='edited without an attribute';content.append(text);
+  const file=document.createElement('input',{is:'fixture-snapshot-input'});file.id='snapshot-file';file.type='file';const files=new DataTransfer();files.items.add(new File(['local fixture'],'snapshot.txt',{type:'text/plain'}));file.files=files.files;content.append(file);scroller.append(content);libraryRoot.append(scroller);
+  scroller.scrollTop=180;scroller.scrollLeft=60;
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const live=scroller.getBoundingClientRect().toJSON();TigerestHomeTransitions.invalidate(false);snapshotConstructors=0;snapshotConnections=0;
+  await TigerestHomeTransitions.prewarm();
+  const shadow=document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot,copy=shadow.querySelector('#snapshot-scroll'),input=shadow.querySelector('#snapshot-field');
+  const result={constructors:snapshotConstructors,connections:snapshotConnections,live,copy:copy.getBoundingClientRect().toJSON(),scroll:[copy.scrollLeft,copy.scrollTop],is:copy.getAttribute('is'),border:getComputedStyle(copy).borderTopColor,value:input.value,checked:input.checked,indeterminate:input.indeterminate,text:shadow.querySelector('#snapshot-text').value,files:[...shadow.querySelector('#snapshot-file').files].map(file=>file.name)};
+  scroller.remove();style.remove();return result;
+ })()`);
+ assert.equal(staticControls.constructors,0,'frozen pictures must not construct duplicate Emby-style application controls');
+ assert.equal(staticControls.connections,0,'frozen pictures must not reconnect scrolling, timers or requests');
+ assert.deepEqual(staticControls.scroll,[60,180]);
+ assert.equal(staticControls.is,'fixture-snapshot-scroll','attribute selectors retain the original appearance');
+ assert.equal(staticControls.border,'rgb(31, 79, 121)');
+ assert.equal(staticControls.value,'live value');assert.equal(staticControls.checked,true,'live form state is copied');assert.equal(staticControls.indeterminate,true);assert.equal(staticControls.text,'edited without an attribute');assert.deepEqual(staticControls.files,['snapshot.txt']);
+ assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(staticControls.live[k]-staticControls.copy[k])))<1,'static customized built-ins keep exact visible geometry');
  // Inactive Emby views can contain thousands of cached controls. Recreating
  // those controls during a frozen-scene capture wastes the click's frame budget.
  // A custom-element constructor observes real deep cloning, including descendants.
