@@ -269,5 +269,1397 @@
     ],
     "replacement": true,
     "isolated": true
-  }
+  },
+  "compiledBefore": {
+    "clientCommit": "7eb5cf2",
+    "data": {
+      "results": [
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 104.91520551882708,
+          "p95": 16.69999999999709,
+          "worst": 67,
+          "total": 1396.3999999761581,
+          "firstFrame": 8.30000000000291,
+          "animations": [
+            {
+              "target": "tg-hero-kicker",
+              "start": 175.80699994880706,
+              "end": 795.8069999488071
+            },
+            {
+              "target": "tg-hero-title",
+              "start": 315.80699994880706,
+              "end": 1075.806999948807
+            },
+            {
+              "target": "tg-hero-subtitle",
+              "start": 455.80699994880706,
+              "end": 1075.806999948807
+            },
+            {
+              "target": "tg-hero-action",
+              "start": 595.8069999488071,
+              "end": 1215.806999948807
+            },
+            {
+              "target": "tg-hero-overview",
+              "start": 735.8069999488071,
+              "end": 1355.806999948807
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 15.80699994880706,
+              "end": 715.8069999488071
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 15.80699994880706,
+              "end": 225.80699994880706
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 82.84499992802739,
+              "end": 246.94499983265996
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 649.4690000144765,
+              "end": 1369.4690000144765
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 649.4690000144765,
+              "end": 1369.4690000144765
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 649.4690000144765,
+              "end": 1369.4690000144765
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 1224.4969999482855,
+              "end": 1384.4969999482855
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 2,
+              "resizeMs": 0.3999999761581421,
+              "rasterMs": 20.799999952316284,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": false,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 507.8,
+              "intervalMs": 58.3
+            },
+            {
+              "endingAtMs": 582.9,
+              "intervalMs": 67
+            }
+          ]
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 113.54485424383965,
+          "p95": 10.200000000000728,
+          "worst": 25,
+          "total": 1243.7000000476837,
+          "firstFrame": 8.400000000001455,
+          "animations": [
+            {
+              "target": "tigerest-motion-poster",
+              "start": 7.339000029489398,
+              "end": 707.3390000294894
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 7.339000029489398,
+              "end": 217.3390000294894
+            },
+            {
+              "target": "",
+              "start": 7.339000029489398,
+              "end": 213.73900000564754
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 507.4170000413433,
+              "end": 1227.4170000413433
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 507.4170000413433,
+              "end": 1227.4170000413433
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 507.4170000413433,
+              "end": 1227.4170000413433
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 1074.0949999568984,
+              "end": 1234.0949999568984
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 8.600000023841858,
+              "resizeMs": 16.600000023841858,
+              "rasterMs": 53.89999997615814,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": true,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 324.1,
+              "intervalMs": 25
+            },
+            {
+              "endingAtMs": 349.1,
+              "intervalMs": 25
+            }
+          ]
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 116.55928785717803,
+          "p95": 9,
+          "worst": 41.70000000000073,
+          "total": 2029.7000000476837,
+          "firstFrame": 16.700000000000728,
+          "animations": [
+            {
+              "target": "tigerest-motion-frozen",
+              "start": 9.751999988220632,
+              "end": 329.75199998822063
+            },
+            {
+              "target": "tg-home-nav",
+              "start": 343.15199999138713,
+              "end": 1723.1519999913871
+            },
+            {
+              "target": "tg-library",
+              "start": 763.1519999913871,
+              "end": 1503.1519999913871
+            },
+            {
+              "target": "tg-library",
+              "start": 883.1519999913871,
+              "end": 1623.1519999913871
+            },
+            {
+              "target": "tg-library",
+              "start": 1003.1519999913871,
+              "end": 1743.1519999913871
+            },
+            {
+              "target": "tg-library",
+              "start": 1123.1519999913871,
+              "end": 1863.1519999913871
+            },
+            {
+              "target": "tg-home-rail",
+              "start": 543.1519999913871,
+              "end": 2003.1519999913871
+            },
+            {
+              "target": "tg-hero-kicker",
+              "start": 2186.4779999898747,
+              "end": 2806.4779999898747
+            },
+            {
+              "target": "tg-hero-title",
+              "start": 2326.4779999898747,
+              "end": 3086.4779999898747
+            },
+            {
+              "target": "tg-hero-subtitle",
+              "start": 2466.4779999898747,
+              "end": 3086.4779999898747
+            },
+            {
+              "target": "tg-hero-action",
+              "start": 2606.4779999898747,
+              "end": 3226.4779999898747
+            },
+            {
+              "target": "tg-hero-overview",
+              "start": 2746.4779999898747,
+              "end": 3366.4779999898747
+            }
+          ],
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 59.8,
+              "intervalMs": 41.7
+            },
+            {
+              "endingAtMs": 418.1,
+              "intervalMs": 25
+            }
+          ]
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 113.3302368787738,
+          "p95": 9.900000000001455,
+          "worst": 24.80000000000291,
+          "total": 1078.2000000476837,
+          "firstFrame": 9.900000000001455,
+          "animations": [
+            {
+              "target": "tigerest-motion-poster",
+              "start": -0.6039999919012189,
+              "end": 699.3960000080988
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": -0.6039999919012189,
+              "end": 209.39600000809878
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 50.9230000404641,
+              "end": 213.02300006430596
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 350.8230000240728,
+              "end": 1070.8230000240728
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 350.8230000240728,
+              "end": 1070.8230000240728
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 350.8230000240728,
+              "end": 1070.8230000240728
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 892.3099999753758,
+              "end": 1052.3099999753758
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 2,
+              "resizeMs": 0.5999999046325684,
+              "rasterMs": 29.799999952316284,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": false,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 309,
+              "intervalMs": 24.8
+            },
+            {
+              "endingAtMs": 332.6,
+              "intervalMs": 23.6
+            }
+          ]
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 112.59965480397824,
+          "p95": 16.599999999998545,
+          "worst": 25,
+          "total": 1213.1000000238419,
+          "firstFrame": 16.799999999995634,
+          "animations": [
+            {
+              "target": "tigerest-motion-poster",
+              "start": 10.056999946944416,
+              "end": 710.0569999469444
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 10.056999946944416,
+              "end": 220.05699994694442
+            },
+            {
+              "target": "",
+              "start": 10.056999946944416,
+              "end": 216.25699999462813
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 468.37900005467236,
+              "end": 1188.3790000546724
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 468.37900005467236,
+              "end": 1188.3790000546724
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 468.37900005467236,
+              "end": 1188.3790000546724
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 1035.0510000409558,
+              "end": 1195.0510000409558
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 3.899999976158142,
+              "resizeMs": 0.7000000476837158,
+              "rasterMs": 21.299999952316284,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": true,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 326.7,
+              "intervalMs": 25
+            }
+          ]
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 117.04534277564662,
+          "p95": 9.299999999995634,
+          "worst": 25,
+          "total": 2032.8999999761581,
+          "firstFrame": 15.599999999998545,
+          "animations": [
+            {
+              "target": "tigerest-motion-frozen",
+              "start": 8.907999987713993,
+              "end": 328.907999987714
+            },
+            {
+              "target": "tg-home-nav",
+              "start": 343.34199994802475,
+              "end": 1723.3419999480247
+            },
+            {
+              "target": "tg-library",
+              "start": 763.3419999480247,
+              "end": 1503.3419999480247
+            },
+            {
+              "target": "tg-library",
+              "start": 883.3419999480247,
+              "end": 1623.3419999480247
+            },
+            {
+              "target": "tg-library",
+              "start": 1003.3419999480247,
+              "end": 1743.3419999480247
+            },
+            {
+              "target": "tg-library",
+              "start": 1123.3419999480247,
+              "end": 1863.3419999480247
+            },
+            {
+              "target": "tg-home-rail",
+              "start": 543.3419999480247,
+              "end": 2003.3419999480247
+            },
+            {
+              "target": "tg-hero-kicker",
+              "start": 2186.6709999693558,
+              "end": 2806.6709999693558
+            },
+            {
+              "target": "tg-hero-title",
+              "start": 2326.6709999693558,
+              "end": 3086.6709999693558
+            },
+            {
+              "target": "tg-hero-subtitle",
+              "start": 2466.6709999693558,
+              "end": 3086.6709999693558
+            },
+            {
+              "target": "tg-hero-action",
+              "start": 2606.6709999693558,
+              "end": 3226.6709999693558
+            },
+            {
+              "target": "tg-hero-overview",
+              "start": 2746.6709999693558,
+              "end": 3366.6709999693558
+            }
+          ],
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 43.3,
+              "intervalMs": 24.8
+            },
+            {
+              "endingAtMs": 418.3,
+              "intervalMs": 25
+            }
+          ]
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 112.44239631336406,
+          "p95": 16.599999999998545,
+          "worst": 25,
+          "total": 1085.6000000238419,
+          "firstFrame": 10.099999999998545,
+          "animations": [
+            {
+              "target": "tigerest-motion-poster",
+              "start": 7.442999932914972,
+              "end": 707.442999932915
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 7.442999932914972,
+              "end": 217.44299993291497
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 49.10000001452863,
+              "end": 215.10000001452863
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 349.0829999316484,
+              "end": 1069.0829999316484
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 349.0829999316484,
+              "end": 1069.0829999316484
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 349.0829999316484,
+              "end": 1069.0829999316484
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 899.1009999988601,
+              "end": 1059.10099999886
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 2.5,
+              "resizeMs": 0.5,
+              "rasterMs": 27,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": false,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 324.1,
+              "intervalMs": 25
+            }
+          ]
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 114.66950610205572,
+          "p95": 9.599999999998545,
+          "worst": 16.69999999999709,
+          "total": 1216.6000000238419,
+          "firstFrame": 10.900000000001455,
+          "animations": [
+            {
+              "target": "tigerest-motion-poster",
+              "start": 3.756999962963164,
+              "end": 703.7569999629632
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 3.756999962963164,
+              "end": 213.75699996296316
+            },
+            {
+              "target": "",
+              "start": 3.756999962963164,
+              "end": 209.55699991527945
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 471.9809999158606,
+              "end": 1191.9809999158606
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 471.9809999158606,
+              "end": 1191.9809999158606
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 471.9809999158606,
+              "end": 1191.9809999158606
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 1038.6429999424145,
+              "end": 1198.6429999424145
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 4.199999928474426,
+              "resizeMs": 0.6000000238418579,
+              "rasterMs": 20.600000023841858,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": true,
+          "frameGapsAbove20ms": []
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 116.56952539550392,
+          "p95": 9.900000000001455,
+          "worst": 16.900000000001455,
+          "total": 2040.8000000715256,
+          "firstFrame": 16.5,
+          "animations": [
+            {
+              "target": "tigerest-motion-frozen",
+              "start": 9.813000028952956,
+              "end": 329.81300002895296
+            },
+            {
+              "target": "tg-home-nav",
+              "start": 343.43000005465,
+              "end": 1723.43000005465
+            },
+            {
+              "target": "tg-library",
+              "start": 763.43000005465,
+              "end": 1503.43000005465
+            },
+            {
+              "target": "tg-library",
+              "start": 883.43000005465,
+              "end": 1623.43000005465
+            },
+            {
+              "target": "tg-library",
+              "start": 1003.43000005465,
+              "end": 1743.43000005465
+            },
+            {
+              "target": "tg-library",
+              "start": 1123.43000005465,
+              "end": 1863.43000005465
+            },
+            {
+              "target": "tg-home-rail",
+              "start": 543.43000005465,
+              "end": 2003.43000005465
+            },
+            {
+              "target": "tg-hero-kicker",
+              "start": 2186.6859999857843,
+              "end": 2806.6859999857843
+            },
+            {
+              "target": "tg-hero-title",
+              "start": 2326.6859999857843,
+              "end": 3086.6859999857843
+            },
+            {
+              "target": "tg-hero-subtitle",
+              "start": 2466.6859999857843,
+              "end": 3086.6859999857843
+            },
+            {
+              "target": "tg-hero-action",
+              "start": 2606.6859999857843,
+              "end": 3226.6859999857843
+            },
+            {
+              "target": "tg-hero-overview",
+              "start": 2746.6859999857843,
+              "end": 3366.6859999857843
+            }
+          ],
+          "frameGapsAbove20ms": []
+        }
+      ],
+      "viewport": [
+        1800,
+        1130,
+        2
+      ]
+    }
+  },
+  "compiledAfter": {
+    "clientCommit": "87fcd1b",
+    "data": {
+      "results": [
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 98.27456864216055,
+          "p95": 16.700000000000728,
+          "worst": 91.69999999999891,
+          "total": 1334.6999999284744,
+          "firstFrame": 16.700000000000728,
+          "animations": [
+            {
+              "target": "tg-hero-kicker",
+              "start": 200.48900001123548,
+              "end": 820.4890000112355
+            },
+            {
+              "target": "tg-hero-title",
+              "start": 340.4890000112355,
+              "end": 1100.4890000112355
+            },
+            {
+              "target": "tg-hero-subtitle",
+              "start": 480.4890000112355,
+              "end": 1100.4890000112355
+            },
+            {
+              "target": "tg-hero-action",
+              "start": 620.4890000112355,
+              "end": 1240.4890000112355
+            },
+            {
+              "target": "tg-hero-overview",
+              "start": 760.4890000112355,
+              "end": 1380.4890000112355
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 40.489000011235476,
+              "end": 740.4890000112355
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 40.489000011235476,
+              "end": 250.48900001123548
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 107.16200012154877,
+              "end": 267.46200007386506
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 598.8460000129417,
+              "end": 1318.8460000129417
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 598.8460000129417,
+              "end": 1318.8460000129417
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 598.8460000129417,
+              "end": 1318.8460000129417
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 1165.5060000242665,
+              "end": 1325.5060000242665
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 1.9000000953674316,
+              "resizeMs": 0.2999999523162842,
+              "rasterMs": 14.100000023841858,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": false,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 65.7,
+              "intervalMs": 42
+            },
+            {
+              "endingAtMs": 90.5,
+              "intervalMs": 24.8
+            },
+            {
+              "endingAtMs": 465.5,
+              "intervalMs": 91.7
+            },
+            {
+              "endingAtMs": 540.9,
+              "intervalMs": 50.4
+            }
+          ]
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 111.00687929956216,
+          "p95": 12.399999999999636,
+          "worst": 33.39999999999782,
+          "total": 1277.6000000238419,
+          "firstFrame": 12.399999999999636,
+          "animations": [
+            {
+              "target": "tigerest-motion-poster",
+              "start": 6.7020001616328955,
+              "end": 706.7020001616329
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 6.7020001616328955,
+              "end": 216.7020001616329
+            },
+            {
+              "target": "",
+              "start": 6.7020001616328955,
+              "end": 213.30200018547475
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 540.2250001234934,
+              "end": 1260.2250001234934
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 540.2250001234934,
+              "end": 1260.2250001234934
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 540.2250001234934,
+              "end": 1260.2250001234934
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 1106.8800000967458,
+              "end": 1266.8800000967458
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 9.299999952316284,
+              "resizeMs": 16.90000009536743,
+              "rasterMs": 58.5,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": true,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 365.2,
+              "intervalMs": 33.3
+            },
+            {
+              "endingAtMs": 398.6,
+              "intervalMs": 33.4
+            }
+          ]
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 116.65365091761035,
+          "p95": 9.30000000000291,
+          "worst": 25.799999999999272,
+          "total": 2049.5999999046326,
+          "firstFrame": 16,
+          "animations": [
+            {
+              "target": "tigerest-motion-frozen",
+              "start": 7.696000088937581,
+              "end": 327.6960000889376
+            },
+            {
+              "target": "tg-home-nav",
+              "start": 341.72900002263486,
+              "end": 1721.7290000226349
+            },
+            {
+              "target": "tg-library",
+              "start": 761.7290000226349,
+              "end": 1501.7290000226349
+            },
+            {
+              "target": "tg-library",
+              "start": 881.7290000226349,
+              "end": 1621.7290000226349
+            },
+            {
+              "target": "tg-library",
+              "start": 1001.7290000226349,
+              "end": 1741.7290000226349
+            },
+            {
+              "target": "tg-library",
+              "start": 1121.7290000226349,
+              "end": 1861.7290000226349
+            },
+            {
+              "target": "tg-home-rail",
+              "start": 541.7290000226349,
+              "end": 2001.7290000226349
+            },
+            {
+              "target": "tg-hero-kicker",
+              "start": 2193.3890000339597,
+              "end": 2813.3890000339597
+            },
+            {
+              "target": "tg-hero-title",
+              "start": 2333.3890000339597,
+              "end": 3093.3890000339597
+            },
+            {
+              "target": "tg-hero-subtitle",
+              "start": 2473.3890000339597,
+              "end": 3093.3890000339597
+            },
+            {
+              "target": "tg-hero-action",
+              "start": 2613.3890000339597,
+              "end": 3233.3890000339597
+            },
+            {
+              "target": "tg-hero-overview",
+              "start": 2753.3890000339597,
+              "end": 3373.3890000339597
+            }
+          ],
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 41.8,
+              "intervalMs": 25.8
+            },
+            {
+              "endingAtMs": 416.7,
+              "intervalMs": 25
+            }
+          ]
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 114.55586871533798,
+          "p95": 9.700000000000728,
+          "worst": 25,
+          "total": 1104.7999999523163,
+          "firstFrame": 8.399999999997817,
+          "animations": [
+            {
+              "target": "tigerest-motion-poster",
+              "start": -0.9249998852610588,
+              "end": 699.0750001147389
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": -0.9249998852610588,
+              "end": 209.07500011473894
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 57.39000014588237,
+              "end": 218.19000009819865
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 374.08700008969754,
+              "end": 1094.0870000896975
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 374.08700008969754,
+              "end": 1094.0870000896975
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 374.08700008969754,
+              "end": 1094.0870000896975
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 915.7460000701249,
+              "end": 1075.7460000701249
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 2.299999952316284,
+              "resizeMs": 0.8000000715255737,
+              "rasterMs": 29.700000047683716,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": false,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 349.1,
+              "intervalMs": 25
+            }
+          ]
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 115.02813637868242,
+          "p95": 10.100000000002183,
+          "worst": 25.099999999998545,
+          "total": 1205.1000000238419,
+          "firstFrame": 15.900000000001455,
+          "animations": [
+            {
+              "target": "tigerest-motion-poster",
+              "start": 7.312000052072108,
+              "end": 707.3120000520721
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 7.312000052072108,
+              "end": 217.3120000520721
+            },
+            {
+              "target": "",
+              "start": 7.312000052072108,
+              "end": 212.51200009975582
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 474.8070000419393,
+              "end": 1194.8070000419393
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 474.8070000419393,
+              "end": 1194.8070000419393
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 474.8070000419393,
+              "end": 1194.8070000419393
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 1033.1400000937283,
+              "end": 1193.1400000937283
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 3.799999952316284,
+              "resizeMs": 0.5,
+              "rasterMs": 19.800000071525574,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": true,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 208.1,
+              "intervalMs": 25.1
+            }
+          ]
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 118.0347218806866,
+          "p95": 8.900000000001455,
+          "worst": 25,
+          "total": 2036,
+          "firstFrame": 8.299999999999272,
+          "animations": [
+            {
+              "target": "tigerest-motion-frozen",
+              "start": 7.3430000096559525,
+              "end": 327.34300000965595
+            },
+            {
+              "target": "tg-home-nav",
+              "start": 340.6890000673011,
+              "end": 1720.689000067301
+            },
+            {
+              "target": "tg-library",
+              "start": 760.6890000673011,
+              "end": 1500.689000067301
+            },
+            {
+              "target": "tg-library",
+              "start": 880.6890000673011,
+              "end": 1620.689000067301
+            },
+            {
+              "target": "tg-library",
+              "start": 1000.6890000673011,
+              "end": 1740.689000067301
+            },
+            {
+              "target": "tg-library",
+              "start": 1120.689000067301,
+              "end": 1860.689000067301
+            },
+            {
+              "target": "tg-home-rail",
+              "start": 540.6890000673011,
+              "end": 2000.689000067301
+            },
+            {
+              "target": "tg-hero-kicker",
+              "start": 2184.0209999950603,
+              "end": 2804.0209999950603
+            },
+            {
+              "target": "tg-hero-title",
+              "start": 2324.0209999950603,
+              "end": 3084.0209999950603
+            },
+            {
+              "target": "tg-hero-subtitle",
+              "start": 2464.0209999950603,
+              "end": 3084.0209999950603
+            },
+            {
+              "target": "tg-hero-action",
+              "start": 2604.0209999950603,
+              "end": 3224.0209999950603
+            },
+            {
+              "target": "tg-hero-overview",
+              "start": 2744.0209999950603,
+              "end": 3364.0209999950603
+            }
+          ],
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 40.7,
+              "intervalMs": 25
+            },
+            {
+              "endingAtMs": 415.7,
+              "intervalMs": 25
+            }
+          ]
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 113.41632088520055,
+          "p95": 10.30000000000291,
+          "worst": 25,
+          "total": 1086,
+          "firstFrame": 9.5,
+          "animations": [
+            {
+              "target": "tigerest-motion-poster",
+              "start": 7.828000143170357,
+              "end": 707.8280001431704
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 7.828000143170357,
+              "end": 217.82800014317036
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 49.479000062681735,
+              "end": 214.87900003883988
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 349.46900014951825,
+              "end": 1069.4690001495183
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 349.46900014951825,
+              "end": 1069.4690001495183
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 349.46900014951825,
+              "end": 1069.4690001495183
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 907.8120001610368,
+              "end": 1067.8120001610368
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 2.3000000715255737,
+              "resizeMs": 0.6999999284744263,
+              "rasterMs": 27.799999952316284,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": false,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 341.2,
+              "intervalMs": 25
+            }
+          ]
+        },
+        {
+          "kind": "poster",
+          "completed": true,
+          "fps": 115.82368135988682,
+          "p95": 10.299999999995634,
+          "worst": 26.200000000004366,
+          "total": 1196.2000000476837,
+          "firstFrame": 16.299999999995634,
+          "animations": [
+            {
+              "target": "tigerest-motion-poster",
+              "start": 9.38200014270842,
+              "end": 709.3820001427084
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 9.38200014270842,
+              "end": 219.38200014270842
+            },
+            {
+              "target": "",
+              "start": 9.38200014270842,
+              "end": 216.58200019039214
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 451.5280001293868,
+              "end": 1171.5280001293868
+            },
+            {
+              "target": "tigerest-motion-veil",
+              "start": 451.5280001293868,
+              "end": 1171.5280001293868
+            },
+            {
+              "target": "tigerest-motion-layer tigerest-motion-lens",
+              "start": 451.5280001293868,
+              "end": 1171.5280001293868
+            },
+            {
+              "target": "tigerest-motion-poster",
+              "start": 1018.5230001304299,
+              "end": 1178.5230001304299
+            }
+          ],
+          "background": [
+            {
+              "captureMs": 4.600000023841858,
+              "resizeMs": 0.7000000476837158,
+              "rasterMs": 20.700000047683716,
+              "rasterThread": "worker"
+            }
+          ],
+          "cacheHit": true,
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 343.1,
+              "intervalMs": 26.2
+            }
+          ]
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 117.54291053951687,
+          "p95": 10.10000000000582,
+          "worst": 25,
+          "total": 2032.8999999761581,
+          "firstFrame": 16.599999999998545,
+          "animations": [
+            {
+              "target": "tigerest-motion-frozen",
+              "start": 9.756000072695315,
+              "end": 329.7560000726953
+            },
+            {
+              "target": "tg-home-nav",
+              "start": 343.0940000694245,
+              "end": 1723.0940000694245
+            },
+            {
+              "target": "tg-library",
+              "start": 763.0940000694245,
+              "end": 1503.0940000694245
+            },
+            {
+              "target": "tg-library",
+              "start": 883.0940000694245,
+              "end": 1623.0940000694245
+            },
+            {
+              "target": "tg-library",
+              "start": 1003.0940000694245,
+              "end": 1743.0940000694245
+            },
+            {
+              "target": "tg-library",
+              "start": 1123.0940000694245,
+              "end": 1863.0940000694245
+            },
+            {
+              "target": "tg-home-rail",
+              "start": 543.0940000694245,
+              "end": 2003.0940000694245
+            },
+            {
+              "target": "tg-hero-kicker",
+              "start": 2178.0900000855327,
+              "end": 2798.0900000855327
+            },
+            {
+              "target": "tg-hero-title",
+              "start": 2318.0900000855327,
+              "end": 3078.0900000855327
+            },
+            {
+              "target": "tg-hero-subtitle",
+              "start": 2458.0900000855327,
+              "end": 3078.0900000855327
+            },
+            {
+              "target": "tg-hero-action",
+              "start": 2598.0900000855327,
+              "end": 3218.0900000855327
+            },
+            {
+              "target": "tg-hero-overview",
+              "start": 2738.0900000855327,
+              "end": 3358.0900000855327
+            }
+          ],
+          "frameGapsAbove20ms": [
+            {
+              "endingAtMs": 434.7,
+              "intervalMs": 25
+            }
+          ]
+        }
+      ],
+      "viewport": [
+        1800,
+        1130,
+        2
+      ]
+    }
+  },
+  "compiledVisual": {
+    "midpointHashes": [
+      "68f2ca641980342c421ac16f9b1b39c69678cc65c04dfc965270f9191623b861",
+      "7ef4b275a2b2bafa9d8841b875404b9bdf64489dc9e9a5320f317622ea5c9240",
+      "04930b864495b912bb55fbdecee1628e759d46650be564b7618935a52e57b168"
+    ],
+    "phases": [
+      "a",
+      "b",
+      "a"
+    ],
+    "replacement": true,
+    "isolated": true
+  },
+  "scroll": {
+    "scrollable": true,
+    "scrollTop": 3000,
+    "scrollerClass": "scrollFrameY flex flex-grow virtualScrollerScrollContainer itemsTab emby-scroller scrollY overflowYScroll flex-direction-column tabContent tabContent-positioned is-active focuscontainer-x",
+    "fps": 118.66271124295834,
+    "p95": 10.200000000011642,
+    "worst": 16.80000000000291
+  },
+  "phaseClassOnly": {
+    "costs": [
+      1.5,
+      0.5,
+      0.6999999284744263,
+      0.3999999761581421,
+      0.6999999284744263,
+      0.5,
+      0.5,
+      0.6000000238418579,
+      0.5999999046325684,
+      0.30000007152557373,
+      0.5,
+      0.30000007152557373
+    ],
+    "descendants": 1935,
+    "styleTrace": [
+      {
+        "milliseconds": 1.265,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.41,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.502,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.342,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.511,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.381,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.328,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.496,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.377,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.241,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.387,
+        "elements": 3
+      },
+      {
+        "milliseconds": 0.231,
+        "elements": 3
+      }
+    ]
+  },
+  "limitations": "One machine, three routes per binary, ordered baseline then candidate; load state varies. No demonstrated first-detail end-to-end gain. rAF is not physical scanout."
 }
