@@ -18,7 +18,7 @@ withBrowser(routes,async({evaluate,call,url})=>{
  // those controls during a frozen-scene capture wastes the click's frame budget.
  // A custom-element constructor observes real deep cloning, including descendants.
  const hiddenClones=await evaluate(`(async()=>{
-  customElements.define('fixture-hidden-control',class extends HTMLElement{constructor(){super();window.hiddenControlCopies=(window.hiddenControlCopies||0)+1;}});
+  customElements.define('fixture-hidden-control',class extends HTMLElement{constructor(){super();window.hiddenControlCopies=(window.hiddenControlCopies||0)+1;}getBoundingClientRect(){window.hiddenControlMeasurements=(window.hiddenControlMeasurements||0)+1;return super.getBoundingClientRect();}});
   const old=document.createElement('div');old.id='inactive-fixture';old.className='page hide';
   for(let i=0;i<500;i++)old.append(document.createElement('fixture-hidden-control'));
   document.body.append(old);TigerestHomeTransitions.invalidate(false);window.hiddenControlCopies=0;
@@ -26,6 +26,14 @@ withBrowser(routes,async({evaluate,call,url})=>{
   const copies=window.hiddenControlCopies;old.remove();return copies;
  })()`);
  assert.equal(hiddenClones,0,'frozen scenes must not construct controls from hidden cached views');
+ const embyHiddenClones=await evaluate(`(async()=>{
+  const old=document.createElement('div');old.className='page page-hidden';old.style.display='none';
+  for(let i=0;i<40;i++)old.append(document.createElement('fixture-hidden-control'));
+  document.body.append(old);TigerestHomeTransitions.invalidate(false);window.hiddenControlCopies=0;window.hiddenControlMeasurements=0;
+  await TigerestHomeTransitions.prewarm();const result={copies:window.hiddenControlCopies,measurements:window.hiddenControlMeasurements};old.remove();return result;
+ })()`);
+ assert.deepEqual(embyHiddenClones,{copies:0,measurements:0},'Emby page-hidden views must be excluded from both snapshot and raster traversal');
+
  await evaluate('TigerestHomeTransitions.prewarm()');
  // A scrolled poster wall only needs the cards intersecting the viewport.
  // Offscreen placeholders must still preserve grid flow and scroll offsets.
@@ -46,6 +54,28 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.ok(wallCopy.constructed<=wallCopy.visible+12,'offscreen card contents should not be cloned: '+JSON.stringify(wallCopy));
  assert.equal(wallCopy.scroll,1800);
  assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(wallCopy.live[k]-wallCopy.copy[k])))<1,'scrolled visible cards must keep their exact geometry');
+
+ const virtualCopy=await evaluate(`(async()=>{
+  const wall=document.createElement('div');wall.id='virtual-wall';Object.assign(wall.style,{position:'relative',height:'8000px',width:'600px'});
+  for(let i=0;i<160;i++){
+   const card=document.createElement('div');card.className='card virtualScrollItem';card.id='virtual-card-'+i;
+   Object.assign(card.style,{position:'absolute',top:Math.floor(i/4)*200+'px',left:(i%4)*140+'px',width:'120px'});
+   const content=document.createElement('fixture-card-content');Object.assign(content.style,{display:'block',height:'180px'});card.append(content);wall.append(card);
+  }
+  libraryRoot.append(wall);libraryRoot.style.overflow='auto';libraryRoot.scrollTop=1800;
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const visible=[...wall.children].find(n=>{const r=n.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});
+  const live=visible.getBoundingClientRect().toJSON();TigerestHomeTransitions.invalidate(false);window.cardContentCopies=0;
+  await TigerestHomeTransitions.prewarm();
+  const shadow=document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot;
+  const result={constructed:window.cardContentCopies,visible:Math.ceil(innerHeight/200)*4,
+   live,copy:shadow.querySelector('#'+visible.id).getBoundingClientRect().toJSON(),scroll:shadow.querySelector('#library').scrollTop,
+   wallHeight:shadow.querySelector('#virtual-wall').getBoundingClientRect().height};
+  wall.remove();libraryRoot.style.removeProperty('overflow');libraryRoot.scrollTop=0;return result;
+ })()`);
+ assert.ok(virtualCopy.constructed<=virtualCopy.visible+12,'absolute virtual cards outside the viewport must not copy their contents: '+JSON.stringify(virtualCopy));
+ assert.equal(virtualCopy.scroll,1800);assert.equal(virtualCopy.wallHeight,8000);
+ assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(virtualCopy.live[k]-virtualCopy.copy[k])))<1,'virtual poster geometry must survive pruning');
  await evaluate('TigerestHomeTransitions.prewarm()');
  // A completed page entrance must stay completed in the frozen background.
  // Emby's important animation rule otherwise starts again inside the shadow tree.
@@ -123,8 +153,23 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.ok(await evaluate(`(()=>{const n=document.querySelector('.tigerest-motion-veil');return +getComputedStyle(n).opacity>.99&&getComputedStyle(n).backgroundColor==='rgb(11, 13, 18)'})()`),'the DOM fallback covers its blur borders before the real route changes');
  assert.equal(await evaluate('state.params.topParentId'),'library');
  await evaluate('releaseNoRaster();true');await evaluate(`noRaster.then(()=>{window.Worker=savedWorker;show('library')})`);
+
+ // Background image decoding must stop when a navigation that does not use
+ // that raster begins, rather than continuing through its animation frames.
+ for(const kind of ['library','homeReturn']){
+  const cancelledWarm=await evaluate(`(async()=>{
+   TigerestHomeTransitions.invalidate(false);const original=TigerestHomeBackdrop.build;let signal;
+   TigerestHomeBackdrop.build=(root,s)=>{signal=s;return new Promise(resolve=>s.addEventListener('abort',()=>resolve(null),{once:true}));};
+   const warm=TigerestHomeTransitions.prewarm();await motionFrame(()=>!!signal);
+   const transition=${kind==='library'?"TigerestHomeTransitions.library({gallery:{active:true,root:libraryRoot},navigate:()=>{}})":"TigerestHomeTransitions.homeReturn({navigate:()=>{},findGallery:()=>null})"};
+   const abortedAtStart=signal.aborted;TigerestHomeTransitions.cancel('fixture');
+   await transition;await warm;TigerestHomeBackdrop.build=original;TigerestHomeTransitions.invalidate(false);
+   return abortedAtStart;
+  })()`);
+  assert.equal(cancelledWarm,true,kind+' must abort unused in-flight background decoding before animating');
+ }
  await evaluate('TigerestHomeMotion.reset()');assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'account reset releases the cached background');
  await evaluate('TigerestHomeTransitions.prewarm()');await call('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'viewport changes cannot use the old background');
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});assert.equal(await evaluate('TigerestHomeTransitions.prewarm()'),false);assert.equal(await evaluate('TigerestHomeTransitions.cacheState.bytes'),0);
- console.log('async background/cache fixture:',JSON.stringify({checks:29,hot,started,foreignMetric}));
+ console.log('async background/cache fixture:',JSON.stringify({checks:'passed',hot,started,foreignMetric}));
 },{gpu:true,visible:true}).catch(e=>{console.error(e);process.exitCode=1});

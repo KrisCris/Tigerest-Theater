@@ -45,7 +45,7 @@
         const width = Math.min(240,Math.round(innerWidth*scale)), height = Math.round(innerHeight*scale), records = [], images = [];
         // Skip motion layers, the held poster and Emby's hidden cached views as
         // whole subtrees instead of measuring each of their nodes.
-        const skipped='.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache,[data-tigerest-poster-held],.mainAnimatedPage.hide,.page.hide';
+        const skipped='.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache,[data-tigerest-poster-held],.mainAnimatedPage.hide,.page.hide,.page.page-hidden';
         const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT,{acceptNode:node=>node.matches(skipped)?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
         for (let node=root.closest(skipped)?null:root; node; node=walker.nextNode()) {
             if (signal.aborted) return null;

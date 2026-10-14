@@ -164,6 +164,13 @@
         if (active) return;
         changes(observer?.takeRecords()||[]);
         ensureStyle();
+        // Only poster transitions consume a pending raster. Other routes must
+        // not let a settling prewarm start decoding old artwork mid-animation.
+        // Keep an already prepared snapshot for homeReturn's outgoing cover.
+        if (kind !== 'poster') {
+            clearTimeout(warmTimer); warmTimer = null;
+            warming?.controller.abort(); warming = null;
+        }
         const controller = new AbortController(), job = {controller, signal: controller.signal, animations: [], layers: [], held: [], canvases: [], frames: [], metric: {kind, surfaces: [], domCopies: 0}};
         active = job; document.body.classList.add('tigerest-motion-busy');
         // An input surface blocks even controls with explicit pointer-events:auto.
@@ -211,17 +218,17 @@
         // their controls and makes work grow with the navigation history.
         function copyTree(node) {
             if (node.nodeType !== Node.ELEMENT_NODE) return node.cloneNode(true);
-            if (node.matches('.mainAnimatedPage.hide,.page.hide,.tigerest-motion-layer,.tigerest-motion-input,.tigerest-motion-poster,.tigerest-motion-cache,script,iframe,object,embed,audio,video')) return null;
+            if (node.matches('.mainAnimatedPage.hide,.page.hide,.page.page-hidden,.tigerest-motion-layer,.tigerest-motion-input,.tigerest-motion-poster,.tigerest-motion-cache,script,iframe,object,embed,audio,video')) return null;
             const clone = node.cloneNode(false); pairs.push([node,clone]);
             if (node.matches('.card')) {
                 const r = box(node);
-                // Preserve the flow boxes of offscreen flex/grid cards without
-                // constructing their poster/text subtrees. The margin also keeps
-                // near-edge shadows and transformed artwork in the snapshot.
+                // Keep flow boxes, including Emby's absolute virtual-list cards,
+                // without constructing offscreen poster/text subtrees. The margin
+                // also keeps near-edge shadows and artwork in the snapshot.
                 if (r.width && r.height && (r.bottom < -64 || r.top > innerHeight + 64 || r.right < -64 || r.left > innerWidth + 64)) {
                     const layout = getComputedStyle(node.parentElement).display;
-                    if (['flex','inline-flex','grid','inline-grid'].includes(layout)) {
-                        const s = getComputedStyle(node);
+                    const s = getComputedStyle(node);
+                    if (s.position === 'absolute' || ['flex','inline-flex','grid','inline-grid'].includes(layout)) {
                         for (const property of ['width','height','box-sizing','min-width','min-height'])
                             clone.style.setProperty(property,s.getPropertyValue(property),'important');
                         return clone;
