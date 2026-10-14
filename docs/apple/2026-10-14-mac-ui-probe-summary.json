@@ -1,0 +1,986 @@
+{
+  "qt-bitmap": {
+    "complete": true,
+    "metadata": {
+      "kind": "metadata",
+      "engine": "qt",
+      "path": "bitmap",
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "dpr": 2,
+      "userAgent": "TigerestTheater/2.6.0 (Darwin; unknown) Chrome/130.0.0.0",
+      "platform": "osx",
+      "offscreen": true,
+      "canvasFilter": true,
+      "isolatedFrame": true,
+      "appearanceStyle": false,
+      "styleIds": [
+        "",
+        "",
+        "",
+        "",
+        "tigerest-home-motion-style",
+        "tigerest-home-motion-style"
+      ],
+      "bodyClass": "skinBody",
+      "idleSupported": true
+    },
+    "runs": 33,
+    "frameCount": 2123,
+    "frameMedianMs": 16.7,
+    "frameP95Ms": 16.8,
+    "frameMaxMs": 50.1,
+    "frameAtLeast25Ms": 13,
+    "frameAtLeast50Ms": 9,
+    "medianFirstFrameMs": 4.9,
+    "medianSyncMs": 1.4,
+    "scenarios": {
+      "homeDetail/hit": {
+        "firstFrameMs": 3.4,
+        "syncMs": 1.2,
+        "posterMoveMs": 12.9,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 50,
+        "frameAtLeast50Ms": 2,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeDetail/hoverMiss": {
+        "firstFrameMs": 10.8,
+        "syncMs": 1.4,
+        "posterMoveMs": 25.1,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 16.8,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeDetail/coldMiss": {
+        "firstFrameMs": 3.6,
+        "syncMs": 1.1,
+        "posterMoveMs": 14.7,
+        "frameP95Ms": 16.7,
+        "frameMaxMs": 16.8,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryDetail/hit": {
+        "firstFrameMs": 4.1,
+        "syncMs": 2.3,
+        "posterMoveMs": 20.4,
+        "frameP95Ms": 16.7,
+        "frameMaxMs": 16.8,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryDetail/coldMiss": {
+        "firstFrameMs": 20.7,
+        "syncMs": 1.6,
+        "posterMoveMs": 30.9,
+        "frameP95Ms": 16.7,
+        "frameMaxMs": 16.8,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "detailReturn/hit": {
+        "firstFrameMs": 3,
+        "syncMs": 1.6,
+        "posterMoveMs": 8.6,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 16.8,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "detailReturn/coldMiss": {
+        "firstFrameMs": 9.6,
+        "syncMs": 1.2,
+        "posterMoveMs": 21.9,
+        "frameP95Ms": 16.7,
+        "frameMaxMs": 16.8,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeLibrary/hit": {
+        "firstFrameMs": 2.8,
+        "syncMs": 0.3,
+        "posterMoveMs": null,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 50,
+        "frameAtLeast50Ms": 4,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeLibrary/coldMiss": {
+        "firstFrameMs": 2.8,
+        "syncMs": 0.4,
+        "posterMoveMs": null,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 50.1,
+        "frameAtLeast50Ms": 3,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryHome/hit": {
+        "firstFrameMs": 9.3,
+        "syncMs": 1.7,
+        "posterMoveMs": null,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 16.8,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          true,
+          true,
+          true
+        ]
+      },
+      "libraryHome/coldMiss": {
+        "firstFrameMs": 52.7,
+        "syncMs": 23.4,
+        "posterMoveMs": null,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 33.3,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          false,
+          false,
+          false
+        ]
+      }
+    },
+    "preparation": {
+      "home": {
+        "bitmapReadyMs": 205.9,
+        "snapshotReadyMs": null
+      },
+      "library": {
+        "bitmapReadyMs": 209.7,
+        "snapshotReadyMs": 270.3
+      }
+    }
+  },
+  "qt-dom": {
+    "complete": true,
+    "metadata": {
+      "kind": "metadata",
+      "engine": "qt",
+      "path": "dom",
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "dpr": 2,
+      "userAgent": "TigerestTheater/2.6.0 (Darwin; unknown) Chrome/130.0.0.0",
+      "platform": "ipad",
+      "offscreen": true,
+      "canvasFilter": true,
+      "isolatedFrame": true,
+      "appearanceStyle": false,
+      "styleIds": [
+        "",
+        "",
+        "",
+        "",
+        "tigerest-home-motion-style",
+        "tigerest-home-motion-style"
+      ],
+      "bodyClass": "skinBody",
+      "idleSupported": true
+    },
+    "runs": 33,
+    "frameCount": 2135,
+    "frameMedianMs": 16.7,
+    "frameP95Ms": 16.8,
+    "frameMaxMs": 50,
+    "frameAtLeast25Ms": 22,
+    "frameAtLeast50Ms": 4,
+    "medianFirstFrameMs": 18.9,
+    "medianSyncMs": 4.8,
+    "scenarios": {
+      "homeDetail/hit": {
+        "firstFrameMs": 8.8,
+        "syncMs": 1.5,
+        "posterMoveMs": 25.3,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 50,
+        "frameAtLeast50Ms": 2,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeDetail/hoverMiss": {
+        "firstFrameMs": 15.6,
+        "syncMs": 6.5,
+        "posterMoveMs": 20.3,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 16.8,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeDetail/coldMiss": {
+        "firstFrameMs": 15.4,
+        "syncMs": 5.4,
+        "posterMoveMs": 27.6,
+        "frameP95Ms": 16.7,
+        "frameMaxMs": 16.8,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryDetail/hit": {
+        "firstFrameMs": 29.1,
+        "syncMs": 4.8,
+        "posterMoveMs": 39.7,
+        "frameP95Ms": 16.7,
+        "frameMaxMs": 33.4,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryDetail/coldMiss": {
+        "firstFrameMs": 56,
+        "syncMs": 25.8,
+        "posterMoveMs": 60.4,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 33.3,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "detailReturn/hit": {
+        "firstFrameMs": 21.6,
+        "syncMs": 3.3,
+        "posterMoveMs": 34.9,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 33.4,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "detailReturn/coldMiss": {
+        "firstFrameMs": 40.2,
+        "syncMs": 16.8,
+        "posterMoveMs": 55.8,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 33.4,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeLibrary/hit": {
+        "firstFrameMs": 1.8,
+        "syncMs": 0.4,
+        "posterMoveMs": null,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 49.9,
+        "frameAtLeast50Ms": 1,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeLibrary/coldMiss": {
+        "firstFrameMs": 8.3,
+        "syncMs": 0.5,
+        "posterMoveMs": null,
+        "frameP95Ms": 16.7,
+        "frameMaxMs": 50,
+        "frameAtLeast50Ms": 1,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryHome/hit": {
+        "firstFrameMs": 7.5,
+        "syncMs": 1.6,
+        "posterMoveMs": null,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 16.8,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          true,
+          true,
+          true
+        ]
+      },
+      "libraryHome/coldMiss": {
+        "firstFrameMs": 55.5,
+        "syncMs": 24.6,
+        "posterMoveMs": null,
+        "frameP95Ms": 16.8,
+        "frameMaxMs": 33.4,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          false,
+          false,
+          false
+        ]
+      }
+    },
+    "preparation": {
+      "home": {
+        "bitmapReadyMs": 191.6,
+        "snapshotReadyMs": 191.6
+      },
+      "library": {
+        "bitmapReadyMs": 242.9,
+        "snapshotReadyMs": 242.9
+      }
+    }
+  },
+  "wk-bitmap": {
+    "complete": true,
+    "metadata": {
+      "kind": "metadata",
+      "engine": "wk",
+      "path": "bitmap",
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "dpr": 2,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+      "platform": "osx",
+      "offscreen": true,
+      "canvasFilter": false,
+      "isolatedFrame": true,
+      "appearanceStyle": false,
+      "styleIds": [
+        "",
+        "",
+        "",
+        "",
+        "tigerest-home-motion-style",
+        "tigerest-home-motion-style"
+      ],
+      "bodyClass": "skinBody",
+      "idleSupported": false
+    },
+    "runs": 33,
+    "frameCount": 2113,
+    "frameMedianMs": 17,
+    "frameP95Ms": 19,
+    "frameMaxMs": 56,
+    "frameAtLeast25Ms": 13,
+    "frameAtLeast50Ms": 1,
+    "medianFirstFrameMs": 13,
+    "medianSyncMs": 4,
+    "scenarios": {
+      "homeDetail/hit": {
+        "firstFrameMs": 5,
+        "syncMs": 3,
+        "posterMoveMs": 21,
+        "frameP95Ms": 19,
+        "frameMaxMs": 21,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeDetail/hoverMiss": {
+        "firstFrameMs": 15,
+        "syncMs": 4,
+        "posterMoveMs": 6,
+        "frameP95Ms": 19,
+        "frameMaxMs": 27,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeDetail/coldMiss": {
+        "firstFrameMs": 9,
+        "syncMs": 2,
+        "posterMoveMs": 3,
+        "frameP95Ms": 19,
+        "frameMaxMs": 26,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryDetail/hit": {
+        "firstFrameMs": 18,
+        "syncMs": 12,
+        "posterMoveMs": 18,
+        "frameP95Ms": 19,
+        "frameMaxMs": 25,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryDetail/coldMiss": {
+        "firstFrameMs": 17,
+        "syncMs": 6,
+        "posterMoveMs": 25,
+        "frameP95Ms": 19,
+        "frameMaxMs": 19,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "detailReturn/hit": {
+        "firstFrameMs": 15,
+        "syncMs": 9,
+        "posterMoveMs": 29,
+        "frameP95Ms": 19,
+        "frameMaxMs": 20,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "detailReturn/coldMiss": {
+        "firstFrameMs": 11,
+        "syncMs": 4,
+        "posterMoveMs": 25,
+        "frameP95Ms": 19,
+        "frameMaxMs": 56,
+        "frameAtLeast50Ms": 1,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeLibrary/hit": {
+        "firstFrameMs": 5,
+        "syncMs": 1,
+        "posterMoveMs": null,
+        "frameP95Ms": 19,
+        "frameMaxMs": 46,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeLibrary/coldMiss": {
+        "firstFrameMs": 4,
+        "syncMs": 0,
+        "posterMoveMs": null,
+        "frameP95Ms": 19,
+        "frameMaxMs": 42,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryHome/hit": {
+        "firstFrameMs": 23,
+        "syncMs": 12,
+        "posterMoveMs": null,
+        "frameP95Ms": 19,
+        "frameMaxMs": 23,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          true,
+          true,
+          true
+        ]
+      },
+      "libraryHome/coldMiss": {
+        "firstFrameMs": 32,
+        "syncMs": 17,
+        "posterMoveMs": null,
+        "frameP95Ms": 19,
+        "frameMaxMs": 24,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          false,
+          false,
+          false
+        ]
+      }
+    },
+    "preparation": {
+      "home": {
+        "bitmapReadyMs": 202,
+        "snapshotReadyMs": null
+      },
+      "library": {
+        "bitmapReadyMs": 200,
+        "snapshotReadyMs": 280
+      }
+    }
+  },
+  "wk-dom": {
+    "complete": true,
+    "metadata": {
+      "kind": "metadata",
+      "engine": "wk",
+      "path": "dom",
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "dpr": 2,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+      "platform": "ipad",
+      "offscreen": true,
+      "canvasFilter": false,
+      "isolatedFrame": true,
+      "appearanceStyle": false,
+      "styleIds": [
+        "",
+        "",
+        "",
+        "",
+        "tigerest-home-motion-style",
+        "tigerest-home-motion-style"
+      ],
+      "bodyClass": "skinBody",
+      "idleSupported": false
+    },
+    "runs": 33,
+    "frameCount": 2123,
+    "frameMedianMs": 17,
+    "frameP95Ms": 18,
+    "frameMaxMs": 51,
+    "frameAtLeast25Ms": 11,
+    "frameAtLeast50Ms": 1,
+    "medianFirstFrameMs": 21,
+    "medianSyncMs": 10,
+    "scenarios": {
+      "homeDetail/hit": {
+        "firstFrameMs": 7,
+        "syncMs": 3,
+        "posterMoveMs": 19,
+        "frameP95Ms": 18,
+        "frameMaxMs": 18,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeDetail/hoverMiss": {
+        "firstFrameMs": 17,
+        "syncMs": 9,
+        "posterMoveMs": 14,
+        "frameP95Ms": 18,
+        "frameMaxMs": 21,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeDetail/coldMiss": {
+        "firstFrameMs": 11,
+        "syncMs": 5,
+        "posterMoveMs": 8,
+        "frameP95Ms": 18,
+        "frameMaxMs": 18,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryDetail/hit": {
+        "firstFrameMs": 30,
+        "syncMs": 15,
+        "posterMoveMs": 41,
+        "frameP95Ms": 18,
+        "frameMaxMs": 23,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryDetail/coldMiss": {
+        "firstFrameMs": 34,
+        "syncMs": 18,
+        "posterMoveMs": 46,
+        "frameP95Ms": 18,
+        "frameMaxMs": 31,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "detailReturn/hit": {
+        "firstFrameMs": 30,
+        "syncMs": 10,
+        "posterMoveMs": 26,
+        "frameP95Ms": 18,
+        "frameMaxMs": 19,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          true,
+          true,
+          true
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "detailReturn/coldMiss": {
+        "firstFrameMs": 26,
+        "syncMs": 14,
+        "posterMoveMs": 35,
+        "frameP95Ms": 18,
+        "frameMaxMs": 35,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          false,
+          false,
+          false
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeLibrary/hit": {
+        "firstFrameMs": 7,
+        "syncMs": 0,
+        "posterMoveMs": null,
+        "frameP95Ms": 19,
+        "frameMaxMs": 39,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "homeLibrary/coldMiss": {
+        "firstFrameMs": 13,
+        "syncMs": 1,
+        "posterMoveMs": null,
+        "frameP95Ms": 19,
+        "frameMaxMs": 51,
+        "frameAtLeast50Ms": 1,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          null,
+          null,
+          null
+        ]
+      },
+      "libraryHome/hit": {
+        "firstFrameMs": 21,
+        "syncMs": 12,
+        "posterMoveMs": null,
+        "frameP95Ms": 19,
+        "frameMaxMs": 28,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          true,
+          true,
+          true
+        ]
+      },
+      "libraryHome/coldMiss": {
+        "firstFrameMs": 30,
+        "syncMs": 16,
+        "posterMoveMs": null,
+        "frameP95Ms": 19,
+        "frameMaxMs": 19,
+        "frameAtLeast50Ms": 0,
+        "cacheHits": [
+          null,
+          null,
+          null
+        ],
+        "lightHits": [
+          false,
+          false,
+          false
+        ]
+      }
+    },
+    "preparation": {
+      "home": {
+        "bitmapReadyMs": 182,
+        "snapshotReadyMs": 242
+      },
+      "library": {
+        "bitmapReadyMs": 188,
+        "snapshotReadyMs": 266
+      }
+    }
+  }
+}

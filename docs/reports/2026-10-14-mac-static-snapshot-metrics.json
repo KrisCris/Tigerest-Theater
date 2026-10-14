@@ -1,0 +1,378 @@
+{
+  "measurement": "rAF scheduling, not physical scanout",
+  "viewport": [
+    1800,
+    1130,
+    2
+  ],
+  "prototype": "Same-process A/B/A two library/home-return cycles per group. Source override only neutralized explicit is attributes; final implementation additionally handles customized built-ins without reflected attributes and copies live input state.",
+  "groups": [
+    {
+      "variant": "before",
+      "routes": [
+        {
+          "kind": "library",
+          "completed": true,
+          "fps": 112.153147055978,
+          "p95": 10.300000000017462,
+          "worst": 33.70000000001164,
+          "total": 1032,
+          "firstFrame": 9.400000000023283
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 117.80168427201546,
+          "p95": 9.299999999988358,
+          "worst": 16.79999999998836,
+          "total": 2056,
+          "firstFrame": 12.5
+        },
+        {
+          "kind": "library",
+          "completed": true,
+          "fps": 112.1951219512195,
+          "p95": 9.89999999999418,
+          "worst": 33.30000000001746,
+          "total": 1023,
+          "firstFrame": 7.5
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 116.83380391393177,
+          "p95": 9.60000000000582,
+          "worst": 25,
+          "total": 2051.899999976158,
+          "firstFrame": 12.39999999999418
+        }
+      ]
+    },
+    {
+      "variant": "static",
+      "routes": [
+        {
+          "kind": "library",
+          "completed": true,
+          "fps": 114.04204680682335,
+          "p95": 10.200000000011642,
+          "worst": 24.89999999999418,
+          "total": 1010.5,
+          "firstFrame": 8.39999999999418
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 117.62380152218901,
+          "p95": 10,
+          "worst": 24.89999999999418,
+          "total": 2025.3999999761581,
+          "firstFrame": 15.700000000011642
+        },
+        {
+          "kind": "library",
+          "completed": true,
+          "fps": 114.28022663977848,
+          "p95": 10.100000000034925,
+          "worst": 25,
+          "total": 1043.1000000238419,
+          "firstFrame": 6.599999999976717
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 116.56952539550308,
+          "p95": 9.5,
+          "worst": 33.199999999953434,
+          "total": 2040.6999999284744,
+          "firstFrame": 15.800000000046566
+        }
+      ]
+    },
+    {
+      "variant": "beforeAgain",
+      "routes": [
+        {
+          "kind": "library",
+          "completed": true,
+          "fps": 110.31546351848019,
+          "p95": 16.599999999976717,
+          "worst": 33.29999999998836,
+          "total": 1029.7000000476837,
+          "firstFrame": 8.400000000023283
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 117.97808273274823,
+          "p95": 9.5,
+          "worst": 24.79999999998836,
+          "total": 2030.9000000953674,
+          "firstFrame": 16.79999999998836
+        },
+        {
+          "kind": "library",
+          "completed": true,
+          "fps": 115.0895140664988,
+          "p95": 10,
+          "worst": 33.29999999998836,
+          "total": 1024.3999999761581,
+          "firstFrame": 8.299999999988358
+        },
+        {
+          "kind": "homeReturn",
+          "completed": true,
+          "fps": 116.54320987654322,
+          "p95": 9.700000000011642,
+          "worst": 34.5,
+          "total": 2038.8000000715256,
+          "firstFrame": 7.7999999999883585
+        }
+      ]
+    }
+  ],
+  "compiledCommit": "7eb5cf2",
+  "compiled": [
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 105.71428571428571,
+      "p95": 16.700000000000728,
+      "worst": 25.100000000002183,
+      "total": 1056.7000000476837,
+      "firstFrame": 8.299999999999272
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.07317073170732,
+      "p95": 9.5,
+      "worst": 25,
+      "total": 2053,
+      "firstFrame": 8.299999999999272
+    },
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 114.13520632133427,
+      "p95": 10,
+      "worst": 25,
+      "total": 1029.1000000238419,
+      "firstFrame": 16.600000000002183
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.55524120774584,
+      "p95": 9.600000000002183,
+      "worst": 25,
+      "total": 2049.9000000953674,
+      "firstFrame": 15.799999999999272
+    },
+    {
+      "kind": "library",
+      "completed": true,
+      "fps": 115.04512545869251,
+      "p95": 10.19999999999709,
+      "worst": 24.700000000004366,
+      "total": 1013.8000000715256,
+      "firstFrame": 16.700000000004366
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.54910123916319,
+      "p95": 9.900000000001455,
+      "worst": 24.900000000001455,
+      "total": 2047.2000000476837,
+      "firstFrame": 6.80000000000291
+    }
+  ],
+  "rejectedDetailContainment": {
+    "geometry": {
+      "maxChange": 0,
+      "beforeHeight": 2562,
+      "afterHeight": 2562
+    },
+    "conclusion": "No clear repeated-navigation improvement; not adopted. Warm geometry alone does not certify all layouts.",
+    "groups": [
+      {
+        "variant": "before",
+        "routes": [
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 117.46634137526163,
+            "p95": 10.199999999982538,
+            "worst": 16.70000000001164,
+            "total": 1113.5,
+            "firstFrame": 8.39999999999418
+          },
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 117.4252164223897,
+            "p95": 10.199999999982538,
+            "worst": 17,
+            "total": 1169.1000000238419,
+            "firstFrame": 8.39999999999418
+          },
+          {
+            "kind": "homeReturn",
+            "completed": true,
+            "fps": 118.54028900318393,
+            "p95": 10,
+            "worst": 25.099999999976717,
+            "total": 2038.7000000476837,
+            "firstFrame": 16.800000000017462
+          },
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 115.34133533383408,
+            "p95": 10.299999999988358,
+            "worst": 16.70000000001164,
+            "total": 1067.1000000238419,
+            "firstFrame": 8
+          },
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 116.73469387755102,
+            "p95": 10,
+            "worst": 25,
+            "total": 1229.6000000238419,
+            "firstFrame": 16.5
+          },
+          {
+            "kind": "homeReturn",
+            "completed": true,
+            "fps": 116.55355562112584,
+            "p95": 9.699999999982538,
+            "worst": 17.70000000001164,
+            "total": 2030.2000000476837,
+            "firstFrame": 17.10000000000582
+          }
+        ]
+      },
+      {
+        "variant": "strict",
+        "routes": [
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 112.61884981076462,
+            "p95": 16.60000000000582,
+            "worst": 25,
+            "total": 1085.1000000238419,
+            "firstFrame": 7.2999999999883585
+          },
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 114.9232446942393,
+            "p95": 10.299999999988358,
+            "worst": 16.70000000001164,
+            "total": 1187,
+            "firstFrame": 16.699999999982538
+          },
+          {
+            "kind": "homeReturn",
+            "completed": true,
+            "fps": 117.54869171748899,
+            "p95": 9.199999999982538,
+            "worst": 25.10000000000582,
+            "total": 2032.8999999761581,
+            "firstFrame": 16.89999999999418
+          },
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 113.59472334188287,
+            "p95": 10.299999999988358,
+            "worst": 25,
+            "total": 1093.2999999523163,
+            "firstFrame": 8.39999999999418
+          },
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 115.39426373442652,
+            "p95": 10.299999999988358,
+            "worst": 25.70000000001164,
+            "total": 1192.0999999046326,
+            "firstFrame": 10.89999999999418
+          },
+          {
+            "kind": "homeReturn",
+            "completed": true,
+            "fps": 118.03310804192446,
+            "p95": 9.89999999999418,
+            "worst": 24.60000000000582,
+            "total": 2040.8000000715256,
+            "firstFrame": 16.5
+          }
+        ]
+      },
+      {
+        "variant": "beforeAgain",
+        "routes": [
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 113.68762970315017,
+            "p95": 10.299999999988358,
+            "worst": 25,
+            "total": 1109.6000000238419,
+            "firstFrame": 8.199999999982538
+          },
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 116.6303070985076,
+            "p95": 9,
+            "worst": 16.70000000001164,
+            "total": 1196.7000000476837,
+            "firstFrame": 8.299999999988358
+          },
+          {
+            "kind": "homeReturn",
+            "completed": true,
+            "fps": 118.0289170846844,
+            "p95": 9.5,
+            "worst": 25,
+            "total": 2033.6000000238419,
+            "firstFrame": 16.800000000017462
+          },
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 112.50461084470736,
+            "p95": 16.20000000001164,
+            "worst": 16.79999999998836,
+            "total": 1083.7999999523163,
+            "firstFrame": 9.700000000011642
+          },
+          {
+            "kind": "poster",
+            "completed": true,
+            "fps": 116.58582248319523,
+            "p95": 9.699999999982538,
+            "worst": 16.70000000001164,
+            "total": 1176.5999999046326,
+            "firstFrame": 16.5
+          },
+          {
+            "kind": "homeReturn",
+            "completed": true,
+            "fps": 117.08691638731058,
+            "p95": 9.60000000000582,
+            "worst": 24.599999999976717,
+            "total": 2055.5,
+            "firstFrame": 16.79999999998836
+          }
+        ]
+      }
+    ]
+  }
+}

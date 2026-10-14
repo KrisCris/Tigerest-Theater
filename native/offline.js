@@ -115,6 +115,7 @@
     }
 
     async function openOfflineLibrary() {
+        if (window.tigerestIPadApi) return window.tigerestIPadApi.system.openOfflineLibrary();
         await window.apiPromise;
         document.getElementById('tigerestOfflineLibrary')?.remove();
 

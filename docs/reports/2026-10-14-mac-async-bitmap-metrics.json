@@ -1,0 +1,659 @@
+{
+  "measurement": "requestAnimationFrame scheduling; not physical display scanout",
+  "viewport": [
+    1800,
+    1130,
+    2
+  ],
+  "sourceClientCommit": "2409483",
+  "coldComparison": "Same compiled client and encoded assets; backdrop decoded cache and transition snapshot invalidated immediately before each poster action. This is a forced empty-cache experiment, not normal use.",
+  "forcedColdBefore": [
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 76.76924069414848,
+      "p95": 24.90000000000873,
+      "worst": 209.6999999999971,
+      "total": 1551.3999999761581,
+      "firstFrame": 7,
+      "cacheHit": false,
+      "route": "home-detail",
+      "round": 1,
+      "background": [
+        {
+          "captureMs": 2.100000023841858,
+          "resizeMs": 201.19999992847443,
+          "rasterMs": 13,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 95.54833634792045,
+      "p95": 16.5,
+      "worst": 75,
+      "total": 1346.4000000953674,
+      "firstFrame": 8.001999999993131,
+      "cacheHit": false,
+      "route": "detail-library",
+      "round": 1,
+      "background": [
+        {
+          "captureMs": 4.600000023841858,
+          "resizeMs": 19.299999952316284,
+          "rasterMs": 17.199999928474426,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 114.61037370818453,
+      "p95": 9.30000000000291,
+      "worst": 50.09999999999127,
+      "total": 2042.3999999761581,
+      "firstFrame": 17.19999999999709,
+      "route": "library-home",
+      "round": 1,
+      "background": null
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 85.15909266857649,
+      "p95": 10.30000000000291,
+      "worst": 208.40000000000873,
+      "total": 1296.9000000953674,
+      "firstFrame": 8.299999999988358,
+      "cacheHit": false,
+      "route": "home-detail",
+      "round": 2,
+      "background": [
+        {
+          "captureMs": 2.6999999284744263,
+          "resizeMs": 205,
+          "rasterMs": 17.399999976158142,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 114.12268188302453,
+      "p95": 10.400000000008731,
+      "worst": 26.5,
+      "total": 1186.8000000715256,
+      "firstFrame": 6.899999999994179,
+      "cacheHit": false,
+      "route": "detail-library",
+      "round": 2,
+      "background": [
+        {
+          "captureMs": 4.800000071525574,
+          "resizeMs": 19.5,
+          "rasterMs": 18.5,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 118.03888916099346,
+      "p95": 10,
+      "worst": 17,
+      "total": 2037,
+      "firstFrame": 17,
+      "route": "library-home",
+      "round": 2,
+      "background": null
+    }
+  ],
+  "forcedColdAfter": [
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 109.56090045364897,
+      "p95": 16.699999999982538,
+      "worst": 32.20000000001164,
+      "total": 1165.6999999284744,
+      "firstFrame": 18.20000000001164,
+      "cacheHit": false,
+      "route": "home-detail",
+      "round": 1,
+      "background": [
+        {
+          "captureMs": 1.899999976158142,
+          "resizeMs": 55.800000071525574,
+          "rasterMs": 11.900000095367432,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 114.96181924981288,
+      "p95": 10.39999999999418,
+      "worst": 17.29999999998836,
+      "total": 1184.5,
+      "firstFrame": 16.10000000000582,
+      "cacheHit": false,
+      "route": "detail-library",
+      "round": 1,
+      "background": [
+        {
+          "captureMs": 2.399999976158142,
+          "resizeMs": 8.200000047683716,
+          "rasterMs": 11.299999952316284,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 118.05794677554266,
+      "p95": 9.5,
+      "worst": 16.800000000017462,
+      "total": 2035.6000000238419,
+      "firstFrame": 16.5,
+      "route": "library-home",
+      "round": 1,
+      "background": null
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 117.18383800506106,
+      "p95": 10,
+      "worst": 16.70000000001164,
+      "total": 1068.3999999761581,
+      "firstFrame": 8.400000000023283,
+      "cacheHit": false,
+      "route": "home-detail",
+      "round": 2,
+      "background": [
+        {
+          "captureMs": 1.100000023841858,
+          "resizeMs": 49.10000002384186,
+          "rasterMs": 17.200000047683716,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 116.62300346488462,
+      "p95": 9.89999999999418,
+      "worst": 18,
+      "total": 1184.8000000715256,
+      "firstFrame": 16.70000000001164,
+      "cacheHit": false,
+      "route": "detail-library",
+      "round": 2,
+      "background": [
+        {
+          "captureMs": 3.5,
+          "resizeMs": 8,
+          "rasterMs": 11.199999928474426,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.50765280932195,
+      "p95": 9.89999999999418,
+      "worst": 16.70000000001164,
+      "total": 2028.2000000476837,
+      "firstFrame": 8,
+      "route": "library-home",
+      "round": 2,
+      "background": null
+    }
+  ],
+  "ordinaryAfter": [
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 99.10188912976137,
+      "p95": 16.69999999999709,
+      "worst": 66.70000000000073,
+      "total": 1294.4000000953674,
+      "firstFrame": 8.299999999999272,
+      "cacheHit": false,
+      "route": "home-detail",
+      "round": 1,
+      "background": [
+        {
+          "captureMs": 1.899999976158142,
+          "resizeMs": 0.5,
+          "rasterMs": 16,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 110.68918154641668,
+      "p95": 11.200000000000728,
+      "worst": 41.599999999998545,
+      "total": 1237.7999999523163,
+      "firstFrame": 11.200000000000728,
+      "cacheHit": true,
+      "route": "detail-library",
+      "round": 1,
+      "background": [
+        {
+          "captureMs": 7.600000023841858,
+          "resizeMs": 16.5,
+          "rasterMs": 54.39999997615814,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 118.03052002568062,
+      "p95": 8.900000000001455,
+      "worst": 25.900000000001455,
+      "total": 2027.8999999761581,
+      "firstFrame": 8,
+      "route": "library-home",
+      "round": 1,
+      "background": null
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 113.63636363636364,
+      "p95": 9.30000000000291,
+      "worst": 25.10000000000582,
+      "total": 1101.4000000953674,
+      "firstFrame": 8.30000000000291,
+      "cacheHit": false,
+      "route": "home-detail",
+      "round": 2,
+      "background": [
+        {
+          "captureMs": 2.200000047683716,
+          "resizeMs": 0.6999999284744263,
+          "rasterMs": 29,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 116.64009398338537,
+      "p95": 9,
+      "worst": 16.80000000000291,
+      "total": 1187.1000000238419,
+      "firstFrame": 16.69999999999709,
+      "cacheHit": true,
+      "route": "detail-library",
+      "round": 2,
+      "background": [
+        {
+          "captureMs": 4,
+          "resizeMs": 0.5999999046325684,
+          "rasterMs": 19.300000071525574,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 118.02891708468566,
+      "p95": 9.5,
+      "worst": 25,
+      "total": 2034.2000000476837,
+      "firstFrame": 16.700000000004366,
+      "route": "library-home",
+      "round": 2,
+      "background": null
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 114.38214888430542,
+      "p95": 10.299999999995634,
+      "worst": 33.30000000000291,
+      "total": 1068.4000000953674,
+      "firstFrame": 8.19999999999709,
+      "cacheHit": false,
+      "route": "home-detail",
+      "round": 3,
+      "background": [
+        {
+          "captureMs": 1.100000023841858,
+          "resizeMs": 0.2999999523162842,
+          "rasterMs": 16.399999976158142,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "poster",
+      "completed": true,
+      "fps": 115.3975741239895,
+      "p95": 10.19999999999709,
+      "worst": 17.900000000001455,
+      "total": 1190,
+      "firstFrame": 10.89999999999418,
+      "cacheHit": true,
+      "route": "detail-library",
+      "round": 3,
+      "background": [
+        {
+          "captureMs": 2.3000000715255737,
+          "resizeMs": 0.2999999523162842,
+          "rasterMs": 13.599999904632568,
+          "rasterThread": "worker"
+        }
+      ]
+    },
+    {
+      "kind": "homeReturn",
+      "completed": true,
+      "fps": 117.56671057124771,
+      "p95": 9.400000000001455,
+      "worst": 25,
+      "total": 2053.399999976158,
+      "firstFrame": 17,
+      "route": "library-home",
+      "round": 3,
+      "background": null
+    }
+  ],
+  "apiBefore": {
+    "fixtures": {
+      "large.jpg": "6b7cd867559f1c7b8831142042234026aeb0f8fdb359c43dae1306827170f25d",
+      "alpha.png": "18d4b6b116e589de7c8feaba0b78bb44489a82283d6a5abc95619e66ebf1a030",
+      "wide.png": "4e50c03cb3d84e1857b48c6c6d922ac4012f9812cd1c2942bfc2aa3835efc5f4",
+      "orientation.jpg": "a701dea4f24ff0d45d8356f6db48c636a0dc8ff495fdac44e18293e47c9669b3",
+      "sixteen.png": "c9a4c5496ebc656b121c6926728fe7f6f3d58097986c5b5b2fa4eb5ae16d65f9",
+      "animated.gif": "f9376ccba5aa80276bc5ed39af6faeba5d3863a235dacff031f7e8acc1de752c"
+    },
+    "checks": {
+      "alpha": {
+        "width": 48,
+        "height": 32,
+        "hash": "320e63ffe7afb8f587a6124d100a18ca19bd4e70f9a775d25c0413d7a91ddac9"
+      },
+      "alpha-straight": {
+        "width": 48,
+        "height": 32,
+        "hash": "ca4e32a67d186a99eb10fc62e4ebd62affb0d31ab74a68afd4a7ea0d118bb96b"
+      },
+      "flip": {
+        "width": 48,
+        "height": 32,
+        "hash": "b9d6c426be1cc9a647a56f49d7f0f540a57d00fd809ec10344b8a7dd5ceeaf51"
+      },
+      "crop": {
+        "width": 32,
+        "height": 20,
+        "hash": "05f333d2949782b790164704d9ea870a9b0bfada9ef289019d287a03b6a00a50"
+      },
+      "outside-crop": {
+        "width": 32,
+        "height": 20,
+        "hash": "bd2f002f4d0db74170f7b085fcfef2349066e9cd077bcc221f395836c188fb65"
+      },
+      "blank-crop": {
+        "width": 16,
+        "height": 16,
+        "hash": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+      },
+      "wide-default": {
+        "width": 48,
+        "height": 32,
+        "hash": "df7ee5ff1a5103911ecb14530b33a304481241ad3ef91bbeaa20d02e0c6bbbdb"
+      },
+      "wide-no-conversion": {
+        "width": 48,
+        "height": 32,
+        "hash": "320e63ffe7afb8f587a6124d100a18ca19bd4e70f9a775d25c0413d7a91ddac9"
+      },
+      "orientation": {
+        "width": 64,
+        "height": 48,
+        "hash": "98848608421c369c41a6bd1aa38a351f4b29f51ac67c6b8d1238d3df15766976"
+      },
+      "orientation-none": {
+        "width": 64,
+        "height": 48,
+        "hash": "98848608421c369c41a6bd1aa38a351f4b29f51ac67c6b8d1238d3df15766976"
+      },
+      "orientation-crop": {
+        "width": 24,
+        "height": 32,
+        "hash": "9da199137c9269998b910a8c7eb862d2dc53436c55d221d061b06988c7f1d519"
+      },
+      "sixteen": {
+        "width": 48,
+        "height": 32,
+        "hash": "0de918de10dafb9f590c4449d364abdd426f2247e49640723313a772c646a9b2"
+      },
+      "animated-first-frame": {
+        "width": 32,
+        "height": 24,
+        "hash": "a6e2a1a9b08e1afea38be60f7be46887619cd2eb874001cc5e21ecf0e7c4a505"
+      },
+      "quality-pixelated": {
+        "width": 47,
+        "height": 31,
+        "hash": "d59c8c4967f8730a2a6c3222703c0eed3a56a2b67a906523fdb065d2c472239f"
+      },
+      "quality-low": {
+        "width": 47,
+        "height": 31,
+        "hash": "27ab832ed5fb65a23a07c06fd8de6178bfc6118b76c2a89cc5228814cedde669"
+      },
+      "quality-medium": {
+        "width": 47,
+        "height": 31,
+        "hash": "01803c3d6b2fd34fa142f89e32f914f30d412803e917cec91c6555a44b551fbb"
+      },
+      "quality-high": {
+        "width": 47,
+        "height": 31,
+        "hash": "15be63050cc77d1744385a11917855cd221299ad55587e02b628edd324da97e2"
+      },
+      "source-snapshot": {
+        "width": 48,
+        "height": 32,
+        "hash": "320e63ffe7afb8f587a6124d100a18ca19bd4e70f9a775d25c0413d7a91ddac9"
+      }
+    },
+    "security": {
+      "readback": "SecurityError",
+      "transfer": "DataCloneError"
+    },
+    "calls": [
+      {
+        "syncMs": 73.5,
+        "totalMs": 73.5,
+        "width": 240,
+        "height": 160
+      },
+      {
+        "syncMs": 64,
+        "totalMs": 64,
+        "width": 240,
+        "height": 160
+      },
+      {
+        "syncMs": 62.60000002384186,
+        "totalMs": 62.60000002384186,
+        "width": 240,
+        "height": 160
+      }
+    ],
+    "maxSyncMs": 73.5,
+    "maxFrameIntervalMs": 75.10000000000002
+  },
+  "apiAfter": {
+    "fixtures": {
+      "large.jpg": "6b7cd867559f1c7b8831142042234026aeb0f8fdb359c43dae1306827170f25d",
+      "alpha.png": "18d4b6b116e589de7c8feaba0b78bb44489a82283d6a5abc95619e66ebf1a030",
+      "wide.png": "4e50c03cb3d84e1857b48c6c6d922ac4012f9812cd1c2942bfc2aa3835efc5f4",
+      "orientation.jpg": "a701dea4f24ff0d45d8356f6db48c636a0dc8ff495fdac44e18293e47c9669b3",
+      "sixteen.png": "c9a4c5496ebc656b121c6926728fe7f6f3d58097986c5b5b2fa4eb5ae16d65f9",
+      "animated.gif": "f9376ccba5aa80276bc5ed39af6faeba5d3863a235dacff031f7e8acc1de752c"
+    },
+    "checks": {
+      "alpha": {
+        "width": 48,
+        "height": 32,
+        "hash": "320e63ffe7afb8f587a6124d100a18ca19bd4e70f9a775d25c0413d7a91ddac9"
+      },
+      "alpha-straight": {
+        "width": 48,
+        "height": 32,
+        "hash": "ca4e32a67d186a99eb10fc62e4ebd62affb0d31ab74a68afd4a7ea0d118bb96b"
+      },
+      "flip": {
+        "width": 48,
+        "height": 32,
+        "hash": "b9d6c426be1cc9a647a56f49d7f0f540a57d00fd809ec10344b8a7dd5ceeaf51"
+      },
+      "crop": {
+        "width": 32,
+        "height": 20,
+        "hash": "05f333d2949782b790164704d9ea870a9b0bfada9ef289019d287a03b6a00a50"
+      },
+      "outside-crop": {
+        "width": 32,
+        "height": 20,
+        "hash": "bd2f002f4d0db74170f7b085fcfef2349066e9cd077bcc221f395836c188fb65"
+      },
+      "blank-crop": {
+        "width": 16,
+        "height": 16,
+        "hash": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+      },
+      "wide-default": {
+        "width": 48,
+        "height": 32,
+        "hash": "df7ee5ff1a5103911ecb14530b33a304481241ad3ef91bbeaa20d02e0c6bbbdb"
+      },
+      "wide-no-conversion": {
+        "width": 48,
+        "height": 32,
+        "hash": "320e63ffe7afb8f587a6124d100a18ca19bd4e70f9a775d25c0413d7a91ddac9"
+      },
+      "orientation": {
+        "width": 64,
+        "height": 48,
+        "hash": "98848608421c369c41a6bd1aa38a351f4b29f51ac67c6b8d1238d3df15766976"
+      },
+      "orientation-none": {
+        "width": 64,
+        "height": 48,
+        "hash": "98848608421c369c41a6bd1aa38a351f4b29f51ac67c6b8d1238d3df15766976"
+      },
+      "orientation-crop": {
+        "width": 24,
+        "height": 32,
+        "hash": "9da199137c9269998b910a8c7eb862d2dc53436c55d221d061b06988c7f1d519"
+      },
+      "sixteen": {
+        "width": 48,
+        "height": 32,
+        "hash": "0de918de10dafb9f590c4449d364abdd426f2247e49640723313a772c646a9b2"
+      },
+      "animated-first-frame": {
+        "width": 32,
+        "height": 24,
+        "hash": "a6e2a1a9b08e1afea38be60f7be46887619cd2eb874001cc5e21ecf0e7c4a505"
+      },
+      "quality-pixelated": {
+        "width": 47,
+        "height": 31,
+        "hash": "d59c8c4967f8730a2a6c3222703c0eed3a56a2b67a906523fdb065d2c472239f"
+      },
+      "quality-low": {
+        "width": 47,
+        "height": 31,
+        "hash": "27ab832ed5fb65a23a07c06fd8de6178bfc6118b76c2a89cc5228814cedde669"
+      },
+      "quality-medium": {
+        "width": 47,
+        "height": 31,
+        "hash": "01803c3d6b2fd34fa142f89e32f914f30d412803e917cec91c6555a44b551fbb"
+      },
+      "quality-high": {
+        "width": 47,
+        "height": 31,
+        "hash": "15be63050cc77d1744385a11917855cd221299ad55587e02b628edd324da97e2"
+      },
+      "source-snapshot": {
+        "width": 48,
+        "height": 32,
+        "hash": "320e63ffe7afb8f587a6124d100a18ca19bd4e70f9a775d25c0413d7a91ddac9"
+      }
+    },
+    "security": {
+      "readback": "SecurityError",
+      "transfer": "DataCloneError"
+    },
+    "calls": [
+      {
+        "syncMs": 2,
+        "totalMs": 71,
+        "width": 240,
+        "height": 160
+      },
+      {
+        "syncMs": 1.600000023841858,
+        "totalMs": 64,
+        "width": 240,
+        "height": 160
+      },
+      {
+        "syncMs": 1.600000023841858,
+        "totalMs": 63.200000047683716,
+        "width": 240,
+        "height": 160
+      }
+    ],
+    "maxSyncMs": 2,
+    "maxFrameIntervalMs": 10.300000000000182,
+    "detachedSource": {
+      "completed": true,
+      "pixels": {
+        "width": 240,
+        "height": 160,
+        "hash": "92dd99ce744f8695dc8af95f7b075f7ac344e83b56e62d4bd242b50a57b88b25"
+      }
+    }
+  },
+  "playback": {
+    "baseline": true,
+    "renderBackend": "gpu-next",
+    "startupDrops": 0,
+    "measuredSeconds": 60.382,
+    "renderDrops": 1,
+    "decodeDrops": 0,
+    "dropRatio": 0.0005524861908977138,
+    "maxAvsyncMs": 28.92,
+    "loadedImageCount": 2535,
+    "functionalPassed": true,
+    "passed": true,
+    "shaderCount": 3,
+    "revisionNote": "Measured before the defensive callback-runner ownership adjustment; the final rebuilt standalone engine reran the exact-pixel/security/lifetime probe."
+  }
+}

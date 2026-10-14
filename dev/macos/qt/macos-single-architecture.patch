@@ -1,0 +1,13 @@
+--- a/cmake/Functions.cmake
++++ b/cmake/Functions.cmake
+@@ -278,7 +278,9 @@
+ 
+     # Just link with dynamic libs once
+     # TODO: this is evil hack, since cmake has no idea about libs
+-    set(libs_rsp "${buildDir}/x86_64/${ninjaTarget}_libs.rsp")
++    get_architectures(link_architectures)
++    list(GET link_architectures 0 link_architecture)
++    set(libs_rsp "${buildDir}/${link_architecture}/${ninjaTarget}_libs.rsp")
+     target_link_options(${cmakeTarget} PRIVATE "$<$<CONFIG:${config}>:@${libs_rsp}>")
+ endfunction()
+ 

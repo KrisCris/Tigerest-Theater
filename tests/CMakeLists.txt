@@ -464,6 +464,13 @@ endif()
 
 find_program(Node_EXECUTABLE node)
 if(Node_EXECUTABLE)
+  add_test(NAME test_community_browser
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_community_browser.cjs)
+  set_tests_properties(test_community_browser PROPERTIES TIMEOUT 10)
+  add_test(NAME test_frame_metrics
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_frame_metrics.cjs)
+  add_test(NAME test_home_motion_benchmark
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_benchmark.cjs)
   add_test(NAME test_home_data
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_home_data.js
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_home_backdrop.js
@@ -474,10 +481,21 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_home_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_web_appearance_worlds_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_web_appearance_worlds_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_web_appearance_worlds_webengine PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
   add_test(NAME test_home_motion_cache_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_cache_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_home_motion_cache_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  if(APPLE)
+    add_test(NAME test_ambient_renderer_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_ambient_renderer_ui.cjs
+                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_ambient_renderer_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
+                         ENVIRONMENT "TIGEREST_AMBIENT_REQUIRE_EMBEDDED=1")
+  endif()
   add_test(NAME test_home_gallery_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_gallery_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)

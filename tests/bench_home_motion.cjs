@@ -1,11 +1,21 @@
 // Manual Emby-scale latency benchmark for the home/library/detail transitions.
 // Not a CTest: timings depend on the machine. Compare runs on the same device.
-//   node tests/bench_home_motion.cjs <browser-or-client> [--webengine] [--rounds=5] [--native-size]
-// --native-size keeps the real window size and device pixel ratio instead of 1280x720@1x;
+//   node tests/bench_home_motion.cjs <browser-or-client> [--webengine] [--rounds=5]
+// High-refresh probe: --dpr=2 --hz=120 --output=/absolute/path/report.json
+// --viewport=fullscreen measures the actual display-sized client without emulation.
+// --scroll=native uses a CDP wheel gesture (not supported by Qt WebEngine).
+// --native-size keeps the real window size and device pixel ratio instead of 1280x720;
 // --maximized restores the client window maximized.
 // Android: TIGEREST_ANDROID_FIXTURE=1 node tests/bench_home_motion.cjs
 // Uses an isolated fixture page and profile; it never touches an Emby account.
 const path=require('node:path'),withBrowser=require('./community_browser.cjs');
+const fs=require('node:fs'),{frameMetrics}=require('./frame_metrics.cjs');
+const argument=(name,fallback)=>process.argv.find(a=>a.startsWith('--'+name+'='))?.split('=').slice(1).join('=')??fallback;
+const dpr=Number(argument('dpr',1)),targetHz=Number(argument('hz',120)),output=argument('output',null);
+const scrollMode=argument('scroll','script');
+const viewport=argument('viewport','fixed');
+if(!['script','native'].includes(scrollMode))throw Error('--scroll must be script or native');
+if(!['fixed','fullscreen'].includes(viewport))throw Error('--viewport must be fixed or fullscreen');
 const repo=path.resolve(__dirname,'..'),rounds=Number(process.argv.find(a=>a.startsWith('--rounds='))?.slice(9)||5);
 const embedded=process.argv.includes('--webengine')||!!process.env.TIGEREST_ANDROID_FIXTURE;
 const poster=hue=>`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue},55%,45%)"/><stop offset="1" stop-color="hsl(${(hue+80)%360},45%,20%)"/></linearGradient></defs><rect width="600" height="900" fill="url(#g)"/><circle cx="300" cy="330" r="180" fill="hsl(${(hue+160)%360},40%,60%)" opacity=".7"/><text x="40" y="820" font-size="64" fill="#fff">POSTER ${hue}</text></svg>`;
@@ -38,7 +48,18 @@ const routes={'/':{type:'text/html; charset=utf-8',body},'/css/a.css':{type:'tex
 // Card artwork: one deterministic SVG per query, so every card decodes separately.
 const proxy=new Proxy(routes,{get(t,k){if(typeof k==='string'&&k.startsWith('/img/'))return {type:'image/svg+xml',body:poster([...k].reduce((a,c)=>a*31+c.charCodeAt(0)>>>0,7)%360)};return t[k];}});
 withBrowser(proxy,async({evaluate,call})=>{
- if(!process.env.TIGEREST_ANDROID_FIXTURE&&!process.argv.includes('--native-size'))await call('Emulation.setDeviceMetricsOverride',{width:1280,height:720,deviceScaleFactor:1,mobile:false});
+ if(viewport==='fullscreen'){
+  if(embedded)await evaluate('window.api.window.setFullScreen(true);true');
+  else {const {windowId}=await call('Browser.getWindowForTarget');await call('Browser.setWindowBounds',{windowId,bounds:{windowState:'fullscreen'}});}
+  await new Promise(resolve=>setTimeout(resolve,1800));
+ }else if(!process.env.TIGEREST_ANDROID_FIXTURE&&!process.argv.includes('--native-size'))await call('Emulation.setDeviceMetricsOverride',{width:1280,height:720,deviceScaleFactor:dpr,mobile:false});
+ if(!embedded){
+  // Match the native client's separate appearance world in standalone Chrome.
+  const {frameTree}=await call('Page.getFrameTree');
+  const {executionContextId}=await call('Page.createIsolatedWorld',{frameId:frameTree.frame.id,worldName:'benchmark-appearance'});
+  const result=await call('Runtime.evaluate',{contextId:executionContextId,expression:fs.readFileSync(path.join(repo,'native/webAppearance.js'),'utf8')});
+  if(result.exceptionDetails)throw Error(JSON.stringify(result.exceptionDetails));
+ }
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
  await new Promise(r=>setTimeout(r,800));
  await evaluate(`(async()=>{
@@ -50,22 +71,27 @@ withBrowser(proxy,async({evaluate,call})=>{
   document.querySelectorAll('.itemsContainer').forEach(list=>list.getItemFromElement=el=>({Id:el.closest('.card').dataset.id,Type:'Movie'}));
   await Promise.all(Array.from(document.images).filter(i=>!i.complete&&i.loading!=='lazy').map(i=>new Promise(r=>{i.onload=i.onerror=r;})));
   window.measure=async(start)=>{
+    // Start from an observed frame before invoking the action, so synchronous
+    // preparation and a delayed first callback are included in the intervals.
+    const initialFrame=await new Promise(requestAnimationFrame);
     const loaf=[],t0=performance.now();navigateLog=[];
+    const intervals=[],frameTimes=[initialFrame-t0],animations=[],nativeAnimate=Element.prototype.animate;let previous=initialFrame,frameHandle;
+    Element.prototype.animate=function(...args){const a=nativeAnimate.apply(this,args),target=this.className;
+      a.ready.then(()=>{if(a.startTime!==null){const timing=a.effect.getComputedTiming();animations.push({target,start:a.startTime+timing.delay-t0,end:a.startTime+timing.endTime-t0});}}).catch(()=>{});return a;};
+    const tick=t=>{frameTimes.push(t-t0);intervals.push(t-previous);previous=t;frameHandle=requestAnimationFrame(tick);};
+    frameHandle=requestAnimationFrame(tick);
     const loafSupported=PerformanceObserver.supportedEntryTypes?.includes('long-animation-frame'),po=new PerformanceObserver(l=>loaf.push(...l.getEntries()));if(loafSupported)po.observe({type:'long-animation-frame'});
     const firstFrame=new Promise(r=>requestAnimationFrame(()=>{const ch=new MessageChannel();ch.port1.onmessage=()=>r(performance.now()-t0);ch.port2.postMessage(0);}));
-    // Frame timestamps across the whole transition, for pacing during motion.
-    const stamps=[];let ticking=true;const tick=t=>{stamps.push(t);if(ticking)requestAnimationFrame(tick);};requestAnimationFrame(tick);
-    const p=start();const syncMs=performance.now()-t0;const firstFrameMs=await firstFrame;await p;
-    await new Promise(r=>setTimeout(r,300));po.disconnect();ticking=false;
+    let p;try{p=start();}catch(error){Element.prototype.animate=nativeAnimate;throw error;}
+    const syncMs=performance.now()-t0;const firstFrameMs=await firstFrame;try{await p;}finally{Element.prototype.animate=nativeAnimate;}
+    cancelAnimationFrame(frameHandle);const transitionEnd=performance.now();
+    await new Promise(r=>setTimeout(r,300));po.disconnect();
     const m=TigerestHomeTransitions.last||{};
-    const during=loaf.filter(e=>e.startTime>=t0-5);
-    const end=t0+(m.totalMs||0),iv=[];for(let i=1;i<stamps.length;i++)if(stamps[i]<=end)iv.push(stamps[i]-stamps[i-1]);
-    const sorted=[...iv].sort((a,b)=>a-b),display=sorted[sorted.length>>2]||0;
-    return {syncMs,firstFrameMs,navigateMs:navigateLog[0]?navigateLog[0]-t0-routeDelay:null,flightMs:m.posterFlightStartsMs??null,posterMoveMs:m.posterFirstMotionMs??null,totalMs:m.totalMs,cacheHit:m.cacheHit,lightHit:m.lightCacheHit,captureMs:m.backgroundPhases?.[0]?.captureMs??null,
+    const during=loaf.filter(e=>e.startTime>=t0-5&&e.startTime<transitionEnd);
+    return {intervals,frameTimes,animations,syncMs,firstFrameMs,navigateMs:navigateLog[0]?navigateLog[0]-t0-routeDelay:null,flightMs:m.posterFlightStartsMs??null,posterMoveMs:m.posterFirstMotionMs??null,totalMs:m.totalMs,cacheHit:m.cacheHit,lightHit:m.lightCacheHit,captureMs:m.backgroundPhases?.[0]?.captureMs??null,
       // Long-animation-frame needs Chromium 123+; older engines report null.
-      motionFps:iv.length?1000*iv.length/iv.reduce((a,b)=>a+b,0):null,motionP95:sorted[Math.floor(sorted.length*.95)]??null,
-      // Frames longer than 1.5 display intervals (the fastest quartile approximates the refresh period).
-      motionDrops:iv.filter(x=>x>display*1.5).length,maxFrameMs:loafSupported?Math.max(0,...during.map(e=>e.duration)):null,longFrames:loafSupported?during.filter(e=>e.duration>50).length:null};
+      longAnimationFrames:during.map(e=>({...e.toJSON(),scripts:e.scripts.map(s=>s.toJSON())})),
+      maxFrameMs:loafSupported?Math.max(0,...during.map(e=>e.duration)):null,longFrames:loafSupported?during.filter(e=>e.duration>50).length:null};
   };
   window.heroBusy=()=>Array.from(document.querySelector('.hero-content').children).map((n,i)=>n.animate([{opacity:0,transform:'translate3d(-52px,30px,0)'},{opacity:1,transform:'none'}],{duration:i===1?760:620,delay:160+i*140,fill:'both'}));
   return true;})()`);
@@ -80,7 +106,10 @@ withBrowser(proxy,async({evaluate,call})=>{
   libraryHome:`TigerestHomeTransitions.homeReturn({findGallery:()=>gallery,navigate:()=>route('home').then(()=>{gallery.active=true;})})`
  };
  const from={homeDetail:'home',libraryDetail:'library',detailReturn:'detail',homeLibrary:'home',libraryHome:'library'};
- const results={};
+ const results={},samples={};
+ const metadata=await evaluate(`({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,visible:document.visibilityState,focus:document.hasFocus(),ua:navigator.userAgent})`);
+ metadata.targetHz=targetHz;metadata.viewport=viewport;metadata.measurement='requestAnimationFrame scheduling; not physical presentation';
+ console.log('Metadata',JSON.stringify(metadata));
  for(const [name,code] of Object.entries(scenarios)){
   for(const mode of ['hit','hoverMiss','coldMiss']){
    // hoverMiss: a hovered home poster restarts the hero text entrance just before the click.
@@ -89,17 +118,43 @@ withBrowser(proxy,async({evaluate,call})=>{
    for(let r=0;r<rounds;r++){
     await evaluate(`TigerestHomeTransitions.cancel();show(${JSON.stringify(from[name])});gallery.active=${from[name]==='home'};document.querySelector('.page:not(.hide)').scrollTop=0;true`);
     await new Promise(res=>setTimeout(res,250));
-    if(mode==='hit'){const ok=await evaluate('TigerestHomeTransitions.prewarm()');if(!ok)console.warn('prewarm failed',name);}
+    if(mode==='hit'){
+     // Entrance observers can invalidate the first warm attempt. A warm-case
+     // measurement must actually have its requested cache, not silently time a miss.
+     await evaluate(`(async()=>{const until=performance.now()+6000;while(performance.now()<until){await TigerestHomeTransitions.prewarm();const s=TigerestHomeTransitions.cacheState;if(s.ready&&(${from[name]==='home'}||s.snapshot))return;await new Promise(r=>setTimeout(r,100));}throw Error('warm benchmark precondition failed')})()`);
+    }
     else if(mode==='hoverMiss'){await evaluate('TigerestHomeTransitions.prewarm()');await evaluate(`heroBusy();document.querySelector('#hero-title').textContent='hover '+Math.random();true`);await new Promise(res=>setTimeout(res,400));}
     else {await evaluate(`TigerestHomeTransitions.invalidate();true`);}
     rows.push(await evaluate(`measure(()=>${code})`));
    }
    const med=k=>{const v=rows.map(x=>x[k]).filter(x=>typeof x==='number').sort((a,b)=>a-b);return v.length?+v[v.length>>1].toFixed(1):null;};
-   results[name+'/'+mode]={sync:med('syncMs'),firstFrame:med('firstFrameMs'),navigate:med('navigateMs'),posterMove:med('posterMoveMs'),flight:med('flightMs'),maxFrame:med('maxFrameMs'),capture:med('captureMs'),longFrames:med('longFrames'),total:med('totalMs'),fps:med('motionFps'),p95:med('motionP95'),drops:med('motionDrops'),cacheHit:rows.map(x=>x.cacheHit).join(','),lightHit:rows.map(x=>x.lightHit).join(',')};
+   samples[name+'/'+mode]=rows;
+   const frames=frameMetrics(rows.flatMap(row=>row.intervals),targetHz);
+   results[name+'/'+mode]={sync:med('syncMs'),firstFrame:med('firstFrameMs'),navigate:med('navigateMs'),posterMove:med('posterMoveMs'),flight:med('flightMs'),maxFrame:med('maxFrameMs'),capture:med('captureMs'),longFrames:med('longFrames'),total:med('totalMs'),cacheHit:rows.map(x=>x.cacheHit).join(','),lightHit:rows.map(x=>x.lightHit).join(',')};
+   Object.assign(results[name+'/'+mode],{fps:frames.callbackFps,p95:frames.p95Ms,worst:frames.maxMs,missed:frames.estimatedMissedRefreshes});
   }
  }
+ // Use the same page-driven continuous scroll in both engines by default.
+ // Qt WebEngine does not implement CDP's synthetic wheel gesture completion.
+ await evaluate(`TigerestHomeTransitions.cancel();show('library');document.querySelector('#library').scrollTop=0;true`);
+ await new Promise(resolve=>setTimeout(resolve,1000));
+ let scrolling;
+ if(scrollMode==='native'){
+  await evaluate(`window.scrollIntervals=[];window.scrollPrevious=undefined;window.scrollTick=t=>{if(scrollPrevious!==undefined)scrollIntervals.push(t-scrollPrevious);scrollPrevious=t;window.scrollFrame=requestAnimationFrame(scrollTick);};window.scrollFrame=requestAnimationFrame(scrollTick);true`);
+  await call('Input.synthesizeScrollGesture',{x:1000,y:500,yDistance:-3000,speed:1000,gestureSourceType:'mouse',preventFling:true});
+  scrolling=await evaluate(`cancelAnimationFrame(scrollFrame);({intervals:scrollIntervals,scrollTop:document.querySelector('#library').scrollTop})`);
+ }else{
+  scrolling=await evaluate(`new Promise(resolve=>{const page=document.querySelector('#library'),intervals=[];let start,previous;
+   const tick=t=>{start??=t;if(previous!==undefined)intervals.push(t-previous);previous=t;page.scrollTop=t-start;
+    if(t-start<3000)requestAnimationFrame(tick);else resolve({intervals,scrollTop:page.scrollTop});};requestAnimationFrame(tick);})`);
+ }
+ scrolling.mode=scrollMode;
+ if(scrolling.scrollTop<=0)throw Error('scroll fixture did not actually move');
+ samples.scroll=scrolling;
+ results.scroll=frameMetrics(scrolling.intervals,targetHz);
  console.table(results);
  // Time from a page change until the bitmap and the DOM snapshot are ready.
  for(const page of ['library','home'])for(let i=0;i<3;i++){const r=await evaluate(`(async()=>{TigerestHomeTransitions.cancel();show('${page}');gallery.active=${page==='home'};await new Promise(r=>setTimeout(r,0));TigerestHomeTransitions.invalidate();const t0=performance.now();let ready=null,snap=null;while(performance.now()-t0<4000){const s=TigerestHomeTransitions.cacheState;if(s.ready&&ready===null)ready=performance.now()-t0;if((s.snapshot||(s.snapshot===undefined&&s.ready&&!s.warming))&&snap===null)snap=performance.now()-t0;if(ready!==null&&snap!==null)break;await new Promise(r=>setTimeout(r,5));}return {page:'${page}',bitmapReadyMs:ready,snapshotReadyMs:snap};})()`);console.log(JSON.stringify(r));}
  console.log(JSON.stringify(results));
+ if(output)fs.writeFileSync(output,JSON.stringify({metadata,results,samples},null,2));
 },{gpu:true,visible:true,maximized:process.argv.includes('--maximized')}).catch(e=>{console.error(e);process.exitCode=1;});

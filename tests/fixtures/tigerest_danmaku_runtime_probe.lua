@@ -717,7 +717,10 @@ function cases.explicit_query_and_candidate_seasons_must_not_conflict()
         s.env.show_message = function(message) notice = message end
         s.emit('file-loaded')
         s.respond(1, {animes = {{type = 'tvseries', animeTitle = pair[2], bangumiId = '42'}}})
-        assert(#s.requests == 1 and notice and notice ~= '', 'Conflicting or unavailable season evidence must keep manual matching')
+        local queried_aliases = pair[2] == 'Unrelated different work 第二季'
+        if queried_aliases then s.respond(2, {bangumi = {titles = {}, episodes = {{episodeNumber='3',episodeTitle='Episode 3',episodeId=420003}}}}) end
+        assert(#s.requests == (queried_aliases and 2 or 1) and notice and notice ~= '',
+            'Conflicting seasons or an unrelated release without authoritative aliases must keep manual matching')
     end
 end
 function cases.numeric_theme_tracks_never_supply_a_regular_episode_match()
@@ -931,11 +934,70 @@ function cases.weak_work_names_cannot_supply_an_episode_title_or_number_match()
         s.respond(1, {animes = animes})
         if another_release then
             s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = 'Expected story', episodeId = 420003}}}})
-            assert(#s.requests == 3 and s.env.DANMAKU.anime == 'Fixture series', 'Only the sufficiently matched work may supply the episode')
+            s.respond(3, {bangumi = {titles = {}, episodes = {{episodeNumber = '3', episodeTitle = 'Expected story', episodeId = 430003}}}})
+            assert(#s.requests == 4 and s.env.DANMAKU.anime == 'Fixture series', 'A weak release without a matching alias must not supply the episode')
         else
-            assert(#s.requests == 1, 'An unrelated weak work must not be queried for title or number matches')
+            s.respond(2, {bangumi = {titles = {}, episodes = {{episodeNumber = '3', episodeTitle = 'Expected story', episodeId = 430003}}}})
+            assert(#s.requests == 2, 'Episode title/number alone cannot validate a weak release after its aliases are checked')
         end
     end
+end
+
+function cases.authoritative_alias_matches_blue_box_without_crossing_seasons()
+    local s = sandbox(true)
+    s.props['user-data/tigerest/emby/series-name'] = '青之箱'
+    s.props['user-data/tigerest/emby/season-number'] = 1
+    s.props['user-data/tigerest/emby/episode-number'] = 1
+    s.props['user-data/tigerest/emby/episode-name'] = '千夏前辈'
+    s.emit('file-loaded')
+    s.respond(1, {animes={{type='tvseries',animeTitle='蓝箱',bangumiId='18278'},
+        {type='tvseries',animeTitle='青之箱 第二季',bangumiId='19249'}}})
+    assert(s.request_args[2][#s.request_args[2]]:find('/bangumi/18278',1,true))
+    s.respond(2, {bangumi={titles={{title='青之箱'},{title='Blue Box'}},
+        episodes={{episodeNumber='1',episodeTitle='第1话 千夏前辈',episodeId=182780001}}}})
+    assert(#s.requests==3 and s.request_args[3][#s.request_args[3]]:find('/comment/182780001?',1,true),
+        'Official release aliases must allow 青之箱 S1E1 to select 蓝箱 without reading season two')
+end
+
+function cases.alias_detail_reads_are_bounded_below_the_title_threshold()
+    local s = sandbox(true)
+    s.emit('file-loaded')
+    local animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}
+    for index = 1, 8 do
+        animes[#animes + 1] = {type = 'tvseries', animeTitle = 'Unrelated catalog ' .. index, bangumiId = tostring(100 + index)}
+    end
+    s.respond(1, {animes = animes})
+    s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = 'Episode 3', episodeId = 420003}}}})
+    for index = 3, 7 do s.respond(index, {bangumi = {titles = {}, episodes = {}}}) end
+    local details = 0
+    for _, args in ipairs(s.request_args) do
+        if args[#args]:find('/bangumi/', 1, true) then details = details + 1 end
+    end
+    assert(details == 6, 'A strong title plus at most five weak releases may be read for aliases, got ' .. details)
+    assert(s.request_args[8] and s.request_args[8][#s.request_args[8]]:find('/comment/420003?', 1, true),
+        'Bounding alias reads must still select the strong release')
+end
+
+function cases.equal_score_alias_reads_preserve_search_order()
+    local s = sandbox(true)
+    s.emit('file-loaded')
+    local animes = {}
+    for index = 1, 8 do
+        animes[index] = {type = 'tvseries', animeTitle = 'Unrelated catalog ' .. index, bangumiId = tostring(100 + index)}
+    end
+    s.respond(1, {animes = animes})
+    local looked_up = {}
+    for request = 2, 6 do
+        local args = assert(s.request_args[request], 'Expected bounded alias detail request')
+        local id = assert(args[#args]:match('/bangumi/(%d+)$'), 'Expected release detail URL')
+        looked_up[#looked_up + 1] = id
+        s.respond(request, {bangumi = {titles = id == '102' and {{title = 'Fixture series'}} or {},
+            episodes = {{episodeNumber = '3', episodeTitle = 'Episode 3', episodeId = tonumber(id) * 10000 + 3}}}})
+    end
+    assert(s.request_args[7] and s.request_args[7][#s.request_args[7]]:find('/comment/1020003?', 1, true),
+        'The second search result must remain in the five alias reads and supply its uniquely matching episode')
+    assert(table.concat(looked_up, ',') == '101,102,103,104,105',
+        'Equal title scores must preserve provider search order before the five-release limit')
 end
 
 function cases.generic_episode_titles_keep_a_valid_candidate_when_other_results_are_incomplete()

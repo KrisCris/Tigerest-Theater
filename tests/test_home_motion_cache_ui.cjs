@@ -7,6 +7,7 @@ const routes={
 };
 routes['/backdrop.js']={path:path.join(root,'native/homeBackdrop.js')};if(!embedded)routes['/'].body=routes['/'].body.replace('<script src="/transitions.js">','<script src="/backdrop.js"></script><script src="/transitions.js">');
 withBrowser(routes,async({evaluate,call,url})=>{
+ await evaluate('window.TigerestAmbientBackdrop?.dispose();true');
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
  assert.equal(await evaluate('typeof TigerestHomeTransitions.prewarm'),'function','current page can prewarm the expensive background');
  await evaluate(`window.motionFrame=predicate=>new Promise((resolve,reject)=>{const deadline=performance.now()+8000;const observe=()=>{const result=predicate();if(result)return resolve(result);if(performance.now()>deadline)return reject(Error('motion phase was not observed'));requestAnimationFrame(observe);};requestAnimationFrame(observe);});window.state={params:{topParentId:'library'},contextPath:'/tv?topParentId=library'};window.libraryRoot=document.querySelector('#library');libraryRoot.querySelector('.itemsContainer').getItemFromElement=()=>({Id:'work',Type:'Movie'});window.show=name=>{document.querySelectorAll('.page').forEach(n=>n.classList.toggle('hide',n.id!==name));state.contextPath=name==='detail'?'/item?id=work':'/tv?topParentId=library';state.params=name==='detail'?{id:'work'}:{topParentId:'library'};};window.router={showItem:()=>show('detail'),back:()=>window.returnGate?new Promise(resolve=>{window.releaseReturn=()=>{show('library');resolve();};}):show('library'),goHome:()=>{},getRouteUrl:()=>'/tv?topParentId=library'};TigerestHomeMotion.attach({router,pageJs:{replace:()=>show('library')},manager:{currentApiClient:()=>({serverId:()=> 'fixture',getCurrentUserId:()=> 'one'})},viewManager:{currentViewInfo:()=>state}});`);
@@ -14,6 +15,128 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.deepEqual(edgePixels.corner,[40,84,200,255],'blur clamps the viewport edges instead of revealing a different page through alpha');
  assert.deepEqual(edgePixels.center,[40,84,200,255]);
  assert.equal(await evaluate('TigerestHomeTransitions.prewarm()'),true);
+ // Canvas-backed ambient layers must survive freezing without becoming blank.
+ const canvasPixels=await evaluate(`(async()=>{
+  const canvas=document.createElement('canvas');canvas.id='snapshot-canvas';canvas.width=32;canvas.height=24;
+  Object.assign(canvas.style,{position:'absolute',left:'20px',top:'20px',width:'32px',height:'24px'});
+  const context=canvas.getContext('2d');context.fillStyle='rgb(29,83,147)';context.fillRect(0,0,32,24);libraryRoot.append(canvas);
+  TigerestHomeTransitions.invalidate(false);await TigerestHomeTransitions.prewarm();
+  const copy=document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot.querySelector('#snapshot-canvas');
+  const result=Array.from(copy.getContext('2d').getImageData(8,8,1,1).data);canvas.remove();return result;
+ })()`);
+ assert.deepEqual(canvasPixels,[29,83,147,255],'frozen canvas retains its displayed pixels');
+ const ambientSnapshot=await evaluate(`(async()=>{
+  const background=document.createElement('div');background.className='backgroundContainer';
+  const canvas=document.createElement('canvas');canvas.id='ambient-snapshot-canvas';canvas.width=32;canvas.height=24;
+  const source=document.createElement('canvas');source.width=32;source.height=24;const paint=source.getContext('2d');paint.fillStyle='rgb(51,121,181)';paint.fillRect(0,0,32,24);
+  canvas.getContext('bitmaprenderer').transferFromImageBitmap(await createImageBitmap(source));background.append(canvas);document.body.append(background);
+  const home=document.createElement('div');home.className='tg-home-host';home.textContent='Home fixture';document.body.append(home);document.body.classList.add('tg-home-active');
+  const oldInfo=window.jmpInfo;window.jmpInfo={...oldInfo,platform:'ipad'};
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  TigerestHomeTransitions.invalidate(false);const animation=canvas.animate([{opacity:0},{opacity:1}],{duration:900,fill:'both'});
+  await TigerestHomeTransitions.prewarm();
+  const shadow=document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot,copy=shadow.querySelector('#ambient-snapshot-canvas');
+  const result={pixels:Array.from(copy.getContext('2d').getImageData(8,8,1,1).data),opacity:getComputedStyle(copy).opacity};
+  animation.cancel();background.remove();home.remove();document.body.classList.remove('tg-home-active');window.jmpInfo=oldInfo;TigerestHomeTransitions.invalidate(false);return result;
+ })()`);
+ assert.deepEqual(ambientSnapshot.pixels,[51,121,181,255],'home background preserves bitmap-renderer canvas pixels');
+ assert.equal(ambientSnapshot.opacity,'1','prewarming waits for the ambient fade outside the page root');
+ // Frozen snapshots must preserve a customized built-in's appearance and
+ // form/scroll state without constructing another live application control.
+ const staticControls=await evaluate(`(async()=>{
+  window.snapshotConstructors=0;window.snapshotConnections=0;
+  customElements.define('fixture-snapshot-scroll',class extends HTMLDivElement{
+   constructor(){super();window.snapshotConstructors++;}
+   connectedCallback(){window.snapshotConnections++;}
+  },{extends:'div'});
+  customElements.define('fixture-snapshot-input',class extends HTMLInputElement{
+   constructor(){super();window.snapshotConstructors++;}
+   connectedCallback(){window.snapshotConnections++;}
+  },{extends:'input'});
+  const style=document.createElement('style');style.textContent='[is="fixture-snapshot-scroll"]{width:230px;height:100px;overflow:auto;border:3px solid rgb(31,79,121);padding:7px}';document.head.append(style);
+  const scroller=document.createElement('div',{is:'fixture-snapshot-scroll'});scroller.id='snapshot-scroll';scroller.setAttribute('is','fixture-snapshot-scroll');
+  const content=document.createElement('div');content.style.cssText='width:600px;height:800px';
+  const field=document.createElement('input',{is:'fixture-snapshot-input'});field.id='snapshot-field';field.type='checkbox';field.value='live value';field.checked=true;field.indeterminate=true;content.append(field);
+  const text=document.createElement('input',{is:'fixture-snapshot-input'});text.id='snapshot-text';text.value='edited without an attribute';content.append(text);
+  const file=document.createElement('input',{is:'fixture-snapshot-input'});file.id='snapshot-file';file.type='file';const files=new DataTransfer();files.items.add(new File(['local fixture'],'snapshot.txt',{type:'text/plain'}));file.files=files.files;content.append(file);scroller.append(content);libraryRoot.append(scroller);
+  scroller.scrollTop=180;scroller.scrollLeft=60;
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const live=scroller.getBoundingClientRect().toJSON();TigerestHomeTransitions.invalidate(false);snapshotConstructors=0;snapshotConnections=0;
+  await TigerestHomeTransitions.prewarm();
+  const shadow=document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot,copy=shadow.querySelector('#snapshot-scroll'),input=shadow.querySelector('#snapshot-field');
+  const result={constructors:snapshotConstructors,connections:snapshotConnections,live,copy:copy.getBoundingClientRect().toJSON(),scroll:[copy.scrollLeft,copy.scrollTop],is:copy.getAttribute('is'),border:getComputedStyle(copy).borderTopColor,value:input.value,checked:input.checked,indeterminate:input.indeterminate,text:shadow.querySelector('#snapshot-text').value,files:[...shadow.querySelector('#snapshot-file').files].map(file=>file.name)};
+  scroller.remove();style.remove();return result;
+ })()`);
+ assert.equal(staticControls.constructors,0,'frozen pictures must not construct duplicate Emby-style application controls');
+ assert.equal(staticControls.connections,0,'frozen pictures must not reconnect scrolling, timers or requests');
+ assert.deepEqual(staticControls.scroll,[60,180]);
+ assert.equal(staticControls.is,'fixture-snapshot-scroll','attribute selectors retain the original appearance');
+ assert.equal(staticControls.border,'rgb(31, 79, 121)');
+ assert.equal(staticControls.value,'live value');assert.equal(staticControls.checked,true,'live form state is copied');assert.equal(staticControls.indeterminate,true);assert.equal(staticControls.text,'edited without an attribute');assert.deepEqual(staticControls.files,['snapshot.txt']);
+ assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(staticControls.live[k]-staticControls.copy[k])))<1,'static customized built-ins keep exact visible geometry');
+ // Inactive Emby views can contain thousands of cached controls. Recreating
+ // those controls during a frozen-scene capture wastes the click's frame budget.
+ // A custom-element constructor observes real deep cloning, including descendants.
+ const hiddenClones=await evaluate(`(async()=>{
+  customElements.define('fixture-hidden-control',class extends HTMLElement{constructor(){super();window.hiddenControlCopies=(window.hiddenControlCopies||0)+1;}getBoundingClientRect(){window.hiddenControlMeasurements=(window.hiddenControlMeasurements||0)+1;return super.getBoundingClientRect();}});
+  const old=document.createElement('div');old.id='inactive-fixture';old.className='page hide';
+  for(let i=0;i<500;i++)old.append(document.createElement('fixture-hidden-control'));
+  document.body.append(old);TigerestHomeTransitions.invalidate(false);window.hiddenControlCopies=0;
+  await TigerestHomeTransitions.prewarm();
+  const copies=window.hiddenControlCopies;old.remove();return copies;
+ })()`);
+ assert.equal(hiddenClones,0,'frozen scenes must not construct controls from hidden cached views');
+ const embyHiddenClones=await evaluate(`(async()=>{
+  const old=document.createElement('div');old.className='page page-hidden';old.style.display='none';
+  for(let i=0;i<40;i++)old.append(document.createElement('fixture-hidden-control'));
+  document.body.append(old);TigerestHomeTransitions.invalidate(false);window.hiddenControlCopies=0;window.hiddenControlMeasurements=0;
+  await TigerestHomeTransitions.prewarm();const result={copies:window.hiddenControlCopies,measurements:window.hiddenControlMeasurements};old.remove();return result;
+ })()`);
+ assert.deepEqual(embyHiddenClones,{copies:0,measurements:0},'Emby page-hidden views must be excluded from both snapshot and raster traversal');
+
+ await evaluate('TigerestHomeTransitions.prewarm()');
+ // A scrolled poster wall only needs the cards intersecting the viewport.
+ // Offscreen placeholders must still preserve grid flow and scroll offsets.
+ const wallCopy=await evaluate(`(async()=>{
+  customElements.define('fixture-card-content',class extends HTMLElement{constructor(){super();window.cardContentCopies=(window.cardContentCopies||0)+1;}});
+  const grid=document.createElement('div');grid.id='large-wall-fixture';Object.assign(grid.style,{display:'grid',gridTemplateColumns:'repeat(4,120px)',gap:'20px'});
+  for(let i=0;i<160;i++){const card=document.createElement('div');card.className='card';card.id='wall-card-'+i;card.style.width='120px';const content=document.createElement('fixture-card-content');Object.assign(content.style,{display:'block',height:'180px'});card.append(content);grid.append(card);}
+  libraryRoot.append(grid);libraryRoot.style.overflow='auto';libraryRoot.scrollTop=1800;
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const visible=[...grid.children].filter(n=>{const r=n.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})[0];
+  const live=visible.getBoundingClientRect().toJSON();TigerestHomeTransitions.invalidate(false);window.cardContentCopies=0;
+  await TigerestHomeTransitions.prewarm();
+  const shadow=document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot;
+  const result={constructed:window.cardContentCopies,visible:Math.ceil(innerHeight/200)*4,
+   live,copy:shadow.querySelector('#'+visible.id).getBoundingClientRect().toJSON(),scroll:shadow.querySelector('#library').scrollTop};
+  grid.remove();libraryRoot.style.removeProperty('overflow');libraryRoot.scrollTop=0;return result;
+ })()`);
+ assert.ok(wallCopy.constructed<=wallCopy.visible+12,'offscreen card contents should not be cloned: '+JSON.stringify(wallCopy));
+ assert.equal(wallCopy.scroll,1800);
+ assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(wallCopy.live[k]-wallCopy.copy[k])))<1,'scrolled visible cards must keep their exact geometry');
+
+ const virtualCopy=await evaluate(`(async()=>{
+  const wall=document.createElement('div');wall.id='virtual-wall';Object.assign(wall.style,{position:'relative',height:'8000px',width:'600px'});
+  for(let i=0;i<160;i++){
+   const card=document.createElement('div');card.className='card virtualScrollItem';card.id='virtual-card-'+i;
+   Object.assign(card.style,{position:'absolute',top:Math.floor(i/4)*200+'px',left:(i%4)*140+'px',width:'120px'});
+   const content=document.createElement('fixture-card-content');Object.assign(content.style,{display:'block',height:'180px'});card.append(content);wall.append(card);
+  }
+  libraryRoot.append(wall);libraryRoot.style.overflow='auto';libraryRoot.scrollTop=1800;
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const visible=[...wall.children].find(n=>{const r=n.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});
+  const live=visible.getBoundingClientRect().toJSON();TigerestHomeTransitions.invalidate(false);window.cardContentCopies=0;
+  await TigerestHomeTransitions.prewarm();
+  const shadow=document.querySelector('.tigerest-motion-cache').firstElementChild.shadowRoot;
+  const result={constructed:window.cardContentCopies,visible:Math.ceil(innerHeight/200)*4,
+   live,copy:shadow.querySelector('#'+visible.id).getBoundingClientRect().toJSON(),scroll:shadow.querySelector('#library').scrollTop,
+   wallHeight:shadow.querySelector('#virtual-wall').getBoundingClientRect().height};
+  wall.remove();libraryRoot.style.removeProperty('overflow');libraryRoot.scrollTop=0;return result;
+ })()`);
+ assert.ok(virtualCopy.constructed<=virtualCopy.visible+12,'absolute virtual cards outside the viewport must not copy their contents: '+JSON.stringify(virtualCopy));
+ assert.equal(virtualCopy.scroll,1800);assert.equal(virtualCopy.wallHeight,8000);
+ assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(virtualCopy.live[k]-virtualCopy.copy[k])))<1,'virtual poster geometry must survive pruning');
+ await evaluate('TigerestHomeTransitions.prewarm()');
  // A completed page entrance must stay completed in the frozen background.
  // Emby's important animation rule otherwise starts again inside the shadow tree.
  await evaluate(`document.body.classList.add('skinBody');const s=document.createElement('style');s.textContent='.skinBody .page.motion-enter{animation:fixturePageEnter 160ms both!important}@keyframes fixturePageEnter{from{transform:translateY(72px)}to{transform:none}}';document.head.append(s);libraryRoot.classList.add('motion-enter');true`);
@@ -91,8 +214,23 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.ok(await evaluate(`(()=>{const n=document.querySelector('.tigerest-motion-veil');return +getComputedStyle(n).opacity>.99&&getComputedStyle(n).backgroundColor==='rgb(11, 13, 18)'})()`),'the DOM fallback covers its blur borders before the real route changes');
  assert.equal(await evaluate('state.params.topParentId'),'library');
  await evaluate('releaseNoRaster();true');await evaluate(`noRaster.then(()=>{window.Worker=savedWorker;show('library')})`);
+
+ // Background image decoding must stop when a navigation that does not use
+ // that raster begins, rather than continuing through its animation frames.
+ for(const kind of ['library','homeReturn']){
+  const cancelledWarm=await evaluate(`(async()=>{
+   TigerestHomeTransitions.invalidate(false);const original=TigerestHomeBackdrop.build;let signal;
+   TigerestHomeBackdrop.build=(root,s)=>{signal=s;return new Promise(resolve=>s.addEventListener('abort',()=>resolve(null),{once:true}));};
+   const warm=TigerestHomeTransitions.prewarm();await motionFrame(()=>!!signal);
+   const transition=${kind==='library'?"TigerestHomeTransitions.library({gallery:{active:true,root:libraryRoot},navigate:()=>{}})":"TigerestHomeTransitions.homeReturn({navigate:()=>{},findGallery:()=>null})"};
+   const abortedAtStart=signal.aborted;TigerestHomeTransitions.cancel('fixture');
+   await transition;await warm;TigerestHomeBackdrop.build=original;TigerestHomeTransitions.invalidate(false);
+   return abortedAtStart;
+  })()`);
+  assert.equal(cancelledWarm,true,kind+' must abort unused in-flight background decoding before animating');
+ }
  await evaluate('TigerestHomeMotion.reset()');assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'account reset releases the cached background');
  await evaluate('TigerestHomeTransitions.prewarm()');await call('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'viewport changes cannot use the old background');
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});assert.equal(await evaluate('TigerestHomeTransitions.prewarm()'),false);assert.equal(await evaluate('TigerestHomeTransitions.cacheState.bytes'),0);
- console.log('async background/cache fixture:',JSON.stringify({checks:29,hot,started,foreignMetric}));
+ console.log('async background/cache fixture:',JSON.stringify({checks:'passed',hot,started,foreignMetric}));
 },{gpu:true,visible:true}).catch(e=>{console.error(e);process.exitCode=1});

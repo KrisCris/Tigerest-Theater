@@ -8,7 +8,8 @@ class Signal {
     disconnect(fn) { this.handlers.delete(fn); }
     emit(...args) { for (const fn of this.handlers) fn(...args); }
 }
-async function verify(isAndroid) {
+async function verify(platform) {
+    const isAndroid = platform === 'android', isIPad = platform === 'ipad';
     const sources = new Map(), selections = [], snapshots = [], intervals = new Map();
     const playlist = [1,2].map(n=>({Id:'media',PlaylistItemId:'q'+n,Name:'Episode '+n,
         IndexNumber:n,ParentIndexNumber:1,MediaSources:[{Path:'private-server-path'}],Overview:'large metadata'}));
@@ -22,7 +23,7 @@ async function verify(isAndroid) {
     };
     const signal = new Signal();
     const api = {
-        system:{isAndroid,hello(){}},
+        system:{isAndroid,isIPad,hello(){}},
         player:new Proxy({streamingBitrateRequested:signal, playbackRateChanged:new Signal(),
             setWebPlaylist:(list,id)=>snapshots.push({list,id})},{get:(target,key)=>target[key]||(()=>{})}),
         input:{hostInput:new Signal(),playlistItemRequested:new Signal(),volumeChanged:new Signal(),rateChanged:new Signal(),positionSeek:new Signal()},
@@ -50,14 +51,18 @@ async function verify(isAndroid) {
     poll();
     assert.equal(snapshots.at(-1).id,'q1','a silent Emby queue change still updates native controls');
     api.input.hostInput.emit(['playlist-item:q2','playlist-item:media','playlist-item:stale']);
-    if(isAndroid) api.input.playlistItemRequested.emit('q1');
+    if(isAndroid || isIPad) {
+        api.input.playlistItemRequested.emit('q1');
+        api.input.playlistItemRequested.emit('media');
+        api.input.playlistItemRequested.emit('stale');
+    }
     await new Promise(r=>setImmediate(r));
-    assert.deepEqual(selections,isAndroid?[['q2','native'],['q1','native']]:[['q2','native']],
-        'all platforms select by queue identity and reject stale or media IDs');
+    assert.deepEqual(selections,(isAndroid || isIPad)?[['q2','native'],['q1','native']]:[['q2','native']],
+        platform + ': native selection reaches Emby by queue identity and rejects stale or media IDs');
     playlist.length=0;current='';index=-1;
     events.trigger(manager,'playlistitemchange');
     assert.equal(snapshots.at(-1).list.length,0,'empty queues clear native episode lists');
     plugin.destroy();
 }
-(async()=>{await verify(true);await verify(false);console.log('PASS: shared Emby queue synchronization, lean payload and native episode selection');})()
+(async()=>{await verify('android');await verify('desktop');await verify('ipad');console.log('PASS: shared Emby queue synchronization, lean payload and native episode selection');})()
     .catch(error=>{console.error(error);process.exitCode=1;});

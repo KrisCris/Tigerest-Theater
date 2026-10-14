@@ -12,6 +12,8 @@ const http = require('node:http');
 const net = require('node:net');
 const { randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
+const configVersion = JSON.parse(fs.readFileSync(path.resolve(__dirname,
+    '../resources/settings/settings_description.json'), 'utf8')).find(section => section.section === '__meta__').version;
 
 async function until(check, label) {
     for (let i = 0; i < 150; i++) {
@@ -68,6 +70,9 @@ async function devtools(url) {
     const output=path.resolve(process.argv[4]);
     const seconds=Number(process.argv[5]||600);
     const baseline=process.argv[6]==='baseline';
+    const renderBackend=process.argv.find(arg=>arg.startsWith('--render-backend='))?.split('=')[1]||'gpu-next';
+    assert.ok(['gpu-next','libmpv'].includes(renderBackend),'unknown renderer');
+    assert.ok(renderBackend!=='libmpv'||baseline,'Render API compatibility probe requires baseline mode');
     const pausedStart=process.argv[6]==='paused';
     const matrix=process.argv[6]==='matrix';
     const review=process.argv[6]==='review';
@@ -91,8 +96,8 @@ async function devtools(url) {
     end)
     mp.set_property_native('user-data/test-hook-ready',true)`);
     fs.writeFileSync(path.join(profile,'profile.json'),JSON.stringify({name:id}));
-    fs.writeFileSync(path.join(profile,'Tigerest Theater.conf'),JSON.stringify({version:10,sections:{
-        video:{aiRife:!baseline,hardwareDecoding:'safe'},mpv:{configMode:'embedded',renderBackend:'gpu-next',shaderPreset:'default'},
+    fs.writeFileSync(path.join(profile,'Tigerest Theater.conf'),JSON.stringify({version:configVersion,sections:{
+        video:{aiRife:!baseline,hardwareDecoding:'safe'},mpv:{configMode:'embedded',renderBackend,shaderPreset:'default'},
         other:{other_conf:`input-ipc-server=${ipcPath}\ngeometry=2560x1440\nhidpi-window-scale=no\nfullscreen=no\nmute=yes`}
     }}));
     const reservation=net.createServer();const port=await listen(reservation);
@@ -103,7 +108,7 @@ async function devtools(url) {
     env.DYLD_PRINT_LIBRARIES='1';
     const log=fs.openSync(output+'.app.log','w');
     const child=spawn(executable,['--log-level','warn','--config-dir',root,'--profile',id,'--remote-debugging-port',`127.0.0.1:${port}`],{env,stdio:['ignore',log,log]});
-    let cdp,ipc,httpServer;const samples=[];let result={seconds,baseline,matrix,clip,executable,samples};
+    let cdp,ipc,httpServer;const samples=[];let result={seconds,baseline,renderBackend,matrix,clip,executable,samples};
     try {
         const verifyLoaded=()=>{
             const images=fs.readFileSync(output+'.app.log','utf8').split('\n').filter(line=>line.startsWith('dyld['));
@@ -307,8 +312,10 @@ async function devtools(url) {
             assert.ok(fs.existsSync(path.join(profile,'rife-runtime')),'bundled VSScript registration was not configured');
         }
         result.renderPasses=await cmd('get_property','vo-passes');
-        assert.equal(start.metrics['current-vo'],'gpu-next');
-        assert.equal(start.metrics['current-gpu-context'],'macvk');
+        assert.equal(start.metrics['current-vo'],renderBackend);
+        if(renderBackend==='gpu-next')assert.equal(start.metrics['current-gpu-context'],'macvk');
+        assert.ok(result.renderPasses?.fresh?.some(pass=>pass.count>0&&pass.samples?.some(ns=>ns>0)),
+            'renderer must have executed actual video passes');
         assert.ok(Number.isFinite(start.metrics.avsync),'A/V offset missing');
         assert.ok(start.metrics['current-ao'] && start.metrics['current-ao']!=='null','real audio clock required');
         assert.equal(result.metadata.shaderFiles?.length||result.metadata.shaders?.length||0,3,'default shader chain missing');

@@ -385,15 +385,19 @@ int main(int argc, char *argv[])
 
     ProfileManager::Get().setActiveProfile(*activeProfile);
 
-    // Only the libmpv Render API needs a shared OpenGL scene. Windows GPU-Next
-    // renders in its own native child, so use Qt's D3D11 scene graph instead
-    // of importing Chromium's D3D textures through the OpenGL/driver bridge.
+    // Only the libmpv Render API needs a shared OpenGL scene. Native GPU-Next
+    // playback owns a separate window, allowing the web UI to use the platform
+    // graphics API without an OpenGL texture bridge.
     auto graphicsApi = QSGRendererInterface::OpenGL;
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
     const QString renderBackend = SettingsComponent::readPreinitValue(
         SETTINGS_SECTION_MPV, "renderBackend").toString();
     if (MpvVideoItem::shouldUseNativeGpuNext(renderBackend))
+#ifdef Q_OS_WIN
       graphicsApi = QSGRendererInterface::Direct3D11;
+#else
+      graphicsApi = QSGRendererInterface::Metal;
+#endif
 #endif
     QQuickWindow::setGraphicsApi(graphicsApi);
 

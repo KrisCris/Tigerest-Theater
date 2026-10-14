@@ -1,0 +1,1138 @@
+{
+  "measurement": "diagnostic tracing, GPU swaps and rAF scheduling; not scanout",
+  "comparison": [
+    {
+      "label": "gpuBefore",
+      "gpuRasterRequested": true,
+      "routes": [
+        {
+          "route": 0,
+          "kind": "poster",
+          "rAFps": 108.72191350567772,
+          "rAFWorstMs": 58.400000000000546,
+          "gpuSwapsPerSecond": 115.04748725828966,
+          "gpuWorstMs": 31.348,
+          "gpuGapsOver17ms": [
+            {
+              "atMs": 319.36,
+              "ms": 18.397
+            },
+            {
+              "atMs": 423.377,
+              "ms": 31.348
+            },
+            {
+              "atMs": 441.906,
+              "ms": 18.529
+            }
+          ],
+          "rasterTileCount": 130,
+          "rasterTileMs": 100.635,
+          "longGpuTasks": [
+            {
+              "atMs": 414.788,
+              "ms": 8.344
+            },
+            {
+              "atMs": 430.914,
+              "ms": 10.758
+            }
+          ]
+        },
+        {
+          "route": 1,
+          "kind": "poster",
+          "rAFps": 111.94330353547565,
+          "rAFWorstMs": 33.30000000000018,
+          "gpuSwapsPerSecond": 113.70068541739275,
+          "gpuWorstMs": 29.125,
+          "gpuGapsOver17ms": [
+            {
+              "atMs": 322.056,
+              "ms": 19.236
+            },
+            {
+              "atMs": 344.262,
+              "ms": 22.206
+            },
+            {
+              "atMs": 373.387,
+              "ms": 29.125
+            },
+            {
+              "atMs": 402.98,
+              "ms": 25.175
+            }
+          ],
+          "rasterTileCount": 169,
+          "rasterTileMs": 114.808,
+          "longGpuTasks": [
+            {
+              "atMs": 307.352,
+              "ms": 12.902
+            },
+            {
+              "atMs": 323.116,
+              "ms": 19.329
+            },
+            {
+              "atMs": 390.537,
+              "ms": 9.791
+            }
+          ]
+        },
+        {
+          "route": 2,
+          "kind": "homeReturn",
+          "rAFps": 117.05109919834744,
+          "rAFWorstMs": 25,
+          "gpuSwapsPerSecond": 113.85166739797052,
+          "gpuWorstMs": 48.752,
+          "gpuGapsOver17ms": [
+            {
+              "atMs": 402.616,
+              "ms": 48.752
+            },
+            {
+              "atMs": 421.795,
+              "ms": 19.179
+            },
+            {
+              "atMs": 857.543,
+              "ms": 20.946
+            },
+            {
+              "atMs": 896.683,
+              "ms": 18.483
+            },
+            {
+              "atMs": 923.003,
+              "ms": 19.446
+            }
+          ],
+          "rasterTileCount": 177,
+          "rasterTileMs": 112.239,
+          "longGpuTasks": [
+            {
+              "atMs": 386.456,
+              "ms": 16.035
+            },
+            {
+              "atMs": 406.611,
+              "ms": 14.661
+            },
+            {
+              "atMs": 1236.259,
+              "ms": 14.811
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "cpuRaster",
+      "gpuRasterRequested": false,
+      "routes": [
+        {
+          "route": 0,
+          "kind": "poster",
+          "rAFps": 8.291191716403267,
+          "rAFWorstMs": 4166.699999999997,
+          "gpuSwapsPerSecond": 54.08614491565538,
+          "gpuWorstMs": 4157.985,
+          "gpuGapsOver17ms": [
+            {
+              "atMs": 6773.172,
+              "ms": 271.487
+            },
+            {
+              "atMs": 8131.071,
+              "ms": 1357.899
+            },
+            {
+              "atMs": 9506.619,
+              "ms": 1362.493
+            },
+            {
+              "atMs": 10903.683,
+              "ms": 1397.064
+            },
+            {
+              "atMs": 15061.668,
+              "ms": 4157.985
+            },
+            {
+              "atMs": 15588.571,
+              "ms": 161.03
+            }
+          ],
+          "rasterTileCount": 2,
+          "rasterTileMs": 0.928,
+          "longGpuTasks": []
+        },
+        {
+          "route": 1,
+          "kind": "poster",
+          "rAFps": 2.8755760368663594,
+          "rAFWorstMs": 3773.899999999994,
+          "gpuSwapsPerSecond": 15.911915125408777,
+          "gpuWorstMs": 3776.505,
+          "gpuGapsOver17ms": [
+            {
+              "atMs": 1044.143,
+              "ms": 324.183
+            },
+            {
+              "atMs": 3224.603,
+              "ms": 2180.46
+            },
+            {
+              "atMs": 7022.035,
+              "ms": 3776.505
+            },
+            {
+              "atMs": 8574.633,
+              "ms": 704.095
+            },
+            {
+              "atMs": 11063.298,
+              "ms": 2488.665
+            },
+            {
+              "atMs": 13558.447,
+              "ms": 2495.149
+            }
+          ],
+          "rasterTileCount": 2,
+          "rasterTileMs": 3.618,
+          "longGpuTasks": []
+        },
+        {
+          "route": 2,
+          "kind": "homeReturn",
+          "rAFps": 9.459158691297564,
+          "rAFWorstMs": 2924.9000000000087,
+          "gpuSwapsPerSecond": 29.875358695114112,
+          "gpuWorstMs": 2033.813,
+          "gpuGapsOver17ms": [
+            {
+              "atMs": 813.658,
+              "ms": 18.423
+            },
+            {
+              "atMs": 1161.712,
+              "ms": 41.792
+            },
+            {
+              "atMs": 1181.731,
+              "ms": 20.019
+            },
+            {
+              "atMs": 2432.937,
+              "ms": 1251.206
+            },
+            {
+              "atMs": 5261.955,
+              "ms": 2033.813
+            },
+            {
+              "atMs": 5380.954,
+              "ms": 118.999
+            }
+          ],
+          "rasterTileCount": 0,
+          "rasterTileMs": 0.0,
+          "longGpuTasks": []
+        }
+      ]
+    },
+    {
+      "label": "gpuAfter",
+      "gpuRasterRequested": true,
+      "routes": [
+        {
+          "route": 0,
+          "kind": "poster",
+          "rAFps": 109.60876870149607,
+          "rAFWorstMs": 58.19999999999982,
+          "gpuSwapsPerSecond": 116.69124376081493,
+          "gpuWorstMs": 26.242,
+          "gpuGapsOver17ms": [
+            {
+              "atMs": 318.181,
+              "ms": 17.728
+            },
+            {
+              "atMs": 426.663,
+              "ms": 26.242
+            }
+          ],
+          "rasterTileCount": 131,
+          "rasterTileMs": 102.332,
+          "longGpuTasks": [
+            {
+              "atMs": 239.708,
+              "ms": 8.465
+            }
+          ]
+        },
+        {
+          "route": 1,
+          "kind": "poster",
+          "rAFps": 114.89206000731797,
+          "rAFWorstMs": 17.100000000000364,
+          "gpuSwapsPerSecond": 116.45406335101046,
+          "gpuWorstMs": 26.001,
+          "gpuGapsOver17ms": [
+            {
+              "atMs": 322.614,
+              "ms": 26.001
+            },
+            {
+              "atMs": 351.622,
+              "ms": 21.101
+            },
+            {
+              "atMs": 376.774,
+              "ms": 20.946
+            }
+          ],
+          "rasterTileCount": 171,
+          "rasterTileMs": 99.963,
+          "longGpuTasks": [
+            {
+              "atMs": 301.777,
+              "ms": 18.044
+            },
+            {
+              "atMs": 359.673,
+              "ms": 15.046
+            }
+          ]
+        },
+        {
+          "route": 2,
+          "kind": "homeReturn",
+          "rAFps": 118.0305200256803,
+          "rAFWorstMs": 17.19999999999891,
+          "gpuSwapsPerSecond": 114.67007458081298,
+          "gpuWorstMs": 32.41,
+          "gpuGapsOver17ms": [
+            {
+              "atMs": 386.882,
+              "ms": 32.41
+            },
+            {
+              "atMs": 413.595,
+              "ms": 26.713
+            },
+            {
+              "atMs": 432.297,
+              "ms": 18.702
+            },
+            {
+              "atMs": 855.087,
+              "ms": 18.04
+            },
+            {
+              "atMs": 896.946,
+              "ms": 18.33
+            },
+            {
+              "atMs": 923.195,
+              "ms": 20.47
+            }
+          ],
+          "rasterTileCount": 167,
+          "rasterTileMs": 88.353,
+          "longGpuTasks": [
+            {
+              "atMs": 394.908,
+              "ms": 18.552
+            },
+            {
+              "atMs": 418.812,
+              "ms": 13.347
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "cpuRasterNote": "severe multi-second stalls; one readiness timeout retried; sampled own app during slow run, do not treat as calibrated CPU/GPU speed ratio",
+  "layerDiagnosis": {
+    "route": "homeReturn",
+    "pseudoLayers": [
+      {
+        "role": "ambient before",
+        "width": 5160,
+        "height": 3499,
+        "rasterTasks": 35
+      },
+      {
+        "role": "ambient after",
+        "width": 5160,
+        "height": 3499,
+        "rasterTasks": 36
+      }
+    ],
+    "viewportDevicePixels": [
+      3600,
+      2260
+    ]
+  },
+  "status": "no product changes; all temporary account copies removed",
+  "tileHeightExperiment": {
+    "status": "rejected; fewer tiles but no consistent swap-cadence benefit",
+    "height": 1024,
+    "comparison": [
+      {
+        "label": "defaultBefore",
+        "largeTilesRequested": false,
+        "routes": [
+          {
+            "route": 0,
+            "kind": "poster",
+            "rAFps": 107.64964932311207,
+            "rAFWorstMs": 66.69999999999982,
+            "gpuSwapsPerSecond": 116.65936525884104,
+            "gpuWorstMs": 32.27,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 415.953,
+                "ms": 32.27
+              },
+              {
+                "atMs": 472.41,
+                "ms": 21.686
+              }
+            ],
+            "rasterTileCount": 129,
+            "rasterTileMs": 97.051,
+            "longGpuTasks": [
+              {
+                "atMs": 272.205,
+                "ms": 9.129
+              },
+              {
+                "atMs": 462.131,
+                "ms": 10.055
+              }
+            ]
+          },
+          {
+            "route": 1,
+            "kind": "poster",
+            "rAFps": 113.72549019607851,
+            "rAFWorstMs": 25.899999999999636,
+            "gpuSwapsPerSecond": 113.7453726314316,
+            "gpuWorstMs": 24.277,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 243.729,
+                "ms": 18.334
+              },
+              {
+                "atMs": 322.566,
+                "ms": 17.176
+              },
+              {
+                "atMs": 346.708,
+                "ms": 24.142
+              },
+              {
+                "atMs": 370.985,
+                "ms": 24.277
+              },
+              {
+                "atMs": 394.536,
+                "ms": 23.551
+              }
+            ],
+            "rasterTileCount": 209,
+            "rasterTileMs": 119.008,
+            "longGpuTasks": [
+              {
+                "atMs": 307.906,
+                "ms": 12.622
+              },
+              {
+                "atMs": 354.776,
+                "ms": 9.906
+              }
+            ]
+          },
+          {
+            "route": 2,
+            "kind": "homeReturn",
+            "rAFps": 118.06375442739083,
+            "rAFWorstMs": 25,
+            "gpuSwapsPerSecond": 114.38846322109885,
+            "gpuWorstMs": 50.348,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 404.09,
+                "ms": 50.348
+              },
+              {
+                "atMs": 423.893,
+                "ms": 19.803
+              },
+              {
+                "atMs": 855.495,
+                "ms": 17.963
+              },
+              {
+                "atMs": 897.383,
+                "ms": 20.244
+              },
+              {
+                "atMs": 922.63,
+                "ms": 19.816
+              }
+            ],
+            "rasterTileCount": 167,
+            "rasterTileMs": 88.374,
+            "longGpuTasks": [
+              {
+                "atMs": 386.309,
+                "ms": 17.656
+              },
+              {
+                "atMs": 408.316,
+                "ms": 15.055
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "label": "tile1024",
+        "largeTilesRequested": true,
+        "routes": [
+          {
+            "route": 0,
+            "kind": "poster",
+            "rAFps": 107.91656599822825,
+            "rAFWorstMs": 58.399999999999636,
+            "gpuSwapsPerSecond": 115.07109462384626,
+            "gpuWorstMs": 25.931,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 245.383,
+                "ms": 19.268
+              },
+              {
+                "atMs": 426.171,
+                "ms": 25.931
+              },
+              {
+                "atMs": 446.943,
+                "ms": 20.772
+              }
+            ],
+            "rasterTileCount": 101,
+            "rasterTileMs": 94.772,
+            "longGpuTasks": [
+              {
+                "atMs": 227.553,
+                "ms": 16.729
+              },
+              {
+                "atMs": 303.245,
+                "ms": 9.11
+              },
+              {
+                "atMs": 461.766,
+                "ms": 10.881
+              }
+            ]
+          },
+          {
+            "route": 1,
+            "kind": "poster",
+            "rAFps": 112.74865104292512,
+            "rAFWorstMs": 25,
+            "gpuSwapsPerSecond": 113.07174976074674,
+            "gpuWorstMs": 27.075,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 250.085,
+                "ms": 27.075
+              },
+              {
+                "atMs": 329.735,
+                "ms": 26.893
+              },
+              {
+                "atMs": 353.088,
+                "ms": 23.353
+              },
+              {
+                "atMs": 372.287,
+                "ms": 19.199
+              }
+            ],
+            "rasterTileCount": 119,
+            "rasterTileMs": 99.086,
+            "longGpuTasks": [
+              {
+                "atMs": 303.699,
+                "ms": 23.122
+              },
+              {
+                "atMs": 354.026,
+                "ms": 9.826
+              }
+            ]
+          },
+          {
+            "route": 2,
+            "kind": "homeReturn",
+            "rAFps": 118.0347218806865,
+            "rAFWorstMs": 16.700000000000728,
+            "gpuSwapsPerSecond": 114.53142581578524,
+            "gpuWorstMs": 48.798,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 403.058,
+                "ms": 48.798
+              },
+              {
+                "atMs": 855.317,
+                "ms": 19.182
+              },
+              {
+                "atMs": 898.102,
+                "ms": 18.012
+              },
+              {
+                "atMs": 923.91,
+                "ms": 20.109
+              }
+            ],
+            "rasterTileCount": 139,
+            "rasterTileMs": 83.826,
+            "longGpuTasks": [
+              {
+                "atMs": 387.425,
+                "ms": 15.529
+              },
+              {
+                "atMs": 403.258,
+                "ms": 11.523
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "label": "defaultAfter",
+        "largeTilesRequested": false,
+        "routes": [
+          {
+            "route": 0,
+            "kind": "poster",
+            "rAFps": 108.8,
+            "rAFWorstMs": 66.5,
+            "gpuSwapsPerSecond": 115.87004016295323,
+            "gpuWorstMs": 19.456,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 320.184,
+                "ms": 19.456
+              },
+              {
+                "atMs": 423.682,
+                "ms": 18.069
+              },
+              {
+                "atMs": 442.555,
+                "ms": 18.873
+              }
+            ],
+            "rasterTileCount": 128,
+            "rasterTileMs": 98.298,
+            "longGpuTasks": [
+              {
+                "atMs": 432.638,
+                "ms": 9.66
+              }
+            ]
+          },
+          {
+            "route": 1,
+            "kind": "poster",
+            "rAFps": 111.97312644965207,
+            "rAFWorstMs": 39.99999999999909,
+            "gpuSwapsPerSecond": 113.49718298358782,
+            "gpuWorstMs": 26.362,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 322.525,
+                "ms": 19.403
+              },
+              {
+                "atMs": 342.286,
+                "ms": 19.761
+              },
+              {
+                "atMs": 368.648,
+                "ms": 26.362
+              }
+            ],
+            "rasterTileCount": 174,
+            "rasterTileMs": 117.517,
+            "longGpuTasks": [
+              {
+                "atMs": 307.546,
+                "ms": 13.177
+              },
+              {
+                "atMs": 323.355,
+                "ms": 16.722
+              },
+              {
+                "atMs": 383.704,
+                "ms": 9.087
+              }
+            ]
+          },
+          {
+            "route": 2,
+            "kind": "homeReturn",
+            "rAFps": 117.05109919834756,
+            "rAFWorstMs": 24.5,
+            "gpuSwapsPerSecond": 114.51061341872698,
+            "gpuWorstMs": 27.26,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 378.159,
+                "ms": 24.319
+              },
+              {
+                "atMs": 405.419,
+                "ms": 27.26
+              },
+              {
+                "atMs": 423.528,
+                "ms": 18.109
+              },
+              {
+                "atMs": 857.279,
+                "ms": 22.026
+              },
+              {
+                "atMs": 896.663,
+                "ms": 18.242
+              },
+              {
+                "atMs": 922.944,
+                "ms": 19.511
+              }
+            ],
+            "rasterTileCount": 160,
+            "rasterTileMs": 104.196,
+            "longGpuTasks": [
+              {
+                "atMs": 386.389,
+                "ms": 18.907
+              },
+              {
+                "atMs": 410.079,
+                "ms": 13.311
+              },
+              {
+                "atMs": 962.564,
+                "ms": 8.303
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "coverTransparencyExperiment": {
+    "status": "rejected; no GPU-cadence gain",
+    "alpha": 0.999,
+    "scope": "temporary homeReturn cover only, restored in finally",
+    "comparison": [
+      {
+        "label": "defaultBefore",
+        "retainBackgroundPrototype": false,
+        "routes": [
+          {
+            "route": 0,
+            "kind": "poster",
+            "rAFps": 109.23076923076923,
+            "rAFWorstMs": 58.399999999999636,
+            "gpuSwapsPerSecond": 115.28564709065141,
+            "gpuWorstMs": 26.122,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 326.41,
+                "ms": 17.36
+              },
+              {
+                "atMs": 426.316,
+                "ms": 26.122
+              }
+            ],
+            "rasterTileCount": 132,
+            "rasterTileMs": 89.113,
+            "longGpuTasks": [
+              {
+                "atMs": 432.155,
+                "ms": 8.423
+              }
+            ]
+          },
+          {
+            "route": 1,
+            "kind": "poster",
+            "rAFps": 112.15826777786435,
+            "rAFWorstMs": 33.20000000000073,
+            "gpuSwapsPerSecond": 113.5601996118306,
+            "gpuWorstMs": 38.252,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 373.35,
+                "ms": 38.252
+              },
+              {
+                "atMs": 402.577,
+                "ms": 17.505
+              },
+              {
+                "atMs": 432.559,
+                "ms": 21.832
+              }
+            ],
+            "rasterTileCount": 170,
+            "rasterTileMs": 116.356,
+            "longGpuTasks": [
+              {
+                "atMs": 340.467,
+                "ms": 31.042
+              },
+              {
+                "atMs": 413.894,
+                "ms": 14.712
+              }
+            ]
+          },
+          {
+            "route": 2,
+            "kind": "homeReturn",
+            "rAFps": 116.55928785717792,
+            "rAFWorstMs": 25.099999999998545,
+            "gpuSwapsPerSecond": 113.22344117740302,
+            "gpuWorstMs": 54.621,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 409.913,
+                "ms": 54.621
+              },
+              {
+                "atMs": 429.413,
+                "ms": 19.5
+              },
+              {
+                "atMs": 858.768,
+                "ms": 19.662
+              },
+              {
+                "atMs": 898.346,
+                "ms": 18.7
+              },
+              {
+                "atMs": 924.603,
+                "ms": 19.873
+              },
+              {
+                "atMs": 1254.455,
+                "ms": 17.796
+              }
+            ],
+            "rasterTileCount": 177,
+            "rasterTileMs": 117.803,
+            "longGpuTasks": [
+              {
+                "atMs": 387.853,
+                "ms": 21.939
+              },
+              {
+                "atMs": 420.942,
+                "ms": 8.324
+              },
+              {
+                "atMs": 1237.975,
+                "ms": 15.589
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "label": "retainBackground",
+        "retainBackgroundPrototype": true,
+        "routes": [
+          {
+            "route": 0,
+            "kind": "poster",
+            "rAFps": 109.43396226415095,
+            "rAFWorstMs": 58.80000000000018,
+            "gpuSwapsPerSecond": 116.10242646532194,
+            "gpuWorstMs": 26.754,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 501.753,
+                "ms": 26.754
+              }
+            ],
+            "rasterTileCount": 131,
+            "rasterTileMs": 96.772,
+            "longGpuTasks": [
+              {
+                "atMs": 238.607,
+                "ms": 8.134
+              }
+            ]
+          },
+          {
+            "route": 1,
+            "kind": "poster",
+            "rAFps": 113.79470506270319,
+            "rAFWorstMs": 41.600000000000364,
+            "gpuSwapsPerSecond": 114.6575889485899,
+            "gpuWorstMs": 42.97,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 363.728,
+                "ms": 42.97
+              },
+              {
+                "atMs": 390.165,
+                "ms": 26.437
+              }
+            ],
+            "rasterTileCount": 173,
+            "rasterTileMs": 117.54,
+            "longGpuTasks": [
+              {
+                "atMs": 310.718,
+                "ms": 8.178
+              },
+              {
+                "atMs": 321.698,
+                "ms": 20.944
+              },
+              {
+                "atMs": 370.196,
+                "ms": 9.747
+              }
+            ]
+          },
+          {
+            "route": 2,
+            "kind": "homeReturn",
+            "rAFps": 118.03888916099325,
+            "rAFWorstMs": 16.700000000000728,
+            "gpuSwapsPerSecond": 113.26339153316407,
+            "gpuWorstMs": 52.183,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 411.048,
+                "ms": 52.183
+              },
+              {
+                "atMs": 429.768,
+                "ms": 18.72
+              },
+              {
+                "atMs": 862.986,
+                "ms": 21.038
+              },
+              {
+                "atMs": 902.425,
+                "ms": 18.636
+              },
+              {
+                "atMs": 928.981,
+                "ms": 19.965
+              },
+              {
+                "atMs": 2049.685,
+                "ms": 24.39
+              }
+            ],
+            "rasterTileCount": 189,
+            "rasterTileMs": 117.626,
+            "longGpuTasks": [
+              {
+                "atMs": 392.125,
+                "ms": 18.738
+              },
+              {
+                "atMs": 416.411,
+                "ms": 13.22
+              },
+              {
+                "atMs": 1469.834,
+                "ms": 9.821
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "label": "defaultAfter",
+        "retainBackgroundPrototype": false,
+        "routes": [
+          {
+            "route": 0,
+            "kind": "poster",
+            "rAFps": 107.83200908059027,
+            "rAFWorstMs": 58.30000000000018,
+            "gpuSwapsPerSecond": 115.03229004986893,
+            "gpuWorstMs": 30.079,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 422.212,
+                "ms": 30.079
+              },
+              {
+                "atMs": 440.475,
+                "ms": 18.263
+              }
+            ],
+            "rasterTileCount": 129,
+            "rasterTileMs": 99.988,
+            "longGpuTasks": [
+              {
+                "atMs": 240.038,
+                "ms": 8.387
+              },
+              {
+                "atMs": 413.521,
+                "ms": 8.45
+              },
+              {
+                "atMs": 429.126,
+                "ms": 11.086
+              }
+            ]
+          },
+          {
+            "route": 1,
+            "kind": "poster",
+            "rAFps": 111.07507702286367,
+            "rAFWorstMs": 34.99999999999909,
+            "gpuSwapsPerSecond": 112.63511074826711,
+            "gpuWorstMs": 25.493,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 72.029,
+                "ms": 20.958
+              },
+              {
+                "atMs": 309.794,
+                "ms": 17.119
+              },
+              {
+                "atMs": 333.394,
+                "ms": 23.6
+              },
+              {
+                "atMs": 358.887,
+                "ms": 25.493
+              },
+              {
+                "atMs": 388.404,
+                "ms": 20.542
+              }
+            ],
+            "rasterTileCount": 172,
+            "rasterTileMs": 116.686,
+            "longGpuTasks": [
+              {
+                "atMs": 298.234,
+                "ms": 9.777
+              },
+              {
+                "atMs": 310.581,
+                "ms": 20.735
+              },
+              {
+                "atMs": 336.326,
+                "ms": 9.085
+              },
+              {
+                "atMs": 368.593,
+                "ms": 8.062
+              }
+            ]
+          },
+          {
+            "route": 2,
+            "kind": "homeReturn",
+            "rAFps": 117.04534277564672,
+            "rAFWorstMs": 25.200000000000728,
+            "gpuSwapsPerSecond": 113.9416134939137,
+            "gpuWorstMs": 50.945,
+            "gpuGapsOver17ms": [
+              {
+                "atMs": 403.389,
+                "ms": 50.945
+              },
+              {
+                "atMs": 423.487,
+                "ms": 20.098
+              },
+              {
+                "atMs": 855.574,
+                "ms": 20.807
+              },
+              {
+                "atMs": 895.322,
+                "ms": 18.27
+              },
+              {
+                "atMs": 921.71,
+                "ms": 19.717
+              },
+              {
+                "atMs": 1250.919,
+                "ms": 17.182
+              }
+            ],
+            "rasterTileCount": 177,
+            "rasterTileMs": 110.688,
+            "longGpuTasks": [
+              {
+                "atMs": 385.056,
+                "ms": 18.183
+              },
+              {
+                "atMs": 407.891,
+                "ms": 15.07
+              },
+              {
+                "atMs": 1234.709,
+                "ms": 15.377
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "gpuTaskEvidence": {
+    "firstBatchMs": 18.414,
+    "tilesInFirstBatch": 27,
+    "secondBatchMs": 14.153,
+    "compositorQueuedAtMs": 394.043,
+    "compositorRanAtMs": 412.133,
+    "note": "source yields after each tile already; do not assume lowering generic command batch size solves dependency waits"
+  }
+}

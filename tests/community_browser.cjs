@@ -30,19 +30,23 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         const id=require('node:crypto').randomUUID().replaceAll('-','');
         const folder=path.join(profile,'profiles',id);fs.mkdirSync(folder,{recursive:true});
         fs.writeFileSync(path.join(folder,'profile.json'),JSON.stringify({name:'MessagesFixture'}));
-        fs.writeFileSync(path.join(folder,'Tigerest Theater.conf'),JSON.stringify({version:configVersion,sections:{
+        // Match CMakeModules/NameConfiguration.cmake on each native platform.
+        const settingsFile=path.join(folder,['win32','darwin'].includes(process.platform)?'Tigerest Theater.conf':'tigerest-theater.conf');
+        fs.writeFileSync(settingsFile,JSON.stringify({version:configVersion,sections:{
             ...settings,main:{...settings.main,enableWindowsTrayIcon:false},path:{...settings.path,startupurl_desktop:url}}}));
         // Restore maximized; keys mirror WindowManager::configKeyPrefix for multi-screen setups.
         if(maximized)fs.writeFileSync(path.join(folder,'storage.json'),JSON.stringify({version:configVersion,sections:{state:Object.fromEntries([2,3,4].map(n=>[n+' screens: Window-Maximized',true]))}}));
-        if(prepareProfile)await prepareProfile(profile,folder);
+        if(prepareProfile)await prepareProfile(profile,folder,settingsFile);
     }
     const args=webengine?['--config-dir',profile,'--profile','MessagesFixture',...(gpu?[]:['--disable-gpu']),...extraArgs,'--remote-debugging-port','127.0.0.1:'+port]
-        :['--headless','--disable-gpu','--remote-debugging-port=0','--user-data-dir='+profile,url];
+        :[...(visible?[]:['--headless']),...(gpu?[]:['--disable-gpu']),
+            '--no-first-run','--no-default-browser-check',
+            '--remote-debugging-port=0','--user-data-dir='+profile,url];
     child=spawn(executable,args,{stdio:['ignore','pipe','pipe'],windowsHide:!visible,cwd:path.dirname(executable)});
     let startup='';child.stdout.on('data',d=>startup=(startup+d).slice(-2000));child.stderr.on('data',d=>startup=(startup+d).slice(-2000));
         const startupDeadline=Date.now()+startupTimeout;
         while(Date.now()<startupDeadline){
-            assert.equal(child.exitCode,null,'browser exited: '+startup);
+            assert.ok(child.exitCode===null&&child.signalCode===null,'browser exited ('+(child.signalCode??child.exitCode)+'): '+startup);
             try{
                 if(!webengine)port=fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0];
                 await fetch('http://127.0.0.1:'+port+'/json/list');break;
@@ -82,7 +86,8 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         await work({url,call,evaluate,webengine,process:child,profile});
     }finally{
         socket?.close();
-        if(child&&child.exitCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}
+        if(child&&child.exitCode===null&&child.signalCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}
+        server.closeAllConnections();
         await new Promise(r=>server.close(r));await delay(150);
         assert.equal(path.dirname(path.resolve(profile)),path.resolve(os.tmpdir()));
         assert.ok(path.basename(profile).startsWith('tigerest-messages-'));

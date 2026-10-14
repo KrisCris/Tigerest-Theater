@@ -14,7 +14,7 @@
     const rasterRoot=()=>document.body.classList.contains('tg-home-active')?backgroundRoot():document.body;
     const cacheReady=()=>!!cached&&cached.root===backgroundRoot()&&cached.epoch===epoch&&cached.stamp===stamp();
     function invalidate(schedule=true){
-        ++epoch;cached?.bitmap.close();cached?.wrapper?.remove();cached=null;warming?.controller.abort();warming=null;
+        ++epoch;cached?.bitmap?.close();cached?.wrapper?.remove();cached=null;warming?.controller.abort();warming=null;
         clearTimeout(warmTimer);warmTimer=null;
         if(schedule&&!active&&!reduced())warmTimer=setTimeout(()=>prewarm(),180);
     }
@@ -26,7 +26,10 @@
             (root?.contains(m.target)||m.target.matches?.('.mainAnimatedPage,.page,.skinHeader,.backdropContainer,.backgroundContainer'))))invalidate();
     }
     function settled(root,signal){
-        const animations=(root.getAnimations?.({subtree:true})||[]).filter(a=>
+        // The ambient layers live outside the page/home root. Freeze their
+        // settled opacity/transform, not an intermediate crossfade frame.
+        const roots=[root,...document.querySelectorAll('.backgroundContainer')];
+        const animations=[...new Set(roots.flatMap(node=>node.getAnimations?.({subtree:true})||[]))].filter(a=>
             (a.playState==='running'||a.pending)&&a.effect?.getComputedTiming().endTime<=2500);
         if(!animations.length)return Promise.resolve(true);
         return new Promise(resolve=>{
@@ -40,7 +43,8 @@
     const homeActive=()=>document.body.classList.contains('tg-home-active');
     // Only a return to home shows the crisp DOM copy. Home transitions animate
     // the live gallery and poster transitions use the small bitmap or a lens.
-    const snapshotWanted=()=>!homeActive();
+    const nativeGlass=()=>window.jmpInfo?.platform==='ipad';
+    const snapshotWanted=()=>nativeGlass()||!homeActive();
     function idle(signal){
         return new Promise(resolve=>{
             if(signal.aborted)return resolve(false);
@@ -58,7 +62,7 @@
         // before a click. A return promotes this wrapper in place.
         Object.assign(wrapper.style,{position:'fixed',inset:'0',opacity:'0',pointerEvents:'none',zIndex:'-2147483000',overflow:'hidden',contain:'layout paint'});
         wrapper.append(light);document.body.append(wrapper);sync(warmJob);light.getBoundingClientRect();
-        Object.assign(cached,{light,wrapper});
+        Object.assign(cached,{light,wrapper,copies:warmJob.copies});
     }
     function prewarm(){
         changes(observer?.takeRecords()||[]);
@@ -73,9 +77,12 @@
             if(cacheReady())return true;
             if(!await settled(task.root,signal))return false;
             task.phase='build';
-            const result=await window.TigerestHomeBackdrop.build(rasterRoot(),signal);
+            // WebKit does not reliably blur OffscreenCanvas; its 240px raster also
+            // omits CSS backdrop images/gradients. Cache a full-resolution DOM scene
+            // on iPad, keeping its CSS and letting the compositor produce the glass.
+            const result=nativeGlass()?{bitmap:null,width:0,height:0}:await window.TigerestHomeBackdrop.build(rasterRoot(),signal);
             if(!result)return false;
-            if(!valid()){result.bitmap.close();return false;}
+            if(!valid()){result.bitmap?.close();return false;}
             cached={...result,root:task.root,epoch,stamp:task.stamp,light:null,wrapper:null};return true;
         })().catch(()=>false);
         task.promise=task.raster.then(async ready=>{
@@ -92,12 +99,12 @@
     const style = document.createElement('style');
     style.id = 'tigerest-home-motion-style';
     style.textContent = `
-      body.tigerest-motion-busy{pointer-events:none!important}
+      .tigerest-motion-input{position:fixed;inset:0;z-index:2147483002;pointer-events:auto!important;touch-action:none}
       .tigerest-motion-layer{position:fixed;inset:0;z-index:2147483000;pointer-events:none!important;overflow:hidden;contain:layout paint}
       .tigerest-motion-veil,.tigerest-motion-scene,.tigerest-motion-frozen{position:absolute;inset:0}
       .tigerest-motion-veil{background:#0b0d12}
-      .tigerest-motion-frozen{filter:blur(7px)}
-      .tigerest-motion-lens{-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)}
+      .tigerest-motion-frozen{filter:blur(var(--tigerest-motion-blur,7px))}
+      .tigerest-motion-lens{-webkit-backdrop-filter:blur(var(--tigerest-motion-blur,7px));backdrop-filter:blur(var(--tigerest-motion-blur,7px))}
       .tigerest-motion-scene>canvas{position:absolute;inset:0;width:100%;height:100%}
       .tigerest-motion-poster{position:fixed;z-index:2147483001;pointer-events:none;transform-origin:0 0;overflow:hidden;background-size:cover;background-position:center;will-change:transform}
       @media(max-width:900px){
@@ -160,8 +167,23 @@
         if (active) return;
         changes(observer?.takeRecords()||[]);
         ensureStyle();
+        // Only poster transitions consume a pending raster. Other routes must
+        // not let a settling prewarm start decoding old artwork mid-animation.
+        // Keep an already prepared snapshot for homeReturn's outgoing cover.
+        if (kind !== 'poster') {
+            clearTimeout(warmTimer); warmTimer = null;
+            warming?.controller.abort(); warming = null;
+        }
         const controller = new AbortController(), job = {controller, signal: controller.signal, animations: [], layers: [], held: [], canvases: [], frames: [], metric: {kind, surfaces: [], domCopies: 0}};
         active = job; document.body.classList.add('tigerest-motion-busy');
+        // An input surface blocks even controls with explicit pointer-events:auto.
+        // Changing the body's inherited pointer-events instead restyles the whole
+        // library at the first animation frame and again when it finishes.
+        const input = document.createElement('div'); input.className = 'tigerest-motion-input';
+        input.setAttribute('aria-hidden','true');
+        for (const type of ['pointerdown','click','dblclick','wheel','touchmove'])
+            input.addEventListener(type,event=>{event.preventDefault();event.stopPropagation();},{passive:false});
+        job.layers.push(input);document.body.append(input);
         const start = job.start = performance.now(), tick = t => {
             job.metric.firstFrameMs??=Math.max(0,t-start);job.frames.push(t);
             if (job.poster && job.metric.posterFirstMotionMs === undefined) {
@@ -193,33 +215,82 @@
         const host = document.createElement('div'); host.className = 'tigerest-motion-frozen';
         if (!blur) { host.style.filter = 'none'; host.style.transform = 'none'; }
         const home = document.body.classList.contains('tg-home-active') ? document.querySelector('.tg-home-host') : null;
-        const shadow = host.attachShadow({mode: 'open'}), html = document.documentElement.cloneNode(false), body = document.body.cloneNode(!home);
+        const pairs = [], plainPrototypes = new Map();
+        function customizedBuiltin(node) {
+            if (node.namespaceURI !== 'http://www.w3.org/1999/xhtml' || node.localName.includes('-')) return false;
+            if (node.hasAttribute('is')) return true;
+            // createElement(tag, {is}) may customize a built-in without an `is`
+            // attribute. Compare to a plain same-tag element once per tag.
+            if (!plainPrototypes.has(node.localName)) plainPrototypes.set(node.localName,Object.getPrototypeOf(document.createElement(node.localName)));
+            return Object.getPrototypeOf(node) !== plainPrototypes.get(node.localName);
+        }
+        // Emby keeps old views in the body. Reject entire inactive branches
+        // before copying them; cloning then removing them still constructs all
+        // their controls and makes work grow with the navigation history.
+        function copyTree(node) {
+            if (node.nodeType !== Node.ELEMENT_NODE) return node.cloneNode(true);
+            if (node.matches('.mainAnimatedPage.hide,.page.hide,.page.page-hidden,.tigerest-motion-layer,.tigerest-motion-input,.tigerest-motion-poster,.tigerest-motion-cache,script,iframe,object,embed,audio,video')) return null;
+            let clone;
+            if (customizedBuiltin(node)) {
+                // cloneNode upgrades customized built-ins and reconnects Emby's
+                // scrollers/tabs in this static picture. Keep their attribute
+                // selectors, but create ordinary elements without an `is` option.
+                clone = document.createElement(node.localName);
+                for (const attr of node.attributes) clone.setAttributeNS(attr.namespaceURI,attr.name,attr.value);
+                if (node.tagName === 'INPUT' && node.type === 'file') clone.files = node.files;
+                else if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA') clone.value = node.value;
+                if (node.tagName === 'INPUT') { clone.checked = node.checked; clone.indeterminate = node.indeterminate; }
+            } else clone = node.cloneNode(false);
+            if (node.tagName === 'CANVAS' && node.width && node.height) {
+                // cloneNode copies a canvas's dimensions, not its backing image.
+                // drawImage also preserves origin restrictions without readback.
+                try { clone.getContext('2d').drawImage(node,0,0); } catch {}
+            }
+            pairs.push([node,clone]);
+            if (node.matches('.card')) {
+                const r = box(node);
+                // Keep flow boxes, including Emby's absolute virtual-list cards,
+                // without constructing offscreen poster/text subtrees. The margin
+                // also keeps near-edge shadows and artwork in the snapshot.
+                if (r.width && r.height && (r.bottom < -64 || r.top > innerHeight + 64 || r.right < -64 || r.left > innerWidth + 64)) {
+                    const layout = getComputedStyle(node.parentElement).display;
+                    const s = getComputedStyle(node);
+                    if (s.position === 'absolute' || ['flex','inline-flex','grid','inline-grid'].includes(layout)) {
+                        for (const property of ['width','height','box-sizing','min-width','min-height'])
+                            clone.style.setProperty(property,s.getPropertyValue(property),'important');
+                        return clone;
+                    }
+                }
+            }
+            for (const child of node.childNodes) {
+                const copy = copyTree(child); if (copy) clone.append(copy);
+            }
+            return clone;
+        }
+        const shadow = host.attachShadow({mode: 'open'}), html = document.documentElement.cloneNode(false), body = home ? document.body.cloneNode(false) : copyTree(document.body);
         html.classList.add('tigerest-motion-html'); body.classList.remove('tigerest-motion-busy');
-        let originalRoot = document.body, copyRoot = body;
         if (home) {
-            originalRoot = home; copyRoot = home.cloneNode(true); body.append(copyRoot);
+            const copyRoot = copyTree(home); body.append(copyRoot);
             const rect = box(home), inherited = getComputedStyle(document.body);
             Object.assign(copyRoot.style,{position:'absolute',left:rect.x+'px',top:rect.y+'px',width:rect.width+'px',height:rect.height+'px'});
             Object.assign(body.style,{margin:'0',font:inherited.font,color:inherited.color,background:inherited.backgroundColor});
             // The home has its own complete stylesheet. Avoid reparsing all of Emby's
             // cached view styles and cloning hidden views for every poster press.
             for (const node of document.querySelectorAll('.backgroundContainer,.backdropContainer')) {
-                const copy=node.cloneNode(true), r=box(node), s=getComputedStyle(node);
+                const copy=copyTree(node), r=box(node), s=getComputedStyle(node);
+                if (!copy) continue;
                 Object.assign(copy.style,{position:'fixed',left:r.x+'px',top:r.y+'px',width:r.width+'px',height:r.height+'px',opacity:s.opacity,filter:s.filter});
                 body.prepend(copy);
             }
         }
-        const originals = [originalRoot,...originalRoot.querySelectorAll('*')], copies = [copyRoot,...copyRoot.querySelectorAll('*')];
         const scrolls = [];
-        originals.forEach((node,i) => {
-            const clone = copies[i];
-            if (clone !== body && !body.contains(clone)) return;
+        job.copies=new WeakMap();
+        pairs.forEach(([node,clone]) => {
+            job.copies.set(node,clone);
             // Stylesheets can declare important entrance animations. A universal
             // shadow override cannot beat those selectors; freeze each element.
             clone.style.setProperty('animation','none','important');
             clone.style.setProperty('transition','none','important');
-            if (node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache') || node.matches('script,iframe,object,embed,audio,video')) { clone.remove(); return; }
-            if (node.matches('.mainAnimatedPage.hide,.page.hide')) { clone.remove(); return; }
             const r = box(node);
             if (r.width && r.height && r.bottom >= 0 && r.top <= innerHeight) {
                 const computed = getComputedStyle(node);
@@ -265,6 +336,27 @@
         return {cover,copy};
     }
     async function bitmap(job,view,source=false){
+        if(nativeGlass()) {
+            // Never reuse a low-resolution worker raster on the tablet. A warm
+            // DOM scene belongs to exactly one route, viewport and mutation epoch.
+            const hit=source&&cacheReady()&&cached.light;
+            let scene;
+            if(hit) {
+                scene=cached.light;cached.light=null;
+                cached.wrapper?.remove();cached.wrapper=null;
+                scene.style.removeProperty('filter');
+                for(const n of scene.shadowRoot?.querySelectorAll('[data-tigerest-scroll]')||[]) {
+                    const [x,y]=JSON.parse(n.getAttribute('data-tigerest-scroll'));
+                    (job.syncs||=[]).push(()=>{n.scrollLeft=x;n.scrollTop=y;});
+                }
+                // The independently flying poster must not remain in the scene.
+                for(const h of job.held) {
+                    cached.copies?.get(h.node)?.style.setProperty('visibility','hidden');
+                }
+            } else scene=frozen(job);
+            job.metric.cacheHit=!!hit;job.metric.backgroundRenderer='dom-glass';
+            view.bitmap=scene;view.group.append(scene);sync(job);return;
+        }
         let result=source&&cacheReady()?cached:null,owned=false;
         if(source){job.metric.cacheHit=!!result;job.metric.syncRasterMs=0;}
         if(!result&&source&&warming){

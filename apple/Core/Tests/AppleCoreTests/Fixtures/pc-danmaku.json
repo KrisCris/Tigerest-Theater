@@ -1,0 +1,462 @@
+[
+  {
+    "name": "title-priority",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "终点",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话 起点"
+          },
+          {
+            "episodeId": "12",
+            "episodeNumber": "2",
+            "episodeTitle": "第2话 终点"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/12"
+  },
+  {
+    "name": "ambiguous-title",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "终点",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "终点"
+          },
+          {
+            "episodeId": "12",
+            "episodeNumber": "2",
+            "episodeTitle": "终点"
+          }
+        ]
+      }
+    ],
+    "expected": ""
+  },
+  {
+    "name": "deduplicate-rows",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "起点",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "起点"
+          },
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "起点"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/11"
+  },
+  {
+    "name": "exclude-credits",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "OP",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "C1",
+            "episodeTitle": "OP"
+          },
+          {
+            "episodeId": "12",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话 起点"
+          },
+          {
+            "episodeId": "13",
+            "episodeNumber": "1",
+            "episodeTitle": "opening theme"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/12"
+  },
+  {
+    "name": "season-period",
+    "title": "作品",
+    "season": 2,
+    "number": 1,
+    "episodeTitle": "第1集",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      },
+      {
+        "bangumiId": "2",
+        "animeTitle": "作品 第二期",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "21",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/21"
+  },
+  {
+    "name": "english-season",
+    "title": "The Story",
+    "season": 3,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "The Story Third Season",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/11"
+  },
+  {
+    "name": "closest-work",
+    "title": "转生后的大圣女极力隐瞒圣女的身份",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "转生后的大圣女，极力隐瞒圣女的身份",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      },
+      {
+        "bangumiId": "2",
+        "animeTitle": "转生后的大圣女 极力隐藏圣女身份",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "21",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/11"
+  },
+  {
+    "name": "provider-local-identities",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      },
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://second",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": ""
+  },
+  {
+    "name": "special-release",
+    "title": "作品",
+    "season": 0,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品 特别篇",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "特别篇"
+          }
+        ]
+      },
+      {
+        "bangumiId": "2",
+        "animeTitle": "作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "21",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": "http://fixture/11"
+  },
+  {
+    "name": "wrong-type",
+    "title": "作品",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "1",
+        "animeTitle": "作品",
+        "type": "movie",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "11",
+            "episodeNumber": "1",
+            "episodeTitle": "开始"
+          }
+        ]
+      }
+    ],
+    "expected": ""
+  },
+  {
+    "name": "bluebox-official-alias",
+    "title": "青之箱",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "千夏前辈",
+    "works": [
+      {
+        "bangumiId": "18278",
+        "animeTitle": "蓝箱",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "182780001",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话 千夏前辈"
+          }
+        ],
+        "titles": [
+          {
+            "title": "蓝箱"
+          },
+          {
+            "title": "Ao no Hako"
+          },
+          {
+            "title": "アオのハコ"
+          },
+          {
+            "title": "Blue Box"
+          },
+          {
+            "title": "青春之箱"
+          },
+          {
+            "title": "青之箱"
+          }
+        ]
+      },
+      {
+        "bangumiId": "19249",
+        "animeTitle": "青之箱 第二季",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "192490001",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话"
+          }
+        ],
+        "titles": [
+          {
+            "title": "青之箱"
+          }
+        ]
+      }
+    ],
+    "required": "http://fixture/182780001",
+    "expected": "http://fixture/182780001"
+  },
+  {
+    "name": "alias-cannot-cross-season",
+    "title": "青之箱",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "",
+    "works": [
+      {
+        "bangumiId": "19249",
+        "animeTitle": "青之箱 第二季",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "192490001",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话"
+          }
+        ],
+        "titles": [
+          {
+            "title": "青之箱"
+          }
+        ]
+      }
+    ],
+    "required": "",
+    "expected": ""
+  },
+  {
+    "name": "alias-cannot-resolve-ambiguous-releases",
+    "title": "青之箱",
+    "season": 1,
+    "number": 1,
+    "episodeTitle": "千夏前辈",
+    "works": [
+      {
+        "bangumiId": "18278",
+        "animeTitle": "蓝箱",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "182780001",
+            "episodeNumber": "1",
+            "episodeTitle": "第1话 千夏前辈"
+          }
+        ],
+        "titles": [
+          {
+            "title": "蓝箱"
+          },
+          {
+            "title": "Ao no Hako"
+          },
+          {
+            "title": "アオのハコ"
+          },
+          {
+            "title": "Blue Box"
+          },
+          {
+            "title": "青春之箱"
+          },
+          {
+            "title": "青之箱"
+          }
+        ]
+      },
+      {
+        "bangumiId": "999",
+        "animeTitle": "其他作品",
+        "type": "tvseries",
+        "_server": "http://fixture",
+        "episodes": [
+          {
+            "episodeId": "999001",
+            "episodeNumber": "1",
+            "episodeTitle": "千夏前辈"
+          }
+        ],
+        "titles": [
+          {
+            "title": "青之箱"
+          }
+        ]
+      }
+    ],
+    "required": "",
+    "expected": ""
+  }
+]
