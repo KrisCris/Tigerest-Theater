@@ -74,7 +74,9 @@ async function devtools(url) {
     }));
     const requests = [];
     const fixture = http.createServer((req, res) => {
-        requests.push(`${req.method} ${req.url}`);
+        // Requests from the page carry Fetch Metadata; the client's native
+        // connection check does not.
+        requests.push(`${req.method} ${req.url}${req.headers['sec-fetch-mode'] ? ' (page)' : ''}`);
         if (req.url === '/emby/System/Info/Public') {
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ Id: 'onboarding-test-server', ServerName: 'Fixture' }));
@@ -132,6 +134,13 @@ async function devtools(url) {
         await submit(`${origin}/emby`);
         await until(() => cdp.evaluate("Boolean(document.querySelector('#fixture'))"), 'own server page');
         assert.equal(await cdp.evaluate('location.href'), `${origin}/emby/web/index.html`);
+        // The page records the chosen server for Emby, so its own sign-in
+        // opens instead of the welcome tour and Emby Connect.
+        const recorded = await cdp.evaluate("JSON.parse(localStorage.getItem('servercredentials3') || '{}').Servers");
+        assert.deepEqual(recorded.map(({ Id, Name, ManualAddress, LastConnectionMode }) => ({ Id, Name, ManualAddress, LastConnectionMode })),
+            [{ Id: 'onboarding-test-server', Name: 'Fixture', ManualAddress: `${origin}/emby`, LastConnectionMode: 2 }]);
+        assert.equal(await cdp.evaluate("localStorage.getItem('welcome_seen')"), '1');
+        assert.ok(requests.includes('GET /emby/System/Info/Public (page)'));
         await until(() => {
             const config = JSON.parse(fs.readFileSync(path.join(profile, 'Tigerest Theater.conf'), 'utf8'));
             return config.sections.main.userWebClient === `${origin}/emby` && config.sections.main.serverConnectionMode === 'custom';
@@ -139,7 +148,7 @@ async function devtools(url) {
         await stop();
         await launch();
         await until(() => cdp.evaluate("Boolean(document.querySelector('#fixture'))"), 'saved server reconnection');
-        assert.equal(requests.filter(value => value === 'GET /emby/System/Info/Public').length, 2);
+        assert.equal(requests.filter(value => value === 'GET /emby/System/Info/Public').length, 2, 'one native connection check per launch');
         assert.ok(!requests.some(value => value.startsWith('HEAD ')), 'unnecessary HEAD redirect check');
         console.log('PASS: real Qt startup choices, help, empty custom form, HTTP errors, exact port/path, persistent reconnection');
     } finally {

@@ -426,8 +426,10 @@ def test_default_server_seed() -> None:
     compat = read("native/embycompat.js")
     require("192.168.5.150:8095" in compat, "internal default server is missing")
     require("nas.tigerest.top:8095" in compat, "public default server is missing")
-    seed_start = compat.index("credentials.Servers = [{")
-    seed_end = compat.index("localStorage.setItem", seed_start)
+    # Both server records: the fixed Tigerest one and the one for a server
+    # chosen during first run.
+    seed_start = compat.index("function chosenServer()")
+    seed_end = compat.index("seedDefaultServer();", seed_start)
     seed = compat[seed_start:seed_end]
     require(not re.search(r"(?i)(password|access.?token|api.?key|username)", seed),
             "default server seed contains a credential field")
