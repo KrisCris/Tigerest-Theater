@@ -4,9 +4,9 @@ import AppleCore
 
 /// Static glyph textures, moved at display cadence. SwiftUI/player observation
 /// remains at control cadence and never determines the scrolling frame rate.
-struct DanmakuOverlay: UIViewRepresentable {
+struct DanmakuOverlay<Player: ObservableObject & DanmakuPlaybackState>: UIViewRepresentable {
     @ObservedObject var repository: DanmakuRepository
-    @ObservedObject var player: PlaybackController
+    @ObservedObject var player: Player
     func makeUIView(context: Context) -> DanmakuSurface { DanmakuSurface() }
     func updateUIView(_ view: DanmakuSurface, context: Context) {view.repository=repository;view.player=player}
 }
@@ -16,7 +16,7 @@ struct DanmakuOverlay: UIViewRepresentable {
 }
 @MainActor final class DanmakuSurface: UIView {
     weak var repository: DanmakuRepository?
-    weak var player: PlaybackController?
+    weak var player: (any DanmakuPlaybackState)?
     private var displayLink: CADisplayLink?
     private let target=DanmakuDisplayTarget()
     private var clock=DanmakuClock(), key=""
@@ -40,16 +40,16 @@ struct DanmakuOverlay: UIViewRepresentable {
     }
     deinit {displayLink?.invalidate()}
     private func clearLayers() {for value in labels.values {value.removeFromSuperlayer()};labels.removeAll()}
-    private func prepare(_ repository:DanmakuRepository,_ player:PlaybackController) {
-        let settings=player.model.settings,scale=bounds.width/1920
-        let size=max(10,(settings.get("danmaku","fontsize").number ?? 50)*scale)
-        let duration=settings.get("danmaku","scrolltime").number ?? 15
-        let area=settings.get("danmaku","displayarea").number ?? 0.2
-        let bold=settings.get("danmaku","bold").bool == true
-        outline=(settings.get("danmaku","outline").number ?? 1)*scale
-        shadow=(settings.get("danmaku","shadow").number ?? 0)*scale
-        let next="\(repository.revision)/\(bounds.size)/\(size)/\(bold)/\(duration)/\(area)/\(outline)/\(shadow)"
-        layer.opacity=Float(settings.get("danmaku","opacity").number ?? 0.7)
+    private func prepare(_ repository:DanmakuRepository) {
+        let settings=repository.host,scale=bounds.width/1920
+        let size=max(10,(settings.setting("danmaku","fontsize").number ?? 50)*scale)
+        let duration=settings.setting("danmaku","scrolltime").number ?? 15
+        let area=settings.setting("danmaku","displayarea").number ?? 0.2
+        let bold=settings.setting("danmaku","bold").bool == true
+        outline=(settings.setting("danmaku","outline").number ?? 1)*scale
+        shadow=(settings.setting("danmaku","shadow").number ?? 0)*scale
+        let next="\(ObjectIdentifier(repository))/\(repository.revision)/\(bounds.size)/\(size)/\(bold)/\(duration)/\(area)/\(outline)/\(shadow)"
+        layer.opacity=Float(settings.setting("danmaku","opacity").number ?? 0.7)
         guard key != next else {return};key=next;clearLayers();images.removeAllObjects()
         font=UIFont.systemFont(ofSize:size,weight:bold ? .bold : .regular)
         line=size+8*scale;lanes=max(1,Int(max(0,bounds.height-40)*area/line))
@@ -72,7 +72,7 @@ struct DanmakuOverlay: UIViewRepresentable {
     }
     fileprivate func drawFrame() {
         guard let repository,let player,repository.enabled,player.active,bounds.width>0 else {clearLayers();return}
-        prepare(repository,player)
+        prepare(repository)
         let host=CACurrentMediaTime()
         let position=clock.position(mediaTime:player.position,hostTime:host,playing:!player.paused && !player.buffering,rate:player.rate,epoch:player.danmakuEpoch)
         let visible=layout.visible(at:position),ids=Set(visible.map(\.id))

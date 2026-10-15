@@ -1,0 +1,26 @@
+{
+  "configurations": [
+    {
+      "id": "5411C676-3539-4470-A345-A9320D8BA2EF",
+      "name": "Playback",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "uiTestingScreenshotsLifetime": "keepNever",
+    "userAttachmentLifetime": "keepNever"
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:TigerestTV.xcodeproj",
+        "identifier": "855D2C993E7904E6CEF6376F",
+        "name": "TigerestTVUITests"
+      },
+      "selectedTests": [
+        "TVNavigationTests/testLightweightSustainedPlayback()"
+      ]
+    }
+  ],
+  "version": 1
+}
