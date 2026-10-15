@@ -1,7 +1,8 @@
 (function () {
     'use strict';
     const stamp = value => Date.parse(value || '') || 0;
-    const fields = 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating,PresentationUniqueKey';
+    // Emby 4.8 returns UserData.LastPlayedDate only when it is asked for.
+    const fields = 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating,PresentationUniqueKey,UserDataLastPlayedDate';
     const images = {EnableUserData: true, EnableImageTypes: 'Primary,Backdrop,Thumb', ImageTypeLimit: 1};
     const types = {music: 'MusicAlbum', books: 'Book,AudioBook', audiobooks: 'MusicAlbum,AudioBook',
         musicvideos: 'MusicVideo', games: 'Game', playlists: 'Playlist', photos: 'Photo,PhotoAlbum'};
@@ -85,7 +86,7 @@
             && !card.latestEpisode && card.lastPlayed < recent.oldest).sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 8);
         const unknownHistory = historyCutoff ? recent.cards.filter(card => !cards.has(card.item.Id) && card.latestEpisode
             && card.latestEpisode.UserData?.Played !== true && stamp(card.latestEpisode.DateCreated) > historyCutoff).slice(0, 8) : [];
-        const episodes = {Recursive: true, IncludeItemTypes: 'Episode', Limit: 1, Fields: 'DateCreated', EnableUserData: true, EnableImages: false};
+        const episodes = {Recursive: true, IncludeItemTypes: 'Episode', Limit: 1, Fields: 'DateCreated,UserDataLastPlayedDate', EnableUserData: true, EnableImages: false};
         const queue = unknownLatest.map(card => async () => {
             const result = await api.getItems(user, {...episodes, ParentId: card.item.Id, SortBy: 'DateCreated,SortName', SortOrder: 'Descending',
                 IsMissing: false, IsVirtualUnaired: false, IsPlaceHolder: false, ExcludeLocationTypes: 'Virtual'}, signal);

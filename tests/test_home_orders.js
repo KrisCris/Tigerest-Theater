@@ -23,14 +23,17 @@ const playedMovie=(Id,date)=>movie(Id,'2026-01-01',{UserData:{Played:true,LastPl
 const added=(Id,SeriesId,date,Played=false)=>({Id,SeriesId,Type:'Episode',SeriesName:SeriesId,DateCreated:date,IndexNumber:2,ParentIndexNumber:1,UserData:{Played}});
 const hoursBefore=(day,hours)=>new Date(Date.parse(day)-hours*3600e3).toISOString();
 const slice=(items,q)=>({Items:items.slice(q.StartIndex||0,(q.StartIndex||0)+q.Limit),TotalRecordCount:items.length});
+// Emby 4.8 returns a play date only when the request asks for it.
+const reply=(q,result)=>String(q.Fields||'').split(',').includes('UserDataLastPlayedDate')?result
+ :{...result,Items:result.Items.map(item=>item.UserData?{...item,UserData:(({LastPlayedDate,...data})=>data)(item.UserData)}:item)};
 // A library whose playback history, recent additions and single-series
 // queries answer separately, as an Emby server does.
 function server({resume=[],history=[],recent=[],series=()=>[]}){
- const a=api();a.getResumableItems=async(user,q)=>{a.calls.push({resume:true,user,q});return slice(resume,q);};
+ const a=api();a.getResumableItems=async(user,q)=>{a.calls.push({resume:true,user,q});return reply(q,slice(resume,q));};
  a.getItems=async(user,q)=>{a.calls.push({user,q});
   if(q.Ids)return {Items:q.Ids.split(',').map(Id=>({Id,Type:'Series',Name:'Series '+Id}))};
-  if(q.ParentId!=='library')return {Items:series(q)};
-  return slice(q.IsPlayed?history:recent,q);};
+  if(q.ParentId!=='library')return reply(q,{Items:series(q)});
+  return reply(q,slice(q.IsPlayed?history:recent,q));};
  return a;
 }
 test('watched works lead by their latest play and works never played follow, even newer ones',async()=>{
