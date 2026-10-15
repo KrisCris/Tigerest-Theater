@@ -64,7 +64,6 @@ def generate(fixture_media=None):
     for path in sorted((ROOT/'TVUITests').glob('*.swift')):
         relative=str(path.relative_to(ROOT));ref=g.file(relative,'sourcecode.swift');files.append(ref);testfiles.append(g.obj(relative+'tvtestbuild','PBXBuildFile',fileRef=ref))
     testproduct=g.obj('tvtestproduct','PBXFileReference',explicitFileType='wrapper.cfbundle',path='TigerestTVUITests.xctest',sourceTree='BUILT_PRODUCTS_DIR')
-    import hashlib
     projectID=hashlib.sha256(b'tvproject').hexdigest()[:24].upper()
     proxy=g.obj('tvproxy','PBXContainerItemProxy',containerPortal=projectID,proxyType=1,remoteGlobalIDString=target,remoteInfo='TigerestTV')
     dependency=g.obj('tvtestdepend','PBXTargetDependency',target=target,targetProxy=proxy)
