@@ -13,7 +13,7 @@
 - [x] Extend opt-in iPad probe with per-second speed, generated frames, failures, render/decoder drops, A/V sync, memory and thermal state. Measure 1→1.25→1.5→2→1 and long normal-speed playback.
 - [x] Compare production CPU/GPU inference with the ANE encoder/refine policy used by the standalone probe. Keep inference precision/model unchanged; select only an improvement supported by measurements.
 - [x] Reproduce correctness issues in focused tests before fixes. Exercise discontinuity, seek, EOF, repeated speed/long-press changes and recovery. Do not call nominal output FPS proof of smooth playback.
-- [ ] Build normal signed iPad app, restore it after probes; produce unsigned public IPA with no signing identity or profiles. Run AppleCore and shared-resource tests and verify normal project excludes probes.
+- [x] Build normal signed iPad app, restore it after probes; produce unsigned public IPA with no signing identity or profiles. Run AppleCore and shared-resource tests and verify normal project excludes probes.
 - [ ] Review, commit, push and merge; append Mac/iPad artifacts to existing v2.7.0 without changing its tag or replacing other-platform files. Record exact source commits, hashes and test limits; verify downloaded files and updater selection.
 - [ ] Start separate tvOS design/implementation after publication: native focus-driven browsing and shared playback/core logic, tvOS26+, Siri Remote, physical Apple TV pairing when available.
 
@@ -39,3 +39,14 @@
 
 - Physical recovery-delay quick test with default200ms buffer: five restorations produced4/4/4/5/4 observed raw-output drops, max transient A/V11.8ms; interpolation resumes within the observation window. The first entry into bypass had7 cold-path drops. Full final soak remains in progress.
 - Linux CI root cause was an unconditional Qt6.8-only QML property on Qt6.4.2. d41b9ac uses runtime availability check; actual Qt6.4.2 production QML parsed after failing before the change. Full Ubuntu rerun required.
+
+## Final validation (2026-10-15)
+
+- Production application source is148a0b5; PR head30d6226 adds only upstream release-note corrections. PR#8 merged asf472152. Ubuntu CI38719482586 passed53/53 against GitHub merge-ref738146d.
+- Final148 Mac bundle reran19 deployed UI tests and actual intermediate-scroll checks. The47 unit results and native playback comparison are retained historical evidence from the preceding candidate; only guarded QML startup changed in final Mac production code.
+- Final148 iPad package:2.7.0(270), unsigned public IPA, no profiles/keys/probes; signed development package restored and launched on M5 device without test arguments after all probes.
+- With final playback code, speed/seek followed by a full-report-per-second soak produced161 render drops over639.7s, zero decoder drops/underruns, maximum A/V47.6ms. This run remains evidence of variable performance.
+- A lower-overhead probe writes constant-size JSONL and serializes the final report after stopping playback. A separate normal-speed-only soak measured623.8s,14931 generated frames/29890 outputs,30 render drops(~0.10%),0 decoder drops,0 audio underrun warnings, max A/V46.0ms, memory1062.4–1100.7MB, thermal nominal/fair/serious, median inference24.8ms. Maximum sample acquisition82.3ms. Because the preceding workload also differs, this comparison does not establish telemetry as the cause of all earlier drops.
+- Confirmed improvement is bounded fast-playback behavior and much smaller restoration transients. Sustained interpolation is not certified drop-free; Bluetooth/AirPlay, production-server playback and physical iPadOS26 remain outside this fixture validation.
+
+- Follow-up read-only packet analysis: the840-second generated continuous fixture contains20122 video packets and38 existing83.333ms PTS gaps (normal interval41.667ms). The29 gaps before the final637.854s playback position exactly match the29 filter resets; these are correct discontinuity handling, not a second runtime drop counter. The30 VO drops are a separate344–346s burst with no coincident filter reset or VO reconfiguration. Logs show cadence estimation/float-upload texture rebuilds, but do not establish a unique cause of that burst.
