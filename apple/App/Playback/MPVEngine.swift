@@ -20,9 +20,15 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
             var pointer = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
             try check(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &pointer))
             #if PLAYBACK_VALIDATION
-            if ProcessInfo.processInfo.arguments.contains("--rife-playback-probe") {
+            if ProcessInfo.processInfo.arguments.contains("--rife-playback-probe") || ProcessInfo.processInfo.arguments.contains("--rife-stability-probe") {
                 try check(mpv_set_option_string(handle, "log-file", URL.cachesDirectory.appending(path:"rife-mpv.log").path))
                 try check(mpv_set_option_string(handle, "msg-level", "all=warn"))
+            }
+            if ProcessInfo.processInfo.arguments.contains("--rife-audio-buffer-probe") {
+                try check(mpv_set_option_string(handle, "audio-buffer", "0.05"))
+            }
+            if ProcessInfo.processInfo.arguments.contains("--rife-default-audio-buffer-probe") {
+                try check(mpv_set_option_string(handle, "audio-buffer", "0.2"))
             }
             #endif
             try check(mpv_initialize(handle))

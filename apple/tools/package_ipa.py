@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MACHO_MAGIC = {bytes.fromhex(value) for value in (
     "feedface", "cefaedfe", "feedfacf", "cffaedfe", "cafebabe", "bebafeca", "cafebabf", "bfbafeca"
 )}
-PROBE_MARKERS = (b"--device-quality-probe", b"--rife-playback-probe", b"PlaybackValidation", b"UpdateValidation")
+PROBE_MARKERS = (b"--device-quality-probe", b"--rife-playback-probe", b"--rife-stability-probe", b"PlaybackValidation", b"UpdateValidation", b"RifeStabilityValidation")
 
 
 def require(condition, message):

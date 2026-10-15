@@ -152,6 +152,11 @@ find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
   add_test(NAME test_macos_rife_runtime_pin COMMAND "${Python3_EXECUTABLE}" -B -X utf8
     "${CMAKE_CURRENT_SOURCE_DIR}/test_macos_rife_runtime_pin.py")
+  if(UNIX)
+    add_test(NAME test_ipad_rife_scheduler COMMAND "${Python3_EXECUTABLE}" -B -X utf8
+      "${CMAKE_SOURCE_DIR}/apple/Tests/test_native_rife_scheduler.py")
+    set_tests_properties(test_ipad_rife_scheduler PROPERTIES TIMEOUT 60)
+  endif()
 endif()
 if(WIN32)
   add_executable(test_rife_windows_ipc test_rife_windows_ipc.cpp)

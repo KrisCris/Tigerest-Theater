@@ -46,7 +46,7 @@ import AppleCore
                 guard supported[name]?.contains(key) == true, entry["hidden"].bool != true else { continue }
                 var description: [String: JSONValue] = ["key": .string(key), "displayName": entry["display_name"], "help": entry["help"]]
                 if name == "video" && key == "aiRife" {
-                    description["help"] = .string("实验性 RIFE 4.25 lite：目前对 1920×1080、BT.709 SDR、23–30 fps 片源进行 2× 补帧；不支持的片源保留原帧。重新打开视频后生效。")
+                    description["help"] = .string("实验性 RIFE 4.25 lite：对 1920×1080、BT.709 SDR、23–30 fps 片源进行 2× 补帧。快于正常速度时暂用原帧，恢复正常速度后自动恢复补帧；不支持的片源保留原帧。开关在重新打开视频后生效。")
                 }
                 if name == "video" && key == "hardwareDecoding" { description["help"] = .string("使用 Apple VideoToolbox 硬件解码。异常时可选择复制模式或关闭。") }
                 if entry["input_type"] != .null { description["inputType"] = entry["input_type"] }

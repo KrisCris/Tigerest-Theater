@@ -185,13 +185,21 @@ void TestSystemComponent::testWebAppearanceScriptIsSeparatedFromNativeShellBundl
   const QString nativeShell = system.getNativeShellScript();
   const QString webAppearance = system.getWebAppearanceScript();
   const QString ownershipMarker = QStringLiteral("data-tigerest-owned");
+  const QString appearanceOwner = QStringLiteral("const TIGEREST_APPEARANCE_OWNER = 'web-appearance';");
 
   QVERIFY2(nativeShell.contains(QStringLiteral("window.NativeShell")),
            "native shell getter did not return the assembled native bundle");
-  QCOMPARE(nativeShell.count(ownershipMarker), 0);
+  // The Mac ambient renderer legitimately uses the shared ownership attribute.
+  // Only the appearance owner must remain in its separate injection world.
+  QCOMPARE(nativeShell.count(appearanceOwner), 0);
+#ifdef Q_OS_MAC
+  QVERIFY2(nativeShell.contains(QStringLiteral("'data-tigerest-owned', 'ambient-backdrop'")),
+           "the Mac shell must retain its independently owned ambient renderer");
+#endif
 
   QVERIFY2(webAppearance.contains(QStringLiteral("web-appearance")),
            "standalone appearance getter did not return the owned appearance script");
+  QCOMPARE(webAppearance.count(appearanceOwner), 1);
   QCOMPARE(webAppearance.count(ownershipMarker), 1);
 }
 

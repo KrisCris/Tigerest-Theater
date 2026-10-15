@@ -38,7 +38,8 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         if(maximized)fs.writeFileSync(path.join(folder,'storage.json'),JSON.stringify({version:configVersion,sections:{state:Object.fromEntries([2,3,4].map(n=>[n+' screens: Window-Maximized',true]))}}));
         if(prepareProfile)await prepareProfile(profile,folder,settingsFile);
     }
-    const args=webengine?['--config-dir',profile,'--profile','MessagesFixture',...(gpu?[]:['--disable-gpu']),...extraArgs,'--remote-debugging-port','127.0.0.1:'+port]
+    // QML parse errors are warnings; include them in captured startup failures.
+    const args=webengine?['--config-dir',profile,'--profile','MessagesFixture','--log-level','warn',...(gpu?[]:['--disable-gpu']),...extraArgs,'--remote-debugging-port','127.0.0.1:'+port]
         :[...(visible?[]:['--headless']),...(gpu?[]:['--disable-gpu']),
             '--no-first-run','--no-default-browser-check',
             '--remote-debugging-port=0','--user-data-dir='+profile,url];

@@ -14,6 +14,8 @@ extern "C" void *tgrife_create(void) {
             config.width = 1920;
             config.height = 1080;
             config.pipeline = rife::Pipeline::SplitCoarseMetal;
+            // Keep encoder/refine off the GPU used by Metal motion/warp and mpv.
+            config.computePolicy = rife::ComputePolicy::CPUAndNeuralEngine;
             return RifeEngine::create(config).release();
         } catch (...) {
             return nullptr;
