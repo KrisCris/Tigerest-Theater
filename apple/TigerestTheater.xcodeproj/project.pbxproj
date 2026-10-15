@@ -64,6 +64,24 @@
 			<key>fileRef</key>
 			<string>642F6B4A6066DA63C2168CD0</string>
 		</dict>
+		<key>537E84579EAC4FC4E05DE47D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>App/Danmaku/DanmakuAppAdapter.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>284157B4B007A0D299CA7204</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>537E84579EAC4FC4E05DE47D</string>
+		</dict>
 		<key>0331163DD9A5A45221209C1D</key>
 		<dict>
 			<key>isa</key>
@@ -81,6 +99,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>0331163DD9A5A45221209C1D</string>
+		</dict>
+		<key>F13420CA2800057A9942A1A6</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>App/Danmaku/DanmakuHost.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>F35B8428AB8CF5333EDC45AC</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>F13420CA2800057A9942A1A6</string>
 		</dict>
 		<key>B720C2534DD211E708420136</key>
 		<dict>
@@ -647,7 +683,9 @@
 				<string>10F59C8C3E72FB08D4F9F9B9</string>
 				<string>13438B1C8F73EDD877124143</string>
 				<string>E44F9AAF260A6B382731C5B2</string>
+				<string>284157B4B007A0D299CA7204</string>
 				<string>CBAF077F9B965A47BBC46DE9</string>
+				<string>F35B8428AB8CF5333EDC45AC</string>
 				<string>59A02E8293F46082DCCB9EF2</string>
 				<string>4FF14AB47E8FF63019A29F17</string>
 				<string>8AB57540CC74CF1B3A8BF882</string>
@@ -1237,7 +1275,9 @@
 				<string>70A4CDDEF57FD881C3AB2878</string>
 				<string>5D1143AD84B7468862778423</string>
 				<string>642F6B4A6066DA63C2168CD0</string>
+				<string>537E84579EAC4FC4E05DE47D</string>
 				<string>0331163DD9A5A45221209C1D</string>
+				<string>F13420CA2800057A9942A1A6</string>
 				<string>B720C2534DD211E708420136</string>
 				<string>0C4D95626A8D4403FDCA11D5</string>
 				<string>5E0BBEDB106D372BF7638CD6</string>

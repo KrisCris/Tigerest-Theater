@@ -55,6 +55,53 @@ private func session() -> EmbySession {
 }
 
 @Suite(.serialized) struct EmbyClientTests {
+    @Test func episodeContextUsesBoundedSeasonAndAdjacentQueries() async throws {
+        let transport = EmbyFixtureProtocol.install { request in
+            let values = query(request.url!)
+            #expect(request.value(forHTTPHeaderField: "X-Emby-Token") == "private-token")
+            #expect(values["UserId"] == "user1")
+            #expect(values["EnableUserData"] == "true")
+            #expect(values["Fields"]?.contains("People") == true)
+            #expect(values["Fields"]?.contains("MediaStreams") == true)
+            if request.url?.path == "/proxy/emby/Shows/show/Seasons" {
+                #expect(values["StartIndex"] == "80")
+                #expect(values["Limit"] == "100")
+            } else {
+                #expect(request.url?.path == "/proxy/emby/Shows/show/Episodes")
+                #expect(values["SeasonId"] == "season")
+                #expect(values["SortBy"] == "ParentIndexNumber,IndexNumber,SortName")
+                if values["AdjacentTo"] != nil {
+                    #expect(values["AdjacentTo"] == "episode500")
+                    #expect(values["Limit"] == "3")
+                } else {
+                    #expect(values["StartIndex"] == "80")
+                    #expect(values["Limit"] == "80")
+                }
+            }
+            return reply(#"{"Items":[{"Id":"one"}],"TotalRecordCount":501}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let client = try EmbyClient(session: session(), urlSession: transport)
+        #expect(try await client.seasons(seriesID: "show", startIndex: 80, limit: 900).totalRecordCount == 501)
+        #expect(try await client.episodes(seriesID: "show", seasonID: "season", startIndex: 80).items.count == 1)
+        #expect(try await client.episodes(seriesID: "show", seasonID: "season", adjacentTo: "episode500").items.count == 1)
+        await #expect(throws: CoreError.invalidRequest) {
+            try await client.episodes(seriesID: "show", seasonID: "../escape")
+        }
+    }
+
+    @Test func loginRetainsServerIdentityWithoutBreakingStoredSessions() async throws {
+        let transport = EmbyFixtureProtocol.install { _ in
+            reply(#"{"User":{"Id":"user1"},"AccessToken":"private-token","ServerId":"62526c3bf747439c99327ddec5fed4a8"}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let saved = try await EmbyClient.login(server: session().serverURL, username: "alice", password: "secret", deviceID: "tv-device", urlSession: transport)
+        let encoded = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(saved))
+        #expect(encoded["serverID"].string == "62526c3bf747439c99327ddec5fed4a8")
+        let old = try JSONDecoder().decode(EmbySession.self, from: Data(#"{"serverURL":"https://emby.test/","userID":"user1","accessToken":"private-token","deviceID":"tv-device"}"#.utf8))
+        #expect(old.userID == "user1")
+    }
+
     @Test func loginPreservesProxyPathAndSendsPasswordOnlyInJSON() async throws {
         let transport = EmbyFixtureProtocol.install { request in
             #expect(request.url?.absoluteString == "https://emby.test/proxy/emby/Users/AuthenticateByName")
@@ -86,6 +133,30 @@ private func session() -> EmbySession {
         }
         defer { transport.invalidateAndCancel() }
         #expect(try await EmbyClient.publicInfo(server: session().serverURL, urlSession: transport) == "Living Room")
+        #expect(try await EmbyClient.serverInfo(server: session().serverURL, urlSession: transport).id == "server")
+    }
+
+    @Test func homeCountOnlyQueryRetainsTotalWithoutDownloadingEpisodes() async throws {
+        let transport = EmbyFixtureProtocol.install { request in
+            #expect(request.url?.path == "/proxy/emby/Users/user1/Items")
+            #expect(query(request.url!)["Limit"] == "0")
+            #expect(query(request.url!)["ParentId"] == "series")
+            #expect(request.value(forHTTPHeaderField: "X-Emby-Token") == "private-token")
+            return reply(#"{"Items":[],"TotalRecordCount":37}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let result = try await EmbyClient(session: session(), urlSession: transport).items(query: ["ParentId": "series", "Limit": "0", "EnableTotalRecordCount": "true"])
+        #expect(result.items.isEmpty)
+        #expect(result.totalRecordCount == 37)
+    }
+
+    @Test func homeArtworkUsesParentBackdropIndexAndCacheTag() throws {
+        let client = try EmbyClient(session: session())
+        let item: JSONValue = .object(["Id": .string("episode"), "ParentBackdropItemId": .string("series"), "ParentBackdropImageTags": .array([.string("parent-tag")])])
+        let image = try #require(client.homeArtworkURL(for: item, purpose: .hero))
+        #expect(image.path == "/proxy/emby/Items/series/Images/Backdrop/0")
+        #expect(query(image)["Tag"] == "parent-tag")
+        #expect(query(image)["MaxWidth"] == "1920")
     }
 
     @Test func authenticationRejectsHTTPFailureAndIncompleteSession() async throws {
@@ -145,6 +216,30 @@ private func session() -> EmbySession {
         let result = try await client.children(of: JSONValue(any: ["Id": "library", "Type": "Folder"]), startIndex: 160, limit: 10000)
         #expect(result.count == 100)
         #expect(result.last?["Id"].string == "99")
+    }
+
+    @Test func libraryCatalogUsesRecursiveWorkTypesAndRetainsPagingTotals() async throws {
+        for (collection, expectedTypes) in [("tvshows", "Series"), ("movies", "Movie"), ("mixed", "Series,Movie,Video"), ("music", "MusicAlbum")] {
+            let transport = EmbyFixtureProtocol.install { request in
+                #expect(request.url?.path == "/proxy/emby/Users/user1/Items")
+                #expect(request.value(forHTTPHeaderField: "X-Emby-Token") == "private-token")
+                let values = query(request.url!)
+                #expect(values["ParentId"] == "library")
+                #expect(values["Recursive"] == "true")
+                #expect(values["IncludeItemTypes"] == expectedTypes)
+                #expect(values["StartIndex"] == "160")
+                #expect(values["Limit"] == "100")
+                #expect(values["EnableTotalRecordCount"] == "true")
+                #expect(values["SortBy"] == "SortName")
+                #expect(values["SortOrder"] == "Ascending")
+                return reply(#"{"Items":[{"Id":"work"}],"TotalRecordCount":161}"#)
+            }
+            let client = try EmbyClient(session: session(), urlSession: transport)
+            let result = try await client.libraryItems(in: JSONValue(any: ["Id": "library", "CollectionType": collection]), startIndex: 160, limit: 10_000)
+            #expect(result.items.first?["Id"].string == "work")
+            #expect(result.totalRecordCount == 161)
+            transport.invalidateAndCancel()
+        }
     }
 
     @Test func resumeNamesPlayableVideoTypesForEmby48Through410() async throws {
@@ -233,6 +328,99 @@ private func session() -> EmbySession {
         #expect(query(playback.url)["MediaSourceId"] == "source1")
         #expect(query(playback.url)["api_key"] == "private-token")
         #expect(playback.headers.isEmpty)
+    }
+
+    @Test func playbackRetainsSubtitleChoicesAndNegotiatesExternalTextSupport() async throws {
+        let transport = EmbyFixtureProtocol.install { request in
+            let json = try body(request)
+            let profiles = json["DeviceProfile"]["SubtitleProfiles"].array ?? []
+            #expect(profiles.contains { $0["Format"].string == "srt" && $0["Method"].string == "External" })
+            #expect(profiles.contains { $0["Format"].string == "pgssub" && $0["Method"].string == "Embed" })
+            return reply(#"{"PlaySessionId":"play1","MediaSources":[{"Id":"source1","SupportsDirectPlay":true,"DefaultSubtitleStreamIndex":7,"MediaStreams":[{"Type":"Video","Index":0},{"Type":"Audio","Index":1},{"Type":"Subtitle","Index":2,"Codec":"ass","Language":"jpn","Title":"Japanese","IsDefault":true},{"Type":"Subtitle","Index":7,"Codec":"srt","Language":"zho","DisplayTitle":"简体中文","IsExternal":true,"IsForced":true,"DeliveryMethod":"External","DeliveryUrl":"/emby/Videos/episode1/source1/Subtitles/7/Stream.srt?api_key=stale"},{"Type":"Subtitle","Index":9,"Codec":"pgssub","Language":"eng","Title":"English"}]}]}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let playback = try await EmbyClient(session: session(), urlSession: transport).playback(item: mediaItem())
+        #expect(playback.defaultSubtitleStreamIndex == 7)
+        #expect(playback.subtitleTracks.map(\.index) == [2, 7, 9])
+        #expect(playback.subtitleTracks.map(\.embeddedIndex) == [1, nil, 2])
+        let external = try #require(playback.subtitleTracks.first { $0.index == 7 })
+        #expect(external.title == "简体中文")
+        #expect(external.language == "zho")
+        #expect(external.codec == "srt")
+        #expect(external.isExternal && external.isForced && !external.isDefault)
+        let url = try #require(external.externalURL)
+        #expect(url.path == "/proxy/emby/Videos/episode1/source1/Subtitles/7/Stream.srt")
+        #expect(query(url)["api_key"] == "private-token")
+        #expect(playback.subtitleTracks.first?.isDefault == true)
+    }
+
+    @Test func externalTextSubtitleWithoutDeliveryURLUsesDocumentedEndpoint() async throws {
+        let transport = EmbyFixtureProtocol.install { _ in
+            reply(#"{"PlaySessionId":"play1","MediaSources":[{"Id":"source1","SupportsDirectPlay":true,"DefaultSubtitleStreamIndex":3,"MediaStreams":[{"Type":"Subtitle","Index":3,"Codec":"subrip","IsExternal":true,"IsTextSubtitleStream":true,"Path":"/private/server/subtitle.srt"}]}]}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let playback = try await EmbyClient(session: session(), urlSession: transport).playback(item: mediaItem())
+        let url = try #require(playback.subtitleTracks.first?.externalURL)
+        #expect(url.path == "/proxy/emby/Videos/episode1/source1/Subtitles/3/Stream.srt")
+        #expect(query(url)["api_key"] == "private-token")
+        #expect(!url.absoluteString.contains("private/server"))
+        #expect(query(url)["StartPositionTicks"] == nil)
+    }
+
+    @Test func disabledDefaultDoesNotSelectAFlaggedDefaultSubtitle() async throws {
+        let transport = EmbyFixtureProtocol.install { _ in
+            reply(#"{"PlaySessionId":"play1","MediaSources":[{"Id":"source1","SupportsDirectPlay":true,"DefaultSubtitleStreamIndex":-1,"MediaStreams":[{"Type":"Subtitle","Index":4,"Codec":"ass","IsDefault":true,"IsForced":true}]}]}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let playback = try await EmbyClient(session: session(), urlSession: transport).playback(item: mediaItem())
+        #expect(playback.defaultSubtitleStreamIndex == -1)
+        #expect(playback.subtitleTracks.first?.embeddedIndex == 1)
+        #expect(playback.subtitleTracks.first?.isDefault == true)
+    }
+
+    @Test func playbackWithoutSubtitleMetadataKeepsEmptyChoicesAndNoDefault() async throws {
+        let transport = EmbyFixtureProtocol.install { _ in reply(#"{"PlaySessionId":"play1","MediaSources":[{"Id":"source1","SupportsDirectPlay":true}]}"#) }
+        defer { transport.invalidateAndCancel() }
+        let playback = try await EmbyClient(session: session(), urlSession: transport).playback(item: mediaItem())
+        #expect(playback.subtitleTracks.isEmpty)
+        #expect(playback.defaultSubtitleStreamIndex == nil)
+    }
+
+    @Test func extractedInternalSubtitleKeepsOrdinalAndDoesNotInventMissingDefault() async throws {
+        let transport = EmbyFixtureProtocol.install { _ in
+            reply(#"{"PlaySessionId":"play1","MediaSources":[{"Id":"unplayable","DefaultSubtitleStreamIndex":99,"MediaStreams":[{"Type":"Subtitle","Index":99}]},{"Id":"source1","SupportsDirectPlay":true,"MediaStreams":[{"Type":"Subtitle","Index":3,"Codec":"ass","IsDefault":true,"DeliveryMethod":"External","DeliveryUrl":"Videos/episode1/source1/Subtitles/3/Stream.ass"},{"Type":"Subtitle","Index":5,"Codec":"pgssub"}]}]}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let playback = try await EmbyClient(session: session(), urlSession: transport).playback(item: mediaItem())
+        #expect(playback.defaultSubtitleStreamIndex == nil)
+        #expect(playback.subtitleTracks.map(\.index) == [3, 5])
+        #expect(playback.subtitleTracks.map(\.embeddedIndex) == [1, 2])
+        #expect(playback.subtitleTracks.first?.isExternal == false)
+        #expect(playback.subtitleTracks.first?.isDefault == true)
+        #expect(playback.subtitleTracks.first?.externalURL?.path == "/proxy/emby/Videos/episode1/source1/Subtitles/3/Stream.ass")
+    }
+
+    @Test func externalSubtitleCDNReceivesNoEmbyCredential() async throws {
+        let transport = EmbyFixtureProtocol.install { _ in
+            reply(#"{"PlaySessionId":"play1","MediaSources":[{"Id":"source1","SupportsDirectPlay":true,"MediaStreams":[{"Type":"Subtitle","Index":3,"IsExternal":true,"DeliveryUrl":"https://subs.cdn.test/sub.srt?token=cdn-signature&api_key=private-token&X-Emby-Token=private-token"}]}]}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let playback = try await EmbyClient(session: session(), urlSession: transport).playback(item: mediaItem())
+        #expect(playback.subtitleTracks.first?.externalURL?.absoluteString == "https://subs.cdn.test/sub.srt?token=cdn-signature")
+        #expect(playback.headers.isEmpty)
+    }
+
+    @Test(arguments: ["file:///private/sub.srt", "../sub.srt", "/Videos/%2e%2e/sub.srt", "https://user:pass@cdn.test/sub.srt", "//cdn.test/sub.srt"])
+    func unsafeSubtitleURLIsNotExposedToPlayer(_ subtitleURL: String) async throws {
+        let transport = EmbyFixtureProtocol.install { _ in
+            .init(data: try JSONSerialization.data(withJSONObject: ["PlaySessionId": "play1", "MediaSources": [["Id": "source1", "SupportsDirectPlay": true,
+                "MediaStreams": [["Type": "Subtitle", "Index": 2, "IsExternal": true, "DeliveryUrl": subtitleURL], ["Type": "Subtitle", "Index": 4, "Codec": "ass"]]]]]))
+        }
+        defer { transport.invalidateAndCancel() }
+        let playback = try await EmbyClient(session: session(), urlSession: transport).playback(item: mediaItem())
+        #expect(playback.subtitleTracks.map(\.index) == [4])
+        #expect(playback.subtitleTracks.first?.embeddedIndex == 1)
+        #expect(playback.subtitleTracks.first?.externalURL == nil)
     }
 
     @Test func externalDirectStreamNeverReceivesEmbyCredentialsOrHeaders() async throws {

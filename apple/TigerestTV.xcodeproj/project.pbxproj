@@ -28,6 +28,114 @@
 			<key>fileRef</key>
 			<string>E9599726157571D7371D25CF</string>
 		</dict>
+		<key>DD4126E4173A096EECFC8C1C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVCommentsView.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>52E141D1881DB289BBF6D75C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>DD4126E4173A096EECFC8C1C</string>
+		</dict>
+		<key>3357339EA3127682501E11F3</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVDanmakuControls.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>F3E8E7C923E1875C942E17F2</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>3357339EA3127682501E11F3</string>
+		</dict>
+		<key>6A5F30DB64D9222125269643</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVDanmakuHost.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>C14332578819677ADF203364</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>6A5F30DB64D9222125269643</string>
+		</dict>
+		<key>6E7612BBD635D390A05E5C20</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVDetailView.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>B7FF496A9892449A43B3C024</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>6E7612BBD635D390A05E5C20</string>
+		</dict>
+		<key>5542BE999FAD0F9371345324</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVEpisodeControls.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>F87FBBB5566401B3E997B000</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>5542BE999FAD0F9371345324</string>
+		</dict>
+		<key>D34BC27E7F843E2BD9F13C4F</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVHomeView.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>21CBE42E4237F0C7827960D6</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>D34BC27E7F843E2BD9F13C4F</string>
+		</dict>
 		<key>5B6CB03F43F10DF0F8672BA0</key>
 		<dict>
 			<key>isa</key>
@@ -64,6 +172,24 @@
 			<key>fileRef</key>
 			<string>84786CAF55D8F9089AEAE8EC</string>
 		</dict>
+		<key>6BABB3B78EC3C2377591A44C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVQualitySettings.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>C9BD21996FF49BBC99333455</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>6BABB3B78EC3C2377591A44C</string>
+		</dict>
 		<key>63344657058E0EA1F8EFD364</key>
 		<dict>
 			<key>isa</key>
@@ -99,6 +225,42 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>E1D1B199775576170174B6A4</string>
+		</dict>
+		<key>79CEDE3E484F285D611783BB</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVSubtitleController.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>DAB69B208C4A7FBA705F36D6</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>79CEDE3E484F285D611783BB</string>
+		</dict>
+		<key>5BD9AB05FC2AAED816870A96</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVSubtitleControls.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>5E1F04910A77913C0A1EA48D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>5BD9AB05FC2AAED816870A96</string>
 		</dict>
 		<key>9C9755CF5684EE8CA9EC1EE5</key>
 		<dict>
@@ -154,6 +316,60 @@
 			<key>fileRef</key>
 			<string>E00B640A8BFBAB35463BF8E2</string>
 		</dict>
+		<key>F13420CA2800057A9942A1A6</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>App/Danmaku/DanmakuHost.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>755F59BE49122DF5EB1027AF</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>F13420CA2800057A9942A1A6</string>
+		</dict>
+		<key>0C4D95626A8D4403FDCA11D5</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>App/Danmaku/DanmakuRepository.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>750290FA57BC32AC3110AEBB</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>0C4D95626A8D4403FDCA11D5</string>
+		</dict>
+		<key>B720C2534DD211E708420136</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>App/Danmaku/DanmakuOverlay.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>788D41FBA3C0E9202C7CF5A0</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>B720C2534DD211E708420136</string>
+		</dict>
 		<key>1B0D3BAD0B0CF4137ACE60F6</key>
 		<dict>
 			<key>isa</key>
@@ -171,6 +387,42 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>1B0D3BAD0B0CF4137ACE60F6</string>
+		</dict>
+		<key>FC178867AD461E3C97D94B56</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>folder</string>
+			<key>path</key>
+			<string>Generated/TV/home-art</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>B0D75AFC19C3D2CF1A8CA50B</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>FC178867AD461E3C97D94B56</string>
+		</dict>
+		<key>188694BC498E2E6E0231298B</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>folder</string>
+			<key>path</key>
+			<string>Generated/TV/SubtitleFonts</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>8D8E2CD248F51ADCDFA900B5</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>188694BC498E2E6E0231298B</string>
 		</dict>
 		<key>35A44ABCD1083C4498F32DD5</key>
 		<dict>
@@ -342,13 +594,25 @@
 			<key>files</key>
 			<array>
 				<string>B8A5B998DFDCBCE2DFB3A0B3</string>
+				<string>52E141D1881DB289BBF6D75C</string>
+				<string>F3E8E7C923E1875C942E17F2</string>
+				<string>C14332578819677ADF203364</string>
+				<string>B7FF496A9892449A43B3C024</string>
+				<string>F87FBBB5566401B3E997B000</string>
+				<string>21CBE42E4237F0C7827960D6</string>
 				<string>41EF540DFC1ADE800D8064E3</string>
 				<string>B5D9A930288B403E180AEFED</string>
+				<string>C9BD21996FF49BBC99333455</string>
 				<string>866B18FA05402F88E614313D</string>
 				<string>32A913174C222D4A29AA7490</string>
+				<string>DAB69B208C4A7FBA705F36D6</string>
+				<string>5E1F04910A77913C0A1EA48D</string>
 				<string>AAD2726A5A7B2FBBADAEB21A</string>
 				<string>8AC72A756FF9C47A8E196E6F</string>
 				<string>C22D7C4E8E142440B6E94C1A</string>
+				<string>755F59BE49122DF5EB1027AF</string>
+				<string>750290FA57BC32AC3110AEBB</string>
+				<string>788D41FBA3C0E9202C7CF5A0</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>
@@ -362,6 +626,8 @@
 			<key>files</key>
 			<array>
 				<string>FEABE025173ED9CDEBE7EED8</string>
+				<string>B0D75AFC19C3D2CF1A8CA50B</string>
+				<string>8D8E2CD248F51ADCDFA900B5</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>
@@ -638,14 +904,28 @@
 			<key>children</key>
 			<array>
 				<string>E9599726157571D7371D25CF</string>
+				<string>DD4126E4173A096EECFC8C1C</string>
+				<string>3357339EA3127682501E11F3</string>
+				<string>6A5F30DB64D9222125269643</string>
+				<string>6E7612BBD635D390A05E5C20</string>
+				<string>5542BE999FAD0F9371345324</string>
+				<string>D34BC27E7F843E2BD9F13C4F</string>
 				<string>5B6CB03F43F10DF0F8672BA0</string>
 				<string>84786CAF55D8F9089AEAE8EC</string>
+				<string>6BABB3B78EC3C2377591A44C</string>
 				<string>63344657058E0EA1F8EFD364</string>
 				<string>E1D1B199775576170174B6A4</string>
+				<string>79CEDE3E484F285D611783BB</string>
+				<string>5BD9AB05FC2AAED816870A96</string>
 				<string>9C9755CF5684EE8CA9EC1EE5</string>
 				<string>626B60F0A60A0AD76EF234D3</string>
 				<string>E00B640A8BFBAB35463BF8E2</string>
+				<string>F13420CA2800057A9942A1A6</string>
+				<string>0C4D95626A8D4403FDCA11D5</string>
+				<string>B720C2534DD211E708420136</string>
 				<string>1B0D3BAD0B0CF4137ACE60F6</string>
+				<string>FC178867AD461E3C97D94B56</string>
+				<string>188694BC498E2E6E0231298B</string>
 				<string>DBCF258C0E434F3DFBDA5648</string>
 				<string>79BBD3B852F40BDCEA1D0F8D</string>
 			</array>

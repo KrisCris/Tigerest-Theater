@@ -4,11 +4,13 @@ import SwiftUI
 struct TVRootView: View {
     @ObservedObject var model: TVAppModel
     @FocusState private var focused: String?
-    private let columns = [GridItem(.adaptive(minimum: 300, maximum: 400), spacing: 36, alignment: .top)]
+    @State private var showQuality = false
+    private let columns = [GridItem(.adaptive(minimum: 210, maximum: 260), spacing: 32, alignment: .top)]
 
     var body: some View {
+        let exitContext = model.navigationContext
         ZStack {
-            LinearGradient(colors: [Color(red: 0.07, green: 0.12, blue: 0.22), .black],
+            LinearGradient(colors: [Color(red: 0.043, green: 0.051, blue: 0.071), .black],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
                 .ignoresSafeArea()
             VStack(alignment: .leading, spacing: 30) {
@@ -18,7 +20,11 @@ struct TVRootView: View {
                 }
                 if model.isAuthenticated {
                     if let item = model.selectedItem {
-                        detail(item)
+                        TVDetailView(model: model, item: item)
+                    } else if let page = model.currentPage, ["Series", "Season"].contains(page.item["Type"].string ?? "") {
+                        TVDetailView(model: model, item: page.item, children: page.items, hasMore: page.hasMore)
+                    } else if model.currentPage == nil {
+                        TVHomeView(model: model)
                     } else {
                         browsing
                     }
@@ -26,13 +32,14 @@ struct TVRootView: View {
                     TVLoginView(model: model)
                 }
             }
-            .padding(.horizontal, 80)
-            .padding(.vertical, 50)
+            .padding(.horizontal, 64)
+            .padding(.vertical, 32)
         }
         .preferredColorScheme(.dark)
-        .modifier(TVExitHandler(enabled: model.canGoBack || (!model.isAuthenticated && model.serverMode != nil)) {
-            if model.canGoBack { model.goBack() } else { model.resetServerSelection() }
+        .modifier(TVExitHandler(enabled: !showQuality && (model.canGoBack || (!model.isAuthenticated && model.serverMode != nil))) {
+            model.handleExit(from: exitContext)
         })
+        .fullScreenCover(isPresented: $showQuality) { TVQualitySettings(player: model.player) }
         .onChange(of: model.focusTarget) { _, target in focused = target }
     }
 
@@ -44,7 +51,7 @@ struct TVRootView: View {
                     .focused($focused, equals: "tv.back")
             }
             VStack(alignment: .leading, spacing: 7) {
-                Text("大河影院").font(.system(size: 42, weight: .bold, design: .rounded))
+                Text("大河影院").font(.system(size: model.isAuthenticated ? 29 : 42, weight: .bold, design: .rounded))
                 if !model.pages.isEmpty {
                     Text(model.pages.map(\.title).joined(separator: "  /  "))
                         .font(.callout).foregroundStyle(.secondary).lineLimit(1)
@@ -59,6 +66,9 @@ struct TVRootView: View {
                 ProgressView().accessibilityLabel("正在加载")
             }
             if model.isAuthenticated {
+                Button { showQuality = true } label: { Label("画质", systemImage: "sparkles.tv") }
+                    .accessibilityIdentifier("tv.quality")
+                    .focused($focused, equals: "tv.quality")
                 if !model.canGoBack {
                     Button { Task { await model.refresh() } } label: { Label("刷新", systemImage: "arrow.clockwise") }
                         .disabled(model.busy)
@@ -90,105 +100,53 @@ struct TVRootView: View {
     }
 
     private var browsing: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 44) {
-                if let page = model.currentPage {
-                    Text(page.title).font(.largeTitle.bold())
-                    if page.items.isEmpty, !model.busy, model.error == nil {
-                        emptyState("这里还没有媒体", symbol: "folder")
-                    }
-                    itemGrid(page.items)
-                    if page.hasMore {
-                        Button("加载更多") { Task { await model.loadMore() } }
-                            .disabled(model.busy)
-                            .accessibilityIdentifier("tv.loadMore")
-                            .focused($focused, equals: "tv.loadMore")
-                    }
-                } else {
-                    if !model.resume.isEmpty {
-                        VStack(alignment: .leading, spacing: 26) {
-                            Text("继续观看").font(.title2.bold())
-                            itemGrid(model.resume)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 44) {
+                    if let page = model.currentPage {
+                        Text(page.title).font(.largeTitle.bold())
+                        if page.items.isEmpty, !model.busy, model.error == nil {
+                            emptyState("这里还没有媒体", symbol: "film")
                         }
-                        .focusSection()
-                    }
-                    VStack(alignment: .leading, spacing: 26) {
-                        Text("媒体库").font(.title2.bold())
-                        if model.libraries.isEmpty, !model.busy, model.error == nil {
-                            emptyState("没有可访问的媒体库", symbol: "rectangle.stack")
+                        itemGrid(page.items)
+                        if page.hasMore {
+                            Button("加载更多") { Task { await model.loadMore() } }
+                                .disabled(model.busy)
+                                .accessibilityIdentifier("tv.loadMore")
+                                .focused($focused, equals: "tv.loadMore")
                         }
-                        itemGrid(model.libraries)
                     }
-                    .focusSection()
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 24)
+            .onAppear { revealBrowseTarget(model.focusTarget, using: proxy) }
+            .onChange(of: model.focusTarget) { _, target in revealBrowseTarget(target, using: proxy) }
         }
-        .accessibilityIdentifier(model.currentPage == nil ? "tv.home" : "tv.browse")
+        .accessibilityIdentifier("tv.browse")
+    }
+
+    private func revealBrowseTarget(_ target: String?, using proxy: ScrollViewProxy) {
+        guard let target, target.hasPrefix("tv.item.") else { return }
+        proxy.scrollTo(String(target.dropFirst("tv.item.".count)), anchor: .center)
+        focused = target
     }
 
     private func itemGrid(_ items: [JSONValue]) -> some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 40) {
             ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                 Button { Task { await model.open(item) } } label: {
-                    TVMediaCard(item: item, imageURL: model.client?.imageURL(for: item, type: "Primary", maxWidth: 640))
+                    TVMediaCard(item: item, imageURL: model.client?.homeArtworkURL(for: item, purpose: .poster), artworkAspectRatio: 2.0 / 3.0)
                 }
-                .buttonStyle(.card)
+                .buttonStyle(TVGalleryButtonStyle()).focusEffectDisabled()
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(focused == "tv.item.\(TVMedia.id(item))" ? Color(red: 0.94, green: 0.78, blue: 0.47) : .clear, lineWidth: 3))
+                .scaleEffect(focused == "tv.item.\(TVMedia.id(item))" ? 1.025 : 1)
                 .accessibilityLabel([TVMedia.title(item), TVMedia.subtitle(item)].filter { !$0.isEmpty }.joined(separator: ", "))
                 .accessibilityIdentifier("tv.item.\(TVMedia.id(item))")
                 .focused($focused, equals: "tv.item.\(TVMedia.id(item))")
+                .id(TVMedia.id(item))
             }
         }
-    }
-
-    private func detail(_ item: JSONValue) -> some View {
-        HStack(alignment: .top, spacing: 60) {
-            TVArtwork(url: model.client?.imageURL(for: item, type: "Primary", maxWidth: 900),
-                      symbol: item["Type"].string == "Episode" ? "play.rectangle" : "film")
-                .frame(width: 440, height: 640)
-                .clipShape(RoundedRectangle(cornerRadius: 24))
-            ScrollView {
-                VStack(alignment: .leading, spacing: 25) {
-                    if let series = item["SeriesName"].string {
-                        Text(series).font(.title3).foregroundStyle(.secondary)
-                    }
-                    Text(TVMedia.title(item)).font(.system(size: 54, weight: .bold)).fixedSize(horizontal: false, vertical: true)
-                    Text(TVMedia.subtitle(item)).font(.title3).foregroundStyle(.secondary)
-                    if let rating = item["OfficialRating"].string, !rating.isEmpty {
-                        Text(rating).font(.callout).foregroundStyle(.secondary)
-                    }
-                    HStack(spacing: 26) {
-                        if TVMedia.resumeSeconds(item) > 0 {
-                            Button {
-                                Task { await model.play(item, resume: true) }
-                            } label: {
-                                Label("继续播放 · \(TVMedia.time(TVMedia.resumeSeconds(item)))", systemImage: "play.fill")
-                            }
-                            .accessibilityIdentifier("tv.resume")
-                            .focused($focused, equals: "tv.resume")
-                        }
-                        Button {
-                            Task { await model.play(item, resume: false) }
-                        } label: {
-                            Label(TVMedia.resumeSeconds(item) > 0 ? "从头播放" : "播放", systemImage: TVMedia.resumeSeconds(item) > 0 ? "arrow.counterclockwise" : "play.fill")
-                        }
-                        .accessibilityIdentifier("tv.play")
-                        .focused($focused, equals: "tv.play")
-                    }
-                    .disabled(model.busy)
-                    .padding(.vertical, 16)
-                    if let overview = item["Overview"].string, !overview.isEmpty {
-                        Text(overview).font(.body).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
-            }
-        }
-        .accessibilityIdentifier("tv.detail")
-        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private func emptyState(_ title: String, symbol: String) -> some View {
@@ -286,14 +244,15 @@ private struct TVLoginView: View {
     }
 }
 
-private struct TVMediaCard: View {
+struct TVMediaCard: View {
     let item: JSONValue
     let imageURL: URL?
+    var artworkAspectRatio: CGFloat = 16.0 / 9.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             TVArtwork(url: imageURL, symbol: TVMedia.isContainer(item) ? "rectangle.stack.fill" : "play.rectangle.fill")
-                .aspectRatio(16 / 9, contentMode: .fit)
+                .aspectRatio(artworkAspectRatio, contentMode: .fit)
                 .overlay(alignment: .bottomTrailing) {
                     if let episode = TVMedia.episodeLabel(item) {
                         Text(episode).font(.caption.bold()).padding(.horizontal, 10).padding(.vertical, 7)
@@ -320,7 +279,7 @@ private struct TVMediaCard: View {
     }
 }
 
-private struct TVArtwork: View {
+struct TVArtwork: View {
     let url: URL?
     let symbol: String
     var body: some View {
@@ -332,7 +291,9 @@ private struct TVArtwork: View {
                     ZStack {
                         LinearGradient(colors: [Color(red: 0.12, green: 0.27, blue: 0.39), Color(red: 0.06, green: 0.12, blue: 0.22)],
                                        startPoint: .topLeading, endPoint: .bottomTrailing)
-                        Image(systemName: symbol).font(.system(size: 65, weight: .light)).foregroundStyle(.white.opacity(0.5))
+                        if !symbol.isEmpty {
+                            Image(systemName: symbol).font(.system(size: 65, weight: .light)).foregroundStyle(.white.opacity(0.5))
+                        }
                     }
                 }
             }

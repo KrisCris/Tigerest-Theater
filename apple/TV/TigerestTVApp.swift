@@ -12,7 +12,7 @@ private struct TVRootContainer: View {
             .preferredColorScheme(.dark)
             .task { await model.start() }
             .fullScreenCover(isPresented: Binding(get: { player.active }, set: { if !$0 { player.stop() } })) {
-                TVPlayerView(player: player)
+                TVPlayerView(player: player, model: model)
             }
             .alert("播放提示", isPresented: Binding(get: { !player.active && player.error != nil }, set: { if !$0 { player.error = nil } })) {
                 Button("明白") { player.error = nil }

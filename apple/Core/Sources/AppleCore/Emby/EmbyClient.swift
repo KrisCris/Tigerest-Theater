@@ -5,9 +5,29 @@ public struct EmbySession: Codable, Sendable {
     public let userID: String
     public let accessToken: String
     public let deviceID: String
-    public init(serverURL: String, userID: String, accessToken: String, deviceID: String) {
+    public let serverID: String?
+    public init(serverURL: String, userID: String, accessToken: String, deviceID: String, serverID: String? = nil) {
         self.serverURL = serverURL; self.userID = userID; self.accessToken = accessToken; self.deviceID = deviceID
+        self.serverID = serverID
     }
+}
+
+public struct EmbyServerInfo: Sendable {
+    public let name: String
+    public let id: String?
+}
+
+public struct EmbyItemPage: Sendable {
+    public let items: [JSONValue]
+    public let totalRecordCount: Int?
+    public init(items: [JSONValue], totalRecordCount: Int? = nil) {
+        self.items = items; self.totalRecordCount = totalRecordCount
+    }
+}
+
+public protocol EmbyHomeAPI: Sendable {
+    func items(query: [String: String]) async throws -> EmbyItemPage
+    func resumableItems(query: [String: String]) async throws -> EmbyItemPage
 }
 
 public struct EmbyPlayback: Sendable {
@@ -17,9 +37,14 @@ public struct EmbyPlayback: Sendable {
     public let mediaSourceID: String
     public let playSessionID: String
     public let startSeconds: Double
-    public init(url: URL, headers: [String: String], item: JSONValue, mediaSourceID: String, playSessionID: String, startSeconds: Double) {
+    public let subtitleTracks: [EmbySubtitleTrack]
+    /// nil means the server did not choose; -1 is an explicit disabled choice.
+    public let defaultSubtitleStreamIndex: Int?
+    public init(url: URL, headers: [String: String], item: JSONValue, mediaSourceID: String, playSessionID: String, startSeconds: Double,
+                subtitleTracks: [EmbySubtitleTrack] = [], defaultSubtitleStreamIndex: Int? = nil) {
         self.url = url; self.headers = headers; self.item = item
         self.mediaSourceID = mediaSourceID; self.playSessionID = playSessionID; self.startSeconds = startSeconds
+        self.subtitleTracks = subtitleTracks; self.defaultSubtitleStreamIndex = defaultSubtitleStreamIndex
     }
 }
 
@@ -48,12 +73,12 @@ private final class EmbyNoRedirectDelegate: NSObject, URLSessionTaskDelegate {
     }
 }
 
-public actor EmbyClient {
+public actor EmbyClient: EmbyHomeAPI {
     private nonisolated let session: EmbySession
     private nonisolated let server: ServerAddress
     private let urlSession: URLSession
     private static let maxResponseBytes = 8 * 1024 * 1024
-    private static let fields = "Overview,PrimaryImageAspectRatio,SeriesId,SeasonId,MediaSources"
+    private static let fields = "Overview,PrimaryImageAspectRatio,SeriesId,SeasonId,MediaSources,ProviderIds,DisplayOrder,DateCreated,PremiereDate,CommunityRating,UserDataLastPlayedDate,Genres,People,Studios,MediaStreams"
 
     public init(session: EmbySession, urlSession: URLSession = .shared) throws {
         self.server = try ServerAddress(session.serverURL)
@@ -65,10 +90,14 @@ public actor EmbyClient {
     }
 
     public static func publicInfo(server: String, urlSession: URLSession = .shared) async throws -> String {
+        try await serverInfo(server: server, urlSession: urlSession).name
+    }
+
+    public static func serverInfo(server: String, urlSession: URLSession = .shared) async throws -> EmbyServerInfo {
         let address = try ServerAddress(server)
         let json = try await send(url: address.endpoint("System/Info/Public"), urlSession: urlSession)
         guard let name = json["ServerName"].string, !name.isEmpty else { throw EmbyClientError.invalidResponse }
-        return name
+        return EmbyServerInfo(name: name, id: try? identifier(json["Id"].string))
     }
 
     public static func login(server: String, username: String, password: String, deviceID: String, urlSession: URLSession = .shared) async throws -> EmbySession {
@@ -81,7 +110,8 @@ public actor EmbyClient {
                                   deviceID: deviceID, urlSession: urlSession)
         guard let userID = json["User"]["Id"].string, let token = json["AccessToken"].string,
               !token.isEmpty, safeHeaderValue(token), (try? identifier(userID)) != nil else { throw EmbyClientError.invalidResponse }
-        return EmbySession(serverURL: address.baseURL.absoluteString, userID: userID, accessToken: token, deviceID: deviceID)
+        return EmbySession(serverURL: address.baseURL.absoluteString, userID: userID, accessToken: token, deviceID: deviceID,
+                           serverID: try? identifier(json["ServerId"].string))
     }
 
     public func libraries() async throws -> [JSONValue] {
@@ -95,6 +125,53 @@ public actor EmbyClient {
             "IncludeItemTypes": "Episode,Movie,Video,MusicVideo",
             "EnableImages": "true", "EnableUserData": "true"
         ], limit: 20)
+    }
+
+    public func items(query: [String: String]) async throws -> EmbyItemPage {
+        try await itemPage("Users/\(session.userID)/Items", query: query)
+    }
+
+    public func resumableItems(query: [String: String]) async throws -> EmbyItemPage {
+        try await itemPage("Users/\(session.userID)/Items/Resume", query: query)
+    }
+
+    /// A library opens as a work catalogue, independent of its disk-folder layout.
+    /// Series and seasons still use children(of:) for their ordered navigation.
+    public func libraryItems(in library: JSONValue, startIndex: Int = 0, limit: Int = 80) async throws -> EmbyItemPage {
+        let id = try Self.identifier(library["Id"].string)
+        let types: String
+        switch library["CollectionType"].string {
+        case "tvshows": types = "Series"
+        case "movies": types = "Movie"
+        case "music": types = "MusicAlbum"
+        case "books": types = "Book,AudioBook"
+        case "audiobooks": types = "MusicAlbum,AudioBook"
+        case "musicvideos": types = "MusicVideo"
+        case "games": types = "Game"
+        case "playlists": types = "Playlist"
+        case "photos": types = "Photo,PhotoAlbum"
+        default: types = "Series,Movie,Video"
+        }
+        return try await itemPage("Users/\(session.userID)/Items", query: [
+            "ParentId": id, "Recursive": "true", "IncludeItemTypes": types,
+            "StartIndex": String(max(0, startIndex)), "Limit": String(min(100, max(1, limit))),
+            "SortBy": "SortName", "SortOrder": "Ascending", "EnableTotalRecordCount": "true",
+            "Fields": Self.fields, "EnableUserData": "true", "EnableImages": "true"
+        ])
+    }
+
+    private func itemPage(_ path: String, query: [String: String]) async throws -> EmbyItemPage {
+        var query = query
+        let limit = min(100, max(0, Int(query["Limit"] ?? "100") ?? 100))
+        query["Limit"] = String(limit)
+        query["StartIndex"] = String(max(0, Int(query["StartIndex"] ?? "0") ?? 0))
+        let result = try await request(path, query: query)
+        guard let items = result["Items"].array else { throw EmbyClientError.invalidResponse }
+        let rawCount = result["TotalRecordCount"].number
+        let count = rawCount.flatMap { value in
+            value.isFinite && value >= 0 && value <= 9_007_199_254_740_991 && value.rounded() == value ? Int(value) : nil
+        }
+        return EmbyItemPage(items: Array(items.prefix(limit)), totalRecordCount: count)
     }
 
     public func children(of item: JSONValue, startIndex: Int = 0, limit: Int = 80) async throws -> [JSONValue] {
@@ -128,6 +205,31 @@ public actor EmbyClient {
         return try await list(path, query: values, limit: boundedLimit)
     }
 
+    /// Bounded catalogue queries shared by detail and playback episode pickers.
+    public func seasons(seriesID: String, startIndex: Int = 0, limit: Int = 80) async throws -> EmbyItemPage {
+        try await itemPage("Shows/\(Self.identifier(seriesID))/Seasons", query: [
+            "UserId": session.userID, "StartIndex": String(max(0, startIndex)), "Limit": String(min(100, max(1, limit))),
+            "SortBy": "IndexNumber,SortName", "SortOrder": "Ascending", "EnableTotalRecordCount": "true",
+            "Fields": Self.fields, "EnableUserData": "true", "EnableImages": "true"
+        ])
+    }
+
+    /// AdjacentTo is the documented Emby sibling query. Its three-item window
+    /// avoids scanning an entire long-running season to enable previous/next.
+    public func episodes(seriesID: String, seasonID: String, startIndex: Int = 0, limit: Int = 80,
+                         adjacentTo: String? = nil) async throws -> EmbyItemPage {
+        var query = ["UserId": session.userID, "SeasonId": try Self.identifier(seasonID),
+                     "StartIndex": String(max(0, startIndex)), "Limit": String(min(100, max(1, limit))),
+                     "SortBy": "ParentIndexNumber,IndexNumber,SortName", "SortOrder": "Ascending",
+                     "EnableTotalRecordCount": "true", "Fields": Self.fields,
+                     "EnableUserData": "true", "EnableImages": "true"]
+        if let adjacentTo {
+            query["AdjacentTo"] = try Self.identifier(adjacentTo)
+            query["StartIndex"] = "0"; query["Limit"] = "3"
+        }
+        return try await itemPage("Shows/\(Self.identifier(seriesID))/Episodes", query: query)
+    }
+
     public func item(id: String) async throws -> JSONValue {
         let id = try Self.identifier(id)
         let result = try await request("Users/\(session.userID)/Items/\(id)")
@@ -146,7 +248,15 @@ public actor EmbyClient {
             "Name": .string("Tigerest Theater TV"), "MaxStaticBitrate": .number(1_000_000_000),
             "MaxStreamingBitrate": .number(200_000_000),
             "DirectPlayProfiles": .array([.object(["Type": .string("Video")]), .object(["Type": .string("Audio")])]),
-            "TranscodingProfiles": .array([]), "CodecProfiles": .array([])
+            "TranscodingProfiles": .array([]), "CodecProfiles": .array([]),
+            // Match native/nativeshell.js so PlaybackInfo can supply external
+            // text delivery URLs instead of assuming subtitles need burning in.
+            "SubtitleProfiles": .array([
+                ("srt", "External"), ("srt", "Embed"), ("ass", "External"), ("ass", "Embed"),
+                ("sub", "Embed"), ("sub", "External"), ("ssa", "Embed"), ("ssa", "External"),
+                ("smi", "Embed"), ("smi", "External"), ("pgssub", "Embed"), ("dvdsub", "Embed"),
+                ("dvbsub", "Embed"), ("pgs", "Embed")
+            ].map { .object(["Format": .string($0.0), "Method": .string($0.1)]) })
         ])
         let info = try await request("Items/\(id)/PlaybackInfo", method: "POST", body: .object([
             "UserId": .string(session.userID), "StartTimeTicks": .number(resumeTicks),
@@ -169,17 +279,72 @@ public actor EmbyClient {
                 ])
             } else { continue }
             return EmbyPlayback(url: mediaURL, headers: [:], item: item, mediaSourceID: sourceID,
-                                playSessionID: playSessionID, startSeconds: resumeTicks / 10_000_000)
+                                playSessionID: playSessionID, startSeconds: resumeTicks / 10_000_000,
+                                subtitleTracks: subtitleTracks(source: source, itemID: id),
+                                defaultSubtitleStreamIndex: Self.subtitleIndex(source["DefaultSubtitleStreamIndex"], allowDisabled: true))
         }
         throw EmbyClientError.noPlayableMedia
     }
 
+    private func subtitleTracks(source: JSONValue, itemID: String) -> [EmbySubtitleTrack] {
+        var tracks: [EmbySubtitleTrack] = [], seen = Set<Int>(), embeddedOrdinal = 0
+        for stream in (source["MediaStreams"].array ?? []).prefix(512) where stream["Type"].string == "Subtitle" {
+            let external = stream["IsExternal"].bool == true
+            if !external { embeddedOrdinal += 1 }
+            guard let index = Self.subtitleIndex(stream["Index"]), seen.insert(index).inserted else { continue }
+            var externalURL: URL?
+            if external || stream["DeliveryMethod"].string == "External" {
+                if let delivery = stream["DeliveryUrl"].string, !delivery.isEmpty {
+                    // Never expose a filesystem path or unsafe server-supplied
+                    // URL to MPV. Other valid tracks and video remain available.
+                    guard let safe = try? directStreamURL(delivery) else { continue }
+                    externalURL = safe
+                } else {
+                    let codec = stream["Codec"].string?.lowercased() ?? ""
+                    let text = stream["IsTextSubtitleStream"].bool == true || ["srt", "subrip", "ass", "ssa", "smi", "sami", "vtt", "webvtt", "mov_text", "text"].contains(codec)
+                    if text, let sourceID = try? Self.identifier(source["Id"].string) {
+                        // Official text-subtitle endpoint; keep full timestamps
+                        // because MPV already seeks the media to startSeconds.
+                        // https://dev.emby.media/doc/restapi/Subtitles.html
+                        externalURL = try? Self.url(server.endpoint("Videos/\(itemID)/\(sourceID)/Subtitles/\(index)/Stream.srt"), query: ["api_key": session.accessToken])
+                    }
+                    if external, externalURL == nil { continue }
+                }
+            }
+            let title = [stream["DisplayTitle"].string, stream["Title"].string, stream["Language"].string]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? "字幕 \(index)"
+            tracks.append(.init(index: index, embeddedIndex: external ? nil : embeddedOrdinal, externalURL: externalURL,
+                                title: title, language: stream["Language"].string, codec: stream["Codec"].string,
+                                isDefault: stream["IsDefault"].bool == true, isForced: stream["IsForced"].bool == true, isExternal: external))
+        }
+        return tracks
+    }
+
+    private static func subtitleIndex(_ value: JSONValue, allowDisabled: Bool = false) -> Int? {
+        guard let number = value.number, number.isFinite, number.rounded() == number,
+              number >= (allowDisabled ? -1 : 0), number <= Double(Int32.max) else { return nil }
+        return Int(number)
+    }
+
     public nonisolated func imageURL(for item: JSONValue, type: String = "Primary", maxWidth: Int = 400) -> URL? {
-        guard let id = try? Self.identifier(item["Id"].string),
+        if type == "Backdrop", let tag = item["BackdropImageTags"].array?.first?.string {
+            return imageURL(itemID: item["Id"].string ?? "", type: type, index: 0, tag: tag, maxWidth: maxWidth)
+        }
+        return imageURL(itemID: item["Id"].string ?? "", type: type, tag: item["ImageTags"][type].string, maxWidth: maxWidth)
+    }
+
+    public nonisolated func imageURL(itemID: String, type: String, index: Int? = nil, tag: String? = nil, maxWidth: Int = 400) -> URL? {
+        guard let id = try? Self.identifier(itemID),
               ["Primary", "Backdrop", "Thumb", "Logo", "Banner"].contains(type) else { return nil }
         var values = ["MaxWidth": String(min(max(maxWidth, 1), 2048)), "Quality": "90", "api_key": session.accessToken]
-        if let tag = item["ImageTags"][type].string { values["Tag"] = tag }
-        return try? Self.url(server.endpoint("Items/\(id)/Images/\(type)"), query: values)
+        if let tag { values["Tag"] = tag }
+        let suffix = index.map { "/\(min(100, max(0, $0)))" } ?? ""
+        return try? Self.url(server.endpoint("Items/\(id)/Images/\(type)" + suffix), query: values)
+    }
+
+    public nonisolated func homeArtworkURL(for item: JSONValue, purpose: EmbyHomeArtwork.Purpose) -> URL? {
+        guard let art = EmbyHomeArtwork.select(item, purpose: purpose) else { return nil }
+        return imageURL(itemID: art.itemID, type: art.type, index: art.index, tag: art.tag, maxWidth: purpose.maxWidth)
     }
 
     public func report(_ event: EmbyPlaybackEvent, playback: EmbyPlayback, position: Double, paused: Bool) async throws {

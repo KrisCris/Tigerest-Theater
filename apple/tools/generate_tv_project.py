@@ -3,6 +3,7 @@
 import argparse, json, plistlib, re, shutil
 from pathlib import Path
 import generate_project as g
+from quality_resources import sync_quality
 ROOT = Path(__file__).resolve().parents[1]
 
 def generate(fixture_media=None):
@@ -14,12 +15,25 @@ def generate(fixture_media=None):
     port=re.search(r'DEFAULT_LOCAL_SERVER_IP}:(\d+)/',text).group(1)
     (web/'server_defaults.json').write_text(json.dumps({'remote':remote,'local':f'http://{local_ip}:{port}/','localIP':local_ip},indent=2)+'\n')
     shutil.copyfile(ROOT/'Resources/cacert.pem',web/'cacert.pem')
+    sync_quality(ROOT.parent, web, {'files': {}})
+    art=ROOT/'Generated/TV/home-art'
+    shutil.copytree(ROOT.parent/'native/home-art', art, dirs_exist_ok=True)
+    fonts=ROOT/'Generated/TV/SubtitleFonts';fonts.mkdir(parents=True,exist_ok=True)
+    shutil.copyfile(ROOT/'Resources/SubtitleFonts/SourceHanSansSC-Regular.otf', fonts/'SourceHanSansSC-Regular.otf')
+    licenses=web/'licenses';licenses.mkdir(parents=True,exist_ok=True)
+    shutil.copyfile(ROOT/'Resources/SubtitleFonts/LICENSE.txt', licenses/'SourceHanSans-LICENSE.txt')
     files=[];sources=[]
-    for path in sorted((ROOT/'TV').glob('*.swift')) + [ROOT/'App/Playback/MPVEngine.swift',ROOT/'App/ServerPresets.swift']:
+    shared=[ROOT/'App/Playback/MPVEngine.swift', ROOT/'App/ServerPresets.swift']
+    shared += [ROOT/'App/Danmaku'/name for name in ['DanmakuHost.swift','DanmakuRepository.swift','DanmakuOverlay.swift']]
+    for path in sorted((ROOT/'TV').glob('*.swift')) + shared:
         relative=str(path.relative_to(ROOT));ref=g.file(relative,'sourcecode.swift');files.append(ref)
         sources.append(g.obj(relative+'tvbuild','PBXBuildFile',fileRef=ref))
     ref=g.file('Generated/TV/Web','folder');files.append(ref)
     resources=[g.obj('tvwebres','PBXBuildFile',fileRef=ref)]
+    ref=g.file('Generated/TV/home-art','folder');files.append(ref)
+    resources.append(g.obj('tvartres','PBXBuildFile',fileRef=ref))
+    ref=g.file('Generated/TV/SubtitleFonts','folder');files.append(ref)
+    resources.append(g.obj('tvfontsres','PBXBuildFile',fileRef=ref))
     if fixture_media:
         fixture=ROOT/'Generated/TV/tv-fixture.mp4';shutil.copyfile(fixture_media,fixture)
         ref=g.file('Generated/TV/tv-fixture.mp4','file');files.append(ref);resources.append(g.obj('tvfixtureres','PBXBuildFile',fileRef=ref))

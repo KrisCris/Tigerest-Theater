@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import AppleCore
 import CryptoKit
 @MainActor final class DanmakuRepository: ObservableObject {
@@ -9,7 +10,7 @@ import CryptoKit
         var enabled = true
         var delay = 0.0
     }
-    unowned let model: AppModel
+    let host: any DanmakuHost
     @Published var sources: [Source] = []
     @Published var status = ""
     @Published var enabled = true
@@ -23,8 +24,8 @@ import CryptoKit
     private var activeBase = ""
     var searchTitle: String { item["SeriesName"].string ?? item["Name"].string ?? "" }
     private func number(_ value: JSONValue) -> Double? { value.number ?? value.string.flatMap(Double.init) }
-    init(model: AppModel) { self.model = model; enabled = model.settings.get("mpv", "enableDanmaku").bool != false }
-    var providers: [DanmakuProvider] { DanmakuProvider.parse(model.settings.get("danmaku","apiServer").string ?? "", embyHost: model.server?.baseURL.host) }
+    init(host: any DanmakuHost) { self.host = host; enabled = host.setting("mpv", "enableDanmaku").bool != false }
+    var providers: [DanmakuProvider] { DanmakuProvider.parse(host.setting("danmaku","apiServer").string ?? "", embyHost: host.serverHost) }
     var base: String { providers.first?.url ?? DanmakuProvider.remote }
     private var playbackGeneration: UInt64 = 0
     private var mediaURL: URL?
@@ -44,7 +45,7 @@ import CryptoKit
         for attempt in 0...1 {
             guard token==generation,!Task.isCancelled,Date()>=(cooldowns[server] ?? .distantPast) else {throw CancellationError()}
             do {
-                let result=try await model.community.data(request,limit:16*1024*1024)
+                let result=try await host.data(request,limit:16*1024*1024)
                 if !retry || attempt==1 || ![408,502,503,504].contains(result.1.statusCode) {return result}
             } catch {
                 let transient=(error as? URLError).map { [.timedOut,.cannotFindHost,.cannotConnectToHost,.networkConnectionLost,.dnsLookupFailed].contains($0.code) } ?? false
@@ -73,15 +74,15 @@ import CryptoKit
         return value
     }
     private func hash(_ text: String) -> String { SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined() }
-    private var scope: String { (model.embySession["serverId"].string ?? model.server?.origin ?? "offline") + "|" + providers.map(\.url).joined(separator:",") }
+    private var scope: String { host.cacheScope + "|" + providers.map(\.url).joined(separator:",") }
     private var cache: URL {
         let identity = item["Id"].string ?? String(decoding: (try? JSONEncoder().encode(item)) ?? Data(), as: UTF8.self)
-        return model.profiles.directory.appending(path: "Danmaku/" + hash(scope + "|" + identity) + ".json")
+        return host.directory.appending(path: "Danmaku/" + hash(scope + "|" + identity) + ".json")
     }
     func authorizationChanged() { generation &+= 1; playbackGeneration &+= 1; job?.cancel() }
     func refresh() { let current=item, url=mediaURL; if current != .null { autoMatch(current, mediaURL:url) } }
     func applySettings() {
-        let next = model.settings.get("mpv", "enableDanmaku").bool != false
+        let next = host.setting("mpv", "enableDanmaku").bool != false
         let retry = (!enabled && next) || activeBase != providers.map(\.url).joined(separator:",")
         enabled = next
         if retry { refresh() }
@@ -94,14 +95,14 @@ import CryptoKit
             try? FileManager.default.createDirectory(at: cache.deletingLastPathComponent(), withIntermediateDirectories: true)
             if let data = try? JSONEncoder().encode(sources), data.count <= 32*1024*1024 { try? data.write(to: cache, options: .atomic) }
         }
-        model.bridge.emit("danmaku", "sourcesChanged", [snapshot])
+        host.emit("sourcesChanged", [snapshot])
     }
-    private func announce(_ text: String) { model.diagnostics.record("info", "Danmaku: " + text); status = text; model.bridge.emit("danmaku", "status", [.string(text)]) }
+    private func announce(_ text: String) { host.log("info", "Danmaku: " + text); status = text; host.emit("status", [.string(text)]) }
     var snapshot: JSONValue { .array(sources.map { .object(["id": .string($0.id), "title": .string($0.title), "enabled": .bool($0.enabled), "delay": .number($0.delay), "count": .number(Double($0.comments.count))]) }) }
     func clear() { revision &+= 1; generation &+= 1; playbackGeneration &+= 1; mediaURL=nil; job?.cancel(); job = nil; sources = []; timelines = [:]; item = .null; announce("") }
     func autoMatch(_ metadata: JSONValue, mediaURL: URL? = nil) {
         clear(); item = metadata; self.mediaURL=mediaURL; activeBase = providers.map(\.url).joined(separator:",")
-        enabled = model.settings.get("mpv", "enableDanmaku").bool != false
+        enabled = host.setting("mpv", "enableDanmaku").bool != false
         guard enabled else { announce("弹幕已关闭"); return }
         guard metadata != .null else { announce("无作品信息，可手动搜索或导入弹幕"); return }
         announce("正在匹配弹幕…")
@@ -127,14 +128,14 @@ import CryptoKit
                 }
                 let title = metadata["SeriesName"].string ?? metadata["Name"].string ?? ""
                 guard !title.isEmpty else { return }
-                guard providers.contains(where:{Date()>=(cooldowns[$0.url] ?? .distantPast)}) else { announce("弹幕服务请求频繁，请稍后重试"); return }
+                guard providers.contains(where:{Date()>=(self.cooldowns[$0.url] ?? .distantPast)}) else { announce("弹幕服务请求频繁，请稍后重试"); return }
                 if try await matchHash(token:token) { return }
                 guard token == generation, !Task.isCancelled else { return }
                 guard let episodeNumber=number(metadata["IndexNumber"]), episodeNumber.isFinite, (0...10000).contains(episodeNumber), episodeNumber.rounded()==episodeNumber else { announce("无法解析剧集信息，请手动匹配弹幕"); return }
                 let works=try await search(title,manual:false)
                 let season=number(metadata["ParentIndexNumber"]).flatMap { $0.isFinite && (0...1000).contains($0) && $0.rounded()==$0 ? Int($0) : nil }
                 let ranked=DanmakuMatch.ranked(works:works,title:title,season:season,includeUnmatched:true)
-                model.diagnostics.record("info", "Danmaku metadata S\(season ?? -1)E\(Int(episodeNumber)); releases=\(works.count), seasonEligible=\(ranked.count)")
+                host.log("info", "Danmaku metadata S\(season ?? -1)E\(Int(episodeNumber)); releases=\(works.count), seasonEligible=\(ranked.count)")
                 var matches: [DanmakuMatch.Candidate]=[]
                 for work in DanmakuMatch.detailLookups(ranked) {
                     guard token == generation, !Task.isCancelled else { return }
@@ -143,7 +144,7 @@ import CryptoKit
                     enriched["titles"]=detail["titles"]
                     guard let scored=DanmakuMatch.ranked(works:[.object(enriched)],title:title,season:season).first else {continue}
                     let result=DanmakuMatch.episodes(detail["episodes"].array ?? [],number:Int(episodeNumber),title:metadata["Name"].string ?? "")
-                    model.diagnostics.record("info", "Danmaku release \(scalar(work.value["bangumiId"])); score=\(scored.score), episodes=\(result.values.count), titleMatched=\(result.byTitle)")
+                    host.log("info", "Danmaku release \(scalar(work.value["bangumiId"])); score=\(scored.score), episodes=\(result.values.count), titleMatched=\(result.byTitle)")
                     matches += result.values.map { .init(work:work.value,episode:$0,score:scored.score,byTitle:result.byTitle) }
                 }
                 guard token == generation, !Task.isCancelled else { return }
@@ -267,7 +268,7 @@ import CryptoKit
         guard episode["_playback"].number==Double(playbackGeneration),work["_playback"].number==Double(playbackGeneration),
               episode["_bangumi"].string==scalar(work["bangumiId"]),episode["_server"].string != nil,episode["_server"]==work["_server"] else { throw CancellationError() }
         generation &+= 1; job?.cancel()
-        try model.settings.set("mpv","enableDanmaku",.bool(true));enabled=true
+        try host.setSetting("mpv","enableDanmaku",.bool(true));enabled=true
         let token = generation, id = scalar(episode["episodeId"])
         if work["_extra"] != .null,let url=episode["_url"].string {
             _ = try await loadExternal(url,token:token);return
@@ -290,9 +291,9 @@ import CryptoKit
         request.setValue("application/json",forHTTPHeaderField:"Content-Type")
         request.setValue("application/json",forHTTPHeaderField:"Accept");request.setValue("TigerestTheater mapping",forHTTPHeaderField:"User-Agent")
         if let selection {
-            guard !model.community.mappingHeaders.isEmpty,scalar(selection["bangumiId"]).range(of:"^[A-Za-z0-9-]+$",options:.regularExpression) != nil,scalar(selection["episodeId"]).range(of:"^[0-9]{1,32}$",options:.regularExpression) != nil else { return false }
+            guard !host.mappingHeaders.isEmpty,scalar(selection["bangumiId"]).range(of:"^[A-Za-z0-9-]+$",options:.regularExpression) != nil,scalar(selection["episodeId"]).range(of:"^[0-9]{1,32}$",options:.regularExpression) != nil else { return false }
             body["selection"] = selection
-            for (name,value) in model.community.mappingHeaders { request.setValue(value,forHTTPHeaderField:name) }
+            for (name,value) in host.mappingHeaders { request.setValue(value,forHTTPHeaderField:name) }
         }
         request.httpBody = try JSONEncoder().encode(body)
         guard request.httpBody!.count<=16384 else { return false }
@@ -354,7 +355,7 @@ import CryptoKit
         case "load": return .number(Double(try await load(scalar(arg(0)),title:arg(1).string ?? "弹幕")))
         case "sources": return snapshot
         case "setSource": try setSource(arg(0).string ?? "",enabled:arg(1).bool ?? true,delay:arg(2).number ?? 0); return .bool(true)
-        case "setEnabled": try model.settings.set("mpv","enableDanmaku",.bool(arg(0).bool ?? false)); applySettings(); return .bool(true)
+        case "setEnabled": try host.setSetting("mpv","enableDanmaku",.bool(arg(0).bool ?? false)); applySettings(); return .bool(true)
         case "loadUrl":
             guard let url = arg(0).string, let parsed = URL(string:url), ["http","https"].contains(parsed.scheme), parsed.user == nil else { throw CoreError.invalidAddress }
             return .number(Double(try await loadExternal(url,token:generation)))
