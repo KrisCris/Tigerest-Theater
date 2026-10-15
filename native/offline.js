@@ -20,6 +20,7 @@
 
         let item = null;
         let downloadUrl = rawUrl;
+        let sourceContainer = '';
         try {
             if (window.ApiClient && typeof window.ApiClient.getItem === 'function') {
                 item = await window.ApiClient.getItem(window.ApiClient.getCurrentUserId(), itemId);
@@ -39,6 +40,7 @@
                 const playbackInfo = await window.ApiClient.getPlaybackInfo(itemId, options, profile);
                 const source = playbackInfo?.MediaSources?.find(mediaSource => mediaSource.SupportsDirectPlay && mediaSource.DirectStreamUrl);
                 if (source) {
+                    sourceContainer = source.Container || '';
                     const serverAddress = window.ApiClient.serverAddress().replace(/\/+$/, '');
                     const directPath = source.DirectStreamUrl;
                     downloadUrl = /^https?:\/\//i.test(directPath)
@@ -50,9 +52,12 @@
             // The download can still proceed with a safe fallback name.
         }
 
-        const container = item?.Container || item?.MediaSources?.[0]?.Container || 'media';
+        // A .strm item is a link: Emby reports the link's name and container
+        // until playback info probes the stream, but the download is the media.
+        const container = [sourceContainer, item?.Container, item?.MediaSources?.[0]?.Container]
+            .map(value => String(value || '').split(',')[0].trim()).find(value => value && value.toLowerCase() !== 'strm') || 'media';
         const title = item?.Name || `Emby ${itemId}`;
-        const fileName = item?.FileName || `${title}.${container}`;
+        const fileName = (item?.FileName || `${title}.${container}`).replace(/\.strm$/i, `.${container}`);
         await window.NativeShell.downloadFile({
             url: downloadUrl,
             itemId,

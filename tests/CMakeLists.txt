@@ -477,6 +477,8 @@ if(Node_EXECUTABLE)
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_home_orders.js
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion.js
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_home_registration.js)
+  add_test(NAME test_offline_downloads
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_offline_downloads.js)
   add_test(NAME test_home_motion_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
