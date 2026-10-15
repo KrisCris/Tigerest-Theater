@@ -76,16 +76,11 @@ import AppleCore
             // playAndRecord and produce paramErr (-50) on physical iPads.
             try session.setCategory(.playback, mode: .moviePlayback)
             try session.setActive(true)
-            #if RIFE_NATIVE
-            let interpolating = model.settings.get("video", "aiRife").bool == true
-            #else
-            let interpolating = false
-            #endif
-            let next = try MPVEngine(layer: surface.metal, interpolating: interpolating); engine = next
+            let next = try MPVEngine(layer: surface.metal); engine = next
             do {
                 try applySettings()
                 #if RIFE_NATIVE
-                if interpolating { try next.command(["vf", "add", "@tigerest-rife:tigerest-rife"]) }
+                if model.settings.get("video", "aiRife").bool == true { try next.command(["vf", "add", "@tigerest-rife:tigerest-rife"]) }
                 #endif
                 try next.set("volume", String(preferredVolume))
                 try next.set("mute", preferredMuted ? "yes" : "no")
