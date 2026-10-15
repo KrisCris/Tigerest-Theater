@@ -17,6 +17,7 @@ routes['/'] = {type: 'text/html', body: '<html><meta charset="utf-8"><div class=
 const fixture = `(() => {
     window.log = {fetch: [], sent: [], player: [], plays: []};
     window.serverLog = [];
+    window.jmpInfo = {version: '${version}'};
     log.errors = [];
     const report = console.error.bind(console);
     console.error = (...args) => { log.errors.push(args.map(x => x?.stack || String(x)).join(' ')); report(...args); };
@@ -249,6 +250,14 @@ withBrowser(routes, async ({evaluate}) => {
 
     await evaluate(`api.player.playing.emit()`);
     await wait(`serverLog.some(m => m.type === 'play')`, 'a local play becomes a room command');
+
+    // iPad RIFE must not repeatedly bypass/re-warm for tiny room speed corrections.
+    await evaluate(`window.jmpInfo = {platform: 'ipad', settings: {video: {aiRife: true}}}; plugin.attach(current.Id)`);
+    assert.equal(await evaluate(`plugin.sync.rateCorrection`), false, 'iPad RIFE uses the same held-seek correction as desktop');
+    await evaluate(`window.jmpInfo.settings.video.aiRife = false; plugin.attach(current.Id)`);
+    assert.equal(await evaluate(`plugin.sync.rateCorrection`), true, 'normal iPad playback retains fine speed correction');
+    await evaluate(`delete api.player.userCommand; api.player.showMessage = text => log.player.push('showMessage:' + text); plugin.notify('朋友 跳转了')`);
+    assert.equal(await evaluate(`log.player.at(-1)`), 'showMessage:朋友 跳转了', 'native iPad overlay receives room actions');
 
     await evaluate(`current = null; events.trigger('playbackstop')`);
     await wait(`serverLog.some(m => m.type === 'status' && m.state === 'away')`);
