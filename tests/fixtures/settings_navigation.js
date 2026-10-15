@@ -14,7 +14,8 @@ window.settingsRouter = {
         const route = settingsRoutes.find(route => route.path === path);
         if (!route) { window.returned = true; return; }
         settingsHost.replaceChildren();
-        const Controller = settingsModules.get(route.controller).factory({default: FixtureBaseView}, {default: settingsRouter});
+        const Controller = settingsModules.get(route.controller).factory({default: FixtureBaseView}, {default: settingsRouter},
+            {default: window.fixtureConnectionManager});
         window.settingsController = new Controller({querySelector: () => settingsHost}, {});
         settingsController.onResume({});
         document.querySelector('.mainDrawer').classList.remove('drawer-open');

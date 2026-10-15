@@ -553,6 +553,9 @@ if(Node_EXECUTABLE)
   add_test(NAME test_community_avatar_webengine COMMAND ${Node_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_community_avatar_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_community_avatar_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_community_profile_webengine COMMAND ${Node_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_profile_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_community_profile_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_community_native_bridge COMMAND ${Node_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_community_native_bridge.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_community_native_bridge PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

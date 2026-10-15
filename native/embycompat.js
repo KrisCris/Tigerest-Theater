@@ -227,10 +227,10 @@
         });
 
         const settingsViewDependencies = [
-            'modules/viewmanager/baseview.js', 'appRouter'
+            'modules/viewmanager/baseview.js', 'appRouter', 'connectionManager'
         ];
-        const createSettingsView = section => function (baseView, appRouter) {
-            const BaseView = moduleValue(baseView), router = moduleValue(appRouter);
+        const createSettingsView = section => function (baseView, appRouter, connectionManager) {
+            const BaseView = moduleValue(baseView), router = moduleValue(appRouter), manager = moduleValue(connectionManager);
             function SettingsView(view, params) {
                 BaseView.apply(this, arguments);
                 this.settingsHost = view.querySelector('.readOnlyContent');
@@ -248,7 +248,8 @@
                 this.mountAbort = new AbortController();
                 this.settingsMount = null;
                 window.tigerestMountSettings(this.settingsHost, this.settingsSection,
-                    () => router.show('/settings'), this.mountAbort.signal).then(mount => {
+                    () => router.show('/settings'), this.mountAbort.signal,
+                    {apiProvider: () => manager?.currentApiClient?.()}).then(mount => {
                     if (generation !== this.mountGeneration) mount?.dispose();
                     else this.settingsMount = mount;
                 }).catch(() => {

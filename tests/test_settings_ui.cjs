@@ -23,7 +23,7 @@ withBrowser({
  ${iconFont?'@font-face{font-family:"Material Symbols Rounded";font-style:normal;font-weight:400;src:url(/emby-material-icons.woff2) format("woff2")}':''}
  .md-icon{font-family:'Material Symbols Rounded'!important;font-weight:400;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;overflow-wrap:normal;-webkit-font-smoothing:antialiased;text-rendering:optimizelegibility;font-feature-settings:'liga';font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24;overflow:hidden;vertical-align:middle}
  @media(max-width:760px){.mainDrawer{display:none;z-index:1000;box-shadow:0 0 0 100vmax #0008}.mainDrawer.drawer-open{display:block}.view{margin-left:0}}
- </style><body><aside class="mainDrawer"><div class="mainDrawerScrollSlider"><div class="navDrawerItemsContainer itemsContainer" data-listindex="0"></div></div></aside><div class="view"><button id="origin">设置</button><div id="host" class="readOnlyContent"></div></div><script>
+ </style><script src="/homeData.js"></script><body><aside class="mainDrawer"><div class="mainDrawerScrollSlider"><div class="navDrawerItemsContainer itemsContainer" data-listindex="0"></div></div></aside><div class="view"><button id="origin">设置</button><div id="host" class="readOnlyContent"></div></div><script>
  // The injected Qt shell must finish wiring native settings before this fixture replaces its boundary.
  window.fixtureReady=Promise.resolve(window.initCompleted).then(()=>{
  window.saves=[];window.resets=[];window.confirm=()=>true;window.initCompleted=Promise.resolve();
@@ -34,7 +34,8 @@ withBrowser({
  window.tigerestOpenOfflineLibrary=()=>{};
  });
  </script><script src="/settings.js"></script></body>`},
- '/settings.js':{body:renderer}
+ '/settings.js':{body:renderer},
+ '/homeData.js':{path:path.resolve(__dirname,'../native/homeData.js')}
 },async({evaluate,call})=>{
  const assertDrawerAlignment = async layout => {
   const positions=await evaluate(`(()=>{const position=row=>({icon:row.querySelector('.navDrawerListItemIcon').getBoundingClientRect().left,text:row.querySelector('.listItemBodyText').getBoundingClientRect().left});return {native:position(document.querySelector('.mainDrawer .navMenuOption')),categories:[...document.querySelectorAll('.mainDrawer [data-settings-category]')].map(row=>({category:row.dataset.settingsCategory,...position(row)}))}})()`);
@@ -46,6 +47,9 @@ withBrowser({
  };
  await call('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  await evaluate('window.fixtureReady');
+ // A signed-in Emby account with three libraries, for the home library list.
+ await evaluate(`window.fixtureConnectionManager={currentApiClient:()=>({serverId:()=> 'fixture-server',getCurrentUserId:()=> 'fixture-user',
+  getUserViews:async()=>({Items:[{Id:'movies',Name:'电影'},{Id:'shows',Name:'剧集'},{Id:'anime',Name:'动漫'}]})})}`);
  await evaluate(`window.NativeShell={AppHost:{}};window.settingsModules=new Map();window.define=(id,deps,factory)=>settingsModules.set(id,{deps,factory});window.tigerestMountSettings=mountTigerestSettings;window.tigerestSettingsCategories=getTigerestSettingsCategories;window.tigerestInstallSettingsMenu=installTigerestSettingsMenu;`);
  await evaluate(fs.readFileSync(path.resolve(__dirname,'../native/embycompat.js'),'utf8'));
  await evaluate(fs.readFileSync(path.resolve(__dirname,'fixtures/settings_navigation.js'),'utf8'));
@@ -59,6 +63,27 @@ withBrowser({
  await evaluate(`document.querySelector('[data-setting="home.startupFullscreen"] input').click()`);
  assert.deepEqual(await evaluate('saves.at(-1)'),['home','startupFullscreen',true],'home startup toggle persists its independent preference');
  assert.match(await evaluate('document.querySelector("#tigerest-settings-inline .tgs-status").textContent'),/已保存；此项将在重启后生效。/,'startup preference confirms next-launch application');
+ // Home media folders: shown or hidden, and their order, for this server and account.
+ const libraryRows=`[...document.querySelectorAll('.tgs-library-row')].map(row=>(row.querySelector('input').checked?'':'!')+row.querySelector('.tgs-library-name').textContent)`;
+ const savedLayout=`JSON.parse(saves.filter(save=>save[1]==='libraryLayout').at(-1)[2])['fixture-server/fixture-user']`;
+ const libraryButton=(label)=>`document.querySelector('[aria-label="${label}"]')`;
+ for(let i=0;i<40&&!(await evaluate(`document.querySelectorAll('.tgs-library-row').length===4`));i++)await new Promise(r=>setTimeout(r,25));
+ assert.deepEqual(await evaluate(libraryRows),['电影','剧集','动漫','收藏'],'every candidate, in the server order, starts shown');
+ assert.equal(await evaluate(`${libraryButton('上移：电影')}.disabled&&${libraryButton('下移：收藏')}.disabled`),true);
+ await evaluate(`document.querySelectorAll('.tgs-library-row input')[1].click()`);
+ assert.deepEqual(await evaluate(savedLayout),['movies','!shows','anime','tigerest-favorites'],'hiding a folder saves at once');
+ await evaluate(`${libraryButton('上移：动漫')}.click()`);
+ assert.deepEqual(await evaluate(libraryRows),['电影','动漫','!剧集','收藏']);
+ assert.deepEqual(await evaluate(savedLayout),['movies','anime','!shows','tigerest-favorites']);
+ assert.equal(await evaluate(`document.activeElement.getAttribute('aria-label')`),'上移：动漫','the moved folder keeps the keyboard');
+ await evaluate(`${libraryButton('上移：动漫')}.click()`);
+ assert.equal(await evaluate(`document.activeElement.closest('.tgs-library-row').querySelector('.tgs-library-name').textContent`),'动漫','at the top, focus falls back to the folder itself');
+ for(const index of [0,1,2,3])await evaluate(`(()=>{const box=document.querySelectorAll('.tgs-library-row input')[${index}];if(box.checked)box.click()})()`);
+ assert.deepEqual(await evaluate(libraryRows),['!动漫','!电影','!剧集','收藏'],'the last shown folder cannot be hidden');
+ assert.equal(await evaluate('document.querySelector("#tigerest-settings-inline .tgs-status").textContent'),'首页至少保留一个媒体夹。');
+ await evaluate(`[...document.querySelectorAll('.tgs-home-libraries button')].find(b=>b.textContent==='恢复服务器默认顺序').click()`);
+ assert.equal(await evaluate(`saves.filter(save=>save[1]==='libraryLayout').at(-1)[2]`),'','restoring clears this server layout');
+ assert.deepEqual(await evaluate(libraryRows),['电影','剧集','动漫','收藏']);
  if(process.env.TIGEREST_SETTINGS_SCREENSHOTS){
   fs.mkdirSync(process.env.TIGEREST_SETTINGS_SCREENSHOTS,{recursive:true});
   fs.writeFileSync(path.join(process.env.TIGEREST_SETTINGS_SCREENSHOTS,'settings-home.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));

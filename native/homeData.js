@@ -37,7 +37,8 @@
     function HomeData(api) { this.api = api; }
     HomeData.orders = Object.freeze({resume: '继续观看', recent: '最近入库', release: '发行时间', rating: '评分'});
     HomeData.normalizeOrder = value => Object.prototype.hasOwnProperty.call(HomeData.orders, value) ? value : 'resume';
-    HomeData.prototype.libraries = async function (signal) {
+    // Every entry the home may show, in the server's own order.
+    HomeData.prototype.candidates = async function (signal) {
         check(signal);
         const result = await this.api.getUserViews({}, this.api.getCurrentUserId(), signal);
         check(signal);
@@ -46,6 +47,46 @@
         // entries. Other servers retain their own complete accessible list.
         const libraries = this.api.serverId() === '62526c3bf747439c99327ddec5fed4a8' ? accessible.slice(0, 3) : accessible;
         return libraries.concat({ Id: 'tigerest-favorites', Name: '收藏', kind: 'favorites' });
+    };
+    // The entries the viewer chose, in their order. With nothing chosen, or
+    // nothing left of the choice, the home shows every candidate.
+    HomeData.prototype.libraries = async function (signal) {
+        const candidates = await this.candidates(signal);
+        const shown = HomeData.arrange(candidates, HomeData.readLayout(HomeData.layoutKey(this.api))).filter(row => row.visible);
+        return shown.length ? shown.map(row => row.library) : candidates;
+    };
+    // The home layout is kept per device in the client setting home.libraryLayout:
+    // {"<serverId>/<userId>": ["libraryId", "!hiddenLibraryId", ...]}, newest last.
+    HomeData.layoutKey = api => api.serverId() + '/' + api.getCurrentUserId();
+    const layouts = source => {
+        try { const value = JSON.parse(source || '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; }
+        catch (error) { return {}; }
+    };
+    HomeData.readLayout = (key, source = window.jmpInfo?.settings?.home?.libraryLayout) => {
+        const entries = layouts(source)[key];
+        return Array.isArray(entries) ? entries.filter(entry => typeof entry === 'string' && entry.length > 0) : null;
+    };
+    // Returns the new setting text. Android keeps text settings under 4096
+    // characters, so the servers used longest ago give way first.
+    HomeData.writeLayout = (key, rows, source = window.jmpInfo?.settings?.home?.libraryLayout) => {
+        const all = layouts(source);
+        delete all[key];
+        if (rows) all[key] = rows.map(row => (row.visible ? '' : '!') + row.library.Id);
+        for (const other of Object.keys(all)) {
+            if (JSON.stringify(all).length <= 4000 || other === key) break;
+            delete all[other];
+        }
+        return Object.keys(all).length ? JSON.stringify(all) : '';
+    };
+    // Saved entries first, in their order; libraries added since follow as shown.
+    HomeData.arrange = (candidates, entries) => {
+        const byId = new Map(candidates.map(library => [library.Id, library])), rows = [], placed = new Set();
+        for (const entry of entries || []) {
+            const hidden = entry.startsWith('!'), id = hidden ? entry.slice(1) : entry, library = byId.get(id);
+            if (library && !placed.has(id)) { placed.add(id); rows.push({ library, visible: !hidden }); }
+        }
+        candidates.forEach(library => { if (!placed.has(library.Id)) rows.push({ library, visible: true }); });
+        return rows;
     };
     HomeData.prototype.load = async function (library, signal, order = 'resume') {
         order = HomeData.normalizeOrder(order);
