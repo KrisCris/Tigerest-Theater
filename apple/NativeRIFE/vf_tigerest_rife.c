@@ -4,6 +4,8 @@
 #include "common/tags.h"
 #include "filters/filter_internal.h"
 #include "filters/user_filters.h"
+#include "options/m_config_core.h"
+#include "options/options.h"
 #include "video/fmt-conversion.h"
 #include "video/mp_image.h"
 #include "video/mp_image_pool.h"
@@ -14,19 +16,27 @@ struct priv {
     void *engine;
     struct mp_image_pool *pool, *download_pool;
     struct mp_sws_context *sws;
+    struct m_config_cache *opts;
     struct mp_image *previous, *pending;
     uint64_t generation;
     int64_t index, inputs, outputs, generated, bypassed, resets, failures;
+    int recovery_frames;
     double last_ms;
     const char *status;
-    bool failed;
+    bool failed, speed_bypass;
 };
+static double playback_speed(struct priv *p) {
+    // SET_SPEED commands are sent to audio filters, not the video chain.
+    m_config_cache_update(p->opts);
+    return ((struct MPOpts *)p->opts->opts)->playback_speed;
+}
 static void reset(struct mp_filter *f) {
     struct priv *p = f->priv;
     mp_image_unrefp(&p->previous);
     mp_image_unrefp(&p->pending);
     p->generation++;
     p->index = 0;
+    p->recovery_frames = 0;
     p->resets++;
     tgrife_reset(p->engine);
 }
@@ -95,11 +105,31 @@ static void process(struct mp_filter *f) {
     }
     struct mp_image *input = frame.data;
     p->inputs++;
-    if (p->failed || !eligible(input)) {
+    const bool speed_bypass = playback_speed(p) > 1.0001;
+    const bool supported = eligible(input);
+    if (speed_bypass != p->speed_bypass) {
+        // Pending originals have already drained above. Clear only frame/cache
+        // history on a mode transition, retaining the model and failure latch.
+        reset(f);
+        p->speed_bypass = speed_bypass;
+        // Give buffered fast audio time to settle before restoring expensive
+        // interpolation. Count source frames, never block the filter thread.
+        if (!speed_bypass && supported && !p->failed)
+            p->recovery_frames = (int)ceil(input->nominal_fps * 0.35);
+    }
+    if (p->failed || speed_bypass || !supported) {
+        p->recovery_frames = 0;
         if (p->previous)
             reset(f);
         if (!p->failed)
-            p->status = "unsupported-source";
+            p->status = speed_bypass ? "speed-bypass" : "unsupported-source";
+        p->bypassed++;
+        send(f, input);
+        return;
+    }
+    if (p->recovery_frames > 0) {
+        p->recovery_frames--;
+        p->status = "speed-recovery";
         p->bypassed++;
         send(f, input);
         return;
@@ -187,6 +217,7 @@ static bool command(struct mp_filter *f, struct mp_filter_command *cmd) {
     STAT(resets);
     STAT(failures);
     mp_tags_set_str(tags, "inferenceMs", mp_tprintf(64, "%.3f", p->last_ms));
+    mp_tags_set_str(tags, "playbackSpeed", mp_tprintf(64, "%.6f", playback_speed(p)));
     *(struct mp_tags **)cmd->res = tags;
     return true;
 }
@@ -204,6 +235,7 @@ static struct mp_filter *create(struct mp_filter *parent, void *options) {
     mp_filter_add_pin(f, MP_PIN_IN, "in");
     mp_filter_add_pin(f, MP_PIN_OUT, "out");
     struct priv *p = f->priv;
+    p->opts = m_config_cache_alloc(p, f->global, &mp_opt_root);
     p->pool = mp_image_pool_new(p);
     p->download_pool = mp_image_pool_new(p);
     p->sws = mp_sws_alloc(p);
