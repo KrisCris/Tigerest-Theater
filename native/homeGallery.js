@@ -13,7 +13,8 @@
     body.tg-home-active .skinHeader, body.tg-home-active .mainDrawer, body.tg-home-active .appFooter, body.tg-home-active .appfooter { display: none !important; }
     body.tg-home-active .view-home-home { left: 0 !important; right: 0 !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
     .tg-home-host { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
-    .tg-home { --home-height: 650px; --home-safe-height: calc(var(--tgs-safe-top,0px) + var(--tgs-safe-bottom,0px)); box-sizing: border-box; height: var(--home-height); min-height: calc(380px + var(--home-safe-height)); padding: 18px 28px 22px;
+    /* Emby 4.8 hosts the home in a flex row, where it would shrink to its content. */
+    .tg-home { --home-height: 650px; --home-safe-height: calc(var(--tgs-safe-top,0px) + var(--tgs-safe-bottom,0px)); box-sizing: border-box; width: 100%; height: var(--home-height); min-height: calc(380px + var(--home-safe-height)); padding: 18px 28px 22px;
         display: grid; grid-template-columns: clamp(160px,19vw,280px) minmax(0,1fr); grid-template-rows: minmax(0,1fr) 158px;
         gap: 20px 24px; position: relative; isolation: isolate; overflow: hidden; color: #f4f2ed; text-align: left; }
     .tg-home *, .tg-home *::before, .tg-home *::after { box-sizing: border-box; }

@@ -189,6 +189,11 @@ withBrowser(routes,async({evaluate,call})=>{
   if(width<=680)assert.ok(bounds.card.top>=bounds.list.top&&bounds.card.bottom<=bounds.list.bottom,'the complete library card fits below the fullscreen heading at '+label+' '+JSON.stringify(bounds));
   const capture=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(directory,'home-'+label+'.png'),Buffer.from(capture.data,'base64'));
  }
+ // Emby 4.8 hosts the home in a flex row (.tabContent.flex), where the
+ // gallery would otherwise shrink to its content.
+ await call('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+ const spans=await evaluate('(async()=>{const host=document.getElementById("home"),widths={};for(const display of ["block","flex"]){host.style.display=display;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));widths[display]=[host.getBoundingClientRect().width,document.querySelector(".tg-home").getBoundingClientRect().width];}host.style.display="";return widths;})()');
+ for(const [display,[host,home]] of Object.entries(spans))assert.ok(Math.abs(host-home)<=1,'the gallery spans a '+display+' host '+JSON.stringify(spans));
  if(process.env.TIGEREST_HOME_SCREENSHOTS){
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
   await evaluate(`(async()=>{
