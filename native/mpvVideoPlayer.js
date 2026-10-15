@@ -586,8 +586,10 @@
                     this.saveVolume(savedVolume);
                     this._volumeInitialized = true;
                 }
+                // 一起看 loads room items stopped; the room starts them together.
+                const autoplay = !window.TigerestWatch?.loadPaused?.(options.item?.Id);
                 player.load(val,
-                    { startMilliseconds: ms, autoplay: true },
+                    { startMilliseconds: ms, autoplay },
                     streamdata,
                     audioRelIndex,
                     subtitleParam,

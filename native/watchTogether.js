@@ -26,20 +26,40 @@
         const h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, s = total % 60;
         return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
     }
+    const genericEpisodeName = /^\s*(第\s*\d+\s*[集话話]|episode\s*\d+|ep?\.?\s*\d+)\s*$/i;
+    // [main line, detail line] for a room's media.
+    function mediaLines(media) {
+        if (!media) return ['还没有选择影片', ''];
+        if (!media.seriesName) return [media.title || '', ''];
+        const index = media.seasonNumber != null && media.episodeNumber != null ? `第${media.seasonNumber}季 第${media.episodeNumber}集` : '';
+        const name = media.title && !genericEpisodeName.test(media.title) ? media.title : '';
+        return [media.seriesName, [index, name].filter(Boolean).join(' · ')];
+    }
     function mediaTitle(media) {
-        if (!media) return '';
-        if (media.seriesName) {
-            const index = media.seasonNumber != null && media.episodeNumber != null ? ` 第${media.seasonNumber}季 第${media.episodeNumber}集` : '';
-            return media.seriesName + index + (media.title ? ' · ' + media.title : '');
-        }
-        return media.title || '';
+        return mediaLines(media).filter(Boolean).join(' ');
     }
     function itemTitle(item) {
         if (item.Type === 'Episode') {
-            const index = item.ParentIndexNumber != null && item.IndexNumber != null ? `第${item.ParentIndexNumber}季 第${item.IndexNumber}集 · ` : '';
-            return (item.SeriesName ? item.SeriesName + ' ' : '') + index + (item.Name || '');
+            const index = item.ParentIndexNumber != null && item.IndexNumber != null ? `第${item.ParentIndexNumber}季 第${item.IndexNumber}集` : '';
+            const name = item.Name && !genericEpisodeName.test(item.Name) ? item.Name : '';
+            return [item.SeriesName, [index, name].filter(Boolean).join(' · ')].filter(Boolean).join(' ');
         }
         return (item.Name || '') + (item.ProductionYear ? ' (' + item.ProductionYear + ')' : '');
+    }
+    async function copyText(text, host) {
+        try {
+            if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
+        } catch (_) { /* Fall back below. */ }
+        const field = node('textarea');
+        field.value = text;
+        field.setAttribute('readonly', '');
+        field.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+        (host || document.body).appendChild(field);
+        field.select();
+        let copied = false;
+        try { copied = document.execCommand('copy'); } catch (_) {}
+        field.remove();
+        return copied;
     }
     function storedClientId() {
         const key = 'tigerestWatchClientId';
@@ -81,7 +101,19 @@
         #tigerest-watch .tw-status{min-height:22px;margin:10px 0;color:#b5c8de;font-size:14px;white-space:pre-wrap}
         #tigerest-watch .tw-card{padding:16px 18px;margin:12px 0;background:#1d293b;border:1px solid #33435a;border-radius:12px}
         #tigerest-watch .tw-code{font-size:34px;font-weight:800;letter-spacing:.18em;color:#f5d493;font-variant-numeric:tabular-nums}
-        #tigerest-watch .tw-film{font-size:17px;font-weight:600;line-height:1.5}
+        #tigerest-watch .tw-film{font-size:18px;font-weight:700;line-height:1.4}
+        #tigerest-watch .tw-film-detail{font-size:14px;color:#d6e0ec;margin-top:2px}
+        #tigerest-watch .tw-film-head{display:flex;gap:16px;align-items:flex-start}
+        #tigerest-watch .tw-film-text{flex:1;min-width:0}#tigerest-watch .tw-film-text p{margin:8px 0 0}
+        #tigerest-watch .tw-art{width:176px;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#0f1622;flex-shrink:0}
+        #tigerest-watch .tw-art-poster{width:96px;aspect-ratio:2/3}
+        #tigerest-watch .tw-danger-strong{background:#a33a3a;border-color:#d46a6a;color:#fff;font-weight:700}
+        #tigerest-watch .tw-danger-strong:hover{background:#bf4848}
+        #tigerest-watch .tw-ask{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:#0b111bcc;border-radius:18px;z-index:2}
+        #tigerest-watch .tw-ask-card{width:min(400px,100%);box-sizing:border-box;padding:20px 22px;background:#1d293b;border:1px solid #43556e;border-radius:14px;box-shadow:0 18px 60px #000a}
+        #tigerest-watch .tw-ask-card h3{margin:0 0 8px;font-size:18px;color:#e9eff8}
+        #tigerest-watch .tw-ask-text{margin:0;color:#c3d0df;font-size:14px;line-height:1.6}
+        #tigerest-watch .tw-ask-actions{justify-content:flex-end;margin:18px 0 0}
         #tigerest-watch .tw-members{list-style:none;margin:0;padding:0;display:grid;gap:8px}
         #tigerest-watch .tw-member{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;background:#172334}
         #tigerest-watch .tw-avatar{width:36px;height:36px;border-radius:50%;background:#2c4d72;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;font-weight:700}
@@ -94,7 +126,8 @@
         #tigerest-watch .tw-pick:hover,#tigerest-watch .tw-pick[aria-pressed=true]{border-color:#efc36e;background:#2a2f3a}
         #tigerest-watch .tw-pick img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#0f1622}
         #tigerest-watch .tw-pick.tw-poster img{aspect-ratio:2/3}
-        @media(max-width:600px){#tigerest-watch .tw-head{padding:16px}#tigerest-watch .tw-content{padding:8px 14px 18px}#tigerest-watch .tw-code{font-size:28px}}
+        @media(max-width:600px){#tigerest-watch .tw-head{padding:16px}#tigerest-watch .tw-content{padding:8px 14px 18px}#tigerest-watch .tw-code{font-size:28px}
+            #tigerest-watch .tw-art{width:112px}#tigerest-watch .tw-art-poster{width:72px}}
         #tigerest-watch-toast{position:fixed;left:50%;bottom:48px;transform:translateX(-50%);z-index:100000;max-width:min(560px,calc(100vw - 32px));padding:12px 18px;border-radius:12px;background:#141d2bee;border:1px solid #3a4b62;color:#e9eff8;font-size:14px;box-shadow:0 12px 40px #0008;pointer-events:none}
         `;
         (document.head || document.documentElement).appendChild(style);
@@ -123,8 +156,12 @@
             window.addEventListener('online', () => this.connection?.wake());
             this.poll = setInterval(() => this.checkSession(), 1000);
             // Position updates stop while paused; deadlines still need a look.
-            this.tick = setInterval(() => { if (this.sync?.attached) this.sync.control(); }, 500);
-            window.TigerestWatch = {open: () => this.open(), debug: () => this.debug()};
+            this.tick = setInterval(() => {
+                if (!this.sync?.attached) return;
+                this.readPosition();
+                this.sync.control();
+            }, 500);
+            window.TigerestWatch = {open: () => this.open(), debug: () => this.debug(), loadPaused: itemId => this.loadPaused(itemId)};
             this.checkSession();
         }
         apiClient() { return this.connectionManager.currentApiClient?.(); }
@@ -350,6 +387,18 @@
             // whole item, so with RIFE on, offsets are fixed by held seeks only.
             sync.rateCorrection = !(window.jmpInfo?.settings?.video?.aiRife === true && ['Windows', 'macOS'].includes(platform()));
             sync.attach(itemId);
+            this.readPosition();
+        }
+        // A player loaded stopped at the start of the file reports no
+        // position change, so ask for it; until then the member is loading.
+        readPosition() {
+            const sync = this.sync, player = window.api?.player;
+            if (!sync?.attached || sync.local.pos !== null || this.readingPosition || typeof player?.getPosition !== 'function') return;
+            this.readingPosition = true;
+            Promise.resolve().then(() => player.getPosition()).then(ms => {
+                const value = Number(ms);
+                if (sync.attached && sync.local.pos === null && Number.isFinite(value) && value >= 0) sync.onPosition(value);
+            }).catch(() => {}).finally(() => { this.readingPosition = false; });
         }
         playbackStopped() {
             const sync = this.sync, room = this.connection?.room;
@@ -391,6 +440,15 @@
             });
         }
 
+        // The player asks this while loading. Items started for the room load
+        // stopped: the room decides when they start, and a player stopped
+        // after it began playing jumps ahead on resume.
+        loadPaused(itemId) {
+            const launching = this.launching, media = this.connection?.room?.media;
+            return Boolean(launching && media && String(itemId) === String(media.itemId) && String(launching.itemId) === String(media.itemId) &&
+                performance.now() - launching.at < 30000);
+        }
+
         // ---- messages -------------------------------------------------------
         notify(text) {
             if (!text) return;
@@ -410,6 +468,37 @@
             this.toastTimer = setTimeout(() => toast.remove(), 3500);
         }
         setStatus(text) { if (this.panel?.status) this.panel.status.textContent = text || ''; }
+        // A confirmation sheet inside the room page. Resolves true or false;
+        // Esc and the backdrop cancel.
+        ask({title, text, confirmText, danger = false}) {
+            const panel = this.panel;
+            if (!panel) return Promise.resolve(window.confirm(text));
+            panel.ask?.resolve(false);
+            return new Promise(resolve => {
+                const sheet = node('div', null, 'tw-ask'), card = node('div', null, 'tw-ask-card');
+                card.setAttribute('role', 'alertdialog');
+                card.setAttribute('aria-modal', 'true');
+                const heading = node('h3', title), body = node('p', text, 'tw-ask-text');
+                heading.id = 'tw-ask-title';
+                card.setAttribute('aria-labelledby', heading.id);
+                const finish = value => {
+                    if (panel.ask?.sheet !== sheet) return;
+                    panel.ask = null;
+                    sheet.remove();
+                    resolve(value);
+                };
+                const cancel = button('取消', () => finish(false));
+                const accept = button(confirmText, () => finish(true), 'tw-button ' + (danger ? 'tw-danger-strong' : 'tw-primary'));
+                const row = node('div', null, 'tw-row tw-ask-actions');
+                row.append(cancel, accept);
+                card.append(heading, body, row);
+                sheet.appendChild(card);
+                sheet.addEventListener('click', event => { if (event.target === sheet) finish(false); });
+                panel.ask = {sheet, resolve: finish};
+                panel.dialog.appendChild(sheet);
+                (danger ? cancel : accept).focus();
+            });
+        }
 
         // ---- room page ------------------------------------------------------
         open() {
@@ -427,7 +516,10 @@
             const content = node('div', null, 'tw-content');
             shell.append(head, content);
             dialog.appendChild(shell);
-            dialog.addEventListener('cancel', event => { event.preventDefault(); this.close(); });
+            dialog.addEventListener('cancel', event => {
+                event.preventDefault();
+                if (this.panel?.ask) this.panel.ask.resolve(false); else this.close();
+            });
             this.panel = {dialog, content, view: 'room', status: null};
             document.body.appendChild(dialog);
             dialog.showModal();
@@ -439,6 +531,7 @@
             const panel = this.panel;
             if (!panel) return;
             this.panel = null;
+            panel.ask?.resolve(false);
             panel.abort?.abort();
             try { panel.dialog.close(); } catch (_) {}
             panel.dialog.remove();
@@ -482,14 +575,32 @@
             const playback = room.playback, members = room.members || [], owner = room.ownerMemberId === connection.memberId;
             const codeCard = node('div', null, 'tw-card');
             const codeRow = node('div', null, 'tw-row');
-            codeRow.append(node('span', room.code, 'tw-code'),
-                button('复制房间码', () => navigator.clipboard?.writeText(room.code).then(() => this.setStatus('已复制房间码'), () => this.setStatus('复制失败，请手动输入房间码'))),
-                node('span', members.length + ' / ' + room.capacity + ' 人', 'tw-muted'));
+            const code = node('span', room.code, 'tw-code');
+            const copy = button('复制房间码', async () => {
+                const copied = await copyText(room.code, panel.dialog);
+                if (!copied) {
+                    // Leave the code selected so Ctrl+C or a long press works.
+                    getSelection()?.selectAllChildren(code);
+                    this.setStatus('无法自动复制，房间码已选中，请手动复制。');
+                    return;
+                }
+                copy.textContent = '已复制';
+                clearTimeout(this.copyTimer);
+                this.copyTimer = setTimeout(() => { copy.textContent = '复制房间码'; }, 2000);
+            });
+            codeRow.append(code, copy, node('span', members.length + ' / ' + room.capacity + ' 人', 'tw-muted'));
             codeCard.append(codeRow, node('p', connection.connected ? '把房间码发给朋友，他们在「一起看」里输入即可加入。' : '正在重新连接一起看服务…', 'tw-muted'));
-            const film = node('div', null, 'tw-card');
-            film.append(node('div', mediaTitle(room.media), 'tw-film'));
+            const film = node('div', null, 'tw-card tw-film-card');
+            const filmHead = node('div', null, 'tw-film-head'), filmText = node('div', null, 'tw-film-text');
+            const art = this.artwork(room.media);
+            if (art) filmHead.appendChild(art);
+            const [mainLine, detailLine] = mediaLines(room.media);
+            filmText.appendChild(node('div', mainLine, 'tw-film'));
+            if (detailLine) filmText.appendChild(node('div', detailLine, 'tw-film-detail'));
             const state = {paused: '已暂停在 ', playing: '正在播放 ', waiting: '等待成员就绪 '}[playback.state] || '';
-            film.appendChild(node('p', state + clock(playback.positionMs) + ' / ' + clock(room.media?.runTimeMs), 'tw-muted'));
+            filmText.appendChild(node('p', state + clock(playback.positionMs) + ' / ' + clock(room.media?.runTimeMs), 'tw-muted'));
+            filmHead.appendChild(filmText);
+            film.appendChild(filmHead);
             if (playback.state === 'waiting' && playback.waiting?.memberIds?.length)
                 film.appendChild(node('p', '还在等：' + playback.waiting.memberIds.map(id => this.memberName(id)).join('、'), 'tw-muted'));
             if (room.pendingChange) film.appendChild(node('p', this.memberName(room.pendingChange.memberId) + ' 正在切换影片…', 'tw-muted'));
@@ -513,6 +624,16 @@
             footer.appendChild(button('离开房间', () => this.leave(), 'tw-button tw-danger'));
             if (owner) footer.appendChild(button('解散房间', () => this.closeRoom(), 'tw-button tw-danger'));
             content.append(codeCard, film, people, panel.status, footer);
+        }
+        artwork(media) {
+            const api = this.apiClient();
+            if (!media?.itemId || !api?.getImageUrl) return null;
+            const episode = media.type === 'Episode';
+            const image = node('img', null, 'tw-art' + (episode ? '' : ' tw-art-poster'));
+            image.alt = '';
+            image.src = api.getImageUrl(media.itemId, {type: 'Primary', maxWidth: episode ? 360 : 200});
+            image.addEventListener('error', () => image.remove(), {once: true});
+            return image;
         }
         memberRow(member, owner) {
             const row = node('li', null, 'tw-member' + (member.connection === 'online' ? '' : ' tw-offline'));
@@ -552,7 +673,9 @@
             catch (error) {
                 if (error.code !== 'ALREADY_IN_ROOM') throw error;
                 const title = error.activeRoom?.title ? '「' + error.activeRoom.title + '」' : '';
-                if (!window.confirm((conflictText || '你已在另一个房间') + title + '。离开那个房间并继续吗？')) return null;
+                const leave = await this.ask({title: '离开当前房间？', text: (conflictText || '你已在另一个房间') + title + '。离开那个房间并继续吗？',
+                    confirmText: '离开并继续'});
+                if (!leave) return null;
                 return request(true);
             }
         }
@@ -612,12 +735,12 @@
             this.ensureEntry();
             this.render();
         }
-        closeRoom() {
-            if (!window.confirm('解散后所有成员都会退出房间，确定吗？')) return;
+        async closeRoom() {
+            if (!await this.ask({title: '解散房间？', text: '解散后所有成员都会退出房间。', confirmText: '解散', danger: true})) return;
             this.connection?.control('close');
         }
-        kick(member) {
-            if (!window.confirm('把 ' + member.name + ' 移出房间？移出后本房间内不能再加入。')) return;
+        async kick(member) {
+            if (!await this.ask({title: '移出 ' + member.name + '？', text: '移出后，他在这个房间存在期间不能再加入。', confirmText: '移出', danger: true})) return;
             this.connection?.command('kick', {memberId: member.memberId}).catch(error => this.setStatus(message(error.code)));
         }
 
@@ -674,8 +797,9 @@
                 image.src = api.getImageUrl(item.Id, {type: item.ImageTags?.Primary ? 'Primary' : 'Thumb', maxWidth: 360, tag});
                 element.appendChild(image);
             }
+            const episodeName = item.Name && !genericEpisodeName.test(item.Name) ? item.Name : '';
             element.appendChild(node('span', item.Type === 'Episode'
-                ? (item.IndexNumber != null ? '第' + item.IndexNumber + '集 · ' : '') + (item.Name || '') : itemTitle(item)));
+                ? [item.IndexNumber != null ? '第' + item.IndexNumber + '集' : '', episodeName].filter(Boolean).join(' · ') : itemTitle(item)));
             return element;
         }
         async search(picker, text) {

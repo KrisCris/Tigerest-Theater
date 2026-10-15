@@ -31,25 +31,34 @@ class World {
     }
 }
 
+// Deterministic pseudo-random numbers for noisy players.
+function random(seed) {
+    return () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+
 // mpv-like player: commands take effect after a latency, position updates
 // arrive every 40 ms while playing. User actions go through the same paths.
+// noiseMs adds report jitter like the desktop client's (frame timing and
+// delivery through the web channel); the true position stays exact.
 class Player {
-    constructor(world, {seekMs = 250, playMs = 25, pauseMs = 15, startRate = 1} = {}) {
-        Object.assign(this, {world, seekMs, playMs, pauseMs});
+    constructor(world, {seekMs = 250, playMs = 25, pauseMs = 15, startRate = 1, noiseMs = 0, reportOnPlay = false, seed = 1} = {}) {
+        Object.assign(this, {world, seekMs, playMs, pauseMs, noiseMs, reportOnPlay});
         this.paused = false; this.pos = 0; this.rate = startRate; this.seekingUntil = 0; this.log = [];
-        this.lastAdvance = 0; this.alive = true;
+        this.lastAdvance = 0; this.alive = true; this.random = random(seed);
         const tick = () => {
             if (!this.alive) return;
             const now = world.time, dt = now - this.lastAdvance;
             this.lastAdvance = now;
-            if (!this.paused && now >= this.seekingUntil && !this.stalled) { this.pos += dt * this.rate; this.sync?.onPosition(this.pos); }
+            if (!this.paused && now >= this.seekingUntil && !this.stalled) { this.pos += dt * this.rate; this.report(); }
             world.at(40, tick);
         };
         world.at(40, tick);
     }
+    report() { this.sync?.onPosition(this.pos + (this.noiseMs ? (this.random() * 2 - 1) * this.noiseMs : 0)); }
     bind(sync) { this.sync = sync; }
     pause() { this.log.push('pause'); this.world.at(this.pauseMs, () => { if (!this.paused) { this.paused = true; this.sync.onPaused(); } }); }
-    play() { this.log.push('play'); this.world.at(this.playMs, () => { if (this.paused) { this.paused = false; this.lastAdvance = this.world.time; this.sync.onPlaying(); } }); }
+    // reportOnPlay: mpv shows the next frame and reports it right away.
+    play() { this.log.push('play'); this.world.at(this.playMs, () => { if (this.paused) { this.paused = false; this.lastAdvance = this.world.time; this.sync.onPlaying(); if (this.reportOnPlay) this.report(); } }); }
     seek(ms) {
         this.log.push('seek');
         this.seekingUntil = this.world.time + this.seekMs;
@@ -288,4 +297,85 @@ test('a stalled player reports buffering, and a detached player reports away', (
     a.sync.detach();
     assert.equal(a.sync.status(), 'away');
     assert.equal(a.reports.at(-1), 'away');
+});
+
+test('a start fired slightly early is not undone before the room time', () => {
+    const world = new World(), room = new Room(world);
+    room.playback = {...room.playback, revision: 2, state: 'paused', positionMs: 30000};
+    const a = client(world, room, {player: {playMs: 3, reportOnPlay: true}});
+    a.player.paused = true; a.player.pos = 30000;
+    a.sync.setRoom({media: room.media, playback: room.playback}); a.sync.attach('item1');
+    a.sync.onPaused(); a.sync.onPosition(30000);
+    world.run(3000);
+    const before = a.player.log.length;
+    room.start();
+    world.run(4000);
+    const after = a.player.log.slice(before);
+    assert.deepEqual(after.filter(x => x === 'play' || x === 'pause' || x === 'seek'), ['play'], 'one play and nothing undoing it: ' + after.join(','));
+    assert.ok(Math.abs(drift(a, room)) < 40, 'drift ' + drift(a, room));
+});
+
+test('members paused a frame or two apart shift their start instead of seeking', () => {
+    const world = new World(), room = new Room(world);
+    room.playback = {...room.playback, revision: 2, state: 'waiting', positionMs: 60000, waiting: {memberIds: ['a', 'b'], deadline: 0, resumeTo: 'playing'}};
+    room.ready = new Set();
+    const a = client(world, room, {latency: 10}), b = client(world, room, {id: 'b', latency: 50, skewMs: 4321});
+    for (const [c, pos] of [[a, 60083], [b, 59958]]) {
+        c.player.paused = true; c.player.pos = pos;
+        c.sync.setRoom({media: room.media, playback: room.playback}); c.sync.attach('item1');
+        c.sync.onPaused(); c.sync.onPosition(pos);
+    }
+    // Both report ready; the room then starts by itself.
+    world.run(4500);
+    assert.equal(room.playback.state, 'playing');
+    assert.ok([a, b].every(c => c.player.log.every(x => x !== 'seek')), 'a start shift instead of a seek');
+    assert.ok(Math.abs(a.player.pos - b.player.pos) < 10, 'same frame at the same time: ' + (a.player.pos - b.player.pos));
+    assert.ok(Math.abs(drift(a, room)) < 40 && Math.abs(drift(b, room)) < 40, "drift " + [drift(a, room), drift(b, room)]);
+});
+
+test('noisy position reports do not make the speed hunt', () => {
+    const world = new World(), room = new Room(world);
+    room.playback = {...room.playback, revision: 3, state: 'playing', positionMs: 0, serverTime: room.now()};
+    const a = client(world, room, {player: {noiseMs: 50, seed: 7}}), b = client(world, room, {id: 'b', latency: 30, player: {noiseMs: 50, seed: 99}});
+    for (const c of [a, b]) { c.sync.onPlaying(); c.sync.setRoom({media: room.media, playback: room.playback}); c.sync.attach('item1'); }
+    world.run(5000);
+    const rates = c => c.player.log.filter(x => x.startsWith('rate:') && x !== 'rate:1000').length;
+    const before = [rates(a), rates(b)];
+    let worst = 0;
+    for (let i = 0; i < 60; i++) { world.run(1000); worst = Math.max(worst, Math.abs(a.player.pos - b.player.pos)); }
+    assert.ok(rates(a) - before[0] <= 2 && rates(b) - before[1] <= 2, 'speed changes in a minute: ' + [rates(a) - before[0], rates(b) - before[1]]);
+    assert.ok(worst < 40, 'members stay together: ' + worst.toFixed(1));
+});
+
+test('a steady playback-speed skew is corrected now and then, not continuously', () => {
+    const world = new World(), room = new Room(world);
+    room.playback = {...room.playback, revision: 3, state: 'playing', positionMs: 0, serverTime: room.now()};
+    // display-resample plays 23.976 fps material about 0.1% fast.
+    const a = client(world, room, {player: {noiseMs: 20, startRate: 1.001}});
+    const setRate = a.player.setRate.bind(a.player);
+    a.player.setRate = rate => { setRate(rate); a.player.rate *= 1.001; };
+    a.sync.onPlaying(); a.sync.setRoom({media: room.media, playback: room.playback}); a.sync.attach('item1');
+    let worst = 0;
+    for (let i = 0; i < 120; i++) { world.run(1000); if (i > 5) worst = Math.max(worst, Math.abs(drift(a, room))); }
+    const changes = a.player.log.filter(x => x.startsWith('rate:')).length;
+    assert.ok(worst < 75, 'worst drift ' + worst.toFixed(1));
+    assert.ok(changes <= 16, 'speed changes in two minutes: ' + changes);
+});
+
+test('a late joiner that loaded ahead of the room waits there without seeking', () => {
+    const world = new World(), room = new Room(world);
+    room.playback = {...room.playback, revision: 9, state: 'playing', positionMs: 600000, serverTime: room.now()};
+    world.run(10000);
+    // Loaded stopped about 2 s ahead of where the room is now.
+    const b = client(world, room, {latency: 25, skewMs: 777});
+    b.player.paused = true; b.player.pos = Math.round(room.expected() + 2000);
+    b.sync.setRoom({media: room.media, playback: room.playback}); b.sync.attach('item1');
+    b.sync.onPaused(); b.sync.onPosition(b.player.pos);
+    world.run(1000);
+    assert.ok(b.player.paused, 'still waiting for the room');
+    world.run(3000);
+    assert.equal(b.player.paused, false);
+    assert.ok(b.player.log.every(x => x !== 'seek'), b.player.log.join(','));
+    assert.ok(Math.abs(drift(b, room)) < 40, 'drift ' + drift(b, room));
+    assert.deepEqual(room.commands, []);
 });

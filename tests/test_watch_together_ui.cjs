@@ -24,7 +24,9 @@ const fixture = `(() => {
     const episodes = [1, 2, 3].map(n => ({Id: 'ep' + n, Type: 'Episode', Name: '第 ' + n + ' 集', IndexNumber: n, ParentIndexNumber: 1, SeriesId: 'series', SeasonId: 'season1',
         SeriesName: '兽王武神', MediaSources: [{Id: 'src-ep' + n, Name: '1080p'}], UserData: {PlaybackPositionTicks: 0}}));
     window.emby = {serverId: () => '62526c3bf747439c99327ddec5fed4a8', getCurrentUserId: () => 'u1', accessToken: () => 'fixture-token',
-        serverAddress: () => 'http://192.168.5.150:8095', getImageUrl: () => '',
+        serverAddress: () => 'http://192.168.5.150:8095',
+        // A 1x1 image tagged with the request, so the page keeps it.
+        getImageUrl: (id, options) => 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==#' + id + '/' + options.type,
         getItem: async (user, id) => episodes.find(e => e.Id === id) || {Id: id, Type: 'Series', Name: '兽王武神'},
         getSeasons: async () => ({Items: [{Id: 'season1', Name: '第 1 季', IndexNumber: 1}]}),
         getEpisodes: async () => ({Items: episodes}), getItems: async () => ({Items: []})};
@@ -91,7 +93,7 @@ withBrowser(routes, async ({evaluate}) => {
     // Opened from an episode page, the picker lists that season with the episode chosen.
     await evaluate(`history.replaceState(null, '', '#!/item?id=ep2&serverId=x'); document.querySelector('.tw-primary').click()`);
     await wait(`!!Array.from(document.querySelectorAll('#tigerest-watch button')).find(b => b.textContent === '创建房间')`);
-    assert.equal(await evaluate(`document.querySelector('.tw-pick[aria-pressed=true]').textContent`), '第2集 · 第 2 集');
+    assert.equal(await evaluate(`document.querySelector('.tw-pick[aria-pressed=true]').textContent`), '第2集', 'a name that repeats the number is not shown twice');
     await click('创建房间');
     await wait(`!!document.querySelector('#tigerest-watch .tw-code')`, 'room view');
     const create = JSON.parse(await evaluate(`JSON.stringify(log.fetch.find(c => c.url.endsWith('/rooms') && c.method === 'POST'))`));
@@ -104,12 +106,36 @@ withBrowser(routes, async ({evaluate}) => {
     assert.equal(await evaluate(`sockets[0].url`), 'ws://192.168.5.150:18443/watch/v1/socket');
     await evaluate(`sockets[0].deliver({type: 'welcome', memberId: 'm1', serverTime: 1000, room: snapshot, features: ['sync'], heartbeatSeconds: 5})`);
     await wait(`serverLog.some(m => m.type === 'status' && m.state === 'paused')`, 'room page reports paused');
-    assert.match(await evaluate(`document.querySelector('#tigerest-watch').textContent`), /7KQ2MZ[\s\S]*兽王武神 第1季 第2集 · 第 2 集[\s\S]*开始放映/);
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch').textContent`), /7KQ2MZ[\s\S]*兽王武神第1季 第2集[\s\S]*开始放映/);
+    assert.equal(await evaluate(`document.querySelector('#tigerest-watch .tw-film-detail').textContent`), '第1季 第2集');
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch .tw-art').src`), /#ep2\/Primary$/, 'the film card shows the episode image');
 
     await evaluate(`sockets[0].deliver({type: 'members', ownerMemberId: 'm1', members: [...snapshot.members, {memberId: 'm2', authorId: 'a2', name: '朋友', avatarPath: null, role: 'member', platform: 'Android', connection: 'online', status: 'paused', lagging: false}]})`);
     await wait(`document.querySelector('#tigerest-watch').textContent.includes('朋友')`);
     assert.match(await evaluate(`document.querySelector('#tigerest-watch-entry').textContent`), /一起看 · 2人/);
     assert.match(await evaluate(`document.querySelector('#tigerest-watch .tw-status').textContent`), /朋友 加入了房间/);
+
+    // Copying works on the plain-http Emby origin (no navigator.clipboard there).
+    await evaluate(`Object.defineProperty(navigator, 'clipboard', {value: undefined, configurable: true})`);
+    await evaluate(`window.copied = []; { const exec = document.execCommand.bind(document);
+        document.execCommand = (name, ...rest) => { if (name === 'copy') { window.copied.push(getSelection().toString() || document.activeElement?.value); return true; } return exec(name, ...rest); }; }`);
+    await click('复制房间码');
+    await wait(`Array.from(document.querySelectorAll('#tigerest-watch button')).some(b => b.textContent === '已复制')`, 'copy feedback');
+    assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(window.copied)`)), ['7KQ2MZ']);
+
+    // Kick and close ask inside the room page, not with the browser's confirm box.
+    await evaluate(`window.confirm = () => { throw new Error('browser confirm used'); }`);
+    await click('移出');
+    await wait(`!!document.querySelector('#tigerest-watch .tw-ask')`, 'kick confirmation');
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch .tw-ask').textContent`), /移出 朋友？/);
+    await click('取消');
+    await wait(`!document.querySelector('#tigerest-watch .tw-ask')`);
+    await click('解散房间');
+    await wait(`!!document.querySelector('#tigerest-watch .tw-ask')`, 'close confirmation');
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch .tw-ask').textContent`), /解散房间？[\s\S]*所有成员都会退出房间/);
+    await evaluate(`document.querySelector('#tigerest-watch .tw-ask').click()`);
+    await wait(`!document.querySelector('#tigerest-watch .tw-ask')`, 'backdrop cancels');
+    assert.equal(await evaluate(`serverLog.filter(m => m.type === 'kick' || m.type === 'close').length`), 0, 'cancelled confirmations send nothing');
 
     await click('开始放映');
     await wait(`serverLog.some(m => m.type === 'changeItem')`);
@@ -125,13 +151,15 @@ withBrowser(routes, async ({evaluate}) => {
     assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(log.plays[0])`)), {ids: ['ep2'], serverId: '62526c3bf747439c99327ddec5fed4a8',
         mediaSourceId: 'src-ep2', startPositionTicks: 0, fullscreen: true});
     assert.equal(await evaluate(`!!document.querySelector('#tigerest-watch')`), false, 'the room page closes for the player');
+    assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify([TigerestWatch.loadPaused('ep2'), TigerestWatch.loadPaused('ep3')])`)), [true, false],
+        'the room item loads stopped, other items autoplay');
     await wait(`serverLog.some(m => m.type === 'status' && m.state === 'loading' && m.revision === 2)`);
 
-    // The player starts the item; the room is waiting, so it holds at the position and reports ready.
-    await evaluate(`current = {Id: 'ep2', Type: 'Episode'}; events.trigger('playbackstart', {}); api.player.playing.emit(); api.player.positionUpdate.emit(0)`);
-    await wait(`log.player.includes('pause:')`, 'waiting room pauses the player');
-    await evaluate(`api.player.paused.emit(); api.player.positionUpdate.emit(0)`);
+    // The room item loads stopped at the start and reports no position
+    // change; the page asks the player for it, then reports ready.
+    await evaluate(`api.player.getPosition = async () => 0; current = {Id: 'ep2', Type: 'Episode'}; api.player.paused.emit(); events.trigger('playbackstart', {})`);
     await wait(`serverLog.some(m => m.type === 'status' && m.state === 'ready' && m.revision === 2)`, 'ready report');
+    assert.equal(await evaluate(`log.player.filter(x => x === 'pause:' || x === 'play:' || x.startsWith('seekTo:')).length`), 0, 'a stopped load needs no pause or seek');
     assert.equal(await evaluate(`serverLog.filter(m => ['pause', 'play', 'seek'].includes(m.type)).length`), 0, 'following the room sends no commands');
 
     await evaluate(`sockets[0].deliver({type: 'state', revision: 3, media: snapshot.media, playback: {revision: 3, state: 'playing', positionMs: 0,
@@ -141,7 +169,7 @@ withBrowser(routes, async ({evaluate}) => {
     await new Promise(r => setTimeout(r, 2600));
     await evaluate(`sockets[0].deliver({type: 'state', revision: 4, media: snapshot.media, playback: {revision: 4, state: 'paused', positionMs: 1200,
         serverTime: performance.now() + 1e6, rate: 1, waiting: null, lastAction: {type: 'pause', memberId: 'm2'}}})`);
-    await wait(`log.player.filter(x => x === 'pause:').length >= 2`, 'remote pause pauses the player');
+    await wait(`log.player.filter(x => x === 'pause:').length >= 1`, 'remote pause pauses the player');
     await evaluate(`api.player.paused.emit()`);
     await new Promise(r => setTimeout(r, 300));
     assert.equal(await evaluate(`serverLog.filter(m => ['pause', 'play', 'seek'].includes(m.type)).length`), 0, 'no echo of remote actions');

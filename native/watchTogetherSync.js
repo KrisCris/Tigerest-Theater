@@ -5,8 +5,12 @@
     'use strict';
     const JUMP_FORWARD_MS = 1500, JUMP_BACK_MS = 1000;
     const ALIGN_PAUSED_MS = 100, READY_MS = 250, STALL_MS = 700;
-    const RATE_START_MS = 50, RATE_STOP_MS = 15, RATE_WINDOW_MS = 2000;
-    const RATE_SEEK_MS = 2000, NO_RATE_SEEK_MS = 300, PLAY_LEAD_MS = 30;
+    const RATE_START_MS = 50, RATE_STOP_MS = 15, RATE_WINDOW_MS = 3000, RATE_INTERVAL_MS = 1000;
+    const RATE_SEEK_MS = 2000, NO_RATE_SEEK_MS = 300, PLAY_LEAD_MS = 30, MAX_HOLD_MS = 8000;
+    // Position reports reach the page with tens of milliseconds of jitter,
+    // and the first frames after a start are not representative: estimate
+    // the drift from a longer window and skip the first half second.
+    const DRIFT_WINDOW_MS = 1500, DRIFT_SPAN_MS = 1000, DRIFT_SETTLE_MS = 500;
     const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
     class WatchSync {
@@ -22,6 +26,8 @@
             this.rate = 1000;
             this.rateAt = -Infinity;
             this.drifts = [];
+            this.driftFrom = 0;
+            this.startedRevision = 0;
             this.controlAt = -Infinity;
             this.resetLocal();
         }
@@ -185,37 +191,53 @@
             return playback.positionMs + (serverNow - playback.serverTime) * (playback.rate || 1);
         }
         sampleDrift(now) {
-            if (this.local.paused !== false || this.scheduled(now) || this.room?.playback?.state !== 'playing') return;
+            if (this.local.paused !== false || now < this.driftFrom || this.scheduled(now) || this.room?.playback?.state !== 'playing') return;
             const target = this.target(now);
             if (target === null) return;
-            this.drifts.push(this.local.pos - target);
-            if (this.drifts.length > 5) this.drifts.shift();
+            this.drifts.push([now, this.local.pos - target]);
+            while (this.drifts.length && this.drifts[0][0] < now - DRIFT_WINDOW_MS) this.drifts.shift();
         }
-        drift() {
-            if (!this.drifts.length) return null;
-            const sorted = [...this.drifts].sort((a, b) => a - b);
+        drift(now = this.now()) {
+            const samples = this.drifts.filter(([at]) => at >= now - DRIFT_WINDOW_MS);
+            if (samples.length < 4 || now - samples[0][0] < DRIFT_SPAN_MS) return null;
+            const sorted = samples.map(([, value]) => value).sort((a, b) => a - b);
             return sorted[sorted.length >> 1];
+        }
+        resetDrift(settle = 0) {
+            this.drifts = [];
+            this.driftFrom = this.now() + settle;
+        }
+        // Measured on mpv: a player that was seeked while stopped, or stopped
+        // after it had started playing, often jumps ahead by up to ~250 ms
+        // when it resumes. So small offsets are absorbed by shifting the start
+        // time, and only a large one (something moved the player) is a seek.
+        misaligned(playback) {
+            return Math.abs(this.local.pos - playback.positionMs) > ALIGN_PAUSED_MS;
         }
         stalled(now = this.now()) {
             return this.local.paused === false && now - this.local.advanceAt > STALL_MS;
         }
 
         // ---- player actions (never echoed) --------------------------------
+        // A play still in flight counts as playing (and the reverse), so a
+        // quick play → pause is never skipped because of a stale signal.
         pausePlayer() {
-            if (this.local.paused === true) return;
-            this.expect.pause = this.now() + 3000;
+            const now = this.now();
+            if (this.local.paused === true && this.expect.play <= now || this.expect.pause > now && this.expect.play <= now) return;
+            this.expect.pause = now + 3000;
             this.player.pause();
         }
         playPlayer() {
-            if (this.local.paused === false) return;
-            this.expect.play = this.now() + 3000;
-            this.drifts = [];
+            const now = this.now();
+            if (this.local.paused === false && this.expect.pause <= now || this.expect.play > now && this.expect.pause <= now) return;
+            this.expect.play = now + 3000;
+            this.resetDrift(DRIFT_SETTLE_MS);
             this.player.play();
         }
         seekPlayer(ms) {
             const target = Math.max(0, Math.round(ms));
             this.expect.seek = {target, until: this.now() + 10000};
-            this.drifts = [];
+            this.resetDrift(DRIFT_SETTLE_MS);
             this.player.seek(target);
         }
         seeking() {
@@ -244,31 +266,43 @@
                 this.cancelStart();
                 this.hold = null;
                 this.pausePlayer();
-                if (!this.seeking() && Math.abs(this.local.pos - playback.positionMs) > ALIGN_PAUSED_MS) this.seekPlayer(playback.positionMs);
+                if (!this.seeking() && this.misaligned(playback)) this.seekPlayer(playback.positionMs);
                 this.setRate(1000);
                 return this.publish();
             }
             if (!this.clock.ready) return this.publish();
-            if (this.scheduled(now)) {
+            // Once the start for this revision has fired, the player runs
+            // even if it was started a few milliseconds early.
+            if (this.scheduled(now) && this.startedRevision !== playback.revision) {
                 this.hold = null;
                 this.pausePlayer();
-                if (!this.seeking() && Math.abs(this.local.pos - playback.positionMs) > ALIGN_PAUSED_MS) this.seekPlayer(playback.positionMs);
                 this.setRate(1000);
-                this.scheduleStart(this.clock.toLocal(playback.serverTime));
+                if (this.seeking()) return this.publish();
+                // Start when the room reaches the frame we are paused on; a
+                // seek for a few tens of milliseconds would cost more.
+                const offset = this.local.pos - playback.positionMs;
+                if (this.misaligned(playback)) this.seekPlayer(playback.positionMs);
+                else {
+                    const revision = playback.revision;
+                    this.scheduleStart(this.clock.toLocal(playback.serverTime + offset), () => { this.startedRevision = revision; });
+                }
                 return this.publish();
             }
             const expected = this.target(now);
             if (this.hold) return this.continueHold(expected, now);
             if (this.local.paused !== false) {
-                if (this.seeking()) return this.publish();
-                if (Math.abs(this.local.pos - expected) <= NO_RATE_SEEK_MS) {
+                if (this.seeking() || this.expect.play > now) return this.publish();
+                // Slightly behind or barely ahead: start now and let the speed
+                // close the gap. Further ahead: hold until the room arrives.
+                const offset = this.local.pos - expected;
+                if (offset >= -NO_RATE_SEEK_MS && offset <= PLAY_LEAD_MS + 50) {
                     this.setRate(1000);
                     this.playPlayer();
                 } else this.startHold(expected);
                 return this.publish();
             }
             if (this.stalled(now) || this.seeking()) return this.publish();
-            const drift = this.drift();
+            const drift = this.drift(now);
             if (drift === null) return this.publish();
             const limit = this.rateCorrection ? RATE_SEEK_MS : NO_RATE_SEEK_MS;
             if (Math.abs(drift) > limit) {
@@ -286,12 +320,22 @@
                 return;
             }
             const desired = Math.round(clamp(1000 - drift / RATE_WINDOW_MS * 1000, 950, 1050) / 5) * 5;
-            if (desired !== this.rate && now - this.rateAt >= 400) this.setRate(desired);
+            if (now - this.rateAt < RATE_INTERVAL_MS || desired === this.rate) return;
+            // Small steps are not worth another speed change.
+            if (correcting && Math.abs(desired - this.rate) < 10 && Math.sign(1000 - desired) === Math.sign(1000 - this.rate)) return;
+            this.setRate(desired);
         }
         // Large offsets: pause at a point a little ahead of the room, wait
         // until that frame is ready, then start exactly when the room gets
         // there. Independent of how long the seek itself takes.
         startHold(expected) {
+            // Already stopped ahead of the room (a late joiner loads a few
+            // seconds ahead): wait there instead of seeking.
+            const ahead = this.local.paused === true && !this.seeking() ? this.local.pos - expected : -1;
+            if (ahead > PLAY_LEAD_MS && ahead <= MAX_HOLD_MS) {
+                this.hold = {target: this.local.pos, startedAt: this.now()};
+                return this.continueHold(expected, this.now());
+            }
             this.hold = {target: Math.round(expected + this.holdLead), startedAt: this.now()};
             this.pausePlayer();
             this.seekPlayer(this.hold.target);
@@ -345,7 +389,7 @@
             if (playback.state === 'paused') return 'paused';
             if (playback.state === 'waiting' || this.scheduled(now)) {
                 const settled = !this.seeking() && this.local.paused === true &&
-                    Math.abs(this.local.pos - playback.positionMs) <= READY_MS;
+                    !this.misaligned(playback);
                 return settled ? 'ready' : 'loading';
             }
             if (this.hold || this.seeking() || this.local.paused !== false) return 'loading';
