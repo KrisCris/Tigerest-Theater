@@ -8,6 +8,7 @@
         'tigerest/input.js',
         'tigerest/session-navigation.js',
         'tigerest/community.js',
+        'tigerest/watch.js',
         'tigerest/settings.js'
     ];
 
@@ -352,6 +353,16 @@
             return class TigerestCommunityPlugin extends window._communityPlugin {
                 constructor() {
                     super({connectionManager: moduleValue(connectionManager), events: moduleValue(events), appRouter:moduleValue(appRouter)});
+                }
+            };
+        });
+
+        defineModule('tigerest/watch.js', ['connectionManager', 'events', 'playbackManager', 'appRouter'], function (connectionManager, events, playbackManager, appRouter) {
+            const WatchPlugin = window._watchTogetherPlugin;
+            return class TigerestWatchPlugin {
+                constructor() {
+                    if (WatchPlugin) this.watch = new WatchPlugin({connectionManager: moduleValue(connectionManager), events: moduleValue(events),
+                        playbackManager: moduleValue(playbackManager), appRouter: moduleValue(appRouter)});
                 }
             };
         });

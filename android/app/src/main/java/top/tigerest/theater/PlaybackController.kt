@@ -156,6 +156,7 @@ class PlaybackController(private val context: Context, private val settings: Set
             "stop" -> { endTemporarySpeed(); val generation = state.generation; val active = state.end(generation); MPVLib.command(arrayOf("stop")); audioManager.abandonAudioFocusRequest(focus); mediaSession.isActive = false; main.post { if(!state.active && generation == state.generation) visible(false) }; emit("windowVisible",false); if(active){emit("canceled");emit("stopped")}; return true }
             "pause" -> { endTemporarySpeed();pauseIntent++;pausedByFocus=false;MPVLib.setPropertyBoolean("pause",true) }
             "play" -> MPVLib.setPropertyBoolean("pause",false)
+            "showMessage" -> MPVLib.command(arrayOf("show-text",args.getString(0).take(200),"3000"))
             "seekTo" -> { clockEpoch++; MPVLib.command(arrayOf("seek",(args.getDouble(0)/1000.0).coerceAtLeast(0.0).toString(),"absolute+exact")) }
             "setPlaybackRate" -> { val rate = args.getDouble(0)/1000.0; require(rate in 0.25..4.0); endTemporarySpeed(); MPVLib.setPropertyDouble("speed",rate) }
             "setVolume" -> MPVLib.setPropertyDouble("volume",args.getDouble(0).coerceIn(0.0,100.0))
@@ -264,6 +265,7 @@ class PlaybackController(private val context: Context, private val settings: Set
     override fun eventProperty(property: String, value: Long) {}
     override fun eventProperty(property: String, value: String) {}
     override fun eventProperty(property: String) { if(property == "track-list") emit("onVideoRecangleChanged") }
-    fun background() { endTemporarySpeed(); if(state.active && !state.paused) dispatch("pause",JSONArray()) }
+    // Watch-together reads this before the pause so it reports away instead of pausing the room.
+    fun background() { endTemporarySpeed(); if(state.active && !state.paused) { emit("backgrounded"); dispatch("pause",JSONArray()) } }
     fun destroy() { if(destroyed) return; endTemporarySpeed(); state.end(state.generation); destroyed = true; main.removeCallbacks(resizeOutput); context.unregisterReceiver(noisyReceiver); MPVLib.removeObserver(this); MPVLib.removeLogObserver(this); MPVLib.destroy(); mediaSession.release(); audioManager.abandonAudioFocusRequest(focus) }
 }

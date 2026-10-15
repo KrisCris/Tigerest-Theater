@@ -1,0 +1,162 @@
+// Watch-together room page and playback wiring in the real web engine. The
+// watch service, socket, Emby client and player bridge are in-page fixtures;
+// no account or network service is used.
+const assert = require('node:assert/strict'), path = require('node:path');
+const withBrowser = require('./community_browser.cjs');
+const version = require('node:fs').readFileSync(path.join(__dirname, '../VERSION'), 'utf8').trim();
+const files = ['watchTogetherClient', 'watchTogetherSync', 'watchTogether'];
+const routes = Object.fromEntries(files.map(f => ['/' + f + '.js', {path: path.join(__dirname, '../native/' + f + '.js')}]));
+routes['/'] = {type: 'text/html', body: '<html><meta charset="utf-8"><div class="headerRight"><button id="tigerest-message-entry">消息</button></div>' +
+    files.map(f => '<script src="/' + f + '.js"></script>').join('') + '</html>'};
+
+const fixture = `(() => {
+    window.log = {fetch: [], sent: [], player: [], plays: []};
+    window.serverLog = [];
+    log.errors = [];
+    const report = console.error.bind(console);
+    console.error = (...args) => { log.errors.push(args.map(x => x?.stack || String(x)).join(' ')); report(...args); };
+    window.addEventListener('error', event => log.errors.push(String(event.error?.stack || event.message)));
+    window.addEventListener('unhandledrejection', event => log.errors.push(String(event.reason?.stack || event.reason)));
+    const signal = () => { const set = new Set(); return {connect: f => set.add(f), disconnect: f => set.delete(f), emit: (...a) => set.forEach(f => f(...a))}; };
+    const player = window.api = {player: {}};
+    for (const name of ['playing', 'paused', 'positionUpdate', 'finished', 'canceled', 'playbackRateChanged']) api.player[name] = signal();
+    for (const name of ['pause', 'play', 'seekTo', 'setPlaybackRate', 'userCommand']) api.player[name] = (...args) => log.player.push(name + ':' + args.join(','));
+    const episodes = [1, 2, 3].map(n => ({Id: 'ep' + n, Type: 'Episode', Name: '第 ' + n + ' 集', IndexNumber: n, ParentIndexNumber: 1, SeriesId: 'series', SeasonId: 'season1',
+        SeriesName: '兽王武神', MediaSources: [{Id: 'src-ep' + n, Name: '1080p'}], UserData: {PlaybackPositionTicks: 0}}));
+    window.emby = {serverId: () => '62526c3bf747439c99327ddec5fed4a8', getCurrentUserId: () => 'u1', accessToken: () => 'fixture-token',
+        serverAddress: () => 'http://192.168.5.150:8095', getImageUrl: () => '',
+        getItem: async (user, id) => episodes.find(e => e.Id === id) || {Id: id, Type: 'Series', Name: '兽王武神'},
+        getSeasons: async () => ({Items: [{Id: 'season1', Name: '第 1 季', IndexNumber: 1}]}),
+        getEpisodes: async () => ({Items: episodes}), getItems: async () => ({Items: []})};
+    const handlers = new Map();
+    window.events = {on: (target, name, f) => handlers.set(name, f), trigger: (name, ...a) => handlers.get(name)?.({}, ...a)};
+    window.current = null;
+    window.playbackManager = {play: options => { log.plays.push(options); return Promise.resolve(); },
+        getCurrentPlayer: () => window.current ? {} : null, isPlaying: () => Boolean(window.current),
+        currentItem: () => window.current, currentMediaSource: () => ({Id: 'src-' + window.current?.Id})};
+    const snapshot = {roomId: '7e47169f-0801-48bf-9d0a-b113488376ad', code: '7KQ2MZ', capacity: 4, ownerMemberId: 'm1', pendingChange: null,
+        media: {itemId: 'ep2', mediaSourceId: 'src-ep2', type: 'Episode', title: '第 2 集', seriesName: '兽王武神', seasonNumber: 1, episodeNumber: 2, runTimeMs: 1440000},
+        playback: {revision: 1, state: 'paused', positionMs: 0, serverTime: 1000, rate: 1, waiting: null, lastAction: {type: 'create', memberId: 'm1'}},
+        members: [{memberId: 'm1', authorId: 'a1', name: '大河', avatarPath: null, role: 'owner', platform: 'Windows', connection: 'online', status: 'away', lagging: false}]};
+    window.snapshot = snapshot;
+    const reply = (status, body) => new Response(JSON.stringify(body), {status, headers: {'Content-Type': 'application/json'}});
+    window.fetch = async (url, options) => {
+        const call = {url, method: options.method, body: options.body ? JSON.parse(options.body) : null, token: options.headers['X-Emby-Token']};
+        log.fetch.push(call);
+        const p = new URL(url).pathname.replace('/watch/v1', '');
+        if (p === '/health') return reply(200, {data: {status: 'ok', enabled: true, protocol: 1}});
+        if (p === '/me') return reply(200, {data: {author: {id: 'a1', name: '大河'}, capacity: 20, activeRoom: null, features: ['sync']}});
+        if (p === '/rooms/join') return reply(404, {error: {code: 'ROOM_NOT_FOUND', message: 'ROOM_NOT_FOUND'}});
+        if (p === '/rooms') return reply(201, {data: {room: snapshot, ticket: 'ticket-1', ticketExpiresAt: '2099-01-01T00:00:00Z', replayed: false}});
+        if (p.endsWith('/leave')) return reply(200, {data: {left: true}});
+        return reply(404, {error: {code: 'NOT_FOUND', message: 'NOT_FOUND'}});
+    };
+    window.sockets = [];
+    window.WebSocket = class { constructor(url) { this.url = url; this.readyState = 0; sockets.push(this); setTimeout(() => { this.readyState = 1; this.onopen?.(); }, 0); }
+        send(text) { log.sent.push(JSON.parse(text)); } close() { this.readyState = 3; }
+        deliver(data) { this.onmessage?.({data: JSON.stringify(data)}); } };
+    // Server timeline = page clock + 1e6.
+    window.serve = () => {
+        const socket = sockets.at(-1);
+        for (const message of log.sent.splice(0)) {
+            if (message.type === 'ping') socket.deliver({type: 'pong', id: message.id, t0: message.t0, serverReceive: message.t0 + 1e6, serverSend: message.t0 + 1e6});
+            else serverLog.push(message);
+        }
+    };
+    window.serverPump = setInterval(serve, 20);
+    window.plugin = new _watchTogetherPlugin({connectionManager: {currentApiClient: () => emby}, events, playbackManager, appRouter: {}});
+})()`;
+
+withBrowser(routes, async ({evaluate}) => {
+    const wait = async (expression, label = expression) => {
+        for (let i = 0; i < 100; i++) { if (await evaluate(expression)) return; await new Promise(r => setTimeout(r, 50)); }
+        throw Error('Timed out: ' + label + ' | page: ' + await evaluate(`(document.querySelector('#tigerest-watch')?.textContent || '').slice(0, 300) + ' | ' + JSON.stringify(log.fetch.map(c => c.method + ' ' + c.url)).slice(-400) + ' | errors: ' + log.errors.join(' // ').slice(0, 1200)`));
+    };
+    const click = text => evaluate(`Array.from(document.querySelectorAll('#tigerest-watch button')).find(b => b.textContent === ${JSON.stringify(text)}).click()`);
+    await evaluate(fixture);
+    await wait(`!!document.querySelector('#tigerest-watch-entry')`);
+    assert.equal(await evaluate(`document.querySelector('#tigerest-watch-entry').nextElementSibling.id`), 'tigerest-message-entry', 'entry sits left of 消息');
+    assert.equal(await evaluate(`log.fetch[0].url`), 'http://192.168.5.150:18443/watch/v1/health');
+
+    await evaluate(`document.querySelector('#tigerest-watch-entry').click()`);
+    await wait(`!!document.querySelector('#tigerest-watch[open]')`);
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch').textContent`), /选择影片并创建[\s\S]*加入房间/);
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch').textContent`), /最多 20 人/, 'capacity comes from /me');
+    await evaluate(`{ const input = document.querySelector('.tw-code-input'); input.value = 'abc'; input.dispatchEvent(new Event('input')); input.form.requestSubmit(); }`);
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch .tw-status').textContent`), /6 位/);
+    await evaluate(`{ const input = document.querySelector('.tw-code-input'); input.value = '7kq2mz'; input.dispatchEvent(new Event('input')); input.form.requestSubmit(); }`);
+    await wait(`document.querySelector('#tigerest-watch .tw-status').textContent.includes('房间码无效')`);
+    assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(log.fetch.find(c => c.url.endsWith('/rooms/join')).body)`)).code, '7KQ2MZ');
+
+    // Opened from an episode page, the picker lists that season with the episode chosen.
+    await evaluate(`history.replaceState(null, '', '#!/item?id=ep2&serverId=x'); document.querySelector('.tw-primary').click()`);
+    await wait(`!!Array.from(document.querySelectorAll('#tigerest-watch button')).find(b => b.textContent === '创建房间')`);
+    assert.equal(await evaluate(`document.querySelector('.tw-pick[aria-pressed=true]').textContent`), '第2集 · 第 2 集');
+    await click('创建房间');
+    await wait(`!!document.querySelector('#tigerest-watch .tw-code')`, 'room view');
+    const create = JSON.parse(await evaluate(`JSON.stringify(log.fetch.find(c => c.url.endsWith('/rooms') && c.method === 'POST'))`));
+    assert.deepEqual({...create.body, clientRequestId: 'x', clientId: 'x'}, {itemId: 'ep2', mediaSourceId: 'src-ep2', positionMs: 0, clientRequestId: 'x', clientId: 'x', leaveCurrent: false});
+    assert.equal(create.token, 'fixture-token');
+    await wait(`sockets.length === 1 && serverLog.some(m => m.type === 'hello')`);
+    const hello = JSON.parse(await evaluate(`JSON.stringify(serverLog.find(m => m.type === 'hello'))`));
+    assert.deepEqual({...hello, clientId: 'x'}, {type: 'hello', protocol: 1, ticket: 'ticket-1', clientId: 'x', platform: 'Windows', appVersion: version, capabilities: ['sync']});
+    assert.equal(hello.clientId, create.body.clientId, 'the same client id binds ticket and hello');
+    assert.equal(await evaluate(`sockets[0].url`), 'ws://192.168.5.150:18443/watch/v1/socket');
+    await evaluate(`sockets[0].deliver({type: 'welcome', memberId: 'm1', serverTime: 1000, room: snapshot, features: ['sync'], heartbeatSeconds: 5})`);
+    await wait(`serverLog.some(m => m.type === 'status' && m.state === 'paused')`, 'room page reports paused');
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch').textContent`), /7KQ2MZ[\s\S]*兽王武神 第1季 第2集 · 第 2 集[\s\S]*开始放映/);
+
+    await evaluate(`sockets[0].deliver({type: 'members', ownerMemberId: 'm1', members: [...snapshot.members, {memberId: 'm2', authorId: 'a2', name: '朋友', avatarPath: null, role: 'member', platform: 'Android', connection: 'online', status: 'paused', lagging: false}]})`);
+    await wait(`document.querySelector('#tigerest-watch').textContent.includes('朋友')`);
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch-entry').textContent`), /一起看 · 2人/);
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch .tw-status').textContent`), /朋友 加入了房间/);
+
+    await click('开始放映');
+    await wait(`serverLog.some(m => m.type === 'changeItem')`);
+    const change = JSON.parse(await evaluate(`JSON.stringify(serverLog.find(m => m.type === 'changeItem'))`));
+    assert.deepEqual({...change, requestId: 'x'}, {type: 'changeItem', requestId: 'x', itemId: 'ep2', mediaSourceId: 'src-ep2', positionMs: 0, baseRevision: 1});
+    await evaluate(`{ const s = sockets[0], now = performance.now() + 1e6;
+        s.deliver({type: 'itemChange', phase: 'pending', changeId: 'c1', memberId: 'm1'});
+        s.deliver({type: 'state', revision: 2, media: snapshot.media, playback: {revision: 2, state: 'waiting', positionMs: 0, serverTime: now, rate: 1,
+            waiting: {memberIds: ['m1', 'm2'], deadline: now + 15000, resumeTo: 'playing'}, lastAction: {type: 'changeItem', memberId: 'm1'}}});
+        s.deliver({type: 'itemChange', phase: 'committed', changeId: 'c1', memberId: 'm1', revision: 2});
+        s.deliver({type: 'ack', requestId: ${JSON.stringify(change.requestId)}, revision: 2}); }`);
+    await wait(`log.plays.length === 1`, 'members on the page enter the player');
+    assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(log.plays[0])`)), {ids: ['ep2'], serverId: '62526c3bf747439c99327ddec5fed4a8',
+        mediaSourceId: 'src-ep2', startPositionTicks: 0, fullscreen: true});
+    assert.equal(await evaluate(`!!document.querySelector('#tigerest-watch')`), false, 'the room page closes for the player');
+    await wait(`serverLog.some(m => m.type === 'status' && m.state === 'loading' && m.revision === 2)`);
+
+    // The player starts the item; the room is waiting, so it holds at the position and reports ready.
+    await evaluate(`current = {Id: 'ep2', Type: 'Episode'}; events.trigger('playbackstart', {}); api.player.playing.emit(); api.player.positionUpdate.emit(0)`);
+    await wait(`log.player.includes('pause:')`, 'waiting room pauses the player');
+    await evaluate(`api.player.paused.emit(); api.player.positionUpdate.emit(0)`);
+    await wait(`serverLog.some(m => m.type === 'status' && m.state === 'ready' && m.revision === 2)`, 'ready report');
+    assert.equal(await evaluate(`serverLog.filter(m => ['pause', 'play', 'seek'].includes(m.type)).length`), 0, 'following the room sends no commands');
+
+    await evaluate(`sockets[0].deliver({type: 'state', revision: 3, media: snapshot.media, playback: {revision: 3, state: 'playing', positionMs: 0,
+        serverTime: performance.now() + 1e6 + 400, rate: 1, waiting: null, lastAction: {type: 'resume', memberId: null}}})`);
+    await wait(`log.player.includes('play:')`, 'scheduled start');
+    await evaluate(`api.player.playing.emit()`);
+    await new Promise(r => setTimeout(r, 2600));
+    await evaluate(`sockets[0].deliver({type: 'state', revision: 4, media: snapshot.media, playback: {revision: 4, state: 'paused', positionMs: 1200,
+        serverTime: performance.now() + 1e6, rate: 1, waiting: null, lastAction: {type: 'pause', memberId: 'm2'}}})`);
+    await wait(`log.player.filter(x => x === 'pause:').length >= 2`, 'remote pause pauses the player');
+    await evaluate(`api.player.paused.emit()`);
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(await evaluate(`serverLog.filter(m => ['pause', 'play', 'seek'].includes(m.type)).length`), 0, 'no echo of remote actions');
+    assert.ok(await evaluate(`log.player.some(x => x.startsWith('userCommand:show-text') && x.includes('朋友 暂停了'))`), 'in-player notice uses the mpv OSD');
+
+    await evaluate(`api.player.playing.emit()`);
+    await wait(`serverLog.some(m => m.type === 'play')`, 'a local play becomes a room command');
+
+    await evaluate(`current = null; events.trigger('playbackstop')`);
+    await wait(`serverLog.some(m => m.type === 'status' && m.state === 'away')`);
+    await evaluate(`plugin.open()`);
+    await wait(`!!document.querySelector('#tigerest-watch .tw-danger')`);
+    await click('离开房间');
+    await wait(`log.fetch.some(c => c.url.endsWith('/leave'))`);
+    assert.match(await evaluate(`document.querySelector('#tigerest-watch').textContent`), /选择影片并创建/);
+    assert.equal(await evaluate(`JSON.stringify(log.fetch).includes('fixture-token') && !JSON.stringify(serverLog).includes('fixture-token')`), true, 'the token never enters the socket');
+    console.log('watch-together room page, start-together, follow and leave passed');
+}).catch(error => { console.error(error); process.exitCode = 1; });

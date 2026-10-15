@@ -1480,7 +1480,7 @@ function installHeaderControlsStyle() {
     const style = document.createElement('style'); style.id = 'tigerest-header-controls-style';
     style.textContent = `
         .headerRight { gap: 6px; align-items: center; }
-        .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode {
+        .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-watch-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode {
             box-sizing: border-box; width: 36px; min-width: 36px; height: 36px; min-height: 36px;
             flex: 0 0 auto; margin: 0; padding: 0; border: 1px solid rgba(230,222,205,.18);
             border-radius: 10px; background: rgba(24,27,33,.78); color: #e9e6df;
@@ -1488,17 +1488,17 @@ function installHeaderControlsStyle() {
             font: 600 12px/1 system-ui,sans-serif; vertical-align: middle; cursor: pointer;
             transition: background .16s,border-color .16s,color .16s;
         }
-        .headerRight .headerButton:hover, .headerRight #tigerest-message-entry:hover, .headerRight #tigerest-update-button:hover, .tg-home .tg-home-window-mode:hover {
+        .headerRight .headerButton:hover, .headerRight #tigerest-message-entry:hover, .headerRight #tigerest-watch-entry:hover, .headerRight #tigerest-update-button:hover, .tg-home .tg-home-window-mode:hover {
             background: rgba(60,54,43,.9); border-color: rgba(239,195,110,.6); color: #f5d493;
         }
-        .headerRight .headerButton:focus-visible, .headerRight #tigerest-message-entry:focus-visible, .headerRight #tigerest-update-button:focus-visible, .tg-home .tg-home-window-mode:focus-visible {
+        .headerRight .headerButton:focus-visible, .headerRight #tigerest-message-entry:focus-visible, .headerRight #tigerest-watch-entry:focus-visible, .headerRight #tigerest-update-button:focus-visible, .tg-home .tg-home-window-mode:focus-visible {
             outline: 2px solid #efc36e; outline-offset: 2px; border-color: #efc36e;
         }
         .headerRight .headerButton.md-icon, .headerRight .headerButton .md-icon { font-size: 20px; }
         .headerRight #tigerest-update-button svg { width: 20px; height: 20px; }
         .headerRight .headerUserButton { overflow: hidden; }
         .headerRight .headerUserButton img { object-fit: cover; border-radius: 8px; }
-        .headerRight #tigerest-message-entry { width: auto; padding: 0 10px; white-space: nowrap; }
+        .headerRight #tigerest-message-entry, .headerRight #tigerest-watch-entry { width: auto; padding: 0 10px; white-space: nowrap; }
         .headerRight #tigerest-mpv-settings-button { width: 46px; color: #efc36e; border-color: rgba(239,195,110,.38); background: rgba(82,63,30,.28); font-weight: 800; letter-spacing: .04em; }
         #tigerest-window-mode-button, .tg-home .tg-home-window-mode { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
         #tigerest-window-mode-button .tigerest-window-label { display: none; }
@@ -1507,7 +1507,7 @@ function installHeaderControlsStyle() {
         .tigerest-window-icon { flex: 0 0 auto; }
         #tigerest-window-mode-button:disabled, .tg-home .tg-home-window-mode:disabled { cursor: wait; opacity: .6; }
         @media(max-width:600px) { .headerRight { flex-wrap: wrap; gap: 4px; } }
-        @media(pointer:coarse) { .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode { min-height: 44px; min-width: 44px; } }
+        @media(pointer:coarse) { .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-watch-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode { min-height: 44px; min-width: 44px; } }
     `;
     document.head.appendChild(style);
 }
