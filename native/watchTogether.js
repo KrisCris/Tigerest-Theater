@@ -144,7 +144,7 @@
         #tigerest-watch .tw-tag{font-size:12px;padding:2px 7px;border-radius:999px;background:#2b3c53;color:#c9d6e6;margin-left:6px;font-weight:400}
         #tigerest-watch .tw-tag-owner{background:#5a4520;color:#f5d493}#tigerest-watch .tw-offline{opacity:.55}
         #tigerest-watch .tw-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:10px 0}
-        #tigerest-watch .tw-pick{display:flex;flex-direction:column;gap:6px;text-align:start;padding:8px;background:#1d293b;border:1px solid #33435a;border-radius:10px;color:inherit;font:inherit;font-size:13px;cursor:pointer}
+        #tigerest-watch .tw-pick{display:flex;flex-direction:column;align-items:stretch;min-width:0;gap:6px;text-align:start;padding:8px;background:#1d293b;border:1px solid #33435a;border-radius:10px;color:inherit;font:inherit;font-size:13px;cursor:pointer}
         #tigerest-watch .tw-pick:hover,#tigerest-watch .tw-pick[aria-pressed=true]{border-color:#efc36e;background:#2a2f3a}
         #tigerest-watch .tw-pick-art{display:block;position:relative;aspect-ratio:16/9;border-radius:6px;background:#0f1622;overflow:hidden}
         #tigerest-watch .tw-pick.tw-poster .tw-pick-art{aspect-ratio:2/3}
@@ -957,6 +957,8 @@
             element.appendChild(art);
             if (shape === 'wide') {
                 const [main, detail] = itemLines(item), lines = node('span', null, 'tw-pick-lines');
+                // Long names are cut at the card edge; the tooltip has them whole.
+                element.title = [main, detail].filter(Boolean).join(' ');
                 lines.appendChild(node('span', main, 'tw-pick-main'));
                 if (detail) lines.appendChild(node('span', detail, 'tw-pick-sub'));
                 element.appendChild(lines);

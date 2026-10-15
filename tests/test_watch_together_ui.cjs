@@ -36,7 +36,8 @@ const fixture = `(() => {
         getSeasons: async () => ({Items: [{Id: 'season1', Name: '第 1 季', IndexNumber: 1}]}),
         getEpisodes: async () => ({Items: episodes}), getItems: async () => ({Items: []}),
         getResumableItems: async () => ({Items: [{...episodes[2], UserData: {PlaybackPositionTicks: 6000000000, PlayedPercentage: 40}}, {Id: 'tv1', Type: 'TvChannel', Name: '频道'}]}),
-        getLatestItems: async () => [{Id: 'series', Type: 'Series', Name: '兽王武神', ProductionYear: 2024, ImageTags: {Primary: 'p1', Thumb: 't1'}}]};
+        getLatestItems: async () => [{Id: 'series', Type: 'Series', Name: '兽王武神', ProductionYear: 2024, ImageTags: {Primary: 'p1', Thumb: 't1'}},
+            {Id: 'long', Type: 'Movie', Name: '「凭你也想讨伐魔王？」被勇者小队逐出队伍，只好在王都自在过活', ProductionYear: 2026}]};
     const handlers = new Map();
     window.events = {on: (target, name, f) => handlers.set(name, f), trigger: (name, ...a) => handlers.get(name)?.({}, ...a)};
     window.current = null;
@@ -103,7 +104,13 @@ withBrowser(routes, async ({evaluate}) => {
     const shelves = `Array.from(document.querySelectorAll('#tigerest-watch .tw-shelf:not([hidden])'))`;
     assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(${shelves}.map(s => s.querySelector('h3').textContent))`)), ['当前页面', '继续观看', '最近添加']);
     assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(${shelves}.map(s => Array.from(s.querySelectorAll('.tw-pick'), p => p.textContent)))`)),
-        [['兽王武神第1季 第2集'], ['兽王武神第1季 第3集'], ['兽王武神2024']], 'full titles; channels are left out');
+        [['兽王武神第1季 第2集'], ['兽王武神第1季 第3集'], ['兽王武神2024', '「凭你也想讨伐魔王？」被勇者小队逐出队伍，只好在王都自在过活2026']], 'full titles; channels are left out');
+    // Buttons default to align-items:flex-start; long titles must still stop at the card edge.
+    assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(Array.from(document.querySelectorAll('#tigerest-watch .tw-strip .tw-pick'), p => {
+        const card = p.getBoundingClientRect(), text = p.querySelector('.tw-pick-lines').getBoundingClientRect();
+        return text.left >= card.left && text.right <= card.right; }))`)), [true, true, true, true], 'titles stay inside their cards');
+    assert.ok(await evaluate(`(e => e.scrollWidth > e.clientWidth)(document.querySelectorAll('#tigerest-watch .tw-pick-main')[3])`), 'a long title is cut with an ellipsis');
+    assert.equal(await evaluate(`document.querySelectorAll('#tigerest-watch .tw-strip .tw-pick')[3].title`), '「凭你也想讨伐魔王？」被勇者小队逐出队伍，只好在王都自在过活 2026', 'and shown whole on hover');
     assert.equal(await evaluate(`${shelves}[1].querySelector('.tw-progress span').style.width`), '40%');
     assert.match(await evaluate(`${shelves}[2].querySelector('img').src`), /#series\/Thumb$/, 'rows use 16:9 images');
     assert.equal(await evaluate(`document.querySelector('#tigerest-watch .tw-status').textContent`), '');
