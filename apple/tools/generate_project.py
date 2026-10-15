@@ -42,6 +42,8 @@ def generate():
         packages.append(mpv);libs.append(obj('mpvlib','XCSwiftPackageProductDependency',productName='MPVKit',package=mpv))
     native_rife=(ROOT/'Generated/NativeRIFE/source.json').exists()
     resources=[resource]
+    ref=file('Resources/iPad.xcassets','folder.assetcatalog');files.append(ref)
+    resources.append(obj('ipad-icons-resource','PBXBuildFile',fileRef=ref))
     if native_rife:
         native_sources=[*sorted((ROOT/'NativeRIFE').glob('*.c')),*sorted((ROOT/'NativeRIFE').glob('*.mm')),ROOT/'Generated/NativeRIFE/user_filters.c',*[ROOT.parent/'src/player/interpolation'/f'{name}.mm' for name in ['RifeEngine','RifeMetalWarp','RifeCoarseMetal']]]
         for path in native_sources:
@@ -53,7 +55,7 @@ def generate():
     if native_rife:
         include=['$(inherited)','$(SRCROOT)/Generated/NativeRIFE','$(SRCROOT)/Generated/NativeRIFE/mpv','$(SRCROOT)/Generated/NativeRIFE/mpv/filters','$(SRCROOT)/NativeRIFE','$(SRCROOT)/../src/player/interpolation']
         settings.update({'HEADER_SEARCH_PATHS':include,'HEADER_SEARCH_PATHS[sdk=iphoneos*]':include+['$(SRCROOT)/Generated/NativeRIFE/device'],'HEADER_SEARCH_PATHS[sdk=iphonesimulator*]':include+['$(SRCROOT)/Generated/NativeRIFE/simulator'],'CLANG_CXX_LANGUAGE_STANDARD':'c++17','CLANG_ENABLE_OBJC_ARC':'YES','GCC_C_LANGUAGE_STANDARD':'gnu11','OTHER_LDFLAGS':'$(inherited) -framework CoreML -framework Metal','SWIFT_ACTIVE_COMPILATION_CONDITIONS':'$(inherited) RIFE_NATIVE'})
-    target=obj('app' ,'PBXNativeTarget',name='TigerestTheater',productName='TigerestTheater',productReference=product,productType='com.apple.product-type.application',buildConfigurationList=configurations('app',settings),buildPhases=phases,buildRules=[],dependencies=[],packageProductDependencies=libs)
+    target=obj('app' ,'PBXNativeTarget',name='TigerestTheater',productName='TigerestTheater',productReference=product,productType='com.apple.product-type.application',buildConfigurationList=configurations('app',{**settings,'ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon'}),buildPhases=phases,buildRules=[],dependencies=[],packageProductDependencies=libs)
     testFiles=[]
     for path in sorted((ROOT/'UITests').glob('*.swift')):
         relative=str(path.relative_to(ROOT));ref=file(relative,'sourcecode.swift');files.append(ref);testFiles.append(obj(relative+'build','PBXBuildFile',fileRef=ref))
