@@ -555,6 +555,8 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_rife_windows_settings.js)
   add_test(NAME test_native_settings_registration
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_native_settings_registration.js)
+  add_test(NAME test_emby_apphost
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_emby_apphost.js)
   add_test(NAME test_server_onboarding
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_server_onboarding.js
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_server_seed.js)

@@ -105,6 +105,10 @@
             deviceId: getDeviceId,
             deviceIconUrl() { return null; },
             getPushTokenInfo() { return {}; },
+            // Emby 4.8 reports capabilities on every connection with
+            // getSyncProfile().then(...); later versions ask only apps that
+            // support sync.
+            getSyncProfile() { return Promise.resolve(nativeHost.getSyncProfile ? nativeHost.getSyncProfile() : null); },
             downloadFile(downloadInfo) { return window.NativeShell.downloadFile(downloadInfo); },
             openUrl(url, target) { return window.NativeShell.openUrl(url, target); },
             openClientSettings() { return window.NativeShell.openClientSettings(); },
