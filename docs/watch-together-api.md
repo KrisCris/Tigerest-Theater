@@ -1,8 +1,14 @@
-# 一起看服务端 API（v1）
+# 一起看服务端 API（v1，实际实现）
 
-状态：2026-10-15 客户端提出的后端契约，尚未实现。供后端在评论／弹幕服务（HTTP 18443，独立私有仓库）中实现，客户端按本文对接。任何一方需要改动协议时，先更新本文再改代码。
+状态：**2026-10-15 21:37（Asia/Shanghai）已部署到 NAS，并完成线上接口验证；21:39 独立复核通过。** 本文描述当前已上线的实际接口。协议版本为 `protocol: 1`，路径为 `/watch/v1`。客户端先检查 `/health`，只有 HTTP 200 且 `data.enabled === true` 才启用入口。正式客户端多设备播放效果和另一公网的独立网络联调仍待完成，不能把后端接口验证当作播放器验收。
+
+本文是前后端对接主文档，包含认证、完整字段、REST 示例、WebSocket 消息、并发规则、限额及错误处理。原第三版提案另存 `watch-together-api-v3-proposal.md`，以本文的实际实现说明为准。本文不包含登录凭据，也不要求修改客户端的视频拉流与 Emby 进度回报通道。
 
 **修订记录**
+
+- 2026-10-15 21:37 上线版：92 文件版本已安装，SYSTEM 开机任务运行正常，原配置逐字节保持。线上真实 Emby 会话验证普通4人/管理员20人、创建幂等、原子换房、WS心跳与播放控制、等待/恢复、切集、旧版本拒绝、连接替换及踢人禁入；测试房间已释放。局域网和公网域名的健康检查及 WebSocket Upgrade 从 NAS 发起验证通过。
+
+- 2026-10-15 实现版：保留第三版协议，补齐实际参数校验、错误响应、关闭码、请求取消与关停规则。明确：成功 hello 后作废该成员其他未用票据；较早的创建/加入不能覆盖较新的入房/离开；票据满额等失败不能先离开旧房间；异步会话核验不阻塞播放及连接计时。具体行为和示例以下文为准。
 
 - 2026-10-15 第 1 版：初稿。
 - 2026-10-15 第 2 版：按后端评审补齐五处边界，接口路径和消息格式的其余部分不变。
@@ -31,18 +37,20 @@
 
 - 大河专属 Emby（ServerId `62526c3bf747439c99327ddec5fed4a8`）的登录用户可以创建房间，用房间码邀请其他大河用户，以相同的进度观看同一部电影或同一集。
 - **房间内所有成员都能控制**：播放、暂停、拖动进度、切换剧集，不区分房主和成员的控制权。房主只多出踢人和解散房间。
-- **人数上限（含创建者）：** 普通用户创建的房间最多 4 人；创建者是大河 Emby 管理员（目前即 Tigerest 账号）时最多 20 人。
+- **人数上限（默认值，含创建者）：** 普通用户创建的房间最多 4 人；创建者是大河 Emby 管理员（由当前会话读到的 Policy 判定）时最多 20 人。
 - 第一版不做：房间聊天、语音、消息中心邀请、公开房间列表、自建 Emby 用户加入。协议为聊天和语音预留了扩展位置（见「扩展预留」），第一版实现时不要占用这些消息类型。
 
 服务端是房间状态的唯一来源：保存房间的媒体、播放状态和时间锚点，按到达顺序处理成员的操作并广播。服务端不转发、不代理视频流；每个成员仍各自从 Emby 拉流，各自向 Emby 回报观看进度。
 
 ## 部署与地址
 
+以下地址已在本次部署后验证：局域网与公网域名的 `/health` 均返回 HTTP 200、`enabled:true`、`protocol:1`，WebSocket Upgrade 均能建立连接并拒绝无效票据。公网域名检查由 NAS 发起；另一外部网络尚未独立实测。部署沿用原端口、配置和 SYSTEM 开机任务，没有修改防火墙规则。
+
 - 与评论、弹幕在同一进程和端口。局域网 `http://192.168.5.150:18443/watch/v1`，外网 `http://nas.tigerest.top:18443/watch/v1`。客户端按评论服务的同一规则选择主机：Emby 地址主机为 `192.168.5.150` 时用局域网地址，否则用 `nas.tigerest.top`。
 - 实时通道：`ws://<同一主机>:18443/watch/v1/socket`。如果 18443 前面有反向代理或端口转发设备，需要放行 WebSocket Upgrade，空闲超时不低于 60 秒。
 - 房间状态只保存在内存，不写数据库。服务重启后所有房间结束；客户端重连时申请票据得到 404 `ROOM_ENDED`，提示「房间已结束」。
 
-私有配置建议（名称可按现有配置风格调整，默认值以本文为准）：
+私有配置名称和默认值已经固定。`watch.enabled` 默认 true，但还必须有成功初始化的现有 `community` 可信 Emby 身份服务；关闭社区身份服务、身份库不可用或 watch 配置不合法时一起看不会开放。配置改变后需重启，已有房间随之结束。
 
 | 配置 | 默认 | 含义 |
 |---|---|---|
@@ -54,6 +62,8 @@
 | `watch.emptyRoomSeconds` | 300 | 所有成员都断线后房间保留的时间 |
 | `watch.waitTimeoutSeconds` | 15 | 等待成员就绪的最长时间 |
 | `watch.maxRoomHours` | 24 | 房间最长存在时间 |
+
+数值配置都要求整数：两种人数 1–20、房间数 1–50、座位秒数 1–600、休眠秒数 1–3600、等待秒数 1–60、最长小时数 1–24。不要在 `watch` 中加入未定义的配置键。
 
 ## 认证与身份
 
@@ -90,11 +100,13 @@ X-Emby-User-Id: <登录响应的 User.Id>
 
 票据不写入任何日志。
 
+**连接替换边界：** 成功 hello 后，服务端同时作废该成员此前签发的其他未使用票据，防止旧设备用迟到票据抢回连接。之后新申请的票据仍可替换连接。不要同时启动多个自动重连任务；4409 后停止自动重连。错误 clientId 会消耗所提交的票据；失败后必须重新申请。
+
 ### 会话复核
 
-成员在线期间，服务端在进程内存中保留该成员签发票据时使用的 Emby Token：不落盘、不写日志，成员离开房间或座位过期时立即丢弃。用途只有两个：
+成员存在期间（含保留座位），服务端在进程内存中保留 REST 验证及成功 hello 使用的 Emby Token：不落盘、不写日志，成员离开房间或座位过期时立即丢弃。用途只有两个：
 
-- 每 10 分钟复核一次会话仍然有效（可复用现有 30 秒身份缓存）。失效时发送 `closed {reason:"auth_expired"}` 并以 4401 关闭，成员移出房间。
+- 每 10 分钟强制重新核验一次会话；周期复核不复用 30 秒读缓存。失效时发送 `closed {reason:"auth_expired"}` 并以 4401 关闭，成员移出房间。Emby 暂时不可用不等同于会话失效，约 30 秒后再试；单次核验有 5 秒期限，期间其他房间与连接计时照常执行。
 - 切换媒体时，用每个成员自己的会话核对能否访问新条目（见 `changeItem`）。
 
 ## 房间快照
@@ -166,6 +178,10 @@ X-Emby-User-Id: <登录响应的 User.Id>
 
 以下路径均相对于 `/watch/v1`。POST 使用 JSON，请求体最多 16 KiB。返回格式与评论服务相同：成功 `{ "data": ..., "requestId": "..." }`，失败 `{ "error": { "code": "...", "message": "..." }, "requestId": "..." }`。
 
+认证头适用于除 `/health` 和 CORS `OPTIONS` 外的所有 REST 接口。响应使用 `application/json; charset=utf-8` 和 `Cache-Control: no-store`。POST 有正文时要求 `Content-Type: application/json`，仅接受未压缩正文；空正文只适用于 `/leave`。字段类型严格校验，额外字段、数组正文、query 参数或编码变形路径均不接受。HTTP 方法不匹配返回 405。
+
+服务端为每次 REST 请求生成 `requestId`；它与创建请求里的 `clientRequestId` 不同。超过同时在途 HTTP 数量的入口拒绝只返回 `error`，可能没有 `requestId`。错误 `message` 当前与 `code` 相同，客户端自行提供中文提示，不解析 message 文本。
+
 | 方法、路径 | 请求 | 返回 data |
 |---|---|---|
 | GET `/health` | 无认证 | `{status, enabled, protocol: 1}`，可用 200，否则 503 |
@@ -176,7 +192,7 @@ X-Emby-User-Id: <登录响应的 User.Id>
 | POST `/rooms/{roomId}/leave` | 无请求体 | `{left: true}`，幂等 |
 | GET `/rooms/{roomId}` | 认证 | `{room}` |
 
-- **GET /me：** `capacity` 是该用户现在创建房间时的人数上限（4 或 20）。`activeRoom` 为 `{roomId, code, title}` 或 null，客户端据此在启动后恢复房间。`features` 第一版为 `["sync"]`。
+- **GET /me：** `author` 为 `{id, name, avatarPath}`，其中 `author.id` 映射到成员的 `authorId`，不能当成 Emby UserId。`capacity` 是该用户现在创建房间时的人数上限（默认 4 或 20）。`activeRoom` 为 `{roomId, code, title}` 或 null，客户端据此在启动后恢复房间。`features` 第一版为 `["sync"]`。
 - **POST /rooms：**
   - 条目类型只接受 `Movie` 和 `Episode`，其他返回 422 `ITEM_TYPE_UNSUPPORTED`。
   - 用创建者自己的会话确认能访问该条目，`mediaSourceId` 属于该条目，`positionMs` 在 0 到时长之间。
@@ -200,6 +216,8 @@ X-Emby-User-Id: <登录响应的 User.Id>
 
   任何一项失败都不占用座位；带 `leaveCurrent` 时也不离开旧房间。
 
+  还会核对该用户的成员身份在异步验权期间是否已被其他请求改变。如果较早的加入尚未完成，用户已经通过另一请求加入、离开或切房，较早请求返回 `ROOM_CHANGED`，不会重新占座或覆盖较新的选择。创建也受此约束；未允许换房且已在房间时仍可能返回 `ALREADY_IN_ROOM`。HTTP 取消或超时的验权结果不会在后台继续提交成员迁移。
+
   全部通过后占用座位。成员在 `members` 广播中出现，`connection` 为 `reconnecting`，直到 WebSocket 的 hello 完成。票据过期而未连接时，按「断线与座位」规则处理。
 
   反方向的竞态由 `changeItem` 负责：加入先完成、切换后提交时，切换在提交前发现成员集合多了未核对的新成员，会放弃切换（见 `changeItem` 第 4 步）。
@@ -210,6 +228,74 @@ X-Emby-User-Id: <登录响应的 User.Id>
 - **POST /rooms/{roomId}/tickets：** 只有本房间的成员（包括保留座位中的断线成员）可以申请，用于重连，不做满员检查。房间已结束返回 404 `ROOM_ENDED`；不是成员（包括座位已过期被移出）返回 404 `NOT_FOUND`，不透露房间是否存在。
 - **POST /rooms/{roomId}/leave：** 移出成员并释放座位；该用户若仍有连接，收到 `closed {reason:"left"}` 并以 1000 关闭。房主转移规则见「断线与座位」。最后一个成员（不论其他人是否在线）主动离开后，房间里没有成员了，立即结束。
 - **GET /rooms/{roomId}：** 只有成员可读，否则 404 `NOT_FOUND`。
+
+### REST 字段与可直接照抄的请求形状
+
+| 字段 | 类型和校验 |
+|---|---|
+| `itemId` / `mediaSourceId` | 非空字符串，最长 128 字符，不含控制字符；ID 不由后端推断 |
+| `clientId` | 必填 UUID，每个应用配置持久化；必须与 hello 相同 |
+| `clientRequestId` | 创建必填 UUID，单次创建意图的幂等键；失败重试沿用，用户主动新建使用新值 |
+| `positionMs` | 毫秒数，可以是小数，必须有限；创建省略为 0，范围 0..时长，越界 400；WS 控制则截断到有效范围 |
+| `leaveCurrent` | 可选布尔值，默认 false，不接受字符串 `"true"` |
+| `code` | 非空字符串，最长 32 字符，去首尾空格、忽略大小写后匹配 6 位房间码 |
+| `roomId` | 路径 UUID，来自快照，不是房间码 |
+
+创建：`POST /watch/v1/rooms`
+
+```json
+{
+  "itemId": "12345",
+  "mediaSourceId": "source-id-from-emby",
+  "positionMs": 0,
+  "clientRequestId": "8188c854-4c72-42e9-859b-6f9675ae7c6d",
+  "clientId": "13f7e2be-ebcc-4016-b47f-063d45e3200d",
+  "leaveCurrent": false
+}
+```
+
+首次响应 HTTP 201；下面的 `room` 代表本节之前给出的完整快照，示例票据不可用：
+
+```json
+{
+  "data": {
+    "room": {"roomId":"7e47169f-0801-48bf-9d0a-b113488376ad","code":"7KQ2MZ"},
+    "ticket": "opaque-single-use-ticket",
+    "ticketExpiresAt": "2026-10-15T13:00:30.000Z",
+    "replayed": false
+  },
+  "requestId": "44f7b6d0-76ee-4edc-8570-7bf52a7a5e8d"
+}
+```
+
+同一 `clientRequestId` 的重复请求会计入创建限流；10 分钟内比较 `itemId`、`mediaSourceId`、位置（默认 0）、`clientId` 和 `leaveCurrent`（默认 false），改变其中任一值返回 `IDEMPOTENCY_CONFLICT`。重试不会替你重新加入已经离开的房间：房间结束返回 `ROOM_ENDED`，已不是成员返回 `NOT_FOUND`。
+
+加入：`POST /watch/v1/rooms/join`，成功 HTTP 200，`data` 含 `room`、`ticket`、`ticketExpiresAt`：
+
+```json
+{"code":"7KQ2MZ","clientId":"13f7e2be-ebcc-4016-b47f-063d45e3200d","leaveCurrent":false}
+```
+
+取新票据：`POST /watch/v1/rooms/7e47169f-0801-48bf-9d0a-b113488376ad/tickets`：
+
+```json
+{"clientId":"13f7e2be-ebcc-4016-b47f-063d45e3200d"}
+```
+
+主动离开同路径下的 `/leave`：POST 无正文或 `{}`，成功 HTTP 200，`data={"left":true}`。不在该房间也成功；不会因传入别人的房间 UUID 移出其成员。恢复页面时先 GET `/me`，再 GET `/rooms/{roomId}` 取得完整状态。
+
+典型错误响应（HTTP 409）：
+
+```json
+{
+  "error": {
+    "code": "ALREADY_IN_ROOM",
+    "message": "ALREADY_IN_ROOM",
+    "activeRoom": {"roomId":"7e47169f-0801-48bf-9d0a-b113488376ad","code":"7KQ2MZ","title":"当前影片"}
+  },
+  "requestId": "44f7b6d0-76ee-4edc-8570-7bf52a7a5e8d"
+}
+```
 
 ## 实时通道
 
@@ -246,6 +332,10 @@ X-Emby-User-Id: <登录响应的 User.Id>
 
 同一用户再次连接（换设备或重连）时，新连接取代旧连接：旧连接收到 `closed {reason:"replaced"}` 并以 4409 关闭，成员身份和 `memberId` 不变。
 
+服务器不要求 Upgrade 请求携带 Emby 头；认证只使用 hello 票据。URL 必须精确为 `/watch/v1/socket`，不能追加 token、ticket 或其他 query 参数。启用失败握手返回 HTTP 503，Origin 不允许返回 HTTP 403，此时连接尚未建立，不能期待收到 WebSocket `closed` 消息。
+
+`hello` 不带 `requestId`；`capabilities` 为必填字符串数组，最多 16 项，每项最多 32 字符，实际支持的功能仍只有 `sync`。客户端应带 `["sync"]`。`platform` 必须为上列四个枚举值；`appVersion` 为非空字符串。重复 hello 不是刷新票据的方式。第一条不是合法 hello、二进制消息或非法 JSON 会关闭连接。hello 之前没有成员消息可见；成功后先收到 `welcome`，随后才收到广播。
+
 ### 校时与心跳
 
 客户端发送 `{"type":"ping","id":17,"t0":123456.7}`，`t0` 是客户端自己的时钟，服务端原样返回。服务端立即回复：
@@ -256,6 +346,8 @@ X-Emby-User-Id: <登录响应的 User.Id>
 
 两个时间取自同一条单调时间轴。pong 应尽量不排在大批广播之后发出，回复越快，客户端校时越准。客户端连接后先连续发送数次，之后每 5 秒一次；ping 同时充当心跳。服务端 20 秒内没有收到该连接的任何消息时，以 4408 关闭。
 
+`ping.id` 要求非负安全整数，`t0` 要求非负有限数。不使用 WebSocket 控制帧 ping 替代以上应用层 JSON 心跳；后台或播放暂停时也要保持 JSON 心跳。
+
 ### 控制命令（任何成员）
 
 `pause`、`play`、`seek`、`changeItem` 都带 `requestId` 和 `baseRevision`（客户端当前看到的版本）。
@@ -263,6 +355,17 @@ X-Emby-User-Id: <登录响应的 User.Id>
 - `baseRevision` 不等于当前版本时拒绝，状态不变，回复 `error {code:"STALE_REVISION", room}`。这表示别人刚刚抢先操作了，客户端按最新状态处理并提示用户。这样同时操作的两个人不会互相覆盖。
 - 接受时版本加 1，向全房间（包括操作者）广播 `state`，并给操作者回复 `{"type":"ack","requestId":"...","revision":13}`。
 - 所有 `positionMs` 截断到 0 到 `media.runTimeMs` 之间。
+
+控制消息示例（UUID 每次用户操作新建，版本必须替换为客户端已应用的实际版本）：
+
+```json
+{"type":"pause","requestId":"c0c6dc4a-73ac-4ff9-936d-7f7a2ad3e470","baseRevision":12,"positionMs":734500}
+{"type":"play","requestId":"b9c9064d-dd5b-413f-b7aa-66da9c018fac","baseRevision":13}
+{"type":"seek","requestId":"ca51cbbb-e327-4b9e-8dd3-5e9db8f9cb37","baseRevision":14,"positionMs":800000}
+{"type":"changeItem","requestId":"f4be0f09-5992-4a65-a05f-d1b35d7d603b","baseRevision":15,"itemId":"12346","mediaSourceId":"next-source","positionMs":0}
+```
+
+`baseRevision` 必须为正安全整数；pause/seek 的位置必填，play 不接受位置字段。未知字段会被拒绝。WS 的 `requestId` 仅用于关联响应，**没有请求去重缓存**。如果发命令后断线或没收到 ack，重新取得快照再判断，不盲目重发；已提交命令的旧 baseRevision 会被拒绝。单纯更新 requestId 不改变版本规则。
 
 各命令：
 
@@ -284,6 +387,7 @@ X-Emby-User-Id: <登录响应的 User.Id>
        - 房间仍存在；房间已结束时直接放弃，不再回复。
        - 发起者仍是本房间成员（在线或保留座位中均可）。发起者核对期间主动离开、被踢、会话失效或座位过期时放弃，原因为 `INITIATOR_LEFT`；发起者已不在房间，不再回复他。
        - 当前版本仍等于 `baseRevision`，否则回复发起者 `STALE_REVISION`（附最新 room）。
+       - 核对期间当前成员中有人完成新的 hello、替换连接或凭据时，旧核对结果失效，返回 `STALE_REVISION`；客户端取得最新快照后再决定是否重试。
        - 当前成员集合中，没有不在步骤 3 集合里的新成员，否则同样回复 `STALE_REVISION`。核对期间**发起者以外**的成员离开不影响提交。
 
        客户端可以按最新状态决定是否重新发起。
@@ -305,6 +409,7 @@ X-Emby-User-Id: <登录响应的 User.Id>
   - `committed` 紧跟在对应的 `state` 之后发送；
   - `cancelled` 的 `reason` 取 `MEMBER_ITEM_FORBIDDEN`、`WATCH_UNAVAILABLE`、`STALE_REVISION`、`INITIATOR_LEFT` 之一。
   - 房间结束导致的放弃不发送，因为客户端会收到 `closed`。
+- 操作者提供不支持的条目类型或错误媒体源时，其 `error.code` 保留 `ITEM_TYPE_UNSUPPORTED` / `MEDIA_SOURCE_INVALID`；为兼容第三版的全房间 reason 枚举，对应 `cancelled.reason` 使用 `WATCH_UNAVAILABLE`。其余成员只据结束通知取消忙碌状态，详细失败提示使用操作者收到的 error。
 - 通知中**不包含**目标条目的 ID、标题，也不包含无权访问者的名单，避免把条目信息透露给无权访问的成员。具体的 `memberIds` 只在发起者收到的 `error` 中给出。
 - 房间快照增加 `pendingChange`：没有切换在核对时为 null，否则为 `{changeId, memberId}`。重连的客户端据此知道仍在切换中。
 - **兜底：** 客户端在收到 `CHANGE_IN_PROGRESS` 或 `pending` 后 10 秒内没有收到结束通知时，用 `GET /rooms/{roomId}` 重新读取快照。服务端的权限核对单次超时为 5 秒，正常情况下 10 秒内一定会结束。
@@ -318,6 +423,7 @@ X-Emby-User-Id: <登录响应的 User.Id>
 ```
 
 - `state` 取值同成员对象的 `status`；`sampledAt` 是客户端换算到服务端时间轴的采样时刻；`rttMs` 是客户端最近测得的往返时间。
+- 所有字段必填：`revision` 为正安全整数，`positionMs` 和 `sampledAt` 为非负有限数，`rttMs` 在 0–60000 范围。位置超过影片时长时按时长处理。清除 lagging 还要求 `sampledAt` 与当前服务端时间差不超过 10 秒；过旧的采样不能证明已经追上。
 - `revision` 是客户端已经应用的房间版本，按它分三种情况处理：
   - 等于当前版本：正常处理。
   - 小于当前版本（客户端还没收到最新的 `state`）：只更新心跳和 `rttMs`，不改变成员的显示状态，不参与等待和缓冲计时。
@@ -362,6 +468,8 @@ X-Emby-User-Id: <登录响应的 User.Id>
 - `kick {requestId, memberId}`（仅房主）：被踢者收到 `closed {reason:"kicked"}` 并以 4410 关闭，座位释放，在这个房间存在期间不能再加入。不是房主时返回 `NOT_OWNER`。
 - `close {requestId}`（仅房主）：所有人收到 `closed {reason:"room_closed"}`，以 1000 关闭，房间结束。
 
+leave/close 以 `closed` 和连接关闭表示完成，不另发 ack。kick 成功给房主返回 ack（带当前 revision），不会因为踢人本身增加 revision；被踢人恰为最后一个等待者时，等待结束会正常增加 revision。不能踢自己，不存在的 memberId 返回 `INVALID_REQUEST`。
+
 ### 断线与座位
 
 「成员」包括在线成员和保留座位中的断线成员。成员只有在主动离开、被踢、会话失效或座位过期时才被移出。
@@ -400,16 +508,16 @@ X-Emby-User-Id: <登录响应的 User.Id>
 | 关闭码 | reason | 客户端行为 |
 |---|---|---|
 | 1000 | `left` / `room_closed` / `room_expired` | 正常结束，提示房间已结束或已离开 |
-| 1001 / 1012 | 无 | 服务重启或关闭，申请新票据重连；房间已不存在时得到 404 `ROOM_ENDED` |
+| 1012 | `room_closed` | 当前实现关停服务；重新申请票据时房间已不存在会得到 404 `ROOM_ENDED` |
 | 1009 | 无 | 消息过大，属于客户端错误，记录日志后重连 |
 | 4400 | `protocol_error` | 协议错误或未知 protocol 版本，不自动重连 |
 | 4401 | `auth_failed` / `auth_expired` | 票据或登录失效，刷新登录后重新申请票据 |
-| 4403 | `forbidden` | Origin 或服务器不允许，不重连 |
-| 4404 | `room_ended` | 房间已结束 |
 | 4408 | `heartbeat_timeout` | 网络中断，申请新票据重连 |
 | 4409 | `replaced` | 同一用户在别处连接，不自动重连，提示「已在其他设备加入」 |
 | 4410 | `kicked` | 已被移出房间，不重连 |
 | 4429 | `rate_limited` | 反复超限，等待后重连 |
+
+第三版列出的 1001、4403、4404 保留为客户端兼容值，当前后端不主动发送：Origin 在 HTTP 握手前以 403 拒绝，已结束房间在 REST 申请票据时 404，过期票据 hello 使用 4401。帧过大时 ws 库以 1009 关闭，可能没有 closed JSON；异常断网也可能只看到本地 1006。不要以一定收到 closed 作为释放 UI 的前提。
 
 ## 限额
 
@@ -422,6 +530,25 @@ X-Emby-User-Id: <登录响应的 User.Id>
   - 超出返回 429 和 Retry-After 秒数。
 - **房间总数：** 同时存在的房间达到 `maxRooms` 时，创建返回 503 `WATCH_CAPACITY`。房间存在超过 `maxRoomHours` 后以 1000 `room_expired` 结束。
 
+额外资源保护（当前实现固定）：
+
+| 项目 | 限制 / 结果 |
+|---|---|
+| 全部 watch HTTP 请求 | 每实际连接来源 IP 300 次/分钟；不信任转发 IP 头 |
+| 同时处理 HTTP | 64；满额返回 503 `WATCH_CAPACITY` |
+| HTTP 整体期限 | 20 秒；会中断未收完整的请求体，客户端可能看到连接断开 |
+| REST 身份验证 | 最长 8 秒；媒体核对每轮最长 5 秒 |
+| WS Upgrade | 每 IP 60 次/分钟；超限在握手时 HTTP 429 |
+| 尚未 hello 的 WS | 全局 64、每 IP 8；满额握手 HTTP 503 |
+| WS 消息总量 | 每连接每秒最多 32 条，另叠加 ping/status/命令各自限额 |
+| WS 在途命令 | 每连接最多 4 条；超出 `RATE_LIMITED` |
+| 连接发送积压 | 大于 64 KiB 时以 4408 关闭慢连接，保护其他成员 |
+| 未使用票据 | 全局最多 10000，30 秒到期；满额 503 `WATCH_CAPACITY`，不改变旧房间成员身份 |
+| 创建幂等记录 | 最多 20000，10 分钟后释放；满额阻止新建 |
+| 房间码隔离记录 | 最多 100000，24 小时后释放；满额阻止新建 |
+
+已关闭连接最多等待 250 ms 完成关闭握手，再强制释放。身份复核和媒体权限请求都不能阻塞其他房间的 100 ms 周期计时；网络延迟仍可能影响客户端实际收到消息的时刻。重复创建、重复加入、失败请求也可能计入相应限额，不应无间隔重试。
+
 **房间码：** 6 位，取自 `23456789ABCDEFGHJKMNPQRSTUVWXYZ`（31 个字符，不含 0、1、I、L、O）。在活动房间中唯一；已结束房间的码 24 小时内不复用。房间码可以猜测，安全性依赖加入限流与人数上限，所以日志中只记 roomId，不记房间码。
 
 ## 错误码
@@ -431,6 +558,9 @@ REST 返回 HTTP 状态和 code；WebSocket 的 `error` 消息只有 code。
 | HTTP / code | 含义与客户端处理 |
 |---|---|
 | 400 `INVALID_REQUEST` | 参数、UUID、位置或消息格式错误 |
+| 405 `METHOD_NOT_ALLOWED` | HTTP 方法不匹配 |
+| 413 `BODY_TOO_LARGE` | REST 请求体超过 16 KiB |
+| 415 `UNSUPPORTED_MEDIA_TYPE` | 正文不是 JSON，或携带不支持的 Content-Encoding |
 | 401 `AUTH_REQUIRED` / `AUTH_INVALID` | 缺少或失效的登录，刷新登录后再试 |
 | 401 `TICKET_INVALID` | 票据无效、过期或已用过（WebSocket 以 4401 关闭） |
 | 403 `SERVER_NOT_ALLOWED` | 不是大河 Emby，客户端不显示一起看入口 |
@@ -445,14 +575,24 @@ REST 返回 HTTP 状态和 code；WebSocket 的 `error` 消息只有 code。
 | 409 `IDEMPOTENCY_CONFLICT` | 同一 clientRequestId 内容不同 |
 | 409 `STALE_REVISION` | 别人刚刚操作，附最新 room，按最新状态处理 |
 | 409 `MEMBER_ITEM_FORBIDDEN` | 有成员无权访问目标条目，附 memberIds |
-| 409 `ROOM_CHANGED` | 加入期间房间反复切换条目，稍后重试加入 |
+| 409 `ROOM_CHANGED` | 媒体反复变化，或旧创建/加入请求被该用户较新的成员操作取代；先重读 /me 与快照再决定是否重试 |
+| 409 `INITIATOR_LEFT` | 切集发起者已失去本房间成员资格；其他成员收到 itemChange cancelled，已关闭的发起者不会再收到 error |
 | 409 `CHANGE_IN_PROGRESS` | 已有一次切换正在核对权限；等待 `itemChange` 的 committed 或 cancelled，10 秒未收到则重新读取快照 |
 | 422 `ITEM_TYPE_UNSUPPORTED` / `MEDIA_SOURCE_INVALID` | 不是电影或单集，或媒体源不属于该条目 |
 | 422 `UNSUPPORTED_TYPE` | 未知的 WebSocket 消息类型，连接保持 |
 | 429 `RATE_LIMITED` | 遵守 Retry-After 或 retryAfterMs |
 | 503 `WATCH_UNAVAILABLE` / `WATCH_CAPACITY` / `AUTH_UNAVAILABLE` | 服务、房间容量或 Emby 身份校验暂不可用，显示暂不可用 |
 
-## 客户端如何使用（供后端理解，不是后端要求）
+## 客户端接入顺序与播放处理
+
+1. 复用评论服务主机选择规则；GET `/health` 确认可用，再带三个身份头 GET `/me`。
+2. 新建/加入成功后立即用同一 clientId 和票据建立 WS，5 秒内 hello；不要把 Token 或票据放在 URL。
+3. 以 welcome.room 初始化媒体与成员，校时后执行播放状态；服务端不会返回视频流地址，各成员自行向 Emby 获取可播放地址。
+4. 收到 state 更新媒体/播放；members 更新成员；waiting 只更新同一 revision 的剩余名单；itemChange 更新切集忙碌指示。不要用晚到的旧 waiting 覆盖新 state。
+5. 网络中断后先申请新票据，收到 welcome 后以完整快照恢复；4409/4410 不自动重连。404 ROOM_ENDED/NOT_FOUND 清理本地房间状态。
+6. 退出房间优先 POST `/leave` 或 WS leave；仅关闭播放器上报 away，不能等同于退出房间。
+
+头像 `avatarPath` 可以为 null；存在时相对评论服务主机解析，按现有 `/community/v1/avatars` 鉴权加载。不要把作者 ID 转换为 Emby 用户头像路径。
 
 - **校时：** 客户端用最近 8 次 ping 中往返最短的一次估算两边时钟差，持续用 ping 更新。
 - **执行状态：** 收到 `state` 后按快照执行。
@@ -488,11 +628,11 @@ REST 返回 HTTP 状态和 code；WebSocket 的 `error` 消息只有 code。
 ## 日志与隐私
 
 - **不记录：** Token、票据、房间码、请求头。
-- **可记录：** 房间创建和结束、成员加入和离开（authorId）、命令类型和计数、错误码、等待和超时次数、连接时长。
-- **不保存：** 房间历史和成员观看记录在房间结束后不保留，只保留运维日志中的上述条目。
+- 当前实现不写入房间/成员/命令业务日志，也不把 watch 请求计入弹幕调用统计。未来可增加脱敏指标，但本文不承诺已经提供房间管理查询或审计接口。
+- **不保存：** 房间历史和成员观看记录不落盘；房间结束后清理成员及会话，只保留有时限的幂等、房间码隔离和限流元数据。
 - **观看进度：** 仍由各客户端照常回报给 Emby，服务端不代为写入。
 
-## 后端验收清单
+## 对接验收清单
 
 1. 认证：三个身份头校验，非大河 ServerId、API Key、他人 Token 拒绝；Origin 白名单（REST 与 WebSocket 握手）。
 2. 管理员容量：管理员账号创建得到 20，普通账号得到 4；客户端无法通过参数改变容量。
@@ -527,7 +667,7 @@ REST 返回 HTTP 状态和 code；WebSocket 的 `error` 消息只有 code。
     - 逐成员权限核对，有人无权访问时拒绝并返回 memberIds；
     - 核对中再次切换返回 CHANGE_IN_PROGRESS；
     - 核对期间有人操作播放或有新成员加入，提交时返回 STALE_REVISION 且状态不变；
-    - 核对期间发起者以外的人离开不影响提交；发起者离开、被踢或座位过期时放弃（INITIATOR_LEFT）；房间结束时放弃；
+    - 核对期间发起者以外的人离开不影响提交，其失败的核对结果也不再阻塞；发起者离开、被踢或座位过期时放弃（INITIATOR_LEFT）；房间结束时放弃；
     - 每次切换先发一条 itemChange pending，最终恰好一条 committed 或 cancelled，通知中不含条目信息；
     - 快照中的 pendingChange 与核对状态一致；
     - 并发自动下一集只有一个生效。
@@ -538,14 +678,16 @@ REST 返回 HTTP 状态和 code；WebSocket 的 `error` 消息只有 code。
     - 房主转移只给在线成员，无人在线时房主暂缺；
     - 最后一名成员离开立即结束。
 14. 房主踢人与解散；非房主返回 NOT_OWNER。
-15. 会话复核：Emby 会话失效后 10 分钟内移出（4401）。
+15. 会话复核：每 10 分钟检查，收到明确的会话失效结果后移出（4401）；暂时不可用不能误判成注销，复核不阻塞其他计时。
 16. 限额：命令、status、ping、帧大小、REST 加入的用户与 IP 限流、maxRooms。
 17. 服务重启：房间消失，重连得到 ROOM_ENDED。
 
-## 联调
+## 线上验证与后续联调
 
-- 客户端先用本机的模拟服务（按本文实现）开发和测试。
-- 后端部署到局域网 18443 后：
+- 2026-10-15 21:37–21:39 已使用现有有效的普通用户和 Emby 管理员会话，验证所有七个 REST 路径及真实 WebSocket 房间流程：建房、幂等、加入、取票据、读快照、离开、播放/暂停/拖动、等待就绪恢复、切换另一个真实媒体条目、旧 revision 拒绝、旧票据拒绝、同用户连接替换4409、非房主拒绝、踢人4410及禁止重入、解散后 ROOM_ENDED。
+- 匿名、他人 Token 冒用、外服 ServerId、拒绝的 Origin 均按契约拒绝；允许的浏览器预检204。配置、原评论等业务记录保留，缓存和评论数据库完整性/外键检查通过。测试房间已释放，未写测试评论或 Emby 播放进度。
+- 21:39 另行核对92个运行文件与清单一致、64文件旧版备份可校验；局域网与公网域名的健康及 WS Upgrade 验证通过。以上网络检查都从 NAS 发起，尚不能证明其他网络运营商的公网连通性。
+- 后端现可供客户端接入。接下来用正式客户端验收实际音视频同步：
   - 在同一台电脑上开两个隔离配置的客户端加入同一房间。时钟相同，可以准确量出两边进度差。
   - 再加一个通过 `nas.tigerest.top` 外网连接的设备。
 - 联调使用测试房间，结束后解散，不在生产评论区或消息中心留下内容。
