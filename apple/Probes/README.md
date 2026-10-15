@@ -26,6 +26,16 @@ For the request pipeline, use `--danmaku-parity-probe` instead. It replaces only
 
 Always restore the normal project and app after either probe, as described above.
 
+## Sustained RIFE and playback speed
+
+Add `--rife-stability-probe` to the quality probe arguments to record per-second filter metadata, playback position/speed, decoder/render drops, A/V drift, memory, and thermal state in `Caches/rife-stability.json`. The sequence exercises 1→1.25→1.5→2→1, repeated long presses, and seek recovery. It uses the local 60-second `device-rife-long.mp4` fixture by default; counters can reset at each loop boundary, so compare consecutive samples within each generation rather than subtracting only phase endpoints.
+
+For sustained testing, supply a continuous 14-minute 1080p/24 BT.709 SDR H.264/AAC file as `Caches/device-rife-continuous.mp4`, then add `--rife-continuous-probe --rife-stability-shader --rife-stability-soak`. This enables the default quality preset, avoids EOF loops, and appends ten minutes at normal speed. `status: collected` means data collection finished, **not** that performance passed. Inspect actual drops, A/V drift, thermal state and memory throughout; verify `speed-bypass` stops inference above 1× and normal speed resumes interpolation. Callback or nominal output FPS alone does not prove smooth presentation. This is local fixture playback, not production streaming validation.
+
+`--rife-speed-quick-probe` replaces the long speed phases with a warmup and five long-press cycles sampled every 50 ms. Compare `--rife-disabled-control`, normal RIFE, and `--rife-default-audio-buffer-probe` (old 200 ms queue) to isolate the restoration transient. `--rife-audio-buffer-probe` explicitly requests 50 ms, now the production default only when RIFE is enabled. Compare consecutive samples around transitions: changing output pixel format resets mpv's render-drop counter. Inspect `Caches/rife-mpv.log` for audio underruns separately. Bluetooth/AirPlay routes need their own device validation.
+
+Run `python3 apple/Tests/test_native_rife_scheduler.py` on macOS/Linux for the isolated production-C-filter scheduler tests with address/undefined-behavior sanitizers. These exercise ownership, backpressure, seek/EOF, and repeated speed restoration with a fake inference bridge; they do not validate Core ML pixels or device performance. The test is also registered with CTest on Unix hosts.
+
 ## Danmaku display cadence
 
 Use `--danmaku-frame-probe` with the quality probe arguments and the local 720p/30 `device-fixture.mp4`. It imports 1200 generated comments into UITestProfiles and reports `danmaku-frames.json`: callback and movement FPS, p95 interval, pause freeze, ±300 ms seeks and 2× speed. This measures application rendering cadence, not compositor presentation or production-stream performance. Always restore and launch the normal app afterward.

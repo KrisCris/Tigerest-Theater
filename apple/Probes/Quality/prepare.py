@@ -39,4 +39,10 @@ for obj in list(o.values()):
     if obj.get('isa')=='PBXNativeTarget' and obj['name']=='TigerestTheater':
         for phase in obj['buildPhases']:
             if o[phase]['isa']=='PBXSourcesBuildPhase' and build not in o[phase]['files']:o[phase]['files'].append(build)
+ref=add('rife-stability-probe','PBXFileReference',path='Probes/Quality/RifeStabilityValidation.swift',sourceTree='<group>',lastKnownFileType='sourcecode.swift')
+build=add('rife-stability-probe-build','PBXBuildFile',fileRef=ref)
+for obj in list(o.values()):
+    if obj.get('isa')=='PBXNativeTarget' and obj['name']=='TigerestTheater':
+        for phase in obj['buildPhases']:
+            if o[phase]['isa']=='PBXSourcesBuildPhase' and build not in o[phase]['files']:o[phase]['files'].append(build)
 path.write_bytes(plistlib.dumps(project,sort_keys=False))

@@ -9,7 +9,7 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
     private var originalSettings: [String: String] = [:]
     private var qualityBaseline: [String: String] = [:]
     let layer: CAMetalLayer
-    init(layer: CAMetalLayer) throws {
+    init(layer: CAMetalLayer, interpolating: Bool = false) throws {
         self.layer = layer
         guard let handle = mpv_create() else { throw CoreError.invalidRequest }
         self.handle = handle
@@ -17,12 +17,22 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
             // The pinned iOS MPVKit disables Lua; ytdl/osc script options do not exist.
             let options = ["profile":"high-quality", "config":"no", "vo":"gpu-next", "gpu-api":"vulkan", "gpu-context":"moltenvk", "hwdec":"videotoolbox", "idle":"yes", "keep-open":"yes", "input-default-bindings":"no", "tls-verify":"yes", "save-position-on-quit":"no", "tls-ca-file":Bundle.main.resourceURL!.appending(path:"Web/cacert.pem").path]
             for (name, value) in options { try check(mpv_set_option_string(handle, name, value), operation: name) }
+            // RIFE cannot catch up instantly when speed restoration changes the
+            // audio clock. Keep its local output queue short; this does not
+            // reduce network/cache buffering or the audio device's own latency.
+            if interpolating { try check(mpv_set_option_string(handle, "audio-buffer", "0.05")) }
             var pointer = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
             try check(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &pointer))
             #if PLAYBACK_VALIDATION
-            if ProcessInfo.processInfo.arguments.contains("--rife-playback-probe") {
+            if ProcessInfo.processInfo.arguments.contains("--rife-playback-probe") || ProcessInfo.processInfo.arguments.contains("--rife-stability-probe") {
                 try check(mpv_set_option_string(handle, "log-file", URL.cachesDirectory.appending(path:"rife-mpv.log").path))
                 try check(mpv_set_option_string(handle, "msg-level", "all=warn"))
+            }
+            if ProcessInfo.processInfo.arguments.contains("--rife-audio-buffer-probe") {
+                try check(mpv_set_option_string(handle, "audio-buffer", "0.05"))
+            }
+            if ProcessInfo.processInfo.arguments.contains("--rife-default-audio-buffer-probe") {
+                try check(mpv_set_option_string(handle, "audio-buffer", "0.2"))
             }
             #endif
             try check(mpv_initialize(handle))
