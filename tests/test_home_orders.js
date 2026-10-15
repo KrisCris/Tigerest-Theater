@@ -4,7 +4,8 @@ const movie=(Id,date,extra={})=>({Id,Type:'Movie',DateCreated:date,Name:Id,...ex
 const episode=(Id,SeriesId,date)=>({Id,SeriesId,Type:'Episode',SeriesName:SeriesId,DateCreated:'2026-09-01',UserData:{LastPlayedDate:date,PlaybackPositionTicks:120,PlayedPercentage:40}});
 function api(){const calls=[];return {calls,getCurrentUserId:()=> 'current-user',getResumableItems:async(user,q)=>{calls.push({resume:true,user,q});return {Items:[]};},getItems:async(user,q)=>{calls.push({user,q});return {Items:[]};}};}
 test('default continues current-library playback and tops up with recent unique works',async()=>{
- const a=api();a.getResumableItems=async(user,q)=>{a.calls.push({resume:true,user,q});return {Items:[movie('watch','2020-01-01',{UserData:{PlaybackPositionTicks:100}})]};};
+ // Emby 4.8 to 4.10 return an empty resume list unless the query names item or media types.
+ const a=api();a.getResumableItems=async(user,q)=>{a.calls.push({resume:true,user,q});return {Items:q.IncludeItemTypes||q.MediaTypes?[movie('watch','2020-01-01',{UserData:{PlaybackPositionTicks:100}})]:[]};};
  a.getItems=async(user,q)=>{a.calls.push({user,q});return {Items:[movie('watch','2020-01-01'),movie('new','2026-10-10'),movie('older','2026-10-09')]};};
  const cards=await source(a).load({Id:'only-this-library',CollectionType:'movies'});
  assert.deepEqual(Array.from(cards,c=>c.item.Id),['watch','new','older']);

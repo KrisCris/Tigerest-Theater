@@ -118,9 +118,11 @@
     // played at or before the returned cutoff; 0 means nothing was left unread.
     HomeData.prototype.history = async function (library, signal, kind, allowed) {
         const api = this.api, user = api.getCurrentUserId(), records = new Map(), pages = new Set();
-        const query = {Recursive: true, SortBy: 'DatePlayed,SortName', SortOrder: 'Descending', Limit: 100, Fields: fields, ...images};
+        // Emby 4.8 to 4.10 answer Items/Resume with nothing unless the item types are named.
+        const query = {Recursive: true, SortBy: 'DatePlayed,SortName', SortOrder: 'Descending', Limit: 100, Fields: fields, ...images,
+            IncludeItemTypes: playable(library)};
         if (library.kind !== 'favorites') query.ParentId = library.Id;
-        if (kind === 'played') Object.assign(query, {IsPlayed: true, IncludeItemTypes: playable(library)});
+        if (kind === 'played') query.IsPlayed = true;
         const endpoint = kind === 'resume' && typeof api.getResumableItems === 'function';
         let complete = false, oldest = 0;
         try {
