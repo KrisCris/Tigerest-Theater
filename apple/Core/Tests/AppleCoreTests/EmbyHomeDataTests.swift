@@ -23,6 +23,53 @@ private func homeItem(_ id: String, type: String = "Movie", added: String = "202
 private let homeLibrary: JSONValue = .object(["Id": .string("library"), "CollectionType": .string("tvshows")])
 
 @Suite struct EmbyHomeDataTests {
+    @Test func aliasesShareOneHomeCardAndKeepLatestPlayback() async throws {
+        let api = HomeFixtureAPI { resume, query in
+            if let ids = query["Ids"] {
+                let requested = ids.split(separator: ",").map(String.init)
+                let selected = query["GroupByPresentationUniqueKey"] == "false" ? requested : requested.filter { $0 != "alias" || !requested.contains("show") }
+                return .init(items: selected.map { id in .object(["Id": .string(id), "Type": .string("Series"), "Name": .string("Same title"), "PresentationUniqueKey": .string(id == "other" ? "different" : "same-work")]) })
+            }
+            if resume { return .init(items: [homeItem("current", type: "Episode", last: "2026-10-16", series: "show", percent: 40)]) }
+            if query["IsPlayed"] == "true" { return .init(items: [homeItem("old", type: "Episode", played: true, last: "2026-10-15", series: "alias")]) }
+            return .init(items: [homeItem("new", type: "Episode", added: "2026-10-17", played: false, series: "alias"), homeItem("different", type: "Episode", series: "other")])
+        }
+        let cards = try await EmbyHomeData(api: api).load(library: homeLibrary)
+        #expect(cards.count == 2)
+        #expect(cards.filter { $0.item["PresentationUniqueKey"].string == "same-work" }.count == 1)
+        let card = try #require(cards.first { $0.item["PresentationUniqueKey"].string == "same-work" })
+        #expect(card.resumeItem?["Id"].string == "current")
+        #expect(card.latestEpisode?["Id"].string == "new")
+        #expect(cards.contains { $0.id == "other" })
+    }
+
+    @Test func orderedAliasesDeduplicateBeforeVisibleLimit() async throws {
+        let api = HomeFixtureAPI { _, _ in
+            .init(items: (0..<25).map { .object(["Id": .string("alias-\($0)"), "Type": .string("Series"), "PresentationUniqueKey": .string("same-work"), "CommunityRating": .number(9)]) } + [homeItem("other", type: "Series")])
+        }
+        let cards = try await EmbyHomeData(api: api).load(library: homeLibrary, order: .rating)
+        #expect(cards.map(\.id) == ["alias-0", "other"])
+    }
+
+    @Test func paginatedAliasesDoNotStopBeforeTwentyFourWorks() async throws {
+        for order in [EmbyHomeOrder.recent, .resume] {
+            let api = HomeFixtureAPI { resume, query in
+                if let ids = query["Ids"] {
+                    return .init(items: ids.split(separator: ",").map { part in
+                        let id = String(part), key = id.hasPrefix("alias-") ? "work-" + String(Int(id.dropFirst(6))! / 2) : id
+                        return .object(["Id": .string(id), "Type": .string("Series"), "PresentationUniqueKey": .string(key)])
+                    })
+                }
+                if query["IsPlayed"] == "true" || resume != (order == .resume) { return .init(items: []) }
+                if query["StartIndex"] == "0" {
+                    return .init(items: (0..<100).map { homeItem("ep-\($0)", type: "Episode", added: "2026-10-16", last: "2026-10-16", series: "alias-\($0 % 24)", percent: 40) }, totalRecordCount: 112)
+                }
+                return .init(items: (0..<12).map { homeItem("next-\($0)", type: "Episode", added: "2026-10-15", last: "2026-10-15", series: "distinct-\($0)", percent: 30) }, totalRecordCount: 112)
+            }
+            #expect(try await EmbyHomeData(api: api).load(library: homeLibrary, order: order).count == 24)
+        }
+    }
+
     @Test func dedicatedLibrariesAndArtworkPreserveRealNamesAndThirdPartyLibraries() {
         let source = (0..<7).map { JSONValue.object(["Id": .string("lib\($0)"), "Name": .string("自建库\($0)")]) }
         let all = EmbyHomeData.libraries(source, serverID: "another-server")

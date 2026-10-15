@@ -72,6 +72,10 @@ struct DanmakuOverlay<Player: ObservableObject & DanmakuPlaybackState>: UIViewRe
     }
     fileprivate func drawFrame() {
         guard let repository,let player,repository.enabled,player.active,bounds.width>0 else {clearLayers();return}
+        #if PLAYBACK_VALIDATION
+        let traceStart = CACurrentMediaTime()
+        defer { PlaybackPerformanceTrace.recordDanmakuFrame(host: traceStart, duration: CACurrentMediaTime() - traceStart, visible: labels.count) }
+        #endif
         prepare(repository)
         let host=CACurrentMediaTime()
         let position=clock.position(mediaTime:player.position,hostTime:host,playing:!player.paused && !player.buffering,rate:player.rate,epoch:player.danmakuEpoch)

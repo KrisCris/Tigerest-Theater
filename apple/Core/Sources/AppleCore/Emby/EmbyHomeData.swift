@@ -29,6 +29,7 @@ public struct EmbyHomeCard: Identifiable, Sendable, Equatable {
     public var lastPlayed: TimeInterval = 0
     public var watchState: EmbyHomeWatchState
     var needsHydration = false
+    var hasPlaybackHistory = false
     public var id: String { item["Id"].string ?? "" }
     public init(item: JSONValue, addedAt: String? = nil, latestEpisode: JSONValue? = nil, resumeItem: JSONValue? = nil) {
         self.item = item; self.addedAt = addedAt ?? item["DateCreated"].string ?? ""
@@ -109,6 +110,7 @@ public struct EmbyHomeData: Sendable {
             insertion.append(record.card.id)
             var value = scanned[record.card.id] ?? record.card
             value.lastPlayed = record.at
+            value.hasPlaybackHistory = true
             return value
         }
         for record in resumed.records {
@@ -159,18 +161,21 @@ public struct EmbyHomeData: Sendable {
             }
         }
         let continuing = Self.sorted(insertion.compactMap { cards[$0] }) { max($0.lastPlayed, Self.stamp($0.newEpisode?["DateCreated"].string)) }
-        var visible = Array(continuing.prefix(24)).map { value in
+        var visible = continuing.map { value in
             var card = value
             if let episode = card.newEpisode { card.latestEpisode = episode; card.addedAt = episode["DateCreated"].string ?? card.addedAt }
             return card
         }
         visible = try await hydrate(visible)
         visible += recent.cards.filter { cards[$0.id] == nil }
-        return Self.withWatchState(Array(visible.prefix(24)))
+        let combined = Self.uniqueWorks(visible)
+        let watched = Self.sorted(combined.filter(\.hasPlaybackHistory)) { max($0.lastPlayed, Self.stamp($0.newEpisode?["DateCreated"].string)) }
+        let remaining = Self.sorted(combined.filter { !$0.hasPlaybackHistory }) { Self.stamp($0.addedAt) }
+        return Self.withWatchState(Array((watched + remaining).prefix(24)))
     }
 
     public func ordered(library: JSONValue, order: EmbyHomeOrder = .recent, limit: Int = 24) async throws -> [EmbyHomeCard] {
-        Self.withWatchState(Array(try await collect(library: library, order: order, limit: limit).cards.prefix(max(0, limit))))
+        Self.withWatchState(Array(Self.uniqueWorks(try await collect(library: library, order: order, limit: limit).cards).prefix(max(0, limit))))
     }
 
     private func history(library: JSONValue, resume: Bool, allowed: Set<String>?) async throws -> History {
@@ -201,7 +206,11 @@ public struct EmbyHomeData: Sendable {
                     if records[card.id] == nil || at > records[card.id]!.at { records[card.id] = .init(card: card, item: item, at: at) }
                 }
                 if result.items.count < 100 || result.totalRecordCount.map({ (page + 1) * 100 >= $0 }) == true { complete = true; break }
-                if records.count >= 24 { break }
+                if records.count >= 24 {
+                    let hydrated = try await hydrate(insertion.compactMap { records[$0]?.card })
+                    for card in hydrated { records[card.id]?.card = card }
+                    if Self.uniqueWorks(hydrated).count >= 24 { break }
+                }
             }
         } catch { try Task.checkCancellation(); complete = true }
         return .init(records: insertion.compactMap { records[$0] }, cutoff: complete ? 0 : oldest)
@@ -232,7 +241,11 @@ public struct EmbyHomeData: Sendable {
                 if cards[card.id] == nil || added > Self.stamp(cards[card.id]?.addedAt) { cards[card.id] = card }
             }
             if result.items.count < 100 || result.totalRecordCount.map({ (page + 1) * 100 >= $0 }) == true { complete = true; break }
-            if !favorites, cards.count >= limit { break }
+            if !favorites, cards.count >= limit {
+                let hydrated = try await hydrate(insertion.compactMap { cards[$0] })
+                for card in hydrated { cards[card.id] = card }
+                if Self.uniqueWorks(hydrated).count >= limit { break }
+            }
             page += 1
         }
         var result = try await hydrate(insertion.compactMap { cards[$0] })
@@ -272,7 +285,7 @@ public struct EmbyHomeData: Sendable {
         for start in stride(from: 0, to: indices.count, by: 100) {
             try Task.checkCancellation()
             let batch = Array(indices[start..<min(start + 100, indices.count)])
-            let query = Self.images.merging(["Ids": batch.map { cards[$0].id }.joined(separator: ","), "Fields": Self.fields, "Limit": "100"]) { _, new in new }
+            let query = Self.images.merging(["Ids": batch.map { cards[$0].id }.joined(separator: ","), "GroupByPresentationUniqueKey": "false", "Fields": Self.fields, "Limit": "100"]) { _, new in new }
             do {
                 let items = try await api.items(query: query).items
                 try Task.checkCancellation()
@@ -320,6 +333,31 @@ public struct EmbyHomeData: Sendable {
     }
     private static func arrived(_ card: inout EmbyHomeCard, episode: JSONValue?) {
         if let episode, episode["UserData"]["Played"].bool != true, stamp(episode["DateCreated"].string) > card.lastPlayed { card.newEpisode = episode }
+    }
+    private struct WorkKey: Hashable {
+        let type: String
+        let presentation: Bool
+        let id: String
+    }
+    private static func uniqueWorks(_ cards: [EmbyHomeCard]) -> [EmbyHomeCard] {
+        var indices: [WorkKey: Int] = [:], result: [EmbyHomeCard] = []
+        for card in cards {
+            let presentation = card.item["PresentationUniqueKey"].string ?? ""
+            let key = WorkKey(type: card.item["Type"].string ?? "", presentation: !presentation.isEmpty, id: presentation.isEmpty ? card.id : presentation)
+            guard let index = indices[key] else { indices[key] = result.count; result.append(card); continue }
+            var prior = result[index]
+            if card.lastPlayed > prior.lastPlayed { prior.lastPlayed = card.lastPlayed; prior.resumeItem = card.resumeItem }
+            prior.hasPlaybackHistory = prior.hasPlaybackHistory || card.hasPlaybackHistory
+            if stamp(card.addedAt) > stamp(prior.addedAt) { prior.addedAt = card.addedAt }
+            if stamp(card.latestEpisode?["DateCreated"].string) > stamp(prior.latestEpisode?["DateCreated"].string) { prior.latestEpisode = card.latestEpisode }
+            result[index] = prior
+        }
+        for index in result.indices where result[index].hasPlaybackHistory {
+            result[index].newEpisode = nil
+            let latest = result[index].latestEpisode
+            arrived(&result[index], episode: latest)
+        }
+        return result
     }
     private static func episodeQuery(parentID: String, limit: Int) -> [String: String] {
         ["ParentId": parentID, "Recursive": "true", "IncludeItemTypes": "Episode", "IsMissing": "false", "IsVirtualUnaired": "false", "IsPlaceHolder": "false", "ExcludeLocationTypes": "Virtual", "Limit": String(limit)]

@@ -45,4 +45,12 @@ for obj in list(o.values()):
     if obj.get('isa')=='PBXNativeTarget' and obj['name']=='TigerestTheater':
         for phase in obj['buildPhases']:
             if o[phase]['isa']=='PBXSourcesBuildPhase' and build not in o[phase]['files']:o[phase]['files'].append(build)
+ref=add('playback-performance-trace','PBXFileReference',path='Probes/Quality/PlaybackPerformanceTrace.swift',sourceTree='<group>',lastKnownFileType='sourcecode.swift')
+build=add('playback-performance-trace-build','PBXBuildFile',fileRef=ref)
+for obj in list(o.values()):
+    if obj.get('isa')=='PBXNativeTarget' and obj['name']=='TigerestTheater':
+        for phase in obj['buildPhases']:
+            if o[phase]['isa']=='PBXSourcesBuildPhase' and build not in o[phase]['files']:o[phase]['files'].append(build)
+        for config in o[obj['buildConfigurationList']]['buildConfigurations']:
+            o[config]['buildSettings']['GCC_PREPROCESSOR_DEFINITIONS']='$(inherited) TIGEREST_RIFE_TIMING=1'
 path.write_bytes(plistlib.dumps(project,sort_keys=False))

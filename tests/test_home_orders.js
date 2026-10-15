@@ -124,3 +124,48 @@ test('shared home setting has the approved default, choices and a registered nat
  assert.match(fs.readFileSync(__dirname+'/../native/embycompat.js','utf8'),/'home',/);
  assert.match(fs.readFileSync(__dirname+'/../android/app/src/main/java/top/tigerest/theater/SettingsStore.kt','utf8'),/"home" to setOf\("displayOrder"\)/);
 });
+
+function duplicateSeriesServer({resume=[],history=[],recent=[]}={}) {
+ const a=server({resume,history,recent}),read=a.getItems;
+ a.getItems=async(user,q)=>{
+  if(!q.Ids)return read(user,q);
+  const ids=q.Ids.split(',');
+  // Emby groups aliases in a batch unless explicitly told to return each ID.
+  const selected=q.GroupByPresentationUniqueKey===false?ids:ids.filter((id,index)=>id!=='alias'||!ids.includes('show'));
+  return {Items:selected.map(Id=>({Id,Type:'Series',Name:'Same displayed title',PresentationUniqueKey:Id==='alias'||Id==='show'?'same-work':Id}))};
+ };return a;
+}
+test('series aliases from resume and completed history merge after ungrouped metadata hydration',async()=>{
+ const a=duplicateSeriesServer({resume:[episode('current','show','2026-10-16')],history:[played('older','alias','2026-10-15')],recent:[added('latest','show','2026-10-14')]});
+ const cards=await source(a).load({Id:'library'});
+ assert.deepEqual(Array.from(cards,c=>c.item.Id),['show']);assert.equal(cards[0].resumeItem.Id,'current');
+});
+test('recent and continuing aliases merge but a different work with the same title stays visible',async()=>{
+ const a=duplicateSeriesServer({resume:[episode('current','show','2026-10-16')],recent:[added('new','alias','2026-10-17'),added('different','other','2026-10-15')]});
+ const cards=await source(a).load({Id:'library'});
+ assert.deepEqual(Array.from(cards,c=>c.item.Id),['show','other']);assert.equal(cards[0].resumeItem.Id,'current');assert.equal(cards[0].latestEpisode.Id,'new');
+});
+test('latest completed play of an alias removes an abandoned resume bar',async()=>{
+ const a=duplicateSeriesServer({resume:[episode('abandoned','alias','2026-10-10')],history:[played('done','show','2026-10-16')]});
+ const cards=await source(a).load({Id:'library'});assert.equal(cards.length,1);assert.equal(cards[0].resumeItem,undefined);
+});
+test('recent order merges aliases and retains newest episode metadata',async()=>{
+ const a=duplicateSeriesServer({recent:[added('new','alias','2026-10-17'),added('old','show','2026-10-15')]});
+ const cards=await source(a).load({Id:'library'},undefined,'recent');assert.equal(cards.length,1);assert.equal(cards[0].latestEpisode.Id,'new');
+});
+test('rating and release deduplicate presentation identities before the visible limit',async()=>{
+ for(const mode of ['rating','release']){
+  const a=api();a.getItems=async()=>({Items:[...Array.from({length:25},(_,i)=>({Id:'alias-'+i,Type:'Series',Name:'Same',PresentationUniqueKey:'same-work',CommunityRating:9,PremiereDate:'2026-01-01'})),{Id:'other',Type:'Series',Name:'Same',CommunityRating:8,PremiereDate:'2025-01-01'}]});
+  const cards=await source(a).load({Id:'library'},undefined,mode);assert.deepEqual(Array.from(cards,c=>c.item.Id),['alias-0','other']);
+ }
+});
+test('pagination counts unique hydrated works across alias IDs for recent and resume',async()=>{
+ for(const mode of ['recent','resume']){
+  const a=api(),items=Array.from({length:100},(_,i)=>({...episode('ep-'+i,'alias-'+(i%24),'2026-10-16'),DateCreated:'2026-10-16'})).concat(Array.from({length:12},(_,i)=>({...episode('next-'+i,'distinct-'+i,'2026-10-15'),DateCreated:'2026-10-15'})));
+  const page=q=>{a.calls.push(q);return slice(items,q);};
+  a.getResumableItems=async(u,q)=>mode==='resume'?page(q):{Items:[]};
+  a.getItems=async(u,q)=>q.Ids?{Items:q.Ids.split(',').map(Id=>({Id,Type:'Series',PresentationUniqueKey:Id.startsWith('alias-')?'work-'+Math.floor(Number(Id.slice(6))/2):Id}))}:q.IsPlayed||mode==='resume'?{Items:[]}:page(q);
+  const cards=await source(a).load({Id:'library'},undefined,mode);
+  assert.equal(cards.length,24,mode);assert.ok(a.calls.some(q=>q.StartIndex===100),mode+' must read past aliases');
+ }
+});

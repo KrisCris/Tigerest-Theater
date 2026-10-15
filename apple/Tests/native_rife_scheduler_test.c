@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern const struct mp_user_filter_entry vf_tigerest_rife;
+extern const struct mp_user_filter_entry vf_tigerest_rife_core;
 static unsigned failures, cases;
 static void failed(const char *function, int line, const char *message) {
     failures++;
@@ -13,7 +13,7 @@ static void failed(const char *function, int line, const char *message) {
 }
 #define CHECK(condition, message) do { if (!(condition)) failed(__func__, __LINE__, (message)); } while (0)
 static bool close_to(double a, double b) { return fabs(a - b) < 1e-9; }
-static struct mp_filter *start(void) { fx_begin(); return vf_tigerest_rife.create(NULL, NULL); }
+static struct mp_filter *start(void) { fx_begin(); return vf_tigerest_rife_core.create(NULL, NULL); }
 static void finish(struct mp_filter *filter) {
     fx_destroy_filter(filter);
     CHECK(fx.allocations == 0 && fx.images == 0 && fx.pixels == 0, "all fixture-owned allocations and image references released");
@@ -241,7 +241,7 @@ static void speed_transition(void) {
 // a later .5x rate remains eligible and initializes the model only then.
 static void initial_speed_and_slow_recovery(void) {
     fx_begin(); fx_global.opts.playback_speed = 2;
-    struct mp_filter *filter = vf_tigerest_rife.create(NULL, NULL);
+    struct mp_filter *filter = vf_tigerest_rife_core.create(NULL, NULL);
     speed_metadata(filter, 2, NULL);
     fx_push(filter, MAKE_FRAME(MP_FRAME_VIDEO, fx_image(0, 24, 0, true)));
     output(filter, 0, 24, 0);
@@ -423,6 +423,43 @@ static void run(const char *name, void (*test)(void)) {
     unsigned before = failures; test(); cases++;
     printf("%s %s\n", failures == before ? "PASS" : "FAIL", name);
 }
+static void color_conversion_fallback(void) {
+    for (int mode = 0; mode < 7; mode++) {
+        struct mp_filter *f = start();
+        fx.fail_color_create = mode == 1;
+        fx.fail_color_convert = mode == 2;
+        for (int i = 0; i < 3; i++) {
+            struct mp_image *img = fx_image(i / 24.0, 24, i * 2, false);
+            img->imgfmt = img->params.imgfmt = mode == 3 ? FX_SOFTWARE : AV_PIX_FMT_NV12;
+            img->params.repr.sys = mode == 4 ? PL_COLOR_SYSTEM_RGB : PL_COLOR_SYSTEM_BT_709;
+            img->params.repr.levels = mode == 5 ? 0 : PL_COLOR_LEVELS_LIMITED;
+            img->params.chroma_location = mode == 6 ? PL_CHROMA_TOP_LEFT : PL_CHROMA_LEFT;
+            fx_push(f, MAKE_FRAME(MP_FRAME_VIDEO, img));
+            if (i) output(f, (i - .5) / 24, 48, i * 2 - 1);
+            output(f, i / 24.0, 48, i * 2);
+        }
+        CHECK(fx.conversions == (mode == 0 ? 0 : 3), "swscale handles unsupported formats and Metal failures on the same frame");
+        CHECK(fx.color_creates == (mode < 3 ? 1 : 0), "converter created once only for supported format/range/chroma");
+        CHECK(fx.color_conversions == (mode == 0 ? 3 : mode == 2 ? 1 : 0), "failed Metal path is not retried every frame");
+        CHECK(fx.interpolations == 2 && metric(f, "failures") == 0, "conversion fallback preserves RIFE and adjacent timestamps");
+        finish(f);
+        CHECK(fx.color_destroys == (mode == 0 || mode == 2 ? 1 : 0), "converter destroyed once including the failure path");
+    }
+}
+static void unspecified_chroma(void) {
+    for (int full = 0; full < 2; full++) {
+        struct mp_filter *f = start();
+        struct mp_image *img = fx_image(0, 24, 2, false);
+        img->imgfmt = img->params.imgfmt = AV_PIX_FMT_NV12;
+        img->params.repr.sys = PL_COLOR_SYSTEM_BT_709;
+        img->params.repr.levels = full ? PL_COLOR_LEVELS_FULL : PL_COLOR_LEVELS_LIMITED;
+        img->params.chroma_location = PL_CHROMA_UNKNOWN;
+        fx_push(f, MAKE_FRAME(MP_FRAME_VIDEO, img)); output(f, 0, 48, 2);
+        CHECK(fx.color_conversions == 1 && fx.color_full_range == full && fx.color_centered == full,
+              "unknown chroma follows mpv guessing: full-range center, limited-range left");
+        finish(f);
+    }
+}
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
     run("CFR PTS and independent metadata", cfr_and_metadata);
@@ -442,6 +479,8 @@ int main(void) {
     run("recovery restarted by another speed gesture", recovery_restarted_by_speed);
     run("recovery seek/EOF/unsupported boundaries", recovery_lifecycle_boundaries);
     run("recovery preserves the failure latch", recovery_does_not_clear_failure);
+    run("Metal conversion selection and same-frame fallback", color_conversion_fallback);
+    run("unspecified chroma uses mpv defaults", unspecified_chroma);
     printf("%u cases, %u failed assertions; fixture scheduling/ownership only\n", cases, failures);
     return failures ? 1 : 0;
 }
