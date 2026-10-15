@@ -8,7 +8,8 @@ const files = ['watchTogetherClient', 'watchTogetherSync', 'watchTogether'];
 const routes = Object.fromEntries(files.map(f => ['/' + f + '.js', {path: path.join(__dirname, '../native/' + f + '.js')}]));
 // Emby's item page button bar, as in its item.html.
 const itemView = '<div class="itemView"><div class="mainDetailButtons"><button class="btnResume hide raised detailButton">继续播放</button>' +
-    '<button class="btnPlay btnMainPlay raised detailButton">播放</button><button class="btnSyncDownload hide fab detailButton">下载</button>' +
+    '<button class="btnPlay btnMainPlay raised detailButton">播放</button><button class="btnPlayTrailer btnPlayTrailer-main raised detailButton">预告片</button>' +
+    '<button class="btnSyncDownload hide fab detailButton">下载</button>' +
     '<button class="btnPlaystate fab detailButton">已播放</button><button class="btnMoreCommands fab detailButton">更多</button></div></div>';
 routes['/'] = {type: 'text/html', body: '<html><meta charset="utf-8"><div class="headerRight"><button id="tigerest-message-entry">消息</button></div>' + itemView +
     files.map(f => '<script src="/' + f + '.js"></script>').join('') + '</html>'};
@@ -109,17 +110,23 @@ withBrowser(routes, async ({evaluate}) => {
     await click('返回');
     await wait(`!!document.querySelector('#tigerest-watch .tw-code-input')`, 'back to the lobby');
 
-    // Emby's item page: the entry joins the round buttons right after 播放.
+    // Emby's item page: the entry takes the trailer button's place right after 播放.
     await evaluate(`plugin.close(); document.querySelector('.itemView').dispatchEvent(new CustomEvent('itemshow', {detail: {item: {Id: 'ep2', Type: 'Episode'}}, bubbles: true}))`);
     const bar = `JSON.stringify(Array.from(document.querySelector('.mainDetailButtons').children, b => b.classList.contains('tw-detail-entry') ? '一起看' : b.className.split(' ')[0]))`;
-    assert.deepEqual(JSON.parse(await evaluate(bar)), ['btnResume', 'btnPlay', '一起看', 'btnSyncDownload', 'btnPlaystate', 'btnMoreCommands']);
-    assert.equal(await evaluate(`document.querySelector('.tw-detail-entry').textContent`), '一起看');
+    const order = ['btnResume', 'btnPlay', '一起看', 'btnPlayTrailer', 'btnSyncDownload', 'btnPlaystate', 'btnMoreCommands'];
+    assert.deepEqual(JSON.parse(await evaluate(bar)), order);
+    assert.equal(await evaluate(`document.querySelector('.tw-detail-entry').textContent`), '一起看', 'a labelled button');
+    assert.equal(await evaluate(`document.querySelector('.tw-detail-entry').classList.contains('raised')`), true);
     assert.equal(await evaluate(`document.querySelector('.tw-detail-entry').classList.contains('hide')`), false);
+    const trailer = `getComputedStyle(document.querySelector('.btnPlayTrailer')).display`;
+    assert.equal(await evaluate(trailer), 'none', 'the trailer button gives way');
     await evaluate(`document.querySelector('.itemView').dispatchEvent(new CustomEvent('itemshow', {detail: {item: {Id: 'box', Type: 'BoxSet'}}, bubbles: true}))`);
     assert.equal(await evaluate(`document.querySelectorAll('.tw-detail-entry').length`), 0, 'only films and shows get the entry');
+    assert.notEqual(await evaluate(trailer), 'none', 'without the entry the trailer button is back');
     for (let i = 0; i < 2; i++)
         await evaluate(`document.querySelector('.itemView').dispatchEvent(new CustomEvent('itemshow', {detail: {item: {Id: 'ep2', Type: 'Episode'}}, bubbles: true}))`);
-    assert.deepEqual(JSON.parse(await evaluate(bar)), ['btnResume', 'btnPlay', '一起看', 'btnSyncDownload', 'btnPlaystate', 'btnMoreCommands'], 'shown again, once');
+    assert.deepEqual(JSON.parse(await evaluate(bar)), order, 'shown again, once');
+    assert.equal(await evaluate(trailer), 'none');
 
     // Outside a room it creates one with that episode: the season is listed with it chosen.
     await evaluate(`document.querySelector('.tw-detail-entry').click()`);

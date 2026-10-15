@@ -161,6 +161,9 @@
         #tigerest-watch .tw-strip{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:172px;gap:10px;overflow-x:auto;padding:2px 2px 10px;overscroll-behavior-x:contain}
         .tw-detail-entry .tw-detail-icon{display:inline-flex;align-items:center;justify-content:center}
         .tw-detail-entry .tw-detail-icon svg{width:1em;height:1em;fill:currentColor}
+        .mainDetailButtons.tw-watch-on>.btnPlayTrailer{display:none!important}
+        @media not all and (min-width:50em){.mainDetailButtons.tw-watch-on>.detailButton.raised:not(.hide){flex-grow:1;flex-basis:calc(50% - .6em)!important}
+            .mainDetailButtons.tw-watch-on>.tw-detail-entry{order:1}}
         @media(max-width:600px){#tigerest-watch .tw-head{padding:16px}#tigerest-watch .tw-content{padding:8px 14px 18px}#tigerest-watch .tw-code{font-size:28px}
             #tigerest-watch .tw-art{width:112px}#tigerest-watch .tw-art-poster{width:72px}#tigerest-watch .tw-strip{grid-auto-columns:144px}}
         #tigerest-watch-toast{position:fixed;left:50%;bottom:48px;transform:translateX(-50%);z-index:100000;max-width:min(560px,calc(100vw - 32px));padding:12px 18px;border-radius:12px;background:#141d2bee;border:1px solid #3a4b62;color:#e9eff8;font-size:14px;box-shadow:0 12px 40px #0008;pointer-events:none}
@@ -246,34 +249,39 @@
             if (this.entry.textContent !== label) this.entry.textContent = label;
             this.entry.setAttribute('aria-label', room ? '一起看房间 ' + room.code : '一起看');
         }
-        // Emby's item page announces its item. The entry joins the round
-        // buttons there, right after 播放.
+        // Emby's item page announces its item. The entry takes the place of
+        // the trailer button, right after 播放; the trailer button is hidden
+        // while the entry is shown (tw-watch-on on the bar).
         itemShown(event) {
             const item = event.detail?.item, bar = event.target?.querySelector?.('.mainDetailButtons');
             if (!bar) return;
             let entry = bar.querySelector('.tw-detail-entry');
-            if (!playable(item)) { entry?.remove(); return; }
+            if (!playable(item)) { entry?.remove(); bar.classList.remove('tw-watch-on'); return; }
             if (!entry) entry = this.detailEntry();
             entry.dataset.itemId = item.Id;
-            const anchor = Array.from(bar.children).find(child => child.classList.contains('fab') && child !== entry);
+            const anchor = bar.querySelector(':scope > .btnPlayTrailer') || Array.from(bar.children).find(child => child.classList.contains('fab'));
             if (anchor ? entry.nextElementSibling !== anchor : entry.parentElement !== bar) bar.insertBefore(entry, anchor || null);
             entry.classList.toggle('hide', !this.available);
+            bar.classList.toggle('tw-watch-on', this.available);
         }
         detailEntry() {
             installStyle();
             const entry = document.createElement('button', {is: 'emby-button'});
             entry.setAttribute('is', 'emby-button');
             entry.type = 'button';
-            entry.className = 'fab detailButton detailButton-autotext emby-button emby-button-focusscale tw-detail-entry';
+            entry.className = 'raised detailButton emby-button emby-button-focusscale detailButton-stacked tw-detail-entry';
             entry.title = '一起看';
-            const icon = node('i', null, 'md-icon detailButton-autotext-icon fab-icon tw-detail-icon');
+            const icon = node('i', null, 'md-icon button-icon button-icon-left tw-detail-icon');
             icon.innerHTML = groupIcon;
-            entry.append(icon, node('div', '一起看', 'detailButton-autotext-text secondaryText button-text'));
+            entry.append(icon, node('span', '一起看'));
             entry.addEventListener('click', () => this.watchItem(entry.dataset.itemId));
             return entry;
         }
         showDetailEntries(visible) {
-            for (const entry of document.querySelectorAll('.tw-detail-entry')) entry.classList.toggle('hide', !visible);
+            for (const entry of document.querySelectorAll('.tw-detail-entry')) {
+                entry.classList.toggle('hide', !visible);
+                entry.parentElement?.classList.toggle('tw-watch-on', visible);
+            }
         }
         // Outside a room: create one with this item. In a room: change to it,
         // or just show the room when it is the room's film or the room is busy.
