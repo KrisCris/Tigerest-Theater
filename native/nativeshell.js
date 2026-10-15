@@ -960,7 +960,8 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             .tgs-reset { margin-left: 0; padding-left: 0; }
             .tgs-footer { padding: 12px 20px; }
         }
-        .tigerest-settings-host { width: 100%; max-width: 1200px; }
+        /* Emby does not center .readOnlyContent here, so wide windows left half the page empty. */
+        .tigerest-settings-host { width: 100%; max-width: 1200px; margin-left: auto; margin-right: auto; }
         #tigerest-settings-inline .tgs-dialog {
             width: 100%; height: auto; min-height: 520px;
             background: transparent;

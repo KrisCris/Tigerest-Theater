@@ -111,6 +111,14 @@ withBrowser({
  assert.equal(await evaluate('document.querySelector(".mainDrawer").classList.contains("drawer-open")'),false,'native navigation action can close the mobile drawer');
  await evaluate('settingsController.onPause({});settingsController.onResume({});new Promise(resolve=>setTimeout(resolve,50))');
  assert.equal(await evaluate('document.querySelector(".tgs-section.active").dataset.section'),'video','cached route resumes the same category');
+ // Emby 4.8 leaves .readOnlyContent at the start of the page; in a wide
+ // window the settings stay centered rather than in the left half.
+ await call('Emulation.setDeviceMetricsOverride',{width:2560,height:1440,deviceScaleFactor:1,mobile:false});
+ const wide=await evaluate(`(async()=>{const host=document.getElementById('host'),rule=[...document.styleSheets[0].cssRules].find(r=>r.selectorText==='#host'),fixture=rule.style.cssText;
+  rule.style.cssText='margin-top:30px';await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const h=host.getBoundingClientRect(),v=host.parentElement.getBoundingClientRect();const gaps={left:h.left-v.left,right:v.right-h.right,width:h.width,host:host.className};rule.style.cssText=fixture;return gaps;})()`);
+ assert.ok(wide.left>100&&Math.abs(wide.left-wide.right)<=2,'wide window centers the settings '+JSON.stringify(wide));
+ await call('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  if(process.env.TIGEREST_SETTINGS_SCREENSHOTS){
   fs.mkdirSync(process.env.TIGEREST_SETTINGS_SCREENSHOTS,{recursive:true});
   fs.writeFileSync(path.join(process.env.TIGEREST_SETTINGS_SCREENSHOTS,'settings-phone.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));

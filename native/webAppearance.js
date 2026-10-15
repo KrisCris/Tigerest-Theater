@@ -275,6 +275,12 @@ function mountTigerestAppearanceStyles() {
                 border-top: 1px solid rgba(255, 255, 255, .08) !important;
             }
 
+            /* Emby left-aligns form columns beside a docked drawer, which
+               leaves most of a wide window empty; center them instead. */
+            body.tigerest-appearance-ready .page-withDockedDrawer :is(.readOnlyContent, form).auto-center {
+                margin-inline: auto;
+            }
+
             .detailRibbon,
             .detailPagePrimaryContainer {
                 background-color: rgba(12, 15, 21, .28) !important;
