@@ -16,6 +16,16 @@ def generate(fixture_media=None):
     (web/'server_defaults.json').write_text(json.dumps({'remote':remote,'local':f'http://{local_ip}:{port}/','localIP':local_ip},indent=2)+'\n')
     shutil.copyfile(ROOT/'Resources/cacert.pem',web/'cacert.pem')
     sync_quality(ROOT.parent, web, {'files': {}})
+    # Television-only tier: preserve desktop profile bytes and color settings.
+    catalog=web/'quality_presets.json';presets=json.loads(catalog.read_text())
+    light={'id':'tv-balanced','title':'轻量增强','base':'high-quality',
+           'options':{'scale':'bilinear','cscale':'bilinear','dscale':'bilinear',
+                      'deband':'no','sigmoid-upscaling':'no'},
+           'shaders':['shaders/RAISR/ravu_lite_ar_r3.glsl']}
+    for shader in light['shaders']:
+        target=web/shader;target.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(ROOT.parent/'resources/mpv'/shader,target)
+    catalog.write_text(json.dumps([*presets,light],ensure_ascii=False,indent=2)+'\n')
     art=ROOT/'Generated/TV/home-art'
     shutil.copytree(ROOT.parent/'native/home-art', art, dirs_exist_ok=True)
     fonts=ROOT/'Generated/TV/SubtitleFonts';fonts.mkdir(parents=True,exist_ok=True)
@@ -61,6 +71,18 @@ def generate(fixture_media=None):
     schemes=project/'xcshareddata/xcschemes';schemes.mkdir(parents=True,exist_ok=True)
     def ref(ident,name,product):return f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{ident}" BuildableName="{product}" BlueprintName="{name}" ReferencedContainer="container:TigerestTV.xcodeproj"/>'
     app=ref(target,'TigerestTV','TigerestTV.app');test=ref(testtarget,'TigerestTVUITests','TigerestTVUITests.xctest')
-    (schemes/'TigerestTV.xcscheme').write_text(f'''<?xml version="1.0" encoding="UTF-8"?><Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{app}</BuildActionEntry></BuildActionEntries></BuildAction><TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO">{test}</TestableReference></Testables></TestAction><LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0"><BuildableProductRunnable runnableDebuggingMode="0">{app}</BuildableProductRunnable></LaunchAction><ProfileAction buildConfiguration="Release"><BuildableProductRunnable runnableDebuggingMode="0">{app}</BuildableProductRunnable></ProfileAction><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>''')
+    scheme=f'''<?xml version="1.0" encoding="UTF-8"?><Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{app}</BuildActionEntry></BuildActionEntries></BuildAction><TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO">{test}</TestableReference></Testables></TestAction><LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0"><BuildableProductRunnable runnableDebuggingMode="0">{app}</BuildableProductRunnable></LaunchAction><ProfileAction buildConfiguration="Release"><BuildableProductRunnable runnableDebuggingMode="0">{app}</BuildableProductRunnable></ProfileAction><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>'''
+    (schemes/'TigerestTV.xcscheme').write_text(scheme)
+    # Automatic XCTest video recording materially loads the TV GPU. Performance
+    # runs must disable it, rather than merely deleting recordings after success.
+    plan={'configurations':[{'id':'5411C676-3539-4470-A345-A9320D8BA2EF','name':'Playback','options':{}}],
+          'defaultOptions':{'uiTestingScreenshotsLifetime':'keepNever','userAttachmentLifetime':'keepNever'},
+          'testTargets':[{'target':{'containerPath':'container:TigerestTV.xcodeproj','identifier':testtarget,'name':'TigerestTVUITests'},
+                          'selectedTests':['TVNavigationTests/testLightweightSustainedPlayback()']}], 'version':1}
+    (ROOT/'TigerestTVPerformance.xctestplan').write_text(json.dumps(plan,indent=2)+'\n')
+    performance=scheme.replace(f'<Testables><TestableReference skipped="NO">{test}</TestableReference></Testables>',
+                              '<TestPlans><TestPlanReference reference="container:TigerestTVPerformance.xctestplan" default="YES"/></TestPlans>')
+    performance=performance.replace('<TestAction buildConfiguration="Debug"', '<TestAction buildConfiguration="Release"')
+    (schemes/'TigerestTVPerformance.xcscheme').write_text(performance)
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--fixture-media',type=Path);args=parser.parse_args();generate(args.fixture_media)

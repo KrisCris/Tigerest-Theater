@@ -6,7 +6,7 @@ import AppleCore
 /// Production controller with engine/platform doubles; real rendering and
 /// production networking remain separate device checks.
 @MainActor final class TVPlaybackControllerTests: XCTestCase {
-    private let native = ["scale": "bilinear", "cscale": "bilinear", "dscale": "bilinear", "glsl-shaders": ""]
+    private let native = ["scale": "bilinear", "cscale": "bilinear", "dscale": "bilinear", "glsl-shaders": "", "deband": "no", "sigmoid-upscaling": "no"]
     private var desktop: [String: String] {
         var settings = TVQualityPreset().options
         settings["glsl-shaders"] = TVQualityPreset.shaderPaths.joined(separator: ":")
@@ -33,6 +33,175 @@ import AppleCore
             XCTAssertNil(UserDefaults.standard.object(forKey: "tv.qualityPreset"))
             XCTAssertEqual(player.playbackProbe()["drawableSize"], .object(["width": .number(3840), "height": .number(2160)]))
             XCTAssertEqual(player.playbackProbe()["scalers"], .object(["scale": .string("bilinear"), "cscale": .string("bilinear"), "dscale": .string("bilinear")]))
+        }
+    }
+    func testFixtureQualityDoesNotReadOrOverwriteInstalledPreference() throws {
+        try withPreference("tigerest-default") {
+            let player = TVPlaybackController(arguments: ["--tv-fixture"])
+            XCTAssertEqual(player.qualityPreset, "native")
+            player.selectQuality("tv-balanced")
+            XCTAssertEqual(player.qualityPreset, "tv-balanced")
+            XCTAssertEqual(UserDefaults.standard.string(forKey: "tv.qualityPreset"), "tigerest-default")
+        }
+    }
+    func testLightweightSelectionSurvivesRelaunchAndKeepsFourKOutput() throws {
+        try withPreference("tv-balanced") {
+            let player = TVPlaybackController(arguments: [])
+            player.surface.metal.drawableSize = CGSize(width: 3840, height: 2160)
+            try playFixture(player); defer { player.stop() }
+            XCTAssertEqual(player.qualityPreset, "tv-balanced")
+            XCTAssertEqual(player.engine?.appliedQuality["glsl-shaders"], "/app/shaders/ravu_lite_ar_r3.glsl")
+            XCTAssertEqual(player.engine?.appliedQuality["deband"], "no")
+            XCTAssertEqual(player.surface.metal.drawableSize, CGSize(width: 3840, height: 2160))
+        }
+    }
+    func testDesktopLightweightNativeRoundTripClearsHeavyProcessing() throws {
+        try withPreference("tigerest-default") {
+            let player = TVPlaybackController(arguments: [])
+            try playFixture(player); defer { player.stop() }
+            let engine = try XCTUnwrap(player.engine)
+            player.selectQuality("tv-balanced")
+            XCTAssertEqual(player.qualityPreset, "tv-balanced")
+            XCTAssertEqual(UserDefaults.standard.string(forKey: "tv.qualityPreset"), "tv-balanced")
+            XCTAssertEqual(engine.appliedQuality["glsl-shaders"], "/app/shaders/ravu_lite_ar_r3.glsl")
+            XCTAssertEqual(engine.appliedQuality["cscale"], "bilinear")
+            player.selectQuality("native")
+            XCTAssertEqual(engine.appliedQuality, native)
+            player.selectQuality("tigerest-default")
+            XCTAssertEqual(engine.appliedQuality, desktop)
+        }
+    }
+    private func sample(_ player: TVPlaybackController, at time: Double, position: Double? = nil,
+                        drops: Double = 0, decoderDrops: Double = 0, fps: Double = 24,
+                        paused: Bool = false, buffering: Bool = false) {
+        let engine = player.engine!
+        engine.properties["time-pos"] = .string(String(position ?? time))
+        engine.properties["estimated-vf-fps"] = .string(String(fps))
+        engine.properties["frame-drop-count"] = .string(String(drops))
+        engine.properties["decoder-frame-drop-count"] = .string(String(decoderDrops))
+        engine.properties["pause"] = .bool(paused)
+        engine.properties["paused-for-cache"] = .bool(buffering)
+        player.tick(now: time)
+    }
+    func testHighFrameRateAutomaticallyReducesOnlyEffectiveLightweightQuality() throws {
+        try withPreference("tv-balanced") {
+            let player = TVPlaybackController(arguments: [])
+            try playFixture(player); defer { player.stop() }
+            player.surface.metal.drawableSize = CGSize(width: 3840, height: 2160)
+            player.engine!.pendingEvents = [.loaded]
+            for second in 0...4 { sample(player, at: Double(second), fps: 60) }
+            XCTAssertEqual(player.engine!.appliedQuality, native)
+            XCTAssertEqual(player.qualityPreset, "tv-balanced")
+            XCTAssertEqual(UserDefaults.standard.string(forKey: "tv.qualityPreset"), "tv-balanced")
+            XCTAssertEqual(player.playbackProbe()["effectiveQualityPreset"].string, "native")
+            XCTAssertEqual(player.surface.metal.drawableSize, CGSize(width: 3840, height: 2160))
+            XCTAssertTrue(player.qualityMessage.contains("流畅"))
+            let resets = player.engine!.resets
+            for second in 5...20 { sample(player, at: Double(second), fps: 24) }
+            XCTAssertEqual(player.engine!.resets, resets, "Do not oscillate back into the expensive shader")
+        }
+    }
+    func testSustainedRenderDropsReduceLightweightAndNewEpisodeRetriesIt() throws {
+        try withPreference("tv-balanced") {
+            let player = TVPlaybackController(arguments: [])
+            try playFixture(player); defer { player.stop() }
+            player.engine!.pendingEvents = [.loaded]
+            for second in 0...15 { sample(player, at: Double(second), drops: Double(second * 3)) }
+            XCTAssertEqual(player.engine!.appliedQuality, native)
+            XCTAssertEqual(player.qualityPreset, "tv-balanced")
+            try playFixture(player)
+            XCTAssertEqual(player.engine!.appliedQuality["glsl-shaders"], "/app/shaders/ravu_lite_ar_r3.glsl")
+            XCTAssertEqual(player.playbackProbe()["effectiveQualityPreset"].string, "tv-balanced")
+        }
+    }
+    func testStartupPauseCacheSeekAndDecoderDropsDoNotTriggerReduction() throws {
+        try withPreference("tv-balanced") {
+            let player = TVPlaybackController(arguments: [])
+            try playFixture(player); defer { player.stop() }
+            player.engine!.pendingEvents = [.loaded]
+            for second in 0...4 { sample(player, at: Double(second), drops: Double(second * 20)) }
+            for second in 5...10 { sample(player, at: Double(second), position: 4, drops: 200, paused: true) }
+            for second in 11...16 { sample(player, at: Double(second), position: 4, drops: 300, buffering: true) }
+            player.seek(by: 60)
+            player.engine!.pendingEvents = [.restarted]
+            for second in 17...25 { sample(player, at: Double(second), position: Double(second + 60), drops: 400) }
+            for second in 26...40 { sample(player, at: Double(second), position: Double(second + 60), drops: Double(second * 30), decoderDrops: Double(second)) }
+            XCTAssertEqual(player.engine!.appliedQuality["glsl-shaders"], "/app/shaders/ravu_lite_ar_r3.glsl")
+        }
+    }
+    func testOneBadWindowCounterResetAndUnknownFPSKeepLightweight() throws {
+        try withPreference("tv-balanced") {
+            let player = TVPlaybackController(arguments: [])
+            try playFixture(player); defer { player.stop() }
+            player.engine!.pendingEvents = [.loaded]
+            for second in 0...8 { sample(player, at: Double(second), drops: second >= 7 ? 12 : 0, fps: 0) }
+            for second in 9...20 { sample(player, at: Double(second), drops: 12, fps: 0) }
+            for second in 21...35 { sample(player, at: Double(second), drops: 0, fps: 24) }
+            XCTAssertEqual(player.engine!.appliedQuality["glsl-shaders"], "/app/shaders/ravu_lite_ar_r3.glsl")
+        }
+    }
+    func testExplicitFullPresetIsNeverAutomaticallyChanged() throws {
+        try withPreference("tigerest-default") {
+            let player = TVPlaybackController(arguments: [])
+            try playFixture(player); defer { player.stop() }
+            player.engine!.pendingEvents = [.loaded]
+            for second in 0...20 { sample(player, at: Double(second), drops: Double(second * 30), fps: 60) }
+            XCTAssertEqual(player.engine!.appliedQuality, desktop)
+        }
+    }
+    func testFailedManualChangeAfterAutomaticReductionRestoresEffectiveNative() throws {
+        try withPreference("tv-balanced") {
+            let player = TVPlaybackController(arguments: [])
+            try playFixture(player); defer { player.stop() }
+            player.engine!.pendingEvents = [.loaded]
+            for second in 0...4 { sample(player, at: Double(second), fps: 60) }
+            player.engine!.failingQualityValues = ["scale=ewa_lanczos"]
+            player.selectQuality("tigerest-default")
+            XCTAssertEqual(player.engine!.appliedQuality, native)
+            XCTAssertEqual(player.qualityPreset, "tv-balanced")
+            XCTAssertEqual(player.playbackProbe()["effectiveQualityPreset"].string, "native")
+        }
+    }
+    func testAutomaticReductionFailureRestoresLightweightWithoutClaimingSuccess() throws {
+        try withPreference("tv-balanced") {
+            let player = TVPlaybackController(arguments: [])
+            try playFixture(player); defer { player.stop() }
+            let engine = player.engine!
+            engine.pendingEvents = [.loaded]
+            engine.failResetCalls = [engine.resets + 1]
+            for second in 0...20 { sample(player, at: Double(second), fps: 60) }
+            XCTAssertEqual(engine.appliedQuality["glsl-shaders"], "/app/shaders/ravu_lite_ar_r3.glsl")
+            XCTAssertEqual(player.playbackProbe()["effectiveQualityPreset"].string, "tv-balanced")
+            XCTAssertTrue(player.qualityMessage.contains("未能"))
+            XCTAssertFalse(engine.closed)
+        }
+    }
+    func testFailedAutomaticReductionAndRestoreStopPlayback() throws {
+        try withPreference("tv-balanced") {
+            let player = TVPlaybackController(arguments: [])
+            try playFixture(player); defer { player.stop() }
+            let engine = player.engine!
+            engine.pendingEvents = [.loaded]
+            engine.failQuality = true
+            sample(player, at: 0, fps: 60)
+            sample(player, at: 1, fps: 60)
+            XCTAssertTrue(engine.closed)
+            XCTAssertFalse(player.active)
+            XCTAssertNotNil(player.error)
+            XCTAssertFalse(player.qualityMessage.contains("已降低"))
+        }
+    }
+    func testSingleHighFPSReadingAfterSeekDoesNotReduceQuality() throws {
+        try withPreference("tv-balanced") {
+            let player = TVPlaybackController(arguments: [])
+            try playFixture(player); defer { player.stop() }
+            player.engine!.pendingEvents = [.loaded]
+            for second in 0...10 { sample(player, at: Double(second)) }
+            player.seek(by: 60)
+            player.engine!.pendingEvents = [.restarted]
+            sample(player, at: 11, position: 71, drops: 100, fps: 90)
+            for second in 12...25 { sample(player, at: Double(second), position: Double(second + 60), drops: 100) }
+            XCTAssertEqual(player.engine!.appliedQuality["glsl-shaders"], "/app/shaders/ravu_lite_ar_r3.glsl")
         }
     }
     func testUnknownStoredPreferenceUsesNative() throws {

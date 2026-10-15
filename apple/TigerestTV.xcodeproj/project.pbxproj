@@ -118,6 +118,24 @@
 			<key>fileRef</key>
 			<string>5542BE999FAD0F9371345324</string>
 		</dict>
+		<key>374F0B047EC7FEECFD61F516</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVFrameStability.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>CC84E1C1518BFCED5DD612EF</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>374F0B047EC7FEECFD61F516</string>
+		</dict>
 		<key>D34BC27E7F843E2BD9F13C4F</key>
 		<dict>
 			<key>isa</key>
@@ -599,6 +617,7 @@
 				<string>C14332578819677ADF203364</string>
 				<string>B7FF496A9892449A43B3C024</string>
 				<string>F87FBBB5566401B3E997B000</string>
+				<string>CC84E1C1518BFCED5DD612EF</string>
 				<string>21CBE42E4237F0C7827960D6</string>
 				<string>41EF540DFC1ADE800D8064E3</string>
 				<string>B5D9A930288B403E180AEFED</string>
@@ -909,6 +928,7 @@
 				<string>6A5F30DB64D9222125269643</string>
 				<string>6E7612BBD635D390A05E5C20</string>
 				<string>5542BE999FAD0F9371345324</string>
+				<string>374F0B047EC7FEECFD61F516</string>
 				<string>D34BC27E7F843E2BD9F13C4F</string>
 				<string>5B6CB03F43F10DF0F8672BA0</string>
 				<string>84786CAF55D8F9089AEAE8EC</string>

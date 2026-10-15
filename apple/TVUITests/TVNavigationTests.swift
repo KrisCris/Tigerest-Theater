@@ -40,6 +40,9 @@ final class TVNavigationTests: XCTestCase {
         try select("tv.quality", in: app)
         XCTAssertTrue(app.buttons["tv.quality.default"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["tv.quality.native"].exists)
+        try select("tv.quality.balanced", in: app)
+        XCTAssertTrue(app.staticTexts["已选择轻量增强"].exists)
+        try select("tv.quality.native", in: app)
         XCUIRemote.shared.press(.menu)
         XCTAssertTrue(poster.waitForExistence(timeout: 5), app.debugDescription)
         XCUIRemote.shared.press(.menu)
@@ -50,6 +53,9 @@ final class TVNavigationTests: XCTestCase {
         let app = launchFixture(media: true)
         try select("tv.library.fixture.movies", in: app)
         try select("tv.item.fixture.movie", in: app)
+        try select("tv.quality", in: app)
+        try select("tv.quality.balanced", in: app)
+        XCUIRemote.shared.press(.menu)
         try select("tv.play", in: app)
         XCTAssertTrue(app.buttons["tv.player.pause"].waitForExistence(timeout: 20))
         expect("The local fixture must actually advance through MPV", timeout: 15) { self.position(in: app) >= 1 }
@@ -179,10 +185,41 @@ final class TVNavigationTests: XCTestCase {
         XCTAssertFalse(app.buttons["tv.home.hero"].exists)
     }
 
-    private func launchFixture(media: Bool = false) -> XCUIApplication {
+    #if TV_PERFORMANCE_TEST
+    /// Opt-in physical-device load check; never reads Keychain or reports progress.
+    func testLightweightSustainedPlayback() throws {
+        let app = launchFixture(media: true, probe: true)
+        try select("tv.library.fixture.movies", in: app)
+        try select("tv.item.fixture.movie", in: app)
+        try select("tv.quality", in: app)
+        try select("tv.quality.balanced", in: app)
+        XCUIRemote.shared.press(.menu)
+        try select("tv.play", in: app)
+        expect("Fixture starts through the actual TV renderer", timeout: 20) { self.position(in: app) >= 1 }
+        for checkpoint in 1...6 {
+            Thread.sleep(forTimeInterval: 30)
+            XCUIRemote.shared.press(.down)
+            XCTAssertTrue(app.buttons["tv.player.pause"].waitForExistence(timeout: 5))
+            XCTAssertGreaterThan(position(in: app), checkpoint * 20)
+            print("TV lightweight playback checkpoint \(checkpoint) / 6")
+            if checkpoint == 3 {
+                XCUIRemote.shared.press(.playPause)
+                Thread.sleep(forTimeInterval: 2)
+                XCUIRemote.shared.press(.playPause)
+                try select("tv.player.forward", in: app)
+            }
+        }
+        // A prior physical run disconnected during capture. Keep this timing
+        // probe free of captures; visual verification is a separate check.
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(app.buttons["tv.play"].waitForExistence(timeout: 5))
+    }
+    #endif
+
+    private func launchFixture(media: Bool = false, probe: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["--tv-fixture"] + (media ? ["--tv-fixture-media", "bundled"] : [])
+        app.launchArguments = ["--tv-fixture"] + (media ? ["--tv-fixture-media", "bundled"] : []) + (probe ? ["--tv-playback-probe"] : [])
         app.launch()
         XCTAssertTrue(app.buttons["tv.library.fixture.movies"].waitForExistence(timeout: 15))
         return app

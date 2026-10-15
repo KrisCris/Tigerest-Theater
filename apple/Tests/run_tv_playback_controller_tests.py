@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory(prefix="tv-playback-controller-package-") as di
     tests = package / "Tests/SharedTVPlaybackTests"
     sources.mkdir(parents=True)
     tests.mkdir(parents=True)
-    for source in [ROOT / "TV/TVPlaybackController.swift", ROOT / "TV/TVSubtitleController.swift",
+    for source in [ROOT / "TV/TVPlaybackController.swift", ROOT / "TV/TVSubtitleController.swift", ROOT / "TV/TVFrameStability.swift",
                    ROOT / "Tests/fixtures/TVPlaybackControllerStubs.swift"]:
         (sources / source.name).symlink_to(source)
     (tests / "TVPlaybackControllerTests.swift").symlink_to(ROOT / "Tests/TVPlaybackControllerTests.swift")

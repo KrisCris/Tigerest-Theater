@@ -17,8 +17,10 @@ import AppleCore
     @Published var error: String?
     var engine: MPVEngine?
     @Published private(set) var danmaku: DanmakuRepository?
-    @Published private(set) var qualityPreset = UserDefaults.standard.string(forKey: "tv.qualityPreset") == "tigerest-default" ? "tigerest-default" : "native"
+    @Published private(set) var qualityPreset = "native"
     @Published private(set) var qualityMessage = ""
+    private(set) var effectiveQualityPreset = "native"
+    private var frameStability = TVFrameStability()
     private(set) var danmakuEpoch: UInt64 = 0
     var rate: Double { 1 }
     private var mappingTask: Task<Void, Never>?
@@ -30,6 +32,7 @@ import AppleCore
     private var reporting = false
     private var lastReport = 0.0
     private let probeEnabled: Bool
+    private let fixtureMode: Bool
     private var lastProbe = 0.0
     private var generation = UUID()
     /// Episode requests capture this token before awaiting the server. Leaving
@@ -38,6 +41,11 @@ import AppleCore
     private var watchdog = PlaybackWatchdog()
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
         probeEnabled = arguments.contains("--tv-playback-probe")
+        fixtureMode = arguments.contains("--tv-fixture")
+        if !fixtureMode {
+            let saved = UserDefaults.standard.string(forKey: "tv.qualityPreset") ?? "native"
+            qualityPreset = ["tigerest-default", "tv-balanced"].contains(saved) ? saved : "native"
+        }
     }
 
     func play(_ playback: EmbyPlayback, client: EmbyClient, session: EmbySession? = nil) throws {
@@ -62,14 +70,16 @@ import AppleCore
             }
             do {
                 try applyQuality(qualityPreset, to: next)
-                qualityMessage = qualityPreset == "native" ? "已选择原生画质" : "已启用完整桌面滤镜"
+                effectiveQualityPreset = qualityPreset
+                qualityMessage = Self.qualityDescription(qualityPreset)
             } catch {
                 guard qualityPreset != "native" else { throw error }
                 // Resetting alone returns to shared high-quality defaults. The
                 // TV native baseline must also be applied before claiming it.
                 try applyQuality("native", to: next)
                 qualityPreset = "native"
-                qualityMessage = "桌面滤镜未能启用，当前使用原生画质。"
+                effectiveQualityPreset = "native"
+                qualityMessage = "增强滤镜未能启用，当前使用原生画质。"
             }
             subtitles.begin(playback: playback, engine: next)
             try next.command(["loadfile", playback.url.absoluteString, "replace"])
@@ -77,6 +87,7 @@ import AppleCore
         self.engine = next; self.playback = playback; self.client = client
         generation = UUID(); loaded = false; reporting = false; reportTask = nil
         lastProbe = 0
+        frameStability = TVFrameStability()
         position = 0; duration = 0; paused = false; buffering = true; error = nil
         let season = playback.item["ParentIndexNumber"].number, episode = playback.item["IndexNumber"].number
         let label = season.map { $0.isFinite && (0...9999).contains($0) } == true && episode.map { $0.isFinite && (0...9999).contains($0) } == true ? String(format: "S%02dE%02d · ", Int(season!), Int(episode!)) : ""
@@ -99,7 +110,7 @@ import AppleCore
             Task { @MainActor in self?.tick() }
         }
     }
-    private func tick() {
+    func tick(now: Double = ProcessInfo.processInfo.systemUptime) {
         guard let engine, active else { return }
         for event in engine.events() {
             switch event {
@@ -113,7 +124,7 @@ import AppleCore
                 sendReport(.start)
             case .ended: stop(); return
             case .failed: stop(); error = "无法播放此媒体，请检查服务器连接后重试。"; return
-            case .restarted: watchdog = PlaybackWatchdog(); danmakuEpoch &+= 1
+            case .restarted: watchdog = PlaybackWatchdog(); danmakuEpoch &+= 1; frameStability.interrupt()
             }
         }
         if let value = Double(engine.string("time-pos")), value.isFinite, value >= 0 { position = safeTime(value) }
@@ -121,7 +132,8 @@ import AppleCore
         paused = engine.flag("pause"); buffering = !loaded || engine.flag("paused-for-cache")
         if loaded { subtitles.update() }
         if loaded && engine.flag("eof-reached") { stop(); return }
-        let now = ProcessInfo.processInfo.systemUptime
+        stabilizeQuality(now: now)
+        guard active else { return }
         if probeEnabled, loaded, now - lastProbe >= 10 {
             lastProbe = now
             if let data = try? JSONEncoder().encode(playbackProbe()) {
@@ -151,12 +163,12 @@ import AppleCore
     func seek(by seconds: Double) {
         guard let engine, seconds.isFinite else { return }
         let target = min(duration > 0 ? duration : .greatestFiniteMagnitude, max(0, position + seconds))
-        do { try engine.command(["seek", String(target), "absolute+exact"]); watchdog = PlaybackWatchdog(); danmakuEpoch &+= 1 }
+        do { try engine.command(["seek", String(target), "absolute+exact"]); watchdog = PlaybackWatchdog(); danmakuEpoch &+= 1; frameStability.interrupt() }
         catch { self.error = "未能跳转播放位置" }
     }
     private func safeTime(_ value: Double) -> Double { value.isFinite ? min(1_000_000_000, max(0, value)) : 0 }
     private func isLocalFixture(_ playback: EmbyPlayback) -> Bool {
-        ProcessInfo.processInfo.arguments.contains("--tv-fixture") && playback.url.isFileURL
+        fixtureMode && playback.url.isFileURL
     }
     func stop() {
         stop(preservingPresentation: false)
@@ -184,13 +196,15 @@ import AppleCore
     }
 
     func selectQuality(_ preset: String) {
-        guard ["native", "tigerest-default"].contains(preset) else { return }
-        let old = qualityPreset
+        guard ["native", "tv-balanced", "tigerest-default"].contains(preset) else { return }
+        let old = effectiveQualityPreset
         do {
             if let engine { try applyQuality(preset, to: engine) }
             qualityPreset = preset
-            UserDefaults.standard.set(preset, forKey: "tv.qualityPreset")
-            qualityMessage = preset == "native" ? "已选择原生画质" : "已选择完整桌面滤镜"
+            effectiveQualityPreset = preset
+            frameStability = TVFrameStability()
+            if !fixtureMode { UserDefaults.standard.set(preset, forKey: "tv.qualityPreset") }
+            qualityMessage = Self.qualityDescription(preset)
         } catch {
             guard let engine else { return }
             do {
@@ -199,6 +213,7 @@ import AppleCore
             } catch {
                 do {
                     try applyQuality("native", to: engine); qualityPreset = "native"
+                    effectiveQualityPreset = "native"
                     qualityMessage = "未能恢复上一画质，已切换原生画质。"
                 } catch {
                     stop()
@@ -208,16 +223,46 @@ import AppleCore
             }
         }
     }
+    private func stabilizeQuality(now: Double) {
+        guard loaded, qualityPreset == "tv-balanced", effectiveQualityPreset == "tv-balanced", let engine else { return }
+        guard let reason = frameStability.observe(now: now, position: position,
+                fps: Double(engine.string("estimated-vf-fps")),
+                renderDrops: Double(engine.string("frame-drop-count")),
+                decoderDrops: Double(engine.string("decoder-frame-drop-count")), paused: paused, buffering: buffering) else { return }
+        do {
+            try applyQuality("native", to: engine)
+            effectiveQualityPreset = "native"
+            qualityMessage = reason == .highFrameRate
+                ? "本集帧率较高，已降低滤镜负载以保持流畅。"
+                : "检测到持续掉帧，已降低本集滤镜负载以保持流畅。"
+        } catch {
+            do {
+                try applyQuality("tv-balanced", to: engine)
+                qualityMessage = "自动减负未能应用，已恢复轻量增强。"
+            } catch {
+                stop(); self.error = "画质设置未能恢复，请重新播放。"
+                qualityMessage = "画质设置未能恢复，请重新播放。"
+            }
+        }
+    }
+    private static func qualityDescription(_ preset: String) -> String {
+        switch preset {
+        case "tv-balanced": return "已选择轻量增强"
+        case "tigerest-default": return "已选择完整桌面滤镜"
+        default: return "已选择原生画质"
+        }
+    }
     private func applyQuality(_ selection: String, to engine: MPVEngine) throws {
         // Validate the entire bundled chain before changing a running engine.
-        let preset = selection == "native" ? nil : try TVQualityPreset.bundledDefault()
+        let preset = selection == "native" ? nil : try TVQualityPreset.bundled(selection)
         let paths = try preset?.paths()
         try engine.resetQuality()
         if selection == "native" {
-            // TV keeps full output resolution with the verified low-cost
-            // scalers; all other shared high-quality properties stay intact.
+            // Keep full output resolution and color management. Explicitly
+            // disable enhancement work instead of inheriting profile defaults.
             try engine.qualitySetting("glsl-shaders", "")
             for scaler in ["scale", "cscale", "dscale"] { try engine.qualitySetting(scaler, "bilinear") }
+            for option in ["deband", "sigmoid-upscaling"] { try engine.qualitySetting(option, "no") }
             return
         }
         guard let preset, let paths else { return }
@@ -245,10 +290,22 @@ import AppleCore
                 pass["desc"].string.map { .string(description($0)) }
             }))
         })
+        let passTimings = Dictionary(uniqueKeysWithValues: ["fresh", "redraw"].map { kind in
+            (kind, JSONValue.array((passes[kind].array ?? []).prefix(128).map { pass in
+                .object(Dictionary(uniqueKeysWithValues: ["avg", "peak", "last"].map { field in
+                    let value = pass[field].number
+                    return (field, value.map { $0.isFinite && $0 >= 0 ? JSONValue.number($0) : .null } ?? .null)
+                }))
+            }))
+        })
         return .object([
             "capturedAt": .string(ISO8601DateFormatter().string(from: Date())),
             "position": .number(position), "paused": .bool(paused), "buffering": .bool(buffering),
             "qualityPreset": .string(qualityPreset),
+            "effectiveQualityPreset": .string(effectiveQualityPreset),
+            "estimated-vf-fps": number("estimated-vf-fps"),
+            "display-fps": number("display-fps"), "estimated-display-fps": number("estimated-display-fps"),
+            "processing": .object(Dictionary(uniqueKeysWithValues: ["deband", "sigmoid-upscaling", "dither", "video-sync", "hwdec-current", "interpolation"].map { ($0, .string(description(engine.string($0)))) })),
             "scalers": .object(Dictionary(uniqueKeysWithValues: ["scale", "cscale", "dscale"].map { ($0, .string(engine.string($0))) })),
             "drawableSize": .object(["width": .number(Double(surface.metal.drawableSize.width)), "height": .number(Double(surface.metal.drawableSize.height))]),
             "cache": .object(["seconds": number("demuxer-cache-duration"), "percent": number("cache-buffering-state")]),
@@ -257,7 +314,7 @@ import AppleCore
             "glsl-shaders": .array((engine.json("glsl-shaders").array ?? []).prefix(64).compactMap { value in
                 value.string.map { .string(URL(fileURLWithPath: $0).lastPathComponent) }
             }),
-            "vo-passes": .object(passDescriptions)
+            "vo-passes": .object(passDescriptions), "vo-pass-nanoseconds": .object(passTimings)
         ])
     }
 }

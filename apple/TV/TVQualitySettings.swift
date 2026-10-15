@@ -6,10 +6,12 @@ struct TVQualityPreset: Decodable {
     let base: String
     let options: [String: String]
     let shaders: [String]
-    static func bundledDefault() throws -> Self {
+    static func bundled(_ selection: String) throws -> Self {
         guard let root = Bundle.main.resourceURL else { throw CoreError.invalidSetting }
         let presets = try JSONDecoder().decode([Self].self, from: Data(contentsOf: root.appending(path: "Web/quality_presets.json")))
-        guard let value = presets.first(where: { $0.id == "tigerest-default" }), value.base == "high-quality", value.shaders.count == 3 else { throw CoreError.invalidSetting }
+        guard ["tigerest-default", "tv-balanced"].contains(selection),
+              let value = presets.first(where: { $0.id == selection }), value.base == "high-quality",
+              value.shaders.count == (selection == "tv-balanced" ? 1 : 3) else { throw CoreError.invalidSetting }
         return value
     }
     func paths() throws -> [String] {
@@ -28,9 +30,13 @@ struct TVQualitySettings: View {
         VStack(alignment: .leading, spacing: 32) {
             HStack { Text("画质设置").font(.largeTitle.bold()); Spacer(); Button("完成") { dismiss() } }
             Button { player.selectQuality("native") } label: {
-                Label("原生画质（推荐）", systemImage: player.qualityPreset == "native" ? "checkmark.circle.fill" : "circle")
+                Label("原生画质", systemImage: player.qualityPreset == "native" ? "checkmark.circle.fill" : "circle")
             }.accessibilityIdentifier("tv.quality.native")
             Text("保持电视输出分辨率，优先保证播放流畅。").foregroundStyle(.secondary)
+            Button { player.selectQuality("tv-balanced") } label: {
+                Label("轻量增强", systemImage: player.qualityPreset == "tv-balanced" ? "checkmark.circle.fill" : "circle")
+            }.accessibilityIdentifier("tv.quality.balanced")
+            Text("简化画面放大处理，保留线条细节；高帧率或持续掉帧时自动降低本集滤镜负载。").foregroundStyle(.secondary)
             Button { player.selectQuality("tigerest-default") } label: {
                 Label("完整桌面滤镜", systemImage: player.qualityPreset == "tigerest-default" ? "checkmark.circle.fill" : "circle")
             }.accessibilityIdentifier("tv.quality.default")
