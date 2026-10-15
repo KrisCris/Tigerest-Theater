@@ -320,9 +320,6 @@ Window
     settings.localContentCanAccessFileUrls: true
     settings.allowRunningInsecureContent: true
     settings.playbackRequiresUserGesture: false
-    // QtWebEngine defaults this off unless --enable-smooth-scrolling is passed;
-    // without it wheel scrolling and scroll-behavior:smooth jump instantly.
-    settings.scrollAnimatorEnabled: true
     profile.httpUserAgent: components.system.getUserAgent()
     profile.httpCacheType: WebEngineProfile.DiskHttpCache
     url: mainWindow.webUrl
@@ -338,6 +335,10 @@ Window
 
     Component.onCompleted:
     {
+      // The QML setting was added in Qt 6.8. Older Linux runtimes must still
+      // parse this view; newer runtimes opt into animated wheel/CSS scrolling.
+      if (typeof settings.scrollAnimatorEnabled !== "undefined")
+        settings.scrollAnimatorEnabled = true
       console.log("WebEngineView size:", width, "x", height, "backgroundColor:", backgroundColor)
       forceActiveFocus()
       mainWindow.reloadWebClient.connect(reload)
