@@ -22,6 +22,10 @@
      - 缩短时发 `waiting` 消息、不加 revision；
      - 列明哪些变化加 revision；
      - 旧版本的 status 不参与等待和缓冲计时（见「等待规则」「状态上报」）。
+- 2026-10-15 第 3 版：按第二轮评审补齐三处并发和失败处理。
+  1. 切集提交前还要确认房间存在、发起者仍是成员；发起者中途离开或被移出时放弃（`INITIATOR_LEFT`），见 `changeItem` 第 4 步。
+  2. 加入在占用座位前复核：房间仍在、未满员、条目没变；条目变了就对新条目重新验权，失败时不占座位、不离开旧房间。新增 `ROOM_CHANGED`，见「POST /rooms/join」。
+  3. 新增全房间的 `itemChange` 通知：开始核对时发 `pending`，每次切换最终恰好发一条 `committed` 或 `cancelled`；快照增加 `pendingChange`；客户端 10 秒未收到结束通知时重读快照。见「切换进度通知」。
 
 ## 目标与范围
 
@@ -102,6 +106,7 @@ X-Emby-User-Id: <登录响应的 User.Id>
   "capacity": 4,
   "createdAt": "2026-10-15T12:00:00.000Z",
   "ownerMemberId": "成员 UUID",
+  "pendingChange": null,
   "media": {
     "itemId": "Emby Item.Id",
     "mediaSourceId": "媒体源 ID",
@@ -185,7 +190,19 @@ X-Emby-User-Id: <登录响应的 User.Id>
   5. 用加入者自己的会话能访问房间当前的条目，否则 403 `ITEM_FORBIDDEN`。
   6. 不在其他房间；在其他房间且未带 `leaveCurrent`，返回 409 `ALREADY_IN_ROOM`（见下条）。
 
+  **提交前复核：** 第 5 步要向 Emby 查询，期间房间可能已经切换条目或坐满。所以占用座位前，要在同一个原子步骤里再确认一次：
+  - 房间仍存在且未结束，否则 404 `ROOM_ENDED`。
+  - 仍未满员，否则 409 `ROOM_FULL`。
+  - 房间当前的 `media.itemId` 仍是第 5 步核对过的条目。
+    - 若已切换，用加入者的会话对新条目重新核对，然后再回到本复核。
+    - 重新核对失败返回 403 `ITEM_FORBIDDEN`。
+    - 最多重新核对 2 次，条目仍在变化则返回 409 `ROOM_CHANGED`，客户端可稍后重试。
+
+  任何一项失败都不占用座位；带 `leaveCurrent` 时也不离开旧房间。
+
   全部通过后占用座位。成员在 `members` 广播中出现，`connection` 为 `reconnecting`，直到 WebSocket 的 hello 完成。票据过期而未连接时，按「断线与座位」规则处理。
+
+  反方向的竞态由 `changeItem` 负责：加入先完成、切换后提交时，切换在提交前发现成员集合多了未核对的新成员，会放弃切换（见 `changeItem` 第 4 步）。
 - **一人只能在一个房间：**
   - 已在其他房间时，创建和加入返回 409 `ALREADY_IN_ROOM`，`error` 中附带 `activeRoom`。客户端询问用户后，带 `leaveCurrent: true` 重试。
   - 这个检查放在目标的所有其他检查之后：目标房间进不去（满员、无权访问等）或新房间建不成（条目无效等）时，返回的是那个错误，不是 `ALREADY_IN_ROOM`。用户不会在确认离开旧房间后才发现进不了新房间。
@@ -263,14 +280,34 @@ X-Emby-User-Id: <登录响应的 User.Id>
     1. 收到命令时先检查 `baseRevision`，不等于当前版本立即回复 `STALE_REVISION`，不开始核对。
     2. 每个房间同时只处理一个 `changeItem`。核对进行中再收到 `changeItem`，回复 409 `CHANGE_IN_PROGRESS`，不排队。
     3. 记下开始核对时的成员集合，并行核对。
-    4. 核对完成后，提交前再次检查：
-       - 当前版本仍等于 `baseRevision`，否则回复 `STALE_REVISION`（附最新 room）；
-       - 当前成员集合中没有不在步骤 3 集合里的新成员，否则同样回复 `STALE_REVISION`。核对期间离开的成员不影响提交。
+    4. 核对完成后，提交前再次检查。以下任一不满足就放弃本次切换，状态不变：
+       - 房间仍存在；房间已结束时直接放弃，不再回复。
+       - 发起者仍是本房间成员（在线或保留座位中均可）。发起者核对期间主动离开、被踢、会话失效或座位过期时放弃，原因为 `INITIATOR_LEFT`；发起者已不在房间，不再回复他。
+       - 当前版本仍等于 `baseRevision`，否则回复发起者 `STALE_REVISION`（附最新 room）。
+       - 当前成员集合中，没有不在步骤 3 集合里的新成员，否则同样回复 `STALE_REVISION`。核对期间**发起者以外**的成员离开不影响提交。
 
-       任一不满足都放弃本次切换，状态不变。客户端可以按最新状态决定是否重新发起。
-    5. 检查通过后，在同一步骤中替换 `media`，进入 `waiting`，`resumeTo="playing"`，版本加 1 并广播。
-  - 核对期间加入的新成员，只按加入时的当前条目检查权限；因为步骤 4 会放弃这次切换，新成员不会被带进他无权访问的条目。
-  - 剧集播完自动下一集也走这个命令。几个客户端同时发出时，都带同一个 `baseRevision`：第一个开始核对，其余收到 `CHANGE_IN_PROGRESS`，或在它提交后收到 `STALE_REVISION`，然后跟随第一个的结果。
+       客户端可以按最新状态决定是否重新发起。
+    5. 检查通过后，在同一步骤中替换 `media`，进入 `waiting`，`resumeTo="playing"`，版本加 1 并广播 `state`。
+  - **切换进度通知：** 开始核对和处理结束时，都向全房间（包括发起者）发送 `itemChange` 消息，见「切换进度通知」。所以收到 `CHANGE_IN_PROGRESS` 的客户端总能知道切换何时结束，不会一直等下去。
+  - 核对期间加入的新成员，靠步骤 4 的成员集合检查和「POST /rooms/join」的提交前复核共同保证：不论两者谁先完成，新成员都不会被带进他无权访问的条目。
+  - 剧集播完自动下一集也走这个命令。几个客户端同时发出时，都带同一个 `baseRevision`：第一个开始核对；其余收到 `CHANGE_IN_PROGRESS`，或在它提交后收到 `STALE_REVISION`，之后跟随第一个的结果。第一个失败时，其余客户端从 `itemChange {phase:"cancelled"}` 得知，可按最新状态重新发起。
+
+**切换进度通知**（服务端 → 客户端，全房间）：
+
+```json
+{"type":"itemChange","phase":"pending","changeId":"切换 UUID","memberId":"发起者成员 UUID"}
+{"type":"itemChange","phase":"committed","changeId":"切换 UUID","memberId":"发起者成员 UUID","revision":14}
+{"type":"itemChange","phase":"cancelled","changeId":"切换 UUID","memberId":"发起者成员 UUID","reason":"MEMBER_ITEM_FORBIDDEN"}
+```
+
+- `pending` 在开始核对时发送，客户端可显示「XX 正在切换」。
+- 每次切换最终恰好发一条 `committed` 或 `cancelled`：
+  - `committed` 紧跟在对应的 `state` 之后发送；
+  - `cancelled` 的 `reason` 取 `MEMBER_ITEM_FORBIDDEN`、`WATCH_UNAVAILABLE`、`STALE_REVISION`、`INITIATOR_LEFT` 之一。
+  - 房间结束导致的放弃不发送，因为客户端会收到 `closed`。
+- 通知中**不包含**目标条目的 ID、标题，也不包含无权访问者的名单，避免把条目信息透露给无权访问的成员。具体的 `memberIds` 只在发起者收到的 `error` 中给出。
+- 房间快照增加 `pendingChange`：没有切换在核对时为 null，否则为 `{changeId, memberId}`。重连的客户端据此知道仍在切换中。
+- **兜底：** 客户端在收到 `CHANGE_IN_PROGRESS` 或 `pending` 后 10 秒内没有收到结束通知时，用 `GET /rooms/{roomId}` 重新读取快照。服务端的权限核对单次超时为 5 秒，正常情况下 10 秒内一定会结束。
 
 **leadMs**（让所有人同时开始的提前量）：`clamp(1.5 × 在线成员最近上报的最大 rttMs + 150, 300, 1200)` 毫秒。没有 rtt 数据时用 600。
 
@@ -352,6 +389,7 @@ X-Emby-User-Id: <登录响应的 User.Id>
 | `state` | `{revision, media, playback}` | 每次版本变化，发给所有在线成员 |
 | `members` | `{members, ownerMemberId}` | 成员加入、离开、状态、连接、房主变化 |
 | `waiting` | `{revision, memberIds, deadline}` | 等待名单变化，不增加 revision |
+| `itemChange` | `{phase, changeId, memberId, revision?, reason?}` | 切换开始核对，以及切换提交或放弃 |
 | `ack` | `{requestId, revision}` | 控制命令被接受 |
 | `error` | `{requestId?, code, message, room?, memberIds?, retryAfterMs?}` | 命令被拒绝或消息无效；连接保持 |
 | `pong` | 见上 | 每个 ping |
@@ -407,7 +445,8 @@ REST 返回 HTTP 状态和 code；WebSocket 的 `error` 消息只有 code。
 | 409 `IDEMPOTENCY_CONFLICT` | 同一 clientRequestId 内容不同 |
 | 409 `STALE_REVISION` | 别人刚刚操作，附最新 room，按最新状态处理 |
 | 409 `MEMBER_ITEM_FORBIDDEN` | 有成员无权访问目标条目，附 memberIds |
-| 409 `CHANGE_IN_PROGRESS` | 已有一次切换正在核对权限；等待随后的 `state` |
+| 409 `ROOM_CHANGED` | 加入期间房间反复切换条目，稍后重试加入 |
+| 409 `CHANGE_IN_PROGRESS` | 已有一次切换正在核对权限；等待 `itemChange` 的 committed 或 cancelled，10 秒未收到则重新读取快照 |
 | 422 `ITEM_TYPE_UNSUPPORTED` / `MEDIA_SOURCE_INVALID` | 不是电影或单集，或媒体源不属于该条目 |
 | 422 `UNSUPPORTED_TYPE` | 未知的 WebSocket 消息类型，连接保持 |
 | 429 `RATE_LIMITED` | 遵守 Retry-After 或 retryAfterMs |
@@ -463,7 +502,8 @@ REST 返回 HTTP 状态和 code；WebSocket 的 `error` 消息只有 code。
    - 已是成员时先返回票据，不受满员影响；
    - 被踢、满员（含保留座位）、无权访问；
    - 已在其他房间时的 `ALREADY_IN_ROOM`，以及目标检查失败时优先返回目标的错误；
-   - `leaveCurrent` 只在目标全部检查通过后离开旧房间，目标失败时旧房间成员身份不变（创建房间同样）。
+   - `leaveCurrent` 只在目标全部检查通过后离开旧房间，目标失败时旧房间成员身份不变（创建房间同样）；
+   - 提交前复核：验权期间房间切换条目时，对新条目重新验权；失败返回 ITEM_FORBIDDEN 且不占座位、不离开旧房间；反复切换返回 ROOM_CHANGED；验权期间房间坐满返回 ROOM_FULL。
 5. 票据：单次使用、30 秒过期；REST 签发时绑定 clientId，hello 的 clientId 不同时 4401；5 秒内未 hello 关闭；票据不出现在日志。
 6. 同一用户第二个连接取代第一个（4409），memberId 不变。
 7. ping/pong 时间戳来自单调时间轴且不倒退；20 秒无消息关闭（4408）。
@@ -487,7 +527,9 @@ REST 返回 HTTP 状态和 code；WebSocket 的 `error` 消息只有 code。
     - 逐成员权限核对，有人无权访问时拒绝并返回 memberIds；
     - 核对中再次切换返回 CHANGE_IN_PROGRESS；
     - 核对期间有人操作播放或有新成员加入，提交时返回 STALE_REVISION 且状态不变；
-    - 核对期间有人离开不影响提交；
+    - 核对期间发起者以外的人离开不影响提交；发起者离开、被踢或座位过期时放弃（INITIATOR_LEFT）；房间结束时放弃；
+    - 每次切换先发一条 itemChange pending，最终恰好一条 committed 或 cancelled，通知中不含条目信息；
+    - 快照中的 pendingChange 与核对状态一致；
     - 并发自动下一集只有一个生效。
 13. 断线与座位：
     - 有人在线时座位按 seatHoldSeconds 计时；
