@@ -20,6 +20,7 @@ struct priv {
     struct mp_image *previous, *pending;
     uint64_t generation;
     int64_t index, inputs, outputs, generated, bypassed, resets, failures;
+    int recovery_frames;
     double last_ms;
     const char *status;
     bool failed, speed_bypass;
@@ -35,6 +36,7 @@ static void reset(struct mp_filter *f) {
     mp_image_unrefp(&p->pending);
     p->generation++;
     p->index = 0;
+    p->recovery_frames = 0;
     p->resets++;
     tgrife_reset(p->engine);
 }
@@ -104,17 +106,30 @@ static void process(struct mp_filter *f) {
     struct mp_image *input = frame.data;
     p->inputs++;
     const bool speed_bypass = playback_speed(p) > 1.0001;
+    const bool supported = eligible(input);
     if (speed_bypass != p->speed_bypass) {
         // Pending originals have already drained above. Clear only frame/cache
         // history on a mode transition, retaining the model and failure latch.
         reset(f);
         p->speed_bypass = speed_bypass;
+        // Give buffered fast audio time to settle before restoring expensive
+        // interpolation. Count source frames, never block the filter thread.
+        if (!speed_bypass && supported && !p->failed)
+            p->recovery_frames = (int)ceil(input->nominal_fps * 0.35);
     }
-    if (p->failed || speed_bypass || !eligible(input)) {
+    if (p->failed || speed_bypass || !supported) {
+        p->recovery_frames = 0;
         if (p->previous)
             reset(f);
         if (!p->failed)
             p->status = speed_bypass ? "speed-bypass" : "unsupported-source";
+        p->bypassed++;
+        send(f, input);
+        return;
+    }
+    if (p->recovery_frames > 0) {
+        p->recovery_frames--;
+        p->status = "speed-recovery";
         p->bypassed++;
         send(f, input);
         return;

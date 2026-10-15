@@ -61,6 +61,31 @@ static void speed_metadata(struct mp_filter *filter, double speed, const char *s
     talloc_free(tags);
 }
 
+// The recovery path must preserve hardware frames at source cadence and do no
+// expensive work; a missing/shortened cooldown or accidental interpolation fails.
+static void recovery_frames(struct mp_filter *filter, double first_pts, double fps,
+                            float first_pixel, int count) {
+    int conversions = fx.conversions, downloads = fx.downloads;
+    int interpolations = fx.interpolations, creates = fx.creates;
+    for (int i = 0; i < count; i++) {
+        struct mp_image *original = fx_image(first_pts+i/fps, fps, first_pixel+2*i, true);
+        fx_push(filter, MAKE_FRAME(MP_FRAME_VIDEO, original));
+        struct mp_frame frame = fx_pull(filter);
+        CHECK(frame.type == MP_FRAME_VIDEO && frame.data == original,
+              "recovery returns each original hardware input without conversion");
+        if (frame.type == MP_FRAME_VIDEO) {
+            struct mp_image *img = frame.data;
+            CHECK(close_to(img->pts, first_pts+i/fps) && close_to(img->nominal_fps, fps) &&
+                  close_to(img->pkt_duration, 1/fps), "recovery preserves source PTS and cadence");
+        }
+        fx_release(frame); none(filter);
+        speed_metadata(filter, fx_global.opts.playback_speed, "speed-recovery");
+        CHECK(fx.conversions == conversions && fx.downloads == downloads &&
+              fx.interpolations == interpolations && fx.creates == creates,
+              "recovery performs no download, conversion, model initialization or inference");
+    }
+}
+
 // Catches midpoint PTS/order errors, mutation of the saved source's FPS,
 // and using output-frame indices instead of source-frame cache identities.
 static void cfr_and_metadata(void) {
@@ -201,12 +226,13 @@ static void speed_transition(void) {
     CHECK(fx.interpolations == 1 && fx.conversions == 2, "2x playback bypasses conversion and inference");
     speed_metadata(filter, 2, "speed-bypass");
     fx_global.opts.playback_speed = 1;
-    input(filter, 1.0/8, 24, 6);
-    output(filter, 1.0/8, 48, 6); none(filter);
+    recovery_frames(filter, 1.0/8, 24, 6, 9);
+    input(filter, .5, 24, 24);
+    output(filter, .5, 48, 24); none(filter);
     speed_metadata(filter, 1, "warming");
-    input(filter, 1.0/6, 24, 8); output(filter, 7.0/48, 48, 7); output(filter, 1.0/6, 48, 8);
+    input(filter, 13.0/24, 24, 26); output(filter, 25.0/48, 48, 25); output(filter, 13.0/24, 48, 26);
     CHECK(fx.last_generation != before && fx.last_index == 2, "returning to 1x restarts cache identity");
-    CHECK(fx.interpolations == 2 && fx.last_a == 6 && fx.last_b == 8, "recovery interpolates only the new adjacent pair");
+    CHECK(fx.interpolations == 2 && fx.last_a == 24 && fx.last_b == 26, "recovery interpolates only the new adjacent pair");
     speed_metadata(filter, 1, "active");
     CHECK(fx.creates == 1, "speed transition retains the loaded model"); finish(filter);
 }
@@ -224,9 +250,10 @@ static void initial_speed_and_slow_recovery(void) {
     CHECK(fx.interpolations == 0 && fx.creates == 0 && fx.downloads == 0 && fx.conversions == 0, "initial 2x bypasses the entire inference preparation path");
     speed_metadata(filter, 2, "speed-bypass");
     fx_global.opts.playback_speed = .5;
-    input(filter, 1.0/12, 24, 4); output(filter, 1.0/12, 48, 4); none(filter);
-    input(filter, 1.0/8, 24, 6); output(filter, 5.0/48, 48, 5); output(filter, 1.0/8, 48, 6);
-    CHECK(fx.interpolations == 1 && fx.creates == 1 && fx.last_a == 4 && fx.last_b == 6, ".5x restoration warms and interpolates a new pair");
+    recovery_frames(filter, 1.0/12, 24, 4, 9);
+    input(filter, 11.0/24, 24, 22); output(filter, 11.0/24, 48, 22); none(filter);
+    input(filter, .5, 24, 24); output(filter, 23.0/48, 48, 23); output(filter, .5, 48, 24);
+    CHECK(fx.interpolations == 1 && fx.creates == 1 && fx.last_a == 22 && fx.last_b == 24, ".5x restoration warms and interpolates a new pair");
     speed_metadata(filter, .5, "active");
     finish(filter);
 }
@@ -248,11 +275,12 @@ static void fast_rates_seek_and_eof(void) {
     CHECK(metric(filter, "resets") == entered+1, "a seek in bypass causes just the seek reset");
     speed_metadata(filter, 2, "speed-bypass");
     fx_global.opts.playback_speed = 1;
-    input(filter, 10+1.0/24, 24, 12); output(filter, 10+1.0/24, 48, 12); none(filter);
-    input(filter, 10+1.0/12, 24, 14); output(filter, 10+1.0/16, 48, 13); output(filter, 10+1.0/12, 48, 14);
-    CHECK(fx.interpolations == 1 && fx.last_a == 12 && fx.last_b == 14 && fx.creates == 1, "seek and speed recovery reuse the engine with fresh content");
+    recovery_frames(filter, 10+1.0/24, 24, 12, 9);
+    input(filter, 10+10.0/24, 24, 30); output(filter, 10+10.0/24, 48, 30); none(filter);
+    input(filter, 10+11.0/24, 24, 32); output(filter, 10+21.0/48, 48, 31); output(filter, 10+11.0/24, 48, 32);
+    CHECK(fx.interpolations == 1 && fx.last_a == 30 && fx.last_b == 32 && fx.creates == 1, "seek and speed recovery reuse the engine with fresh content");
     fx_global.opts.playback_speed = 1.25;
-    input(filter, 10+1.0/8, 24, 16); output(filter, 10+1.0/8, 24, 16); none(filter);
+    input(filter, 10+.5, 24, 34); output(filter, 10+.5, 24, 34); none(filter);
     fx_push(filter, MAKE_FRAME(MP_FRAME_EOF, NULL));
     struct mp_frame eof = fx_pull(filter);
     CHECK(eof.type == MP_FRAME_EOF, "EOF propagates while speed-bypassed"); fx_release(eof); none(filter);
@@ -267,7 +295,7 @@ static void repeated_speed_transitions(void) {
     struct mp_filter *filter = start();
     input(filter, 0, 24, 0); output(filter, 0, 48, 0);
     for (int cycle = 0; cycle < 50; cycle++) {
-        int i = cycle*5;
+        int i = cycle*14;
         input(filter, (i+1)/24.0, 24, i+1); output(filter, (i+.5)/24, 48, i+.5f);
         fx_global.opts.playback_speed = 2;
         input(filter, (i+2)/24.0, 24, i+2);
@@ -276,10 +304,11 @@ static void repeated_speed_transitions(void) {
         input(filter, (i+3)/24.0, 24, i+3); output(filter, (i+3)/24.0, 24, i+3); none(filter);
         CHECK(metric(filter, "resets") == entered, "steady bypass does not reset per input");
         fx_global.opts.playback_speed = 1;
-        input(filter, (i+4)/24.0, 24, i+4); output(filter, (i+4)/24.0, 48, i+4); none(filter);
+        recovery_frames(filter, (i+4)/24.0, 24, i+4, 9);
+        input(filter, (i+13)/24.0, 24, i+13); output(filter, (i+13)/24.0, 48, i+13); none(filter);
         CHECK(metric(filter, "resets") == entered+1, "leaving bypass resets only once");
         fx_global.opts.playback_speed = 1.00005;
-        input(filter, (i+5)/24.0, 24, i+5); output(filter, (i+4.5)/24, 48, i+4.5f); output(filter, (i+5)/24.0, 48, i+5);
+        input(filter, (i+14)/24.0, 24, i+14); output(filter, (i+13.5)/24, 48, i+13.5f); output(filter, (i+14)/24.0, 48, i+14);
         CHECK(metric(filter, "resets") == entered+1, "normal-speed tolerance avoids unnecessary resets");
         fx_global.opts.playback_speed = 1;
     }
@@ -287,6 +316,109 @@ static void repeated_speed_transitions(void) {
     CHECK(fx.peak_images <= 8 && fx.peak_pixels <= 4, "repeated mode transitions keep references bounded");
     finish(filter);
 }
+
+// Literal frame budgets independently cover ceil(fps*.35) at the eligible
+// boundaries. Polling/no-input cycles must not consume or renew that budget.
+static void recovery_budget_and_idle(void) {
+    const struct { double fps; int frames; } rows[] = {
+        {23, 9}, {24000.0/1001, 9}, {24, 9}, {25, 9}, {29.97, 11}, {30.01, 11}
+    };
+    for (unsigned n = 0; n < sizeof(rows)/sizeof(rows[0]); n++) {
+        struct mp_filter *filter = start(); double fps = rows[n].fps;
+        fx_global.opts.playback_speed = 2;
+        input(filter, 0, fps, 0); output(filter, 0, fps, 0);
+        fx_global.opts.playback_speed = 1;
+        recovery_frames(filter, 1/fps, fps, 2, 1);
+        long long resets = metric(filter, "resets");
+        for (int i = 0; i < 100; i++) { none(filter); speed_metadata(filter, 1, "speed-recovery"); }
+        recovery_frames(filter, 2/fps, fps, 4, rows[n].frames-1);
+        CHECK(metric(filter, "resets") == resets, "recovery does not reset or extend per input/poll");
+        input(filter, (rows[n].frames+1)/fps, fps, 70);
+        output(filter, (rows[n].frames+1)/fps, 2*fps, 70); none(filter);
+        speed_metadata(filter, 1, "warming");
+        input(filter, (rows[n].frames+2)/fps, fps, 72);
+        output(filter, (rows[n].frames+1.5)/fps, 2*fps, 71);
+        output(filter, (rows[n].frames+2)/fps, 2*fps, 72);
+        CHECK(fx.creates == 1 && fx.interpolations == 1 && fx.last_a == 70 && fx.last_b == 72,
+              "finite recovery resumes inference from a fresh pair, never a bypass frame");
+        finish(filter);
+    }
+}
+
+static void recovery_restarted_by_speed(void) {
+    struct mp_filter *filter = start();
+    input(filter, 0, 24, 0); output(filter, 0, 48, 0);
+    fx_global.opts.playback_speed = 2;
+    input(filter, 1.0/24, 24, 2); output(filter, 1.0/24, 24, 2);
+    fx_global.opts.playback_speed = 1;
+    recovery_frames(filter, 2.0/24, 24, 4, 3);
+    fx_global.opts.playback_speed = 1.25;
+    input(filter, 5.0/24, 24, 10); output(filter, 5.0/24, 24, 10);
+    speed_metadata(filter, 1.25, "speed-bypass");
+    fx_global.opts.playback_speed = .5;
+    recovery_frames(filter, 6.0/24, 24, 12, 4);
+    fx_global.opts.playback_speed = 1.00005;
+    recovery_frames(filter, 10.0/24, 24, 20, 5);
+    input(filter, 15.0/24, 24, 30); output(filter, 15.0/24, 48, 30); none(filter);
+    input(filter, 16.0/24, 24, 32); output(filter, 31.0/48, 48, 31); output(filter, 16.0/24, 48, 32);
+    CHECK(fx.creates == 1 && fx.interpolations == 1 && fx.last_a == 30 && fx.last_b == 32,
+          "a second speed gesture restarts one full recovery budget without loading another model");
+    CHECK(metric(filter, "resets") == 4, "only the four processing-mode transitions reset cache state");
+    finish(filter);
+}
+
+// Seek/EOF/unsupported boundaries cancel recovery instead of carrying it into
+// a new timeline. The next eligible normal-speed input starts a fresh pair.
+static void recovery_lifecycle_boundaries(void) {
+    for (int boundary = 0; boundary < 3; boundary++) {
+        struct mp_filter *filter = start();
+        input(filter, 0, 24, 0); output(filter, 0, 48, 0);
+        fx_global.opts.playback_speed = 2;
+        input(filter, 1.0/24, 24, 2); output(filter, 1.0/24, 24, 2);
+        fx_global.opts.playback_speed = 1;
+        recovery_frames(filter, 2.0/24, 24, 4, 2);
+        if (boundary == 0) {
+            fx_seek(filter); none(filter);
+        } else if (boundary == 1) {
+            fx_push(filter, MAKE_FRAME(MP_FRAME_EOF, NULL));
+            struct mp_frame eof = fx_pull(filter);
+            CHECK(eof.type == MP_FRAME_EOF, "EOF propagates during recovery without extra originals");
+            fx_release(eof); none(filter);
+        } else {
+            struct mp_image *unsupported = fx_image(4.0/24, 24, 8, true);
+            unsupported->w = unsupported->params.w = 1280;
+            unsupported->h = unsupported->params.h = 720;
+            fx_push(filter, MAKE_FRAME(MP_FRAME_VIDEO, unsupported));
+            output(filter, 4.0/24, 24, 8); none(filter);
+            speed_metadata(filter, 1, "unsupported-source");
+        }
+        input(filter, 10, 24, 40); output(filter, 10, 48, 40); none(filter);
+        speed_metadata(filter, 1, "warming");
+        input(filter, 10+1.0/24, 24, 42);
+        output(filter, 10+1.0/48, 48, 41); output(filter, 10+1.0/24, 48, 42);
+        CHECK(fx.creates == 1 && fx.interpolations == 1 && fx.last_a == 40 && fx.last_b == 42,
+              "timeline boundary clears cooldown and reuses the model with new source history");
+        finish(filter);
+    }
+}
+
+static void recovery_does_not_clear_failure(void) {
+    struct mp_filter *filter = start();
+    input(filter, 0, 24, 0); output(filter, 0, 48, 0);
+    fx.fail_next_inference = true;
+    input(filter, 1.0/24, 24, 2); output(filter, 1.0/24, 24, 2);
+    fx_global.opts.playback_speed = 2;
+    input(filter, 2.0/24, 24, 4); output(filter, 2.0/24, 24, 4);
+    fx_global.opts.playback_speed = 1;
+    for (int i = 3; i < 20; i++) {
+        input(filter, i/24.0, 24, i); output(filter, i/24.0, 24, i); none(filter);
+        speed_metadata(filter, 1, "inference-failed");
+    }
+    CHECK(fx.interpolations == 1 && metric(filter, "failures") == 1,
+          "speed recovery never revives an existing inference failure");
+    finish(filter);
+}
+
 static void run(const char *name, void (*test)(void)) {
     unsigned before = failures; test(); cases++;
     printf("%s %s\n", failures == before ? "PASS" : "FAIL", name);
@@ -306,6 +438,10 @@ int main(void) {
     run("initial 2x and .5x recovery", initial_speed_and_slow_recovery);
     run("1.25x, seek while bypassed and EOF", fast_rates_seek_and_eof);
     run("50 repeated speed transitions", repeated_speed_transitions);
+    run("recovery frame budgets and idle polling", recovery_budget_and_idle);
+    run("recovery restarted by another speed gesture", recovery_restarted_by_speed);
+    run("recovery seek/EOF/unsupported boundaries", recovery_lifecycle_boundaries);
+    run("recovery preserves the failure latch", recovery_does_not_clear_failure);
     printf("%u cases, %u failed assertions; fixture scheduling/ownership only\n", cases, failures);
     return failures ? 1 : 0;
 }
