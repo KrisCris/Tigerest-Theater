@@ -442,6 +442,24 @@
 			<key>fileRef</key>
 			<string>188694BC498E2E6E0231298B</string>
 		</dict>
+		<key>A3F82A4A6930AACC4A0ABD4D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>folder.assetcatalog</string>
+			<key>path</key>
+			<string>Resources/TV.xcassets</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>092ED5CF93913942041AAB66</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>A3F82A4A6930AACC4A0ABD4D</string>
+		</dict>
 		<key>35A44ABCD1083C4498F32DD5</key>
 		<dict>
 			<key>isa</key>
@@ -539,6 +557,8 @@
 				<string>YES</string>
 				<key>GENERATE_INFOPLIST_FILE</key>
 				<string>NO</string>
+				<key>ASSETCATALOG_COMPILER_APPICON_NAME</key>
+				<string>App Icon &amp; Top Shelf Image</string>
 				<key>ONLY_ACTIVE_ARCH</key>
 				<string>YES</string>
 				<key>SWIFT_OPTIMIZATION_LEVEL</key>
@@ -583,6 +603,8 @@
 				<string>YES</string>
 				<key>GENERATE_INFOPLIST_FILE</key>
 				<string>NO</string>
+				<key>ASSETCATALOG_COMPILER_APPICON_NAME</key>
+				<string>App Icon &amp; Top Shelf Image</string>
 				<key>ONLY_ACTIVE_ARCH</key>
 				<string>NO</string>
 				<key>SWIFT_OPTIMIZATION_LEVEL</key>
@@ -647,6 +669,7 @@
 				<string>FEABE025173ED9CDEBE7EED8</string>
 				<string>B0D75AFC19C3D2CF1A8CA50B</string>
 				<string>8D8E2CD248F51ADCDFA900B5</string>
+				<string>092ED5CF93913942041AAB66</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>
@@ -946,6 +969,7 @@
 				<string>1B0D3BAD0B0CF4137ACE60F6</string>
 				<string>FC178867AD461E3C97D94B56</string>
 				<string>188694BC498E2E6E0231298B</string>
+				<string>A3F82A4A6930AACC4A0ABD4D</string>
 				<string>DBCF258C0E434F3DFBDA5648</string>
 				<string>79BBD3B852F40BDCEA1D0F8D</string>
 			</array>

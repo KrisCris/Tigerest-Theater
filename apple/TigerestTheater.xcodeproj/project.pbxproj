@@ -546,6 +546,24 @@
 			<key>package</key>
 			<string>91C29761F7EEF29E6DC06BF8</string>
 		</dict>
+		<key>9D8EABB4B9C632203EC1188C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>folder.assetcatalog</string>
+			<key>path</key>
+			<string>Resources/iPad.xcassets</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>0D22CACDDB1DD98A42AA6A9E</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>9D8EABB4B9C632203EC1188C</string>
+		</dict>
 		<key>6B9AF8604B8E01F0D6FA89F9</key>
 		<dict>
 			<key>isa</key>
@@ -725,6 +743,7 @@
 			<key>files</key>
 			<array>
 				<string>56A8D05600A8536CF5036A94</string>
+				<string>0D22CACDDB1DD98A42AA6A9E</string>
 				<string>A02024E3BCA7E6CE19D8E2A1</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
@@ -846,6 +865,8 @@
 				<string>$(inherited) -framework CoreML -framework Metal</string>
 				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
 				<string>$(inherited) RIFE_NATIVE DEBUG</string>
+				<key>ASSETCATALOG_COMPILER_APPICON_NAME</key>
+				<string>AppIcon</string>
 				<key>ONLY_ACTIVE_ARCH</key>
 				<string>YES</string>
 				<key>SWIFT_OPTIMIZATION_LEVEL</key>
@@ -929,6 +950,8 @@
 				<string>$(inherited) -framework CoreML -framework Metal</string>
 				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
 				<string>$(inherited) RIFE_NATIVE</string>
+				<key>ASSETCATALOG_COMPILER_APPICON_NAME</key>
+				<string>AppIcon</string>
 				<key>ONLY_ACTIVE_ARCH</key>
 				<string>NO</string>
 				<key>SWIFT_OPTIMIZATION_LEVEL</key>
@@ -1299,6 +1322,7 @@
 				<string>B0587E8C67B8C8333E24A360</string>
 				<string>67E7B97EAFD0AA3CBDC83FD6</string>
 				<string>EA4EA786C5BC9B7737331310</string>
+				<string>9D8EABB4B9C632203EC1188C</string>
 				<string>6B9AF8604B8E01F0D6FA89F9</string>
 				<string>8EC36EC682A40B0C657E04C4</string>
 				<string>FCF19CFB2067FAAE19F52A60</string>
