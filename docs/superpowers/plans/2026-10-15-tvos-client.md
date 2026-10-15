@@ -18,7 +18,7 @@ Preserve iPad generated project, installed profiles, MPV revision and deployment
 - [x] Verify: build tvOS simulator/device, run API tests and isolated native UI/playback fixtures. Independently review authentication/progress/lifecycle and fix findings before commit/PR.
 - [x] Pair/install physical Apple TV and verify normal startup.
 - [ ] Verify production-server login and physical picture/sound/remote operation.
-- [ ] Record exact completed scope and gaps; push TV branch and attach PR without publishing an unvalidated TV release.
+- [x] Record exact completed scope and gaps; push TV branch and attach draft PR#9 without publishing an unvalidated TV release.
 
 ## Validation record
 
