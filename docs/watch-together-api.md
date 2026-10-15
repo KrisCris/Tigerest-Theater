@@ -2,6 +2,27 @@
 
 状态：2026-10-15 客户端提出的后端契约，尚未实现。供后端在评论／弹幕服务（HTTP 18443，独立私有仓库）中实现，客户端按本文对接。任何一方需要改动协议时，先更新本文再改代码。
 
+**修订记录**
+
+- 2026-10-15 第 1 版：初稿。
+- 2026-10-15 第 2 版：按后端评审补齐五处边界，接口路径和消息格式的其余部分不变。
+  1. 创建、加入、申请票据的 REST 请求都带 `clientId`，票据签发时绑定，hello 时核对（见「WebSocket 票据」）。
+  2. 断线与座位：
+     - 有人在线时才计座位时间；全员断线时休眠，所有人都能在 `emptyRoomSeconds` 内重连；
+     - 房主只转给在线成员（见「断线与座位」）。
+  3. 加入：
+     - 已是成员先于满员判断；
+     - 目标的检查先于 `ALREADY_IN_ROOM`；
+     - `leaveCurrent` 在目标全部检查通过后才离开旧房间（见「REST 接口」）。
+  4. 切集：
+     - 核对期间不加锁；
+     - 同时只处理一个切集（`CHANGE_IN_PROGRESS`）；
+     - 提交前再查版本和成员集合（见 `changeItem`）。
+  5. 等待名单：
+     - 缩短时发 `waiting` 消息、不加 revision；
+     - 列明哪些变化加 revision；
+     - 旧版本的 status 不参与等待和缓冲计时（见「等待规则」「状态上报」）。
+
 ## 目标与范围
 
 - 大河专属 Emby（ServerId `62526c3bf747439c99327ddec5fed4a8`）的登录用户可以创建房间，用房间码邀请其他大河用户，以相同的进度观看同一部电影或同一集。
@@ -43,17 +64,27 @@ X-Emby-User-Id: <登录响应的 User.Id>
 - 只接受可信的大河 Emby；其他 ServerId 返回 403 `SERVER_NOT_ALLOWED`。API Key、不属于当前用户的 Token 一律拒绝。
 - 浏览器 Origin 白名单与评论服务相同（页面来自大河 Emby 的网页端）；原生 HTTP 客户端不带 Origin 时允许。CORS 预检需允许上述三个头。
 - 成员身份对外只显示评论作者身份：`authorId`、`name`、`avatarPath`，与 `/community/v1/me` 返回的相同，客户端用现有方式加载头像。不得向其他成员暴露 Emby UserId、设备 ID、IP 或 Token。
-- **管理员判定：** 创建房间时，服务端用创建者自己的会话向 Emby 读取 `GET /Users/{userId}` 的 `Policy.IsAdministrator`，为 true 时容量为 `adminRoomCapacity`。客户端不能自行声明。容量在创建时确定，之后房主转移也不变。
+- **管理员判定：** 创建房间时，服务端用创建者自己的会话向 Emby 读取 `GET /Users/{userId}` 的 `Policy.IsAdministrator`，为 true 时容量为 `adminRoomCapacity`。
+  - 不要用评论服务的 `isCommentAdmin`：评论管理员由服务端单独配置，与 Emby 管理员无关。
+  - 客户端不能自行声明。
+  - 容量在创建时确定，之后房主转移也不变。
 
 ### WebSocket 票据
 
 浏览器的 WebSocket 不能带自定义请求头，Token 也不能写进 URL，所以实时通道使用一次性票据：
 
-1. 客户端带身份头调用 REST 创建房间、加入房间或申请票据，得到 `ticket`。
+1. 客户端带身份头调用 REST 创建房间、加入房间或申请票据，请求体中带上 `clientId`，得到 `ticket`。
 2. 客户端连接 `/watch/v1/socket`。握手时检查 Origin 白名单，不通过返回 403。
-3. 连接后第一条消息为 `hello`，携带票据。
+3. 连接后第一条消息为 `hello`，携带票据和同一个 `clientId`。
 
-票据为至少 128 位的随机值，单次使用，30 秒内有效，绑定用户、房间和 hello 中的 `clientId`。连接后 5 秒内未收到 `hello`，或票据无效、过期、已用过，关闭连接，关闭码 4401。票据不写入任何日志。
+`clientId` 是客户端为每个应用配置生成并持久保存的 UUID，用来区分同一用户的不同设备和配置。服务端只用它绑定票据，不向其他成员展示。
+
+票据为至少 128 位的随机值，单次使用，30 秒内有效，签发时绑定用户、房间和请求中的 `clientId`。以下情况一律关闭连接，关闭码 4401，并作废该票据：
+- 连接后 5 秒内未收到 `hello`；
+- 票据无效、过期或已用过；
+- hello 中的 `clientId` 与签发时不同。
+
+票据不写入任何日志。
 
 ### 会话复核
 
@@ -134,9 +165,9 @@ X-Emby-User-Id: <登录响应的 User.Id>
 |---|---|---|
 | GET `/health` | 无认证 | `{status, enabled, protocol: 1}`，可用 200，否则 503 |
 | GET `/me` | 认证 | `{author, capacity, activeRoom, features}` |
-| POST `/rooms` | `{itemId, mediaSourceId, positionMs, clientRequestId, leaveCurrent?}` | 首次 201，重试 200：`{room, ticket, ticketExpiresAt, replayed}` |
-| POST `/rooms/join` | `{code, leaveCurrent?}` | `{room, ticket, ticketExpiresAt}` |
-| POST `/rooms/{roomId}/tickets` | 无请求体 | `{ticket, ticketExpiresAt}` |
+| POST `/rooms` | `{itemId, mediaSourceId, positionMs, clientRequestId, clientId, leaveCurrent?}` | 首次 201，重试 200：`{room, ticket, ticketExpiresAt, replayed}` |
+| POST `/rooms/join` | `{code, clientId, leaveCurrent?}` | `{room, ticket, ticketExpiresAt}` |
+| POST `/rooms/{roomId}/tickets` | `{clientId}` | `{ticket, ticketExpiresAt}` |
 | POST `/rooms/{roomId}/leave` | 无请求体 | `{left: true}`，幂等 |
 | GET `/rooms/{roomId}` | 认证 | `{room}` |
 
@@ -146,13 +177,21 @@ X-Emby-User-Id: <登录响应的 User.Id>
   - 用创建者自己的会话确认能访问该条目，`mediaSourceId` 属于该条目，`positionMs` 在 0 到时长之间。
   - 初始状态为 `paused`、`revision=1`、`lastAction.type="create"`，创建者为房主。
   - `clientRequestId` 为 UUID，10 分钟内幂等：相同 ID 和内容重试时，若房间仍在，返回同一房间和一张新票据；相同 ID 改了内容返回 409 `IDEMPOTENCY_CONFLICT`。
-- **POST /rooms/join：**
-  - 房间码不区分大小写，去掉首尾空白。
-  - 依次检查：房间存在且未结束，否则 404 `ROOM_NOT_FOUND`；没有满员（断线保留中的座位也计入），否则 409 `ROOM_FULL`；没有被踢出，否则 403 `KICKED`；用加入者自己的会话能访问当前条目，否则 403 `ITEM_FORBIDDEN`。
-  - 通过后占用座位，并在 `members` 广播中出现，`connection` 为 `reconnecting`，直到 WebSocket 的 hello 完成。票据过期而未连接时，按座位保留规则处理。
-- **一人只能在一个房间：** 已在其他房间时，创建和加入都返回 409 `ALREADY_IN_ROOM`，`error` 中附带 `activeRoom`。客户端询问用户后，带 `leaveCurrent: true` 重试；服务端先原子地离开旧房间，再创建或加入。重复加入自己已在的房间不算冲突，直接返回新票据。
-- **POST /rooms/{roomId}/tickets：** 只有本房间的成员（包括保留座位期间的断线成员）可以申请，用于重连。房间已结束返回 404 `ROOM_ENDED`；不是成员返回 404 `NOT_FOUND`，不透露房间是否存在。
-- **POST /rooms/{roomId}/leave：** 移出成员并释放座位。房主离开时，房主转给仍在线、加入最早的成员。最后一个成员主动离开时房间立即结束。
+- **POST /rooms/join：** 房间码不区分大小写，去掉首尾空白。按以下顺序检查，第一个不满足的条件决定返回：
+  1. 房间存在且未结束，否则 404 `ROOM_NOT_FOUND`。
+  2. **已是这个房间的成员**（包括保留座位中的断线成员）：直接返回房间快照和新票据，不再做后面的检查，也不计入满员判断。这是重连的另一条路径，效果与申请票据相同。
+  3. 没有被这个房间踢出，否则 403 `KICKED`。
+  4. 没有满员（保留座位中的断线成员也计入），否则 409 `ROOM_FULL`。
+  5. 用加入者自己的会话能访问房间当前的条目，否则 403 `ITEM_FORBIDDEN`。
+  6. 不在其他房间；在其他房间且未带 `leaveCurrent`，返回 409 `ALREADY_IN_ROOM`（见下条）。
+
+  全部通过后占用座位。成员在 `members` 广播中出现，`connection` 为 `reconnecting`，直到 WebSocket 的 hello 完成。票据过期而未连接时，按「断线与座位」规则处理。
+- **一人只能在一个房间：**
+  - 已在其他房间时，创建和加入返回 409 `ALREADY_IN_ROOM`，`error` 中附带 `activeRoom`。客户端询问用户后，带 `leaveCurrent: true` 重试。
+  - 这个检查放在目标的所有其他检查之后：目标房间进不去（满员、无权访问等）或新房间建不成（条目无效等）时，返回的是那个错误，不是 `ALREADY_IN_ROOM`。用户不会在确认离开旧房间后才发现进不了新房间。
+  - 带 `leaveCurrent: true` 时，**先完成目标的全部检查，再在同一个原子步骤里离开旧房间并加入或创建新房间**。任何检查失败都不离开旧房间。离开旧房间的效果与主动离开相同（房主转移、最后一人离开时房间结束），旧连接收到 `closed {reason:"left"}`。
+- **POST /rooms/{roomId}/tickets：** 只有本房间的成员（包括保留座位中的断线成员）可以申请，用于重连，不做满员检查。房间已结束返回 404 `ROOM_ENDED`；不是成员（包括座位已过期被移出）返回 404 `NOT_FOUND`，不透露房间是否存在。
+- **POST /rooms/{roomId}/leave：** 移出成员并释放座位；该用户若仍有连接，收到 `closed {reason:"left"}` 并以 1000 关闭。房主转移规则见「断线与座位」。最后一个成员（不论其他人是否在线）主动离开后，房间里没有成员了，立即结束。
 - **GET /rooms/{roomId}：** 只有成员可读，否则 404 `NOT_FOUND`。
 
 ## 实时通道
@@ -217,8 +256,21 @@ X-Emby-User-Id: <登录响应的 User.Id>
   - 房间在播放或等待时：进入 `waiting`，位置为新位置，`resumeTo="playing"`，`memberIds` 为参与等待的成员（见「等待规则」），`deadline = 当前时间 + waitTimeoutSeconds`。
 - `changeItem {itemId, mediaSourceId, positionMs}`（`positionMs` 省略为 0）：
   - 条目类型和媒体源的检查同创建房间，用操作者的会话读取媒体信息。
-  - 用每个成员（在线和保留座位中的）自己的会话并行核对能否访问新条目，单次超时 5 秒。有人无权访问时拒绝，回复 `error {code:"MEMBER_ITEM_FORBIDDEN", memberIds:[...]}`，状态不变。核对时 Emby 不可用，回复 503 等价的 `WATCH_UNAVAILABLE`。
-  - 通过后替换 `media`，进入 `waiting`，`resumeTo="playing"`。剧集播完自动下一集也走这个命令。几个客户端同时发出时，因为都带同一个 `baseRevision`，只有第一个生效，其余收到 `STALE_REVISION` 后跟随。
+  - 用每个成员（在线和保留座位中的）自己的会话并行核对能否访问新条目，单次超时 5 秒。
+    - 有人无权访问时拒绝，回复 `error {code:"MEMBER_ITEM_FORBIDDEN", memberIds:[...]}`，状态不变。
+    - 核对时 Emby 不可用或超时，回复 `WATCH_UNAVAILABLE`，状态不变。
+  - **核对期间房间不加锁**，其他成员仍可暂停、播放、拖动，成员仍可加入或离开。处理规则：
+    1. 收到命令时先检查 `baseRevision`，不等于当前版本立即回复 `STALE_REVISION`，不开始核对。
+    2. 每个房间同时只处理一个 `changeItem`。核对进行中再收到 `changeItem`，回复 409 `CHANGE_IN_PROGRESS`，不排队。
+    3. 记下开始核对时的成员集合，并行核对。
+    4. 核对完成后，提交前再次检查：
+       - 当前版本仍等于 `baseRevision`，否则回复 `STALE_REVISION`（附最新 room）；
+       - 当前成员集合中没有不在步骤 3 集合里的新成员，否则同样回复 `STALE_REVISION`。核对期间离开的成员不影响提交。
+
+       任一不满足都放弃本次切换，状态不变。客户端可以按最新状态决定是否重新发起。
+    5. 检查通过后，在同一步骤中替换 `media`，进入 `waiting`，`resumeTo="playing"`，版本加 1 并广播。
+  - 核对期间加入的新成员，只按加入时的当前条目检查权限；因为步骤 4 会放弃这次切换，新成员不会被带进他无权访问的条目。
+  - 剧集播完自动下一集也走这个命令。几个客户端同时发出时，都带同一个 `baseRevision`：第一个开始核对，其余收到 `CHANGE_IN_PROGRESS`，或在它提交后收到 `STALE_REVISION`，然后跟随第一个的结果。
 
 **leadMs**（让所有人同时开始的提前量）：`clamp(1.5 × 在线成员最近上报的最大 rttMs + 150, 300, 1200)` 毫秒。没有 rtt 数据时用 600。
 
@@ -229,6 +281,11 @@ X-Emby-User-Id: <登录响应的 User.Id>
 ```
 
 - `state` 取值同成员对象的 `status`；`sampledAt` 是客户端换算到服务端时间轴的采样时刻；`rttMs` 是客户端最近测得的往返时间。
+- `revision` 是客户端已经应用的房间版本，按它分三种情况处理：
+  - 等于当前版本：正常处理。
+  - 小于当前版本（客户端还没收到最新的 `state`）：只更新心跳和 `rttMs`，不改变成员的显示状态，不参与等待和缓冲计时。
+  - 大于当前版本：回复 `INVALID_REQUEST` 并忽略。
+- `away` 和 `error` 不依赖版本：无论 revision 是多少都更新显示状态，并把成员移出等待名单。
 - 状态变化时立即发送，播放中每 2 秒发送一次，每连接最多每秒 4 条。不需要回复。
 - 服务端据此处理等待和成员显示。成员的 `status`、`connection`、`lagging` 变化时，向全房间广播 `members`；只有位置变化时不广播。同一房间每秒最多广播 2 次 `members`，合并期间的变化。
 - 偏差由客户端自己计算，服务端不需要纠正成员位置。
@@ -237,10 +294,26 @@ X-Emby-User-Id: <登录响应的 User.Id>
 
 进入等待（`seek`、`changeItem`、缓冲触发）时，`waiting.memberIds` 包括所有在线、状态不是 `away` 或 `error`、且 `lagging=false` 的成员。
 
-- 成员上报 `status`，其中 `state="ready"`，且 `revision` 等于当前版本，即从列表中移除。列表清空时，状态变为 `playing`，`positionMs` 为等待位置，`serverTime = 当前时间 + leadMs`，`lastAction.type="resume"`，版本加 1 并广播。
+**哪些变化增加 revision：** 只有播放状态或媒体本身变化才加 1，即：
+- 创建（版本 1）；
+- 被接受的 `pause`、`seek`，以及让房间从暂停或等待变为播放的 `play`；
+- `changeItem` 提交；
+- 缓冲触发进入等待；
+- 等待结束（`resume`、`timeout`）。
+
+等待名单缩短、成员加入或离开、状态显示、lagging 标记和房主转移都**不**增加 revision。所以同一次等待中，每个人上报的 `ready` 都带同一个 revision，不会因为别人先就绪而失效。
+
+- **就绪：** 成员上报 `status`，其中 `state="ready"`，且 `revision` 等于当前版本，即从名单中移除。
+  - 名单变化时，服务端向全房间发送 `{"type":"waiting","revision":13,"memberIds":[...],"deadline":1834582.25}`，客户端据此显示「还在等 XX」。同一房间每秒最多发 4 次，合并期间的变化。
+  - 名单清空时，状态变为 `playing`，`positionMs` 为等待位置，`serverTime = 当前时间 + leadMs`，`lastAction.type="resume"`，版本加 1 并广播 `state`。
 - 到达 `deadline` 仍未就绪的成员被标为 `lagging=true`，房间按上面的方式开始播放，`lastAction.type="timeout"`。lagging 成员就绪后由客户端自行跳到应处位置追上；之后上报 `playing` 且位置与房间偏差在 1 秒以内时，服务端清除 lagging。下一次 `changeItem` 也会清除所有 lagging。
 - 在等待中断线、变为 `away` 或 `error` 的成员，从列表中移除。
-- **缓冲触发：** 房间在播放时，成员连续上报 `buffering` 达 1.5 秒（服务端从该成员在当前版本收到的第一条 buffering 开始计时），且该成员不是 lagging，且 30 秒内没有因他触发过等待时，房间进入 `waiting`：
+- **缓冲触发：** 房间在播放时，成员连续上报 `buffering` 达 1.5 秒，且该成员不是 lagging，且 30 秒内没有因他触发过等待时，房间进入 `waiting`。计时规则：
+  - 只计 `revision` 等于当前版本的 buffering 上报。服务端从该成员在当前版本的第一条 buffering 开始计时。
+  - 该成员之后上报任何非 buffering 状态，或房间版本变化，计时都清零。
+  - 所以上一集或上一个版本留下的缓冲上报，不会触发新一集的等待。
+
+  进入等待后：
   - 位置取该成员上报的 `positionMs`，但不超过房间当前的应处位置，让其他人退回到他卡住的地方，谁都不漏看内容；
   - `lastAction = {type:"buffer", memberId: 该成员}`，客户端显示「等待 XX 缓冲」。
 
@@ -251,7 +324,25 @@ X-Emby-User-Id: <登录响应的 User.Id>
 - `leave {requestId}`：与 REST 离开相同，完成后关闭连接（1000）。
 - `kick {requestId, memberId}`（仅房主）：被踢者收到 `closed {reason:"kicked"}` 并以 4410 关闭，座位释放，在这个房间存在期间不能再加入。不是房主时返回 `NOT_OWNER`。
 - `close {requestId}`（仅房主）：所有人收到 `closed {reason:"room_closed"}`，以 1000 关闭，房间结束。
-- **断线：** 保留座位 `seatHoldSeconds`，期间 `connection="reconnecting"`，客户端用 `/rooms/{roomId}/tickets` 重连。超时后移出成员，规则同离开。房主断线超过保留时间后，房主转给仍在线、加入最早的成员。所有成员都断线时房间保留 `emptyRoomSeconds`，期间无人重连则结束。
+
+### 断线与座位
+
+「成员」包括在线成员和保留座位中的断线成员。成员只有在主动离开、被踢、会话失效或座位过期时才被移出。
+
+- **有人在线时：**
+  - 断线成员保留座位 `seatHoldSeconds`，期间 `connection="reconnecting"`，可以用 `/rooms/{roomId}/tickets` 或用房间码重新加入来重连。
+  - 计时从断线时刻开始，到期仍未重连则移出。
+- **所有成员都断线时：**
+  - 房间进入休眠，**暂停所有座位计时，也不转移房主**。房间整体保留 `emptyRoomSeconds`，期间所有成员都还是成员，都可以申请票据重连。
+  - 到期无人重连，房间结束。
+- **休眠中有人重连后：** 房间恢复。其余仍断线的成员各自从这一刻重新获得完整的 `seatHoldSeconds`。
+- **房主转移：** 房主被移出房间时（主动离开、会话失效，或在有人在线时座位过期），房主转给**当前在线**、加入最早的成员。
+  - 房主只是断线、座位未过期时不转移。
+  - 休眠期间座位不计时，所以也不会转移。
+  - 房主被移出时如果没有人在线（例如休眠中会话复核失败），`ownerMemberId` 暂为 null，之后第一个重连的成员成为房主。
+  - 转移通过 `members` 广播，不增加 revision。
+  - 有人通过 `leaveCurrent` 离开时同样适用。
+- **等待中的断线：** 断线成员立即从等待名单中移除（见「等待规则」），不等座位到期。
 
 ### 服务端 → 客户端消息
 
@@ -260,6 +351,7 @@ X-Emby-User-Id: <登录响应的 User.Id>
 | `welcome` | 见上 | hello 成功后 |
 | `state` | `{revision, media, playback}` | 每次版本变化，发给所有在线成员 |
 | `members` | `{members, ownerMemberId}` | 成员加入、离开、状态、连接、房主变化 |
+| `waiting` | `{revision, memberIds, deadline}` | 等待名单变化，不增加 revision |
 | `ack` | `{requestId, revision}` | 控制命令被接受 |
 | `error` | `{requestId?, code, message, room?, memberIds?, retryAfterMs?}` | 命令被拒绝或消息无效；连接保持 |
 | `pong` | 见上 | 每个 ping |
@@ -315,6 +407,7 @@ REST 返回 HTTP 状态和 code；WebSocket 的 `error` 消息只有 code。
 | 409 `IDEMPOTENCY_CONFLICT` | 同一 clientRequestId 内容不同 |
 | 409 `STALE_REVISION` | 别人刚刚操作，附最新 room，按最新状态处理 |
 | 409 `MEMBER_ITEM_FORBIDDEN` | 有成员无权访问目标条目，附 memberIds |
+| 409 `CHANGE_IN_PROGRESS` | 已有一次切换正在核对权限；等待随后的 `state` |
 | 422 `ITEM_TYPE_UNSUPPORTED` / `MEDIA_SOURCE_INVALID` | 不是电影或单集，或媒体源不属于该条目 |
 | 422 `UNSUPPORTED_TYPE` | 未知的 WebSocket 消息类型，连接保持 |
 | 429 `RATE_LIMITED` | 遵守 Retry-After 或 retryAfterMs |
@@ -365,19 +458,47 @@ REST 返回 HTTP 状态和 code；WebSocket 的 `error` 消息只有 code。
 1. 认证：三个身份头校验，非大河 ServerId、API Key、他人 Token 拒绝；Origin 白名单（REST 与 WebSocket 握手）。
 2. 管理员容量：管理员账号创建得到 20，普通账号得到 4；客户端无法通过参数改变容量。
 3. 创建：条目类型、访问权限、媒体源归属、位置范围检查；clientRequestId 幂等与冲突。
-4. 加入：房间码大小写、满员（含保留座位）、被踢、无权访问、已在其他房间及 leaveCurrent。
-5. 票据：单次使用、30 秒过期、绑定 clientId、5 秒内未 hello 关闭、不出现在日志。
+4. 加入：
+   - 房间码大小写；
+   - 已是成员时先返回票据，不受满员影响；
+   - 被踢、满员（含保留座位）、无权访问；
+   - 已在其他房间时的 `ALREADY_IN_ROOM`，以及目标检查失败时优先返回目标的错误；
+   - `leaveCurrent` 只在目标全部检查通过后离开旧房间，目标失败时旧房间成员身份不变（创建房间同样）。
+5. 票据：单次使用、30 秒过期；REST 签发时绑定 clientId，hello 的 clientId 不同时 4401；5 秒内未 hello 关闭；票据不出现在日志。
 6. 同一用户第二个连接取代第一个（4409），memberId 不变。
 7. ping/pong 时间戳来自单调时间轴且不倒退；20 秒无消息关闭（4408）。
 8. 控制命令：STALE_REVISION 拒绝且不改状态；pause 立即生效；play 的 serverTime 在将来且符合 leadMs；seek 在暂停和播放时的不同结果。
-9. 等待：全部 ready 后开始；超时后开始并标记 lagging；断线和 away 成员移出等待；lagging 清除条件。
-10. 缓冲触发：1.5 秒阈值、位置不超过房间应处位置、30 秒内同一成员不重复触发。
-11. changeItem：逐成员权限核对，有人无权访问时拒绝并返回 memberIds；并发自动下一集只有一个生效。
-12. 离开和断线：房主转移、座位保留与过期、最后一人离开立即结束、全部断线后保留 emptyRoomSeconds。
-13. 房主踢人与解散；非房主返回 NOT_OWNER。
-14. 会话复核：Emby 会话失效后 10 分钟内移出（4401）。
-15. 限额：命令、status、ping、帧大小、REST 加入的用户与 IP 限流、maxRooms。
-16. 服务重启：房间消失，重连得到 ROOM_ENDED。
+9. 等待：
+   - 全部 ready 后开始；
+   - 名单缩短时发送 `waiting`，不增加 revision，后到的 ready 仍有效；
+   - 超时后开始并标记 lagging；
+   - 断线、away、error 成员移出等待；
+   - lagging 清除条件。
+10. status 版本：
+    - 旧版本上报不改显示状态、不参与等待和缓冲计时；
+    - 新于当前的版本回复 INVALID_REQUEST；
+    - away/error 不受版本限制。
+11. 缓冲触发：
+    - 1.5 秒阈值；
+    - 只计当前版本、版本变化清零；
+    - 位置不超过房间应处位置；
+    - 30 秒内同一成员不重复触发。
+12. changeItem：
+    - 逐成员权限核对，有人无权访问时拒绝并返回 memberIds；
+    - 核对中再次切换返回 CHANGE_IN_PROGRESS；
+    - 核对期间有人操作播放或有新成员加入，提交时返回 STALE_REVISION 且状态不变；
+    - 核对期间有人离开不影响提交；
+    - 并发自动下一集只有一个生效。
+13. 断线与座位：
+    - 有人在线时座位按 seatHoldSeconds 计时；
+    - 全部断线时暂停座位计时、不转移房主，房间保留 emptyRoomSeconds 且所有成员可重连；
+    - 有人重连后其余断线成员重新计时；
+    - 房主转移只给在线成员，无人在线时房主暂缺；
+    - 最后一名成员离开立即结束。
+14. 房主踢人与解散；非房主返回 NOT_OWNER。
+15. 会话复核：Emby 会话失效后 10 分钟内移出（4401）。
+16. 限额：命令、status、ping、帧大小、REST 加入的用户与 IP 限流、maxRooms。
+17. 服务重启：房间消失，重连得到 ROOM_ENDED。
 
 ## 联调
 
