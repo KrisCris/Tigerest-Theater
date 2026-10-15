@@ -1,6 +1,8 @@
-# Apple TV development client
+# Apple TV client
 
-The native television client is under development on `codex/tvos-client`; it is not part of the published Mac/iPad2.7.0 attachments. Requires tvOS26+ and Xcode27. The independent `TigerestTV.xcodeproj` shares AppleCore and the pinned MPVKit revision with iPad without importing its WebHost or touch controls.
+The native television client is distributed as the `TigerestTheater-2.7.0-tvos.ipa` attachment on the 2.7.0 release page. Requires tvOS26+ and Xcode27 for source builds. The independent `TigerestTV.xcodeproj` shares AppleCore and the pinned MPVKit revision with iPad without importing its WebHost or touch controls.
+
+The public IPA is unsigned and contains no developer account or provisioning profile. Sign it for your own paired Apple TV before installing, or build and install from Xcode using your own team. It is not an App Store or TestFlight download. `tvos.ipa` and `ipad.ipa` are separate device builds and cannot be interchanged.
 
 Implemented: dedicated/self-host server selection from shared bundled defaults, Emby login and device-local Keychain session, original library artwork and a focus-driven home hero/poster rail with continue-watching/latest ordering, a recursive paginated poster wall, series/seasons/episodes with SXXEXX labels, rich details with available year/runtime/genre/people/media metadata, in-place season/episode selection, detail/play/resume, native Metal playback, remote play/pause, ±10-second seek, previous/next episodes and a season-aware episode picker, back/exit, progress reporting and immediate local resume updates. API calls preserve reverse-proxy paths; media requests do not carry custom authentication headers to external servers. Passwords are not stored. Subtitle tracks preserve Emby defaults and use actual MPV track IDs, with embedded/external selection, explicit off, timing adjustment and non-fatal failure messages. The shared iPad danmaku repository, matching rules, glyph renderer and playback clock are reused, with TV search/source/offset controls. Native comments support private/public feeds, work/episode contexts, paging, replies, sending and deleting owned comments. Public credentials use a separate Keychain record and token-refresh lifecycle; no Emby token is sent to public or arbitrary danmaku providers. Comments are inline below detail information with a shared vertical scrolling surface, and quality settings are available outside playback. RIFE is not linked or bundled.
 
@@ -17,6 +19,19 @@ xcodebuild -project apple/TigerestTV.xcodeproj -scheme TigerestTV \
 ```
 
 For device installation, pair the Apple TV in Xcode, choose the existing Personal Team through local `apple/Local.xcconfig`, and build with signing enabled. The generator does not embed personal signing settings. Device provisioning, trust and a real login must be completed before claiming hardware playback validation.
+
+Package a generic device Release build for redistribution:
+
+```sh
+python3 apple/tools/package_ipa.py --platform tvos \
+  --app apple/DerivedDataTV/Build/Products/Release-appletvos/TigerestTV.app \
+  --output /absolute/path/to/empty-release-directory
+```
+
+The packager removes signatures and personal profiles from a temporary copy,
+verifies tvOS architecture/platform, icons, shaders, artwork, subtitle font and
+license, and rejects fixture media or RIFE. It emits the IPA and a validation
+report. Publish the source revision and SHA-256 alongside the IPA.
 
 ## Tests
 
@@ -68,4 +83,4 @@ On the paired Apple TV 4K (2nd generation / A12), tvOS27.0, the final signed non
 
 The desktop default catalog and its SSim/Krig/RAVU shader files are bundled unchanged. A separate TV-only lightweight tier uses the existing RAVU lite shader, bilinear scalers and no debanding. It preserves the selected tier while reducing the effective tier for the current episode if measured video FPS stays at 48+ or rendering keeps missing its frame budget. The render-drop guard ignores five seconds of load/seek warmup and requires two consecutive two-second windows averaging at least two render drops per second. Pause, cache stalls, decoder drops, counter resets and timeline discontinuities reset its observation window. It retries enhancement on a new file or explicit quality selection, never oscillates automatically, and does not override the explicitly selected full desktop preset. Their execution depends on source/output dimensions. Actual A12/4K testing found substantial render drops with the full chain; decoder drops stayed zero and cache stayed full. The full-resolution low-cost scaling comparison kept its 3840×2160 drawable and recorded zero render/decoder drops through 110.652 seconds with danmaku enabled; this is a sampled HEVC 1080p episode, not an all-media performance guarantee. Native TV quality uses this lower-cost scaling by default, while the unchanged full desktop preset remains selectable. Do not infer smooth performance merely from successful shader attachment. Explicit diagnostic launches can write an allowlisted `Library/Caches/tv-playback-probe.json`; normal launches do not write it, and the file reports selected/effective quality, actual drawable size, scalers, frame-drop counters, measured source FPS, rendering options and render-pass timings. URLs, headers, titles and account data are excluded.
 
-This development client supports original direct-play/direct-stream media; it does not start transcoders or open live-TV sessions. Offline downloads, multiple profiles, public account registration, moderation/admin controls, audio-track selection and full desktop feature parity remain outside this increment. Playback errors and inaccessible servers are shown with retry paths. Final stop-progress delivery is best effort if the network disappears or the system suspends the app. This television client remains separate from the published Mac/iPad2.7.0 attachments.
+This client supports original direct-play/direct-stream media; it does not start transcoders or open live-TV sessions. Offline downloads, multiple profiles, public account registration, moderation/admin controls, audio-track selection and full desktop feature parity remain outside this increment. Playback errors and inaccessible servers are shown with retry paths. Final stop-progress delivery is best effort if the network disappears or the system suspends the app.

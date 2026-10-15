@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate a separate tvOS app without touching the iPad project or settings."""
-import argparse, json, plistlib, re, shutil
+import argparse, hashlib, json, plistlib, re, shutil, subprocess
 from pathlib import Path
 import generate_project as g
 from quality_resources import sync_quality
@@ -32,6 +32,10 @@ def generate(fixture_media=None):
     shutil.copyfile(ROOT/'Resources/SubtitleFonts/SourceHanSansSC-Regular.otf', fonts/'SourceHanSansSC-Regular.otf')
     licenses=web/'licenses';licenses.mkdir(parents=True,exist_ok=True)
     shutil.copyfile(ROOT/'Resources/SubtitleFonts/LICENSE.txt', licenses/'SourceHanSans-LICENSE.txt')
+    manifest={'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
+              'files':{str(path.relative_to(web)):hashlib.sha256(path.read_bytes()).hexdigest()
+                       for path in sorted(web.rglob('*')) if path.is_file() and path.name != 'manifest.json'}}
+    (web/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     files=[];sources=[]
     shared=[ROOT/'App/Playback/MPVEngine.swift', ROOT/'App/ServerPresets.swift']
     shared += [ROOT/'App/Danmaku'/name for name in ['DanmakuHost.swift','DanmakuRepository.swift','DanmakuOverlay.swift']]
