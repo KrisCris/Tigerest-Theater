@@ -27,6 +27,29 @@
         return series;
     }
     const isCount = value => Number.isSafeInteger(value) && value >= 0;
+    // Different Emby item IDs can be presentations of the same work. Use its
+    // server-provided identity only; matching titles must not merge remakes.
+    function uniqueWorks(cards) {
+        const byWork = new Map();
+        for (const card of cards) {
+            const key = JSON.stringify([card.item.Type, card.item.PresentationUniqueKey ? 'presentation' : 'id', card.item.PresentationUniqueKey || card.item.Id]);
+            const prior = byWork.get(key);
+            if (!prior) { byWork.set(key, {...card}); continue; }
+            if ((card.lastPlayed || 0) > (prior.lastPlayed || 0)) {
+                prior.lastPlayed = card.lastPlayed; prior.resumeItem = card.resumeItem;
+            }
+            if (stamp(card.addedAt) > stamp(prior.addedAt)) prior.addedAt = card.addedAt;
+            if (stamp(card.latestEpisode?.DateCreated) > stamp(prior.latestEpisode?.DateCreated)) prior.latestEpisode = card.latestEpisode;
+        }
+        const result = Array.from(byWork.values());
+        result.forEach(card => {
+            if (card.lastPlayed === undefined) return;
+            delete card.newEpisode;
+            if (card.latestEpisode && card.latestEpisode.UserData?.Played !== true && stamp(card.latestEpisode.DateCreated) > card.lastPlayed)
+                card.newEpisode = card.latestEpisode;
+        });
+        return result;
+    }
     function withWatchState(cards) {
         cards.forEach(card => {
             const played = card.item.UserData?.Played;
@@ -146,13 +169,16 @@
         }));
         check(signal);
         const activity = card => Math.max(card.lastPlayed, card.newEpisode ? stamp(card.newEpisode.DateCreated) : 0);
-        const continuing = Array.from(cards.values()).sort((a, b) => activity(b) - activity(a)).slice(0, 24);
+        const continuing = Array.from(cards.values()).sort((a, b) => activity(b) - activity(a));
         continuing.forEach(card => {
             if (card.newEpisode) { card.latestEpisode = card.newEpisode; card.addedAt = card.newEpisode.DateCreated || card.addedAt; }
         });
         await this.hydrateSeries(continuing, signal);
         check(signal);
-        return withWatchState(continuing.concat(recent.cards.filter(card => !cards.has(card.item.Id))).slice(0, 24));
+        const combined = uniqueWorks(continuing.concat(recent.cards.filter(card => !cards.has(card.item.Id))));
+        combined.sort((a, b) => Number(b.lastPlayed !== undefined) - Number(a.lastPlayed !== undefined)
+            || (a.lastPlayed !== undefined ? activity(b) - activity(a) : stamp(b.addedAt) - stamp(a.addedAt)));
+        return withWatchState(combined.slice(0, 24));
     };
     // One record per work from the newest play: 'resume' reads partly played
     // items, 'played' completed ones. A work absent from the records was last
@@ -167,7 +193,7 @@
         const endpoint = kind === 'resume' && typeof api.getResumableItems === 'function';
         let complete = false, oldest = 0;
         try {
-            for (let page = 0; records.size < 24 && page < 10; page++) {
+            for (let page = 0; page < 10; page++) {
                 check(signal);
                 const options = {...query, StartIndex: page * 100};
                 const result = endpoint ? await api.getResumableItems(user, options, signal)
@@ -188,6 +214,12 @@
                     if (!prior || at > prior.at) records.set(work.Id, {work, item, at});
                 }
                 if (items.length < 100 || (result.TotalRecordCount != null && (page + 1) * 100 >= result.TotalRecordCount)) { complete = true; break; }
+                if (records.size >= 24) {
+                    const current = Array.from(records.values()), works = current.map(record => ({item: record.work}));
+                    await this.hydrateSeries(works, signal);
+                    works.forEach((card, index) => { current[index].work = card.item; });
+                    if (uniqueWorks(works).length >= 24) break;
+                }
             }
         } catch (error) { check(signal); complete = true; /* An older/offline endpoint still permits the rest of the home. */ }
         return {records: Array.from(records.values()), cutoff: complete ? 0 : oldest};
@@ -195,16 +227,22 @@
     HomeData.prototype.hydrateSeries = async function (cards, signal) {
         const series = cards.filter(card => stubs.has(card.item));
         if (!series.length) return;
-        try {
-            const result = await this.api.getItems(this.api.getCurrentUserId(), {Ids: series.map(card => card.item.Id).join(','),
-                Fields: fields, ...images}, signal);
+        for (let start = 0; start < series.length; start += 100) {
             check(signal);
-            const byId = new Map(series.map(card => [card.item.Id, card]));
-            (result.Items || []).forEach(item => { const card = byId.get(item.Id); if (card) card.item = item; });
-        } catch (error) { check(signal); /* Keep the series destination when metadata is unavailable. */ }
+            const batch = series.slice(start, start + 100);
+            try {
+                // Otherwise Emby omits all but one ID in each presentation group,
+                // leaving the omitted stubs without their shared identity.
+                const result = await this.api.getItems(this.api.getCurrentUserId(), {Ids: batch.map(card => card.item.Id).join(','),
+                    GroupByPresentationUniqueKey: false, Limit: 100, Fields: fields, ...images}, signal);
+                check(signal);
+                const byId = new Map(batch.map(card => [card.item.Id, card]));
+                (result.Items || []).forEach(item => { const card = byId.get(item.Id); if (card) card.item = item; });
+            } catch (error) { check(signal); /* Keep the series destination when metadata is unavailable. */ }
+        }
     };
     HomeData.prototype.loadOrdered = async function (library, signal, order, limit = 24) {
-        return (await this.collect(library, signal, order, limit)).cards.slice(0, limit);
+        return uniqueWorks((await this.collect(library, signal, order, limit)).cards).slice(0, limit);
     };
     // Every scanned work, sorted. For the recent order, complete means no work
     // was left unread; otherwise no episode after oldest (a timestamp) is missing.
@@ -243,7 +281,11 @@
                 }
             });
             if (items.length < 100 || (result.TotalRecordCount != null && (page + 1) * 100 >= result.TotalRecordCount)) { complete = true; break; }
-            if (!favorites && cards.size >= limit) break;
+            if (!favorites && cards.size >= limit) {
+                const current = Array.from(cards.values());
+                await this.hydrateSeries(current, signal);
+                if (uniqueWorks(current).length >= limit) break;
+            }
         }
         await this.hydrateSeries(Array.from(cards.values()), signal);
         if (favorites && order === 'recent') {

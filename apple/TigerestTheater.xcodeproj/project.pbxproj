@@ -582,6 +582,24 @@
 			<key>fileRef</key>
 			<string>6B9AF8604B8E01F0D6FA89F9</string>
 		</dict>
+		<key>F411B6DE337B11F9A0947421</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.c.c</string>
+			<key>path</key>
+			<string>NativeRIFE/vf_tigerest_rife_async.c</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>C5D04CD8850043FC6A21B639</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>F411B6DE337B11F9A0947421</string>
+		</dict>
 		<key>8EC36EC682A40B0C657E04C4</key>
 		<dict>
 			<key>isa</key>
@@ -599,6 +617,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>8EC36EC682A40B0C657E04C4</string>
+		</dict>
+		<key>A7B66DD105352AB6E57D1143</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.cpp.objcpp</string>
+			<key>path</key>
+			<string>NativeRIFE/RifeColorConverter.mm</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>3455BC18BA13DC97644EF8D6</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>A7B66DD105352AB6E57D1143</string>
 		</dict>
 		<key>FCF19CFB2067FAAE19F52A60</key>
 		<dict>
@@ -725,7 +761,9 @@
 				<string>7E2D6EFBC4C3FA39B2BADDEC</string>
 				<string>FED2B16E96709BD237C9DA5B</string>
 				<string>4E9C712A4D1FECE569FCA043</string>
+				<string>C5D04CD8850043FC6A21B639</string>
 				<string>7F1F9EB30F9BBCDB38FFE691</string>
+				<string>3455BC18BA13DC97644EF8D6</string>
 				<string>343D8A807638D6B32766DA98</string>
 				<string>58448CCDC67395AD655AB8FE</string>
 				<string>DFCA459EFD6C7F7F07D7CECA</string>
@@ -1324,7 +1362,9 @@
 				<string>EA4EA786C5BC9B7737331310</string>
 				<string>9D8EABB4B9C632203EC1188C</string>
 				<string>6B9AF8604B8E01F0D6FA89F9</string>
+				<string>F411B6DE337B11F9A0947421</string>
 				<string>8EC36EC682A40B0C657E04C4</string>
+				<string>A7B66DD105352AB6E57D1143</string>
 				<string>FCF19CFB2067FAAE19F52A60</string>
 				<string>7A114A0CF5DC1FAAE46BF09E</string>
 				<string>6156F6FBE9966162E46029C0</string>

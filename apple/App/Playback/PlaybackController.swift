@@ -36,6 +36,8 @@ import AppleCore
         NotificationCenter.default.addObserver(self, selector: #selector(interruption(_:)), name: AVAudioSession.interruptionNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(routeChanged(_:)), name: AVAudioSession.routeChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(suspendInteraction), name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationBackgrounded), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationForegrounded), name: UIApplication.didBecomeActiveNotification, object: nil)
         let center = MPRemoteCommandCenter.shared()
         func bind(_ command: MPRemoteCommand, _ method: String) {
             let target = command.addTarget { [weak self] _ in Task { @MainActor in _ = try? self?.dispatch(method, []) }; return .success }
@@ -100,6 +102,10 @@ import AppleCore
             UIApplication.shared.isIdleTimerDisabled = true
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
             model.danmaku.autoMatch(metadata["metadata"],mediaURL:URL(string:url)); emit("windowVisible", [.bool(true)]); emit("onMetaData", [metadata, .string(url)])
+        case "showMessage":
+            guard let text = arg(0).string, text.utf8.count <= 8192 else { throw CoreError.invalidRequest }
+            // Argument-array command: room/member text cannot become an mpv command.
+            try engine?.command(["show-text", String(text.prefix(1024)), "3000"])
         case "stop": stop(notify: true)
         case "pause": endTemporarySpeed(); state.userPaused(); interruptionIntent = nil; try engine?.set("pause", "yes")
         case "play": try engine?.set("pause", "no")
@@ -217,6 +223,8 @@ import AppleCore
         model.diagnostics.record("info", "Touch lock=" + String(value))
         endTemporarySpeed(); interactionRevision &+= 1; locked = value
     }
+    @objc private func applicationBackgrounded() { emit("backgrounded") }
+    @objc private func applicationForegrounded() { emit("foregrounded") }
     @objc private func suspendInteraction() {
         endTemporarySpeed(); restoreBrightness(); interactionRevision &+= 1
     }

@@ -386,7 +386,7 @@ public actor EmbyClient: EmbyHomeAPI {
         request.httpShouldHandleCookies = false
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let deviceID {
-            request.setValue("MediaBrowser Client=\"Tigerest Theater TV\", Device=\"Apple TV\", DeviceId=\"\(deviceID)\", Version=\"2.7.0\"", forHTTPHeaderField: "X-Emby-Authorization")
+            request.setValue("MediaBrowser Client=\"Tigerest Theater TV\", Device=\"Apple TV\", DeviceId=\"\(deviceID)\", Version=\"2.8.0\"", forHTTPHeaderField: "X-Emby-Authorization")
         }
         if let token { request.setValue(token, forHTTPHeaderField: "X-Emby-Token") }
         if let body {

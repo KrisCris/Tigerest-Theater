@@ -9,6 +9,7 @@ import AppleCore
         throw Failure.timedOut
     }
     static func run(_ model: AppModel) async {
+        if ProcessInfo.processInfo.arguments.contains("--playback-performance-trace") { await PlaybackPerformanceTrace.run(model); return }
         guard ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
         if ProcessInfo.processInfo.arguments.contains("--rife-stability-probe") { await RifeStabilityValidation.run(model); return }
         if ProcessInfo.processInfo.arguments.contains("--update-probe") { await UpdateValidation.run(model);return }

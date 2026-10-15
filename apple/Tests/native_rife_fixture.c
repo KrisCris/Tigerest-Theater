@@ -107,6 +107,7 @@ int mp_sws_scale(struct mp_sws_context *sws, struct mp_image *target, struct mp_
     return 0;
 }
 int pixfmt2imgfmt(int format) { return format; }
+int imgfmt2pixfmt(int format) { return format; }
 struct mp_filter *mp_filter_create(struct mp_filter *parent, const struct mp_filter_info *info) {
     struct mp_filter *filter = talloc_zero(parent, struct mp_filter);
     filter->priv = fx_alloc(filter, info->priv_size); filter->info = info;
@@ -184,6 +185,24 @@ bool m_config_cache_update(struct m_config_cache *cache) {
 void *tgrife_create(void) { fx.creates++; return fx_alloc(NULL, 1); }
 void tgrife_destroy(void *engine) { if (engine) { fx.destroys++; talloc_free(engine); } }
 void tgrife_reset(void *engine) { if (engine) fx.resets++; }
+void *tgrife_color_create(int w, int h) {
+    assert(w == 1920 && h == 1080); fx.color_creates++;
+    return fx.fail_color_create ? NULL : fx_alloc(NULL, 1);
+}
+void tgrife_color_destroy(void *converter) {
+    if (converter) { fx.color_destroys++; talloc_free(converter); }
+}
+int tgrife_color_convert(void *converter, const uint8_t *y, int ys, const uint8_t *uv,
+                        int uvs, float *out[3], const int strides[3], int full, int centered) {
+    (void)uv; (void)uvs;
+    assert(converter && ys == sizeof(float) && strides[0] == sizeof(float));
+    assert((full == 0 || full == 1) && (centered == 0 || centered == 1));
+    fx.color_conversions++;
+    fx.color_full_range = full; fx.color_centered = centered;
+    if (fx.fail_color_convert) return 0;
+    for (int p = 0; p < 3; p++) out[p][0] = *(const float *)y;
+    return 1;
+}
 int tgrife_interpolate(void *engine, const float *a[3], const int as[3], const float *b[3],
                       const int bs[3], float *out[3], const int os[3], uint64_t generation,
                       int64_t index, double *milliseconds) {

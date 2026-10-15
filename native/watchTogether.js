@@ -187,7 +187,7 @@
             events?.on(playbackManager, 'playbackstart', this.onStart);
             events?.on(playbackManager, 'playbackstop', this.onStop);
             this.onVisibility = () => {
-                if (platform() === 'Android') this.sync?.suspend(document.hidden);
+                if (['Android', 'iPadOS'].includes(platform())) this.sync?.suspend(document.hidden);
                 if (!document.hidden) { this.connection?.wake(); this.checkSession(); }
             };
             document.addEventListener('visibilitychange', this.onVisibility);
@@ -349,6 +349,7 @@
             player.canceled?.connect(() => { this.canceledAt = performance.now(); });
             player.playbackRateChanged?.connect(rate => this.rateChanged(Number(rate)));
             player.backgrounded?.connect(() => sync.suspend(true));
+            player.foregrounded?.connect(() => { sync.suspend(false); this.connection?.wake(); });
             return sync;
         }
         connectionClock() { return this.connection?.clock || {toServer: v => v, toLocal: v => v}; }
@@ -468,8 +469,9 @@
             if (!sync) return;
             this.launching = null;
             // Any speed other than 1x bypasses RIFE frame interpolation for the
-            // whole item, so with RIFE on, offsets are fixed by held seeks only.
-            sync.rateCorrection = !(window.jmpInfo?.settings?.video?.aiRife === true && ['Windows', 'macOS'].includes(platform()));
+            // whole item; iPad temporarily bypasses and warms again. With RIFE on,
+            // offsets are fixed by held seeks only on these platforms.
+            sync.rateCorrection = !(window.jmpInfo?.settings?.video?.aiRife === true && ['Windows', 'macOS', 'iPadOS'].includes(platform()));
             sync.attach(itemId);
             this.readPosition();
         }
