@@ -59,8 +59,9 @@ async function main() {
     let lastSeekMilliseconds = null;
     let nativeVolume = 100;
     const volumesAtLoad = [];
+    const loadUrls = [];
     Object.assign(player, {
-        load(...args) { loads += 1; volumesAtLoad.push(nativeVolume); args.at(-1)(nextLoadResult); },
+        load(...args) { loads += 1; loadUrls.push(args[0]); volumesAtLoad.push(nativeVolume); args.at(-1)(nextLoadResult); },
         stop() { nativeStops += 1; player.stopped.emit(); },
         seekTo(milliseconds) { lastSeekMilliseconds = milliseconds; },
         getPosition() { return Promise.resolve(23456); },
@@ -133,12 +134,18 @@ async function main() {
         appSettings: {get(key) { return savedSettings.get(key); }, set(key, value) { savedSettings.set(key, value); }},
         confirm: async () => { throw new Error('declined'); },
         dashboard: {default: {setBackdropTransparency() {}}},
+        connectionManager: {
+            getApiClient(id) {
+                return id === 'lifecycle-server'
+                    ? {serverAddress: () => 'http://127.0.0.1', accessToken: () => 'lifecycle-token'} : null;
+            },
+        },
     });
     const options = {
         url: 'http://127.0.0.1/video.mkv',
         fullscreen: true,
         playerStartPositionTicks: 0,
-        item: {Name: 'Lifecycle test'},
+        item: {Name: 'Lifecycle test', ServerId: 'lifecycle-server'},
         mediaSource: {DefaultSubtitleStreamIndex: null, DefaultAudioStreamIndex: 0, MediaStreams: []},
     };
 
@@ -146,6 +153,10 @@ async function main() {
     assert.ok(Math.abs(volumesAtLoad[0] - 28) < 1e-8,
         'remembered volume must be restored before autoplay can emit its first audio');
     assert.strictEqual(loads, 1);
+    assert.strictEqual(loadUrls[0], 'http://127.0.0.1/video.mkv?api_key=lifecycle-token',
+        'a same-server stream without credentials must reach the native player with the session token');
+    assert.strictEqual(instance._currentSrc, 'http://127.0.0.1/video.mkv',
+        'the web player must keep the server URL without the token');
     assert.strictEqual(windowBegins, 1);
     assert.deepStrictEqual(windowActions.slice(0, 2), ['begin', 'playback-fullscreen'],
         'fullscreen playback must snapshot the window session before entering native fullscreen');

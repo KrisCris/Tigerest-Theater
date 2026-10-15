@@ -484,6 +484,9 @@ if(Node_EXECUTABLE)
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_home_registration.js)
   add_test(NAME test_offline_downloads
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_offline_downloads.js)
+  add_test(NAME test_watch_together
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_watch_together_client.js
+                   ${CMAKE_CURRENT_SOURCE_DIR}/test_watch_together_sync.js)
   add_test(NAME test_home_motion_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
@@ -541,12 +544,18 @@ if(Node_EXECUTABLE)
   add_test(NAME test_community_v2_webengine COMMAND ${Node_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_community_v2_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_community_v2_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_watch_together_webengine COMMAND ${Node_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_watch_together_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_watch_together_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_community_unified_webengine COMMAND ${Node_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_community_unified_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_community_unified_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_community_avatar_webengine COMMAND ${Node_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_community_avatar_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_community_avatar_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_community_profile_webengine COMMAND ${Node_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_profile_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_community_profile_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_community_native_bridge COMMAND ${Node_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_community_native_bridge.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_community_native_bridge PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
@@ -624,6 +633,8 @@ if(Node_EXECUTABLE)
   endif()
   add_test(NAME test_player_lifecycle
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_player_lifecycle.js)
+  add_test(NAME test_stream_credentials
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_stream_credentials.js)
   add_test(NAME test_mpv_volume_preferences
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_mpv_volume_preferences.js)
   add_test(NAME test_stream_quality

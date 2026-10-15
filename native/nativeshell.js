@@ -711,6 +711,97 @@ function createRifeTargetControl({element, value, save, notify}) {
     return input;
 }
 
+// Which media folders the home shows, and in what order, for the signed-in
+// server and account. The layout stays on this device (home.libraryLayout).
+function createHomeLibraryControl({element, apiProvider, save, notify}) {
+    const Home = window.TigerestHomeData;
+    if (!Home) return null;
+    const node = element('div', 'tgs-setting tgs-home-libraries');
+    node.dataset.setting = 'home.libraryLayout';
+    node.dataset.search = '首页设置 首页媒体夹 媒体库 显示 隐藏 排序 顺序';
+    const heading = element('div', 'tgs-setting-title');
+    heading.id = 'tgs-home-libraries-title';
+    heading.appendChild(element('span', '', '首页媒体夹'));
+    const help = element('div', 'tgs-help fieldDescription', '勾选要在首页左侧显示的媒体夹，用“上移”“下移”调整先后顺序。只对当前服务器和账号生效，保存在这台设备上。');
+    const list = element('ol', 'tgs-library-list');
+    list.setAttribute('aria-labelledby', heading.id);
+    const message = element('div', 'tgs-help');
+    const actions = element('div', 'tgs-actions');
+    const restore = element('button', 'tgs-action', '恢复服务器默认顺序');
+    restore.type = 'button'; restore.hidden = true;
+    actions.appendChild(restore);
+    node.append(heading, help, message, list, actions);
+    const abort = new AbortController();
+    let rows = [], key = null, candidates = [];
+    const store = next => {
+        rows = next;
+        save(Home.writeLayout(key, rows));
+        render();
+    };
+    const render = focus => {
+        list.replaceChildren(...rows.map((row, index) => {
+            const name = row.library.Name || '媒体库 ' + (index + 1);
+            const item = element('li', 'tgs-library-row');
+            const label = element('label', 'tgs-library-check');
+            const box = element('input', 'tgs-switch');
+            box.type = 'checkbox'; box.checked = row.visible;
+            box.addEventListener('change', () => {
+                if (!box.checked && rows.filter(other => other.visible).length === 1) {
+                    box.checked = true;
+                    notify('首页至少保留一个媒体夹。');
+                    return;
+                }
+                store(rows.map(other => other === row ? {...other, visible: box.checked} : other));
+            });
+            label.append(box, element('span', 'tgs-library-name', name));
+            const move = (text, offset) => {
+                const button = element('button', 'tgs-library-move', text);
+                button.type = 'button';
+                button.setAttribute('aria-label', `${text}：${name}`);
+                button.disabled = index + offset < 0 || index + offset >= rows.length;
+                button.addEventListener('click', () => {
+                    const next = rows.slice();
+                    [next[index], next[index + offset]] = [next[index + offset], next[index]];
+                    store(next);
+                    // Keep the moved folder under the keyboard.
+                    const target = list.children[index + offset]?.querySelectorAll('.tgs-library-move')[offset < 0 ? 0 : 1];
+                    (target && !target.disabled ? target : list.children[index + offset]?.querySelector('input'))?.focus();
+                });
+                return button;
+            };
+            item.append(label, move('上移', -1), move('下移', 1));
+            return item;
+        }));
+        restore.hidden = !Home.readLayout(key);
+    };
+    restore.addEventListener('click', () => {
+        save(Home.writeLayout(key, null));
+        rows = Home.arrange(candidates, null);
+        render();
+    });
+    const load = async () => {
+        const api = apiProvider?.();
+        if (!api?.getCurrentUserId?.()) {
+            message.textContent = '登录服务器后，可以在这里选择首页显示的媒体夹。';
+            return;
+        }
+        message.textContent = '正在读取媒体夹…';
+        try {
+            candidates = await new Home(api).candidates(abort.signal);
+            if (abort.signal.aborted) return;
+            key = Home.layoutKey(api);
+            rows = Home.arrange(candidates, Home.readLayout(key));
+            message.textContent = '';
+            render();
+        } catch (error) {
+            if (abort.signal.aborted) return;
+            message.textContent = '读取媒体夹失败，请稍后重新打开此页。';
+        }
+    };
+    load();
+    return {node, dispose: () => abort.abort()};
+}
+
 function getTigerestSettingsCategories() {
     const sectionMeta = {
         main: {
@@ -805,7 +896,7 @@ function installTigerestSettingsMenu() {
     refresh();
 }
 
-async function mountTigerestSettings(host = null, initialSection = null, onReturn = null, signal = null) {
+async function mountTigerestSettings(host = null, initialSection = null, onReturn = null, signal = null, options = {}) {
     await initCompleted;
     if (signal?.aborted) return;
 
@@ -939,6 +1030,13 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         .tgs-switch { width: 22px; height: 22px; margin: 0; accent-color: #ffbe38; cursor: pointer; }
         .tgs-switch-state { display: none; }
         .tgs-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+        .tgs-home-libraries .tgs-actions { margin-top: 4px; }
+        .tgs-library-list { display: grid; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+        .tgs-library-row { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 8px 0 12px; background: #1f1f1f; border: 1px solid #333; border-radius: 3px; }
+        .tgs-library-check { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
+        .tgs-library-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+        .tgs-library-move { flex: none; min-width: 56px; min-height: 36px; padding: 6px 10px; color: #ddd; background: #303030; border: 0; border-radius: 3px; cursor: pointer; font: inherit; font-size: 13px; }
+        .tgs-library-move:disabled { opacity: .35; cursor: default; }
         .tgs-action { min-height: 44px; padding: 10px 20px; color: #eee; background: #303030; border: 0; border-radius: 3px; cursor: pointer; font: inherit; font-size: 14px; }
         .tgs-dialog button:focus-visible, .tgs-switch:focus-visible { outline: 2px solid #ffbe38; outline-offset: 2px; }
         .tgs-empty { max-width: 760px; margin: 20px auto; color: #aaa; line-height: 1.6; }
@@ -1047,7 +1145,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     };
 
     const settingControls = new Map();
-    let rifeExtensionPanel = null;
+    let rifeExtensionPanel = null, homeLibraries = null;
     const saveSetting = (section, key, value) => {
         jmpInfo.settings[section][key] = value;
         if (section === 'video' && key === 'aiRife') updateRifeStatus();
@@ -1173,7 +1271,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             const sectionToRestore = activeSection;
             cleanup();
             if (!host && returnFocus?.isConnected) returnFocus.focus({preventScroll: true});
-            const refreshed = await mountTigerestSettings(host, sectionToRestore, onReturn, resetAbort.signal);
+            const refreshed = await mountTigerestSettings(host, sectionToRestore, onReturn, resetAbort.signal, options);
             if (disposed || signal?.aborted) { refreshed?.dispose(); return; }
             replacementMount = refreshed;
         });
@@ -1269,6 +1367,12 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             group.appendChild(row);
         }
 
+        if (section === 'home') {
+            homeLibraries = createHomeLibraryControl({element, apiProvider: options.apiProvider,
+                save: text => saveSetting('home', 'libraryLayout', text), notify: showSaved});
+            if (homeLibraries) group.appendChild(homeLibraries.node);
+        }
+
         if (section === 'main') {
             const actions = element('div', 'tgs-actions');
             if (window.TigerestUpdate) {
@@ -1339,6 +1443,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     const cleanup = () => {
         clearTimeout(showSaved.timer);
         rifeExtensionPanel?.dispose();
+        homeLibraries?.dispose();
         document.removeEventListener('keydown', onKeyDown);
         if (!host) document.body.style.overflow = priorBodyOverflow;
         overlay.remove();
@@ -1480,7 +1585,7 @@ function installHeaderControlsStyle() {
     const style = document.createElement('style'); style.id = 'tigerest-header-controls-style';
     style.textContent = `
         .headerRight { gap: 6px; align-items: center; }
-        .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode {
+        .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-watch-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode {
             box-sizing: border-box; width: 36px; min-width: 36px; height: 36px; min-height: 36px;
             flex: 0 0 auto; margin: 0; padding: 0; border: 1px solid rgba(230,222,205,.18);
             border-radius: 10px; background: rgba(24,27,33,.78); color: #e9e6df;
@@ -1488,17 +1593,17 @@ function installHeaderControlsStyle() {
             font: 600 12px/1 system-ui,sans-serif; vertical-align: middle; cursor: pointer;
             transition: background .16s,border-color .16s,color .16s;
         }
-        .headerRight .headerButton:hover, .headerRight #tigerest-message-entry:hover, .headerRight #tigerest-update-button:hover, .tg-home .tg-home-window-mode:hover {
+        .headerRight .headerButton:hover, .headerRight #tigerest-message-entry:hover, .headerRight #tigerest-watch-entry:hover, .headerRight #tigerest-update-button:hover, .tg-home .tg-home-window-mode:hover {
             background: rgba(60,54,43,.9); border-color: rgba(239,195,110,.6); color: #f5d493;
         }
-        .headerRight .headerButton:focus-visible, .headerRight #tigerest-message-entry:focus-visible, .headerRight #tigerest-update-button:focus-visible, .tg-home .tg-home-window-mode:focus-visible {
+        .headerRight .headerButton:focus-visible, .headerRight #tigerest-message-entry:focus-visible, .headerRight #tigerest-watch-entry:focus-visible, .headerRight #tigerest-update-button:focus-visible, .tg-home .tg-home-window-mode:focus-visible {
             outline: 2px solid #efc36e; outline-offset: 2px; border-color: #efc36e;
         }
         .headerRight .headerButton.md-icon, .headerRight .headerButton .md-icon { font-size: 20px; }
         .headerRight #tigerest-update-button svg { width: 20px; height: 20px; }
         .headerRight .headerUserButton { overflow: hidden; }
         .headerRight .headerUserButton img { object-fit: cover; border-radius: 8px; }
-        .headerRight #tigerest-message-entry { width: auto; padding: 0 10px; white-space: nowrap; }
+        .headerRight #tigerest-message-entry, .headerRight #tigerest-watch-entry { width: auto; padding: 0 10px; white-space: nowrap; }
         .headerRight #tigerest-mpv-settings-button { width: 46px; color: #efc36e; border-color: rgba(239,195,110,.38); background: rgba(82,63,30,.28); font-weight: 800; letter-spacing: .04em; }
         #tigerest-window-mode-button, .tg-home .tg-home-window-mode { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
         #tigerest-window-mode-button .tigerest-window-label { display: none; }
@@ -1507,7 +1612,7 @@ function installHeaderControlsStyle() {
         .tigerest-window-icon { flex: 0 0 auto; }
         #tigerest-window-mode-button:disabled, .tg-home .tg-home-window-mode:disabled { cursor: wait; opacity: .6; }
         @media(max-width:600px) { .headerRight { flex-wrap: wrap; gap: 4px; } }
-        @media(pointer:coarse) { .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode { min-height: 44px; min-width: 44px; } }
+        @media(pointer:coarse) { .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-watch-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode { min-height: 44px; min-width: 44px; } }
     `;
     document.head.appendChild(style);
 }

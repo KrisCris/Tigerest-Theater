@@ -59,6 +59,8 @@
             this.messages=window.TigerestCommunityMessages?new window.TigerestCommunityMessages({
                 connectionManager,account:this.account,openDiscussion:message=>this.openDiscussion(message)}):null;
             this.unsubscribeAccount=this.account?.subscribe(()=>this.commentIdentityChanged());
+            // A renamed author reloads the list under the new name; drafts stay.
+            this.unsubscribeProfile=this.account?.subscribeProfile?.(()=>{const state=this.state;if(state?.channel==='public'&&this.valid(state))this.load(state,true);});
             this.epoch = 0;
             this.itemShow = event => this.onItem(event);
             this.viewShow = event => this.onView(event);
@@ -642,7 +644,7 @@
             this.state=null;
         }
         destroy() {
-            this.unsubscribeAccount?.();
+            this.unsubscribeAccount?.();this.unsubscribeProfile?.();
             this.close();clearInterval(this.poll);
             this.messages?.destroy();
             document.removeEventListener('itemshow',this.itemShow);document.removeEventListener('viewbeforehide',this.hideView);

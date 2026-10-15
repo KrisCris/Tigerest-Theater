@@ -4,10 +4,10 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 
-function dataSource(){
+function dataSource(libraryLayout){
  const file=path.join(__dirname,'../native/homeData.js');
  assert.ok(fs.existsSync(file),'the rebuilt home has a shared server-independent data source');
- const context={URL,AbortController,Date,Promise,Map,Set};context.window=context;
+ const context={URL,AbortController,Date,Promise,Map,Set,jmpInfo:{settings:{home:{libraryLayout}}}};context.window=context;
  vm.runInNewContext(fs.readFileSync(file,'utf8'),context);
  // These original checks describe the explicit recent-ingestion mode.
  return class extends context.TigerestHomeData {load(library,signal,order='recent'){return super.load(library,signal,order);}};
@@ -179,4 +179,40 @@ test('cancelling episode-count requests rejects the home load',async()=>{
  await Promise.race([reachedCounts,new Promise((_,reject)=>setTimeout(()=>reject(Error('home did not request episode counts')),100))]);
  const rejected=assert.rejects(pending,error=>error.name==='AbortError');abort.abort();releases.forEach(release=>release({Items:[],TotalRecordCount:1}));
  await rejected;
+});
+test('the saved layout chooses and orders home libraries per server and account',async()=>{
+ const Home=dataSource(),views=['a','b','c','d'].map(id=>({Id:id,Name:'Library '+id,CollectionType:'movies'}));
+ const api=client([],views),key='another-server/another-user';
+ assert.equal(Home.layoutKey(api),key);
+ const layout=JSON.stringify({[key]:['c','!a','tigerest-favorites','gone','b'],'another-server/someone-else':['!b']});
+ const rows=Home.arrange(await new Home(api).candidates(),Home.readLayout(key,layout));
+ assert.deepEqual(Array.from(rows,row=>(row.visible?'':'!')+row.library.Id),['c','!a','tigerest-favorites','b','d'],'saved order first, a removed library dropped, a new one appended shown');
+ const saved=Home.writeLayout(key,rows,layout);
+ assert.deepEqual(Object.keys(JSON.parse(saved)),['another-server/someone-else',key],'the latest server moves last');
+ assert.deepEqual(JSON.parse(saved)[key],['c','!a','tigerest-favorites','b','d']);
+ assert.equal(Home.writeLayout(key,null,JSON.stringify({[key]:['a']})),'','restoring the only layout clears the setting');
+ assert.deepEqual(Home.readLayout(key,'not json'),null);
+ assert.deepEqual(Home.readLayout(key,JSON.stringify({[key]:'a'})),null);
+});
+test('the home shows the chosen libraries, and every library when nothing is left',async()=>{
+ const views=['a','b','c'].map(id=>({Id:id,Name:'Library '+id})),key='another-server/another-user';
+ const shown=async layout=>Array.from(await new (dataSource(JSON.stringify({[key]:layout})))(client([],views)).libraries(),l=>l.Id);
+ assert.deepEqual(await shown(['b','!a','!tigerest-favorites']),['b','c']);
+ assert.deepEqual(await shown(['!a','!b','!c','!tigerest-favorites']),['a','b','c','tigerest-favorites'],'an all-hidden layout cannot empty the home');
+ assert.deepEqual(Array.from(await new (dataSource(JSON.stringify({'another-server/someone-else':['!a']})))(client([],views)).libraries(),l=>l.Id),
+  ['a','b','c','tigerest-favorites'],'another account on the same server keeps its own layout');
+});
+test('the built-in server layout chooses only among its approved entries',async()=>{
+ const api=client([],Array.from({length:6},(_,i)=>({Id:'lib-'+i,Name:'Library '+i})));
+ api.serverId=()=> '62526c3bf747439c99327ddec5fed4a8';
+ const Home=dataSource(JSON.stringify({['62526c3bf747439c99327ddec5fed4a8/another-user']:['lib-5','lib-2','!lib-0']}));
+ assert.deepEqual(Array.from(await new Home(api).libraries(),l=>l.Id),['lib-2','lib-1','tigerest-favorites'],'a library outside the approved three never appears');
+});
+test('layouts give way oldest first to stay within the Android text setting limit',()=>{
+ const Home=dataSource(),rows=Array.from({length:20},(_,i)=>({library:{Id:'x'.repeat(30)+String(i).padStart(2,'0')},visible:true}));
+ let text='';
+ for(let server=0;server<12;server++)text=Home.writeLayout('server-'+server+'/user',rows,text);
+ const kept=Object.keys(JSON.parse(text));
+ assert.ok(text.length<=4000,'setting length '+text.length);
+ assert.equal(kept.at(-1),'server-11/user');assert.ok(!kept.includes('server-0/user'));
 });

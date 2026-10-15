@@ -169,6 +169,10 @@ void Log::CensorAuthTokens(QString& msg)
     QStringLiteral("(?i)X-(?:Emby|MediaBrowser)-Token\\s*:\\s*([^\\s\\\"\\\\\\],;&]+)")));
   elideCapturedValues(msg, QRegularExpression(
     QStringLiteral("(?i)Authorization\\s*:\\s*Bearer\\s+([^\\s\\\"\\\\\\],;&]+)")));
+  // Emby media header Authorization: MediaBrowser Token="...", which libmpv
+  // may log JSON-escaped.
+  elideCapturedValues(msg, QRegularExpression(
+    QStringLiteral("(?i)\\bToken\\s*=\\s*\\\\?\"([^\\s\"\\\\]+)")));
 }
 
 

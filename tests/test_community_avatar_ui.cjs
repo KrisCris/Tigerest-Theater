@@ -57,7 +57,7 @@ withBrowser(routes,async({evaluate})=>{
  await evaluate(`document.querySelector('[aria-label="用户名"]').value='fixture';document.querySelector('[aria-label="显示名称（1–60 字符）"]').value='自己';document.querySelector('[aria-label="密码"]').value='😊'.repeat(7)`);await click('注册并登录');
  await waitFor(`document.querySelector('#tigerest-community-account [role="status"]').textContent.includes('当前 7 个')`);
  assert.equal(await evaluate(`calls.some(call=>call.path==='/auth/register')`),false,'seven emoji must count as seven code points');
- await evaluate(`document.querySelector('[aria-label="密码"]').value='😊'.repeat(8)`);await click('注册并登录');
+ await evaluate(`document.querySelector('[aria-label="密码"]').value='😊'.repeat(8);document.querySelector('[aria-label="确认密码"]').value='😊'.repeat(8)`);await click('注册并登录');
  await waitFor(`plugin.state?.topic?.id==='topic'&&!plugin.state.loading&&document.querySelectorAll('#tigerest-community .tc-avatar img').length===2`);
  assert.equal(await evaluate(`JSON.parse(calls.find(call=>call.path==='/auth/register').body).password`),'😊'.repeat(8));
  await waitFor(`document.querySelectorAll('#tigerest-messages .tc-avatar img').length===2`);
@@ -105,8 +105,8 @@ withBrowser(routes,async({evaluate})=>{
  await evaluate(`document.querySelector('[aria-label="当前密码"]').value='old';document.querySelector('[aria-label="新密码（8–128 个字符）"]').value='1234567'`);await click('修改密码');
  await waitFor(`document.querySelector('#tigerest-community-account [role="status"]').textContent.includes('当前 7 个')`);
  assert.equal(await evaluate(`calls.some(call=>call.path==='/me/password')`),false);
- await evaluate(`document.querySelector('[aria-label="新密码（8–128 个字符）"]').value='😊'.repeat(8)`);await click('修改密码');
- await waitFor(`!document.querySelector('#tigerest-community-account').open`);
+ await evaluate(`document.querySelector('[aria-label="新密码（8–128 个字符）"]').value='😊'.repeat(8);document.querySelector('[aria-label="确认新密码"]').value='😊'.repeat(8)`);await click('修改密码');
+ await waitFor(`!!document.querySelector('#tigerest-community-account [aria-label="用户名"]')`);
  assert.equal(await evaluate(`plugin.account.session.tokens`),null,'password change ends the comment session');
  assert.equal(await evaluate(`JSON.parse(calls.find(call=>call.path==='/me/password').body).newPassword`),'😊'.repeat(8));
  await evaluate(`plugin.destroy()`);

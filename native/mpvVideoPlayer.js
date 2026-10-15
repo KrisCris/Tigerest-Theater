@@ -6,9 +6,41 @@
         });
     }
 
+    const CREDENTIAL_KEY = /^(api_key|apikey|x-emby-token|x-mediabrowser-token)$/i;
+
+    // Emby returns same-server stream URLs without credentials when
+    // AddApiKeyToDirectStreamUrl is off. Add the session token for the item's
+    // own server only; the native player moves it from the URL into a header.
+    function authorizedStreamUrl(url, item, connectionManager) {
+        let apiClient;
+        try {
+            apiClient = (item?.ServerId && connectionManager?.getApiClient?.(item.ServerId)) || window.ApiClient;
+        } catch (error) {
+            apiClient = window.ApiClient;
+        }
+        const token = apiClient?.accessToken?.();
+        let target, server;
+        try {
+            target = new URL(url);
+            server = new URL(apiClient?.serverAddress?.());
+        } catch (error) {
+            return url;
+        }
+        if (!token || target.origin !== server.origin) return url;
+        for (const key of target.searchParams.keys()) {
+            if (CREDENTIAL_KEY.test(key)) return url;
+        }
+        const hash = url.indexOf('#');
+        const base = hash < 0 ? url : url.slice(0, hash);
+        const separator = !base.includes('?') ? '?' : /[?&]$/.test(base) ? '' : '&';
+        return base + separator + 'api_key=' + encodeURIComponent(token) + (hash < 0 ? '' : url.slice(hash));
+    }
+    window._tigerestAuthorizedStreamUrl = authorizedStreamUrl;
+
     class mpvVideoPlayer {
-        constructor({ events, loading, appRouter, globalize, appHost, appSettings, confirm, dashboard }) {
+        constructor({ events, loading, appRouter, globalize, appHost, appSettings, confirm, dashboard, connectionManager }) {
             this.events = events;
+            this.connectionManager = connectionManager;
             this.loading = loading;
             this.appRouter = appRouter;
             this.globalize = globalize;
@@ -586,8 +618,10 @@
                     this.saveVolume(savedVolume);
                     this._volumeInitialized = true;
                 }
-                player.load(val,
-                    { startMilliseconds: ms, autoplay: true },
+                // 一起看 loads room items stopped; the room starts them together.
+                const autoplay = !window.TigerestWatch?.loadPaused?.(options.item?.Id);
+                player.load(authorizedStreamUrl(val, options.item, this.connectionManager),
+                    { startMilliseconds: ms, autoplay },
                     streamdata,
                     audioRelIndex,
                     subtitleParam,

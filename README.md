@@ -4,35 +4,36 @@
 
 [下载正式版](https://github.com/Tigerest/Tigerest-Theater/releases/latest) · [使用教程](https://github.com/Tigerest/Tigerest-Theater/wiki) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/Tigerest/Tigerest-Theater/issues) · [作者 B站](https://space.bilibili.com/12562485)
 
-**当前版本：Windows、Android 2.7.0；Mac、iPad 2.6.1（2.7.0 之后补充）。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
+**当前版本：Windows、Android 2.8.0；Mac、iPad 2.7.0（2.8.0 之后补充）。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
 
-**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.7.0 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
+**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.8.0 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
 客户端不包含影视资源。你需要已有的 Emby 服务器地址和账号；媒体库、播放与下载权限由所连接的服务器提供。本项目是非官方 Emby 客户端，与 Emby LLC 无隶属关系。
 
-## 2.7.0 更新重点
+## 2.8.0 更新重点
 
-- **继续观看按观看记录排序：** 看过的作品按最近一次观看排在前面，看过之后又有新一集入库的剧集会提前；从未播放的作品排在后面。修复 Emby 4.8–4.10 上看了一半的影片不出现在继续观看里。
-- **单集海报飞行：** 在剧集或单集详情页点击单集，缩略图飞到单集详情的大图，返回时飞回原来的卡片。
-- **首次连接自建服务器：** 新配置选择「自建 EMBY」后直接打开该服务器自己的登录页，不再转到 Emby Connect。
-- **兼容 Emby 4.8–4.10：** 可以登录 Emby 4.8，4.9 上的客户端设置可以打开；宽窗口下首页铺满，设置页居中。
-- **.strm 媒体库：** 确认 .strm 条目可以播放、拖动和续播，包括 302 跳转、服务器内部地址和 emby2alist 类代理；Windows 离线下载按实际媒体格式命名。
+- **一起看：** 登录大河服务器后，可以和朋友组一个房间同时观看同一部影片。把 6 位房间码发给朋友即可加入，每个房间最多 4 人；所有成员都可以播放、暂停、拖动和换片。
+- **一起开始：** 点「开始放映」后，房间页上的成员一起进入播放器，全部加载完成后同时开始；播放中各客户端自动对齐进度，中途加入的成员会追上。
+- **入口：** 顶栏「消息」左边，以及电影、剧集详情页「播放」旁边（取代原来的「预告片」按钮）。选片页列出当前页面、本剧其他集、继续观看和最近添加。
+- **评论账号自助修改：** 独立评论账号可以修改显示昵称和密码，注册和改密码时再输入一次密码确认。
+- **首页媒体夹：** 「首页 → 首页媒体夹」可以隐藏媒体夹、调整顺序，按服务器和账号保存在本机。
+- **播放修复：** 服务器给出的播放地址不带令牌时不再报 401；302 跳转到其他主机时不再把令牌带过去。
 
-本次先发布 Windows 与 Android；Mac 与 iPad 仍为 2.6.1，2.7.0 之后在同一发行页补充。完整范围与验证见 [2.7.0 发布说明](docs/releases/2026-10-15-v2.7.0.md)。[iPad 安装说明](docs/apple/INSTALL.md)：发布的 IPA 未签名，需使用自己的 Apple 身份重签名；不提供 App Store／TestFlight 分发。
+本次先发布 Windows 与 Android；Mac 与 iPad 仍为 2.7.0，2.8.0 之后在同一发行页补充。完整范围与验证见 [2.8.0 发布说明](docs/releases/2026-10-16-v2.8.0.md)。[iPad 安装说明](docs/apple/INSTALL.md)：发布的 IPA 未签名，需使用自己的 Apple 身份重签名；不提供 App Store／TestFlight 分发。
 
 ## 下载与安装
 
 | 平台 | 安装包 | 系统要求 |
 | --- | --- | --- |
-| Windows 安装版 | [2.7.0 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.7.0/TigerestTheater-2.7.0-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
-| Windows 便携版 | [2.7.0 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.7.0/TigerestTheater-2.7.0-x64.zip) | 同上；完整解压后运行 |
-| Android | [2.7.0 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.7.0/TigerestTheater-2.7.0-android.apk) | Android 15+，arm64-v8a / x86_64 |
-| Apple Silicon Mac | [2.6.1 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.1/TigerestTheater-2.6.1-arm64.dmg) | macOS 26+，M 系列芯片 |
-| iPad | [2.6.1 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.1/TigerestTheater-2.6.1-ipad.ipa) | iPadOS 26+，须自行签名安装 |
+| Windows 安装版 | [2.8.0 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
+| Windows 便携版 | [2.8.0 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-x64.zip) | 同上；完整解压后运行 |
+| Android | [2.8.0 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-android.apk) | Android 15+，arm64-v8a / x86_64 |
+| Apple Silicon Mac | [2.7.0 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.7.0/TigerestTheater-2.7.0-arm64.dmg) | macOS 26+，M 系列芯片 |
+| iPad | [2.7.0 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.7.0/TigerestTheater-2.7.0-ipad.ipa) | iPadOS 26+，须自行签名安装 |
 
 包内已包含 MPV 和基础运行库，无需另装播放器。Windows RIFE 大型组件是可选扩展；已有 NVIDIA 1.0.0 扩展可以继续使用。正式 Mac 下载仅提供 Apple Silicon 版本。
 
-[2.7.0 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.7.0/TigerestTheater-2.7.0-SHA256SUMS.txt)与 Windows、Android 安装包放在同一发行页；Mac 与 iPad 2.6.1 的校验值见 [2.6.1 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.6.1/TigerestTheater-2.6.1-SHA256SUMS.txt)。
+[2.8.0 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-SHA256SUMS.txt)与 Windows、Android 安装包放在同一发行页；Mac 与 iPad 2.7.0 的校验值见 [2.7.0 Apple 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.7.0/TigerestTheater-2.7.0-APPLE-SHA256SUMS.txt)。
 
 ### 第一次使用
 
@@ -142,7 +143,7 @@ RIFE 默认关闭，需要大河内置播放配置：
 - [Android 构建](android/README.md)
 - [iPad 安装与构建](docs/apple/INSTALL.md)
 - [Windows 测试环境要求](dev/windows/TESTING.md)
-- [版本变化](CHANGELOG.md)与[本次发布说明](docs/releases/2026-10-15-v2.7.0.md)
+- [版本变化](CHANGELOG.md)与[本次发布说明](docs/releases/2026-10-16-v2.8.0.md)
 
 Windows 每次运行原生测试前，都必须在同一个 PowerShell 调用中加载测试环境脚本并完成运行库预检。测试、包启动检查、生产 API 联调和真实媒体播放的覆盖范围分别记录，不能互相替代。
 

@@ -19,7 +19,7 @@ withBrowser(routes,async({evaluate})=>{
  assert.equal(await evaluate(`document.querySelector('#tc-password-requirements')?.hidden`),false,'requirements remain visible after validation failure');
  assert.equal(await evaluate(`document.querySelector('[aria-label="密码"]').parentElement.firstChild.textContent`),'密码（12–128 个字符）','legacy registration shows the discovered fallback next to the password');
  assert.equal(await evaluate(`document.querySelector('#tc-password-requirements').textContent`),'可使用字母、数字和符号，不可包含换行等控制字符。');
- await evaluate(`document.querySelector('[aria-label="密码"]').value='test-password-long';Array.from(document.querySelectorAll('#tigerest-community-account button')).find(b=>b.textContent==='注册并登录').click()`);
+ await evaluate(`document.querySelector('[aria-label="密码"]').value='test-password-long';document.querySelector('[aria-label="确认密码"]').value='test-password-long';Array.from(document.querySelectorAll('#tigerest-community-account button')).find(b=>b.textContent==='注册并登录').click()`);
  await new Promise(r=>setTimeout(r,350));
  assert.equal(await evaluate(`plugin.state.topic?.id`),'public-topic');
  assert.equal(await evaluate(`document.querySelector('#tigerest-community h2').textContent`),'评论区','external accounts use the same single discussion presentation');

@@ -94,6 +94,7 @@
             this.connectionManager=connectionManager;this.openDiscussion=openDiscussion;
             this.client=new Client();this.summaryVersion=0;this.lastSummary=0;this.unread=0;
             this.account=account;this.privateClient=this.client;this.publicClient=account?new window.TigerestCommunityPublicClient(account.session,account.avatars):null;
+            this.unsubscribeProfile=account?.subscribeProfile?.(()=>{const state=this.state;if(state&&this.client.public&&this.valid(state))this.load(state);});
             this.unsubscribeAccount=account?.subscribe(()=>{
                 this.publicClient.clear();
                 if(!this.client.public)return;
@@ -462,7 +463,7 @@
             this.entry?.remove();this.entry=null;this.sessionKey='';this.unread=0;this.lastSummary=0;
             this.blockedKey=block?key:null;
         }
-        destroy(){this.unsubscribeAccount?.();this.reset();}
+        destroy(){this.unsubscribeAccount?.();this.unsubscribeProfile?.();this.reset();}
     }
     window.TigerestCommunityMessages=CommunityMessages;
 })();

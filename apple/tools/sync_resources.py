@@ -4,7 +4,7 @@ import argparse, hashlib, json, shutil, subprocess, re
 from pathlib import Path
 from quality_resources import sync_quality
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = 'mpvVideoPlayer mpvAudioPlayer inputPlugin sessionNavigationPlugin communityClient communityBridge communitySession communityAvatar communityPublicClient communityAccount communityMessages communityPlugin connectivityHelper nativeshell offline homeData homeGallery homeBackdrop homeTransitions homeMotion embycompat webAppearance updatePlugin'.split()
+SCRIPTS = 'mpvVideoPlayer mpvAudioPlayer inputPlugin sessionNavigationPlugin communityClient communityBridge communitySession communityAvatar communityPublicClient communityAccount communityMessages communityPlugin watchTogetherClient watchTogetherSync watchTogether connectivityHelper nativeshell offline homeData homeGallery homeBackdrop homeTransitions homeMotion embycompat webAppearance updatePlugin'.split()
 def sync(output):
     output.mkdir(parents=True, exist_ok=True)
     files = [ROOT/'native'/f'{name}.js' for name in SCRIPTS]

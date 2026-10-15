@@ -8,6 +8,7 @@
         'tigerest/input.js',
         'tigerest/session-navigation.js',
         'tigerest/community.js',
+        'tigerest/watch.js',
         'tigerest/settings.js'
     ];
 
@@ -226,10 +227,10 @@
         });
 
         const settingsViewDependencies = [
-            'modules/viewmanager/baseview.js', 'appRouter'
+            'modules/viewmanager/baseview.js', 'appRouter', 'connectionManager'
         ];
-        const createSettingsView = section => function (baseView, appRouter) {
-            const BaseView = moduleValue(baseView), router = moduleValue(appRouter);
+        const createSettingsView = section => function (baseView, appRouter, connectionManager) {
+            const BaseView = moduleValue(baseView), router = moduleValue(appRouter), manager = moduleValue(connectionManager);
             function SettingsView(view, params) {
                 BaseView.apply(this, arguments);
                 this.settingsHost = view.querySelector('.readOnlyContent');
@@ -247,7 +248,8 @@
                 this.mountAbort = new AbortController();
                 this.settingsMount = null;
                 window.tigerestMountSettings(this.settingsHost, this.settingsSection,
-                    () => router.show('/settings'), this.mountAbort.signal).then(mount => {
+                    () => router.show('/settings'), this.mountAbort.signal,
+                    {apiProvider: () => manager?.currentApiClient?.()}).then(mount => {
                     if (generation !== this.mountGeneration) mount?.dispose();
                     else this.settingsMount = mount;
                 }).catch(() => {
@@ -269,8 +271,8 @@
             defineModule(`tigerest/settings-${section}-view.js`, settingsViewDependencies, createSettingsView(section));
 
         defineModule('tigerest/mpv-video.js', [
-            'events', 'loading', 'appRouter', 'globalize', 'apphost', 'appSettings', 'confirm'
-        ], function (events, loading, appRouter, globalize, appHost, appSettings, confirm) {
+            'events', 'loading', 'appRouter', 'globalize', 'apphost', 'appSettings', 'confirm', 'connectionManager'
+        ], function (events, loading, appRouter, globalize, appHost, appSettings, confirm, connectionManager) {
             const NativeVideoPlayer = window._mpvVideoPlayer;
             const router = moduleValue(appRouter);
             return class TigerestMpvVideoPlayer extends NativeVideoPlayer {
@@ -283,6 +285,7 @@
                         appHost: moduleValue(appHost),
                         appSettings: moduleValue(appSettings),
                         confirm: moduleValue(confirm),
+                        connectionManager: moduleValue(connectionManager),
                         // Jellyfin Desktop historically injected dashboard's
                         // setBackdropTransparency().  Current Emby exposes the
                         // equivalent compositor hook on appRouter instead.
@@ -302,8 +305,8 @@
         });
 
         defineModule('tigerest/mpv-audio.js', [
-            'events', 'apphost', 'appSettings', 'toast'
-        ], function (events, appHost, appSettings, toast) {
+            'events', 'apphost', 'appSettings', 'toast', 'connectionManager'
+        ], function (events, appHost, appSettings, toast, connectionManager) {
             const NativeAudioPlayer = window._mpvAudioPlayer;
             return class TigerestMpvAudioPlayer extends NativeAudioPlayer {
                 constructor() {
@@ -311,7 +314,8 @@
                         events: moduleValue(events),
                         appHost: moduleValue(appHost),
                         appSettings: moduleValue(appSettings),
-                        toast: moduleValue(toast)
+                        toast: moduleValue(toast),
+                        connectionManager: moduleValue(connectionManager)
                     });
                     this.name = 'Tigerest MPV Audio Player';
                 }
@@ -352,6 +356,16 @@
             return class TigerestCommunityPlugin extends window._communityPlugin {
                 constructor() {
                     super({connectionManager: moduleValue(connectionManager), events: moduleValue(events), appRouter:moduleValue(appRouter)});
+                }
+            };
+        });
+
+        defineModule('tigerest/watch.js', ['connectionManager', 'events', 'playbackManager', 'appRouter'], function (connectionManager, events, playbackManager, appRouter) {
+            const WatchPlugin = window._watchTogetherPlugin;
+            return class TigerestWatchPlugin {
+                constructor() {
+                    if (WatchPlugin) this.watch = new WatchPlugin({connectionManager: moduleValue(connectionManager), events: moduleValue(events),
+                        playbackManager: moduleValue(playbackManager), appRouter: moduleValue(appRouter)});
                 }
             };
         });

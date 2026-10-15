@@ -45,10 +45,31 @@
             return policy?.minLength===8 && policy.maxLength===128 && policy.lengthUnit==='unicode-code-point' && policy.allowControlCharacters===false
                 ? {minLength:8,maxLength:128} : {minLength:12,maxLength:128};
         }
-        validatePassword(password) {
+        validatePassword(password,repeated=password) {
             const {minLength,maxLength}=this.passwordPolicy(),length=Array.from(password).length;
             if(length<minLength||length>maxLength)throw Object.assign(fail('INVALID_REQUEST'),{message:'密码需为 '+minLength+'–'+maxLength+' 个字符（当前 '+length+' 个）。'});
             if(/[\u0000-\u001f\u007f]/.test(password))throw Object.assign(fail('INVALID_REQUEST'),{message:'密码不可包含换行等控制字符。'});
+            // The service never receives the repeat; only this comparison does.
+            if(repeated!==password)throw Object.assign(fail('INVALID_REQUEST'),{message:'两次输入的密码不一致。'});
+        }
+        displayNamePolicy() {
+            const policy=this.caps?.profilePolicy?.displayName;
+            return Number.isInteger(policy?.minLength)&&Number.isInteger(policy?.maxLength)&&policy.minLength>=1&&policy.maxLength>=policy.minLength
+                ? {minLength:policy.minLength,maxLength:policy.maxLength} : {minLength:1,maxLength:60};
+        }
+        validateDisplayName(value) {
+            const name=String(value).trim(),{minLength,maxLength}=this.displayNamePolicy(),length=Array.from(name).length;
+            const invalid=message=>{throw Object.assign(fail('INVALID_REQUEST'),{message});};
+            if(length<minLength||length>maxLength)invalid('显示名称需为 '+minLength+'–'+maxLength+' 个字符，不能只填空格（当前 '+length+' 个）。');
+            if(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(name))invalid('显示名称不可包含控制字符。');
+            return name;
+        }
+        // Self-service names exist only where the service announces them and
+        // /me grants this password account the edit.
+        canChangeDisplayName(me) {
+            const policy=this.caps?.profilePolicy;
+            return !!(policy?.displayName&&Array.isArray(policy.authKinds)&&policy.authKinds.includes('password')&&
+                me?.account?.authKind==='password'&&me.account.canChangeDisplayName===true);
         }
         async raw(path,{method='GET',body,headers={},signal,responseType}={}) {
             const generation=this.generation,controller=new AbortController();this.controllers.add(controller);
@@ -145,12 +166,11 @@
             return this.save(data,generation,'password');
         }
         login(username,password) {return this.authenticate('/auth/login',{username,password});}
-        async register(username,displayName,password) {
+        async register(username,displayName,password,repeated=password) {
             const invalid=message=>{throw Object.assign(fail('INVALID_REQUEST'),{message});};
             if(!/^[A-Za-z][A-Za-z0-9_.-]{2,31}$/.test(username))invalid('用户名需为 3–32 个字符，以英文字母开头，仅可包含英文字母、数字、_、.、-。');
-            if(Array.from(displayName.trim()).length<1||Array.from(displayName.trim()).length>60)invalid('显示名称需为 1–60 个字符，不能只填空格。');
-            await this.discover();this.validatePassword(password);
-            return this.authenticate('/auth/register',{username,displayName:displayName.trim(),password});
+            await this.discover();const name=this.validateDisplayName(displayName);this.validatePassword(password,repeated);
+            return this.authenticate('/auth/register',{username,displayName:name,password});
         }
         async request(path,options={}) {
             const generation=this.generation;let record;
@@ -179,9 +199,46 @@
             if(outcomes[0].status!=='fulfilled'||outcomes[0].value!==true)throw new Error('已退出当前会话，但系统凭据未能清除，请重试退出。');
             if(outcomes[1].status==='rejected')throw outcomes[1].reason;
         }
-        async changePassword(currentPassword,newPassword) {
-            await this.discover();this.validatePassword(newPassword);
-            await this.request('/me/password',{method:'PUT',body:{currentPassword,newPassword}});
+        async changeDisplayName(value) {
+            await this.discover();
+            const displayName=this.validateDisplayName(value),generation=this.generation;
+            let author;
+            try{author=(await this.request('/me/profile',{method:'PUT',body:{displayName}})).author;}
+            catch(error){
+                this.check(generation);if(error.status)throw error;
+                // The response was lost: read the name back instead of resubmitting.
+                let me;try{me=await this.request('/me');}catch(_){throw Object.assign(fail('NETWORK_UNAVAILABLE'),{message:'无法确认昵称是否已保存，请稍后重新打开评论账号查看。'});}
+                if(me?.author?.name!==displayName)throw error;
+                author=me.author;
+            }
+            this.check(generation);
+            const record=this.tokens;
+            if(!record||typeof author?.name!=='string'||author.id!==record.author.id)return author;
+            this.tokens={...record,author:{...record.author,name:author.name}};
+            // Only while these exact tokens are current: a queued write must never
+            // restore a refresh secret that a later rotation already replaced.
+            if(this.persisted){const tokens=this.tokens,key=this.key;
+                this.storageQueue=this.storageQueue.then(()=>this.tokens===tokens&&this.store.write(key,JSON.stringify(tokens))).catch(()=>{});}
+            return this.tokens.author;
+        }
+        async changePassword(currentPassword,newPassword,repeated=newPassword) {
+            await this.discover();this.validatePassword(newPassword,repeated);
+            const record=await this.ready(),generation=this.generation;
+            let failure=null;
+            try{await this.raw('/me/password',{method:'PUT',body:{currentPassword,newPassword},headers:{Authorization:'Bearer '+record.accessToken}});}
+            catch(error){this.check(generation);failure=error;}
+            if(failure){
+                if(failure.status&&failure.status!==401)throw failure;
+                // A wrong current password and an ended session both answer 401, and a
+                // lost response leaves the outcome open. A successful change ends every
+                // session, so ask /me rather than ever resubmitting the password.
+                let alive=false;
+                try{await this.request('/me');alive=true;}
+                catch(probe){if(probe.status!==401)throw Object.assign(fail('NETWORK_UNAVAILABLE'),{message:'暂时无法确认密码是否已修改，请稍后重新打开评论账号查看，不要重复提交。'});}
+                if(alive)throw Object.assign(fail(failure.status?'AUTH_INVALID':'NETWORK_UNAVAILABLE',failure.status),
+                    {message:failure.status?'当前密码不正确，密码没有修改。':'网络中断，密码没有修改，请重试。'});
+                if(failure.status)throw fail('AUTH_INVALID',401);
+            }
             this.generation++;for(const c of this.controllers)c.abort();this.controllers.clear();
             this.tokens=null;this.flight=null;this.loaded=true;this.persisted=false;this.onChange();await this.storage('remove',this.key);
         }

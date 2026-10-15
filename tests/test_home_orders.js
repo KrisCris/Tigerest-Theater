@@ -122,7 +122,10 @@ test('shared home setting has the approved default, choices and a registered nat
  assert.ok(home,'home settings group exists');const setting=home.values.find(v=>v.value==='displayOrder');assert.equal(setting.default,'resume');assert.deepEqual(setting.possible_values.map(v=>v[0]),['resume','recent','release','rating']);
  assert.ok(fs.readFileSync(__dirname+'/../native/nativeshell.js','utf8').includes("title: '首页设置'"));
  assert.match(fs.readFileSync(__dirname+'/../native/embycompat.js','utf8'),/'home',/);
- assert.match(fs.readFileSync(__dirname+'/../android/app/src/main/java/top/tigerest/theater/SettingsStore.kt','utf8'),/"home" to setOf\("displayOrder"\)/);
+ assert.match(fs.readFileSync(__dirname+'/../android/app/src/main/java/top/tigerest/theater/SettingsStore.kt','utf8'),/"home" to setOf\("displayOrder","libraryLayout"\)/);
+ // The library layout is edited by its own list, never as a raw text field.
+ const layout=home.values.find(v=>v.value==='libraryLayout');assert.equal(layout.default,'');assert.equal(layout.hidden,true);
+ assert.match(fs.readFileSync(__dirname+'/../apple/App/SettingsStore.swift','utf8'),/"home": \["displayOrder", "libraryLayout"\]/);
 });
 
 function duplicateSeriesServer({resume=[],history=[],recent=[]}={}) {

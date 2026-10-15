@@ -204,6 +204,12 @@
         "display_name": "展示顺序",
         "help": "继续观看不足 24 项时，用当前媒体夹的最近入库作品补足。",
         "possible_values": [["resume", "继续观看"], ["recent", "最近入库"], ["release", "发行时间"], ["rating", "评分"]]
+      },
+      {
+        "value": "libraryLayout",
+        "default": "",
+        "hidden": true,
+        "help": "首页媒体夹的显示与顺序，按服务器和账号保存，由首页设置里的媒体夹列表编辑。"
       }
     ]
   },
