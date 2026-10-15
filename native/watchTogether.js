@@ -1,5 +1,6 @@
-// 一起看: the header entry and room page (create, join, members, choose the
-// film, start together), and the link between Emby playback and the sync engine.
+// 一起看: the header and item page entries, the room page (create, join,
+// members, choose the film, start together), and the link between Emby
+// playback and the sync engine.
 (function () {
     'use strict';
     const Client = window.TigerestWatchClient, Connection = window.TigerestWatchConnection, Sync = window.TigerestWatchSync;
@@ -38,14 +39,35 @@
     function mediaTitle(media) {
         return mediaLines(media).filter(Boolean).join(' ');
     }
-    function itemTitle(item) {
+    // [main line, detail line] for an Emby item.
+    function itemLines(item) {
         if (item.Type === 'Episode') {
             const index = item.ParentIndexNumber != null && item.IndexNumber != null ? `第${item.ParentIndexNumber}季 第${item.IndexNumber}集` : '';
             const name = item.Name && !genericEpisodeName.test(item.Name) ? item.Name : '';
-            return [item.SeriesName, [index, name].filter(Boolean).join(' · ')].filter(Boolean).join(' ');
+            return item.SeriesName ? [item.SeriesName, [index, name].filter(Boolean).join(' · ')] : [name || index, name ? index : ''];
         }
+        if (item.Type === 'Season') return item.SeriesName ? [item.SeriesName, item.Name || ''] : [item.Name || '', ''];
+        return [item.Name || '', item.ProductionYear ? String(item.ProductionYear) : ''];
+    }
+    function itemTitle(item) {
+        if (item.Type === 'Episode') return itemLines(item).filter(Boolean).join(' ');
         return (item.Name || '') + (item.ProductionYear ? ' (' + item.ProductionYear + ')' : '');
     }
+    const watchable = new Set(['Movie', 'Series', 'Season', 'Episode']);
+    function playable(item) { return Boolean(item?.Id) && watchable.has(item.Type) && item.LocationType !== 'Virtual'; }
+    // [item id, image type, tag] of a 16:9 image: the episode still, else the
+    // show's thumb or backdrop, else the poster.
+    function wideImage(item) {
+        const tags = item.ImageTags || {};
+        if (item.Type === 'Episode' && tags.Primary) return [item.Id, 'Primary', tags.Primary];
+        if (tags.Thumb) return [item.Id, 'Thumb', tags.Thumb];
+        if (item.ParentThumbImageTag) return [item.ParentThumbItemId, 'Thumb', item.ParentThumbImageTag];
+        if (item.BackdropImageTags?.length) return [item.Id, 'Backdrop', item.BackdropImageTags[0]];
+        if (item.ParentBackdropImageTags?.length) return [item.ParentBackdropItemId, 'Backdrop', item.ParentBackdropImageTags[0]];
+        return tags.Primary ? [item.Id, 'Primary', tags.Primary] : null;
+    }
+    // Material "group" icon.
+    const groupIcon = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>';
     async function copyText(text, host) {
         try {
             if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
@@ -124,10 +146,23 @@
         #tigerest-watch .tw-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:10px 0}
         #tigerest-watch .tw-pick{display:flex;flex-direction:column;gap:6px;text-align:start;padding:8px;background:#1d293b;border:1px solid #33435a;border-radius:10px;color:inherit;font:inherit;font-size:13px;cursor:pointer}
         #tigerest-watch .tw-pick:hover,#tigerest-watch .tw-pick[aria-pressed=true]{border-color:#efc36e;background:#2a2f3a}
-        #tigerest-watch .tw-pick img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#0f1622}
-        #tigerest-watch .tw-pick.tw-poster img{aspect-ratio:2/3}
+        #tigerest-watch .tw-pick-art{display:block;position:relative;aspect-ratio:16/9;border-radius:6px;background:#0f1622;overflow:hidden}
+        #tigerest-watch .tw-pick.tw-poster .tw-pick-art{aspect-ratio:2/3}
+        #tigerest-watch .tw-pick-art img{display:block;width:100%;height:100%;object-fit:cover}
+        #tigerest-watch .tw-progress{position:absolute;left:0;right:0;bottom:0;height:4px;background:#0009}
+        #tigerest-watch .tw-progress span{display:block;height:100%;background:#efc36e}
+        #tigerest-watch .tw-pick-badge{position:absolute;left:6px;top:6px;padding:1px 7px;border-radius:999px;background:#141d2bdd;color:#f5d493;font-size:12px}
+        #tigerest-watch .tw-pick[aria-current=true]{border-color:#8a7240}
+        #tigerest-watch .tw-pick-lines{display:flex;flex-direction:column;gap:2px;min-width:0}
+        #tigerest-watch .tw-pick-main{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        #tigerest-watch .tw-pick-sub{color:#a9b8cb;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        #tigerest-watch .tw-shelf-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+        #tigerest-watch .tw-shelf-head .tw-button{padding:5px 12px;font-size:13px}
+        #tigerest-watch .tw-strip{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:172px;gap:10px;overflow-x:auto;padding:2px 2px 10px;overscroll-behavior-x:contain}
+        .tw-detail-entry .tw-detail-icon{display:inline-flex;align-items:center;justify-content:center}
+        .tw-detail-entry .tw-detail-icon svg{width:1em;height:1em;fill:currentColor}
         @media(max-width:600px){#tigerest-watch .tw-head{padding:16px}#tigerest-watch .tw-content{padding:8px 14px 18px}#tigerest-watch .tw-code{font-size:28px}
-            #tigerest-watch .tw-art{width:112px}#tigerest-watch .tw-art-poster{width:72px}}
+            #tigerest-watch .tw-art{width:112px}#tigerest-watch .tw-art-poster{width:72px}#tigerest-watch .tw-strip{grid-auto-columns:144px}}
         #tigerest-watch-toast{position:fixed;left:50%;bottom:48px;transform:translateX(-50%);z-index:100000;max-width:min(560px,calc(100vw - 32px));padding:12px 18px;border-radius:12px;background:#141d2bee;border:1px solid #3a4b62;color:#e9eff8;font-size:14px;box-shadow:0 12px 40px #0008;pointer-events:none}
         `;
         (document.head || document.documentElement).appendChild(style);
@@ -153,6 +188,8 @@
                 if (!document.hidden) { this.connection?.wake(); this.checkSession(); }
             };
             document.addEventListener('visibilitychange', this.onVisibility);
+            this.onItemShow = event => this.itemShown(event);
+            document.addEventListener('itemshow', this.onItemShow);
             window.addEventListener('online', () => this.connection?.wake());
             this.poll = setInterval(() => this.checkSession(), 1000);
             // Position updates stop while paused; deadlines still need a look.
@@ -178,7 +215,7 @@
                 this.healthAt = -Infinity;
                 this.restored = false;
             }
-            if (!key) { this.entry?.remove(); return; }
+            if (!key) { this.entry?.remove(); this.showDetailEntries(false); return; }
             if (!this.available && performance.now() - this.healthAt > 300000) {
                 this.healthAt = performance.now();
                 try {
@@ -187,8 +224,9 @@
                     this.available = health?.enabled === true;
                 } catch (_) { this.available = false; }
             }
-            if (!this.available) { this.entry?.remove(); return; }
+            if (!this.available) { this.entry?.remove(); this.showDetailEntries(false); return; }
             this.ensureEntry();
+            this.showDetailEntries(true);
             if (!this.restored) { this.restored = true; this.restore(); }
         }
         ensureEntry() {
@@ -207,6 +245,44 @@
             const label = room ? '一起看 · ' + (room.members?.length || 1) + '人' : '一起看';
             if (this.entry.textContent !== label) this.entry.textContent = label;
             this.entry.setAttribute('aria-label', room ? '一起看房间 ' + room.code : '一起看');
+        }
+        // Emby's item page announces its item. The entry joins the round
+        // buttons there, right after 播放.
+        itemShown(event) {
+            const item = event.detail?.item, bar = event.target?.querySelector?.('.mainDetailButtons');
+            if (!bar) return;
+            let entry = bar.querySelector('.tw-detail-entry');
+            if (!playable(item)) { entry?.remove(); return; }
+            if (!entry) entry = this.detailEntry();
+            entry.dataset.itemId = item.Id;
+            const anchor = Array.from(bar.children).find(child => child.classList.contains('fab') && child !== entry);
+            if (anchor ? entry.nextElementSibling !== anchor : entry.parentElement !== bar) bar.insertBefore(entry, anchor || null);
+            entry.classList.toggle('hide', !this.available);
+        }
+        detailEntry() {
+            installStyle();
+            const entry = document.createElement('button', {is: 'emby-button'});
+            entry.setAttribute('is', 'emby-button');
+            entry.type = 'button';
+            entry.className = 'fab detailButton detailButton-autotext emby-button emby-button-focusscale tw-detail-entry';
+            entry.title = '一起看';
+            const icon = node('i', null, 'md-icon detailButton-autotext-icon fab-icon tw-detail-icon');
+            icon.innerHTML = groupIcon;
+            entry.append(icon, node('div', '一起看', 'detailButton-autotext-text secondaryText button-text'));
+            entry.addEventListener('click', () => this.watchItem(entry.dataset.itemId));
+            return entry;
+        }
+        showDetailEntries(visible) {
+            for (const entry of document.querySelectorAll('.tw-detail-entry')) entry.classList.toggle('hide', !visible);
+        }
+        // Outside a room: create one with this item. In a room: change to it,
+        // or just show the room when it is the room's film or the room is busy.
+        watchItem(itemId) {
+            this.open();
+            const connection = this.connection, room = connection?.room;
+            if (!this.panel || !itemId) return;
+            if (connection && (String(room?.media?.itemId) === String(itemId) || !connection.connected || room?.pendingChange)) return;
+            this.openPicker(connection ? 'change' : 'create', itemId);
         }
         // After a restart the server may still hold our seat: reconnect, but
         // never start playback on our own.
@@ -745,7 +821,7 @@
         }
 
         // ---- film picker ------------------------------------------------------
-        openPicker(purpose) {
+        openPicker(purpose, itemId = null) {
             const panel = this.panel;
             if (!panel) return;
             panel.view = 'picker';
@@ -754,7 +830,13 @@
             const content = panel.content;
             content.replaceChildren();
             const top = node('div', null, 'tw-row');
-            top.appendChild(button('返回', () => { panel.view = 'room'; panel.abort?.abort(); this.render(); }));
+            // Back goes from a film or search results to the suggestions, then to the room.
+            top.appendChild(button('返回', () => {
+                if (picker.results.firstChild !== picker.home) { this.setStatus(''); this.showSuggestions(picker); return; }
+                panel.view = 'room';
+                panel.abort?.abort();
+                this.render();
+            }));
             const form = node('form', null, 'tw-row'), search = node('input', null, 'tw-search');
             Object.assign(search, {type: 'search', placeholder: '搜索电影或剧集'});
             search.setAttribute('aria-label', '搜索电影或剧集');
@@ -765,10 +847,66 @@
             panel.status = node('p', '', 'tw-status');
             panel.status.setAttribute('role', 'status');
             content.append(top, node('h3', purpose === 'create' ? '选择要一起看的影片' : '换一部影片'), form, panel.status, results);
-            const picker = {purpose, results, signal: panel.abort.signal};
+            const picker = {purpose, results, signal: panel.abort.signal, home: null, card: null};
             form.addEventListener('submit', event => { event.preventDefault(); this.search(picker, search.value); });
-            const contextId = this.pageItemId();
-            if (contextId) this.showItem(picker, contextId); else search.focus();
+            if (itemId) this.showItem(picker, itemId); else this.showSuggestions(picker);
+        }
+        // With no film in mind yet, the picker starts on short rows: the item
+        // page behind the room page, the rest of the room's season, continue
+        // watching and new arrivals. Search covers everything else.
+        showSuggestions(picker) {
+            picker.card = null;
+            if (picker.home) {
+                for (const chosen of picker.home.querySelectorAll('.tw-pick[aria-pressed=true]')) chosen.setAttribute('aria-pressed', 'false');
+                picker.results.replaceChildren(picker.home);
+                return;
+            }
+            const api = this.apiClient(), userId = api?.getCurrentUserId?.(), home = picker.home = node('div');
+            picker.results.replaceChildren(home);
+            if (!userId) return;
+            const fields = {Fields: 'ProductionYear', EnableImageTypes: 'Primary,Thumb,Backdrop', ImageTypeLimit: 1};
+            const choose = item => item.Type === 'Movie' || item.Type === 'Episode' ? this.confirm(picker, item) : this.showItem(picker, item.Id);
+            const shelf = (title, load, shape = 'wide') => {
+                const section = node('section', null, 'tw-shelf'), head = node('div', null, 'tw-shelf-head'), strip = node('div', null, 'tw-strip');
+                head.appendChild(node('h3', title));
+                section.append(head, strip);
+                section.hidden = true;
+                home.appendChild(section);
+                return Promise.resolve().then(load).then(items => {
+                    if (picker.signal.aborted) return null;
+                    for (const item of (items || []).filter(playable)) strip.appendChild(this.pick(item, () => choose(item), shape));
+                    section.hidden = !strip.children.length;
+                    return section.hidden ? null : {head, strip};
+                });
+            };
+            const shelves = [];
+            const pageId = this.pageItemId();
+            if (pageId) shelves.push(shelf('当前页面', async () => [await api.getItem(userId, pageId)]));
+            const media = this.connection?.room?.media;
+            if (picker.purpose === 'change' && media?.type === 'Episode') {
+                let current = null;
+                shelves.push(shelf('本剧其他集', async () => {
+                    current = await api.getItem(userId, media.itemId);
+                    if (!current?.SeriesId) return [];
+                    return (await api.getEpisodes(current.SeriesId, {userId, seasonId: current.SeasonId, ...fields}))?.Items;
+                }, 'episode').then(row => {
+                    if (!row) return;
+                    row.head.appendChild(button('全部剧集', () => this.showSeason(picker, current.SeriesId, current.SeasonId, current.Id)));
+                    const playing = Array.from(row.strip.children).find(element => element.dataset.itemId === String(media.itemId));
+                    if (!playing) return;
+                    playing.setAttribute('aria-current', 'true');
+                    playing.querySelector('.tw-pick-art').appendChild(node('span', '当前', 'tw-pick-badge'));
+                    row.strip.scrollLeft = playing.offsetLeft;
+                }));
+            }
+            shelves.push(shelf('继续观看', async () => (await api.getResumableItems(userId,
+                {Limit: 12, MediaTypes: 'Video', Recursive: true, ...fields}, picker.signal))?.Items));
+            shelves.push(shelf('最近添加', () => api.getLatestItems({Limit: 16, IncludeItemTypes: 'Movie,Episode', ...fields}, picker.signal)));
+            this.setStatus('正在读取…');
+            Promise.allSettled(shelves).then(() => {
+                if (picker.signal.aborted || !picker.results.contains(home)) return;
+                this.setStatus(home.querySelector('.tw-shelf:not([hidden])') ? '' : '在上方搜索电影或剧集。');
+            });
         }
         pageItemId() {
             const hash = window.location.hash || '', query = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '';
@@ -787,20 +925,43 @@
                 return null;
             }
         }
-        pick(item, action, poster) {
-            const api = this.apiClient(), element = button('', action, 'tw-pick' + (poster ? ' tw-poster' : ''));
-            const tag = poster ? item.ImageTags?.Primary : (item.ImageTags?.Primary || item.ImageTags?.Thumb);
-            if (tag && api?.getImageUrl) {
-                const image = node('img');
-                image.alt = '';
-                image.loading = 'lazy';
-                image.src = api.getImageUrl(item.Id, {type: item.ImageTags?.Primary ? 'Primary' : 'Thumb', maxWidth: 360, tag});
-                element.appendChild(image);
+        // shape: 'poster' (search results), 'episode' (a season's list, short
+        // label) or 'wide' (suggestion rows, full title).
+        pick(item, action, shape) {
+            const api = this.apiClient(), element = button('', () => { this.mark(element); action(); }, 'tw-pick' + (shape === 'poster' ? ' tw-poster' : ''));
+            element.dataset.itemId = item.Id;
+            const art = node('span', null, 'tw-pick-art');
+            const image = shape === 'poster' ? item.ImageTags?.Primary && [item.Id, 'Primary', item.ImageTags.Primary] : wideImage(item);
+            if (image && api?.getImageUrl) {
+                const img = node('img');
+                img.alt = '';
+                img.loading = 'lazy';
+                img.src = api.getImageUrl(image[0], {type: image[1], maxWidth: 360, tag: image[2]});
+                art.appendChild(img);
+            }
+            const played = item.UserData?.PlayedPercentage;
+            if (shape === 'wide' && played > 0 && played < 100) {
+                const bar = node('span', null, 'tw-progress'), fill = node('span');
+                fill.style.width = Math.round(played) + '%';
+                bar.appendChild(fill);
+                art.appendChild(bar);
+            }
+            element.appendChild(art);
+            if (shape === 'wide') {
+                const [main, detail] = itemLines(item), lines = node('span', null, 'tw-pick-lines');
+                lines.appendChild(node('span', main, 'tw-pick-main'));
+                if (detail) lines.appendChild(node('span', detail, 'tw-pick-sub'));
+                element.appendChild(lines);
+                return element;
             }
             const episodeName = item.Name && !genericEpisodeName.test(item.Name) ? item.Name : '';
             element.appendChild(node('span', item.Type === 'Episode'
                 ? [item.IndexNumber != null ? '第' + item.IndexNumber + '集' : '', episodeName].filter(Boolean).join(' · ') : itemTitle(item)));
             return element;
+        }
+        mark(element) {
+            for (const other of this.panel?.content.querySelectorAll('.tw-pick[aria-pressed=true]') || []) other.setAttribute('aria-pressed', 'false');
+            element.setAttribute('aria-pressed', 'true');
         }
         async search(picker, text) {
             const term = String(text || '').trim();
@@ -810,7 +971,7 @@
                 Recursive: true, Limit: 30, Fields: 'ProductionYear', EnableImageTypes: 'Primary', ImageTypeLimit: 1}));
             if (!data) return;
             const list = node('div', null, 'tw-list');
-            for (const item of data.Items || []) list.appendChild(this.pick(item, () => this.showItem(picker, item.Id), true));
+            for (const item of data.Items || []) list.appendChild(this.pick(item, () => this.showItem(picker, item.Id), 'poster'));
             picker.results.replaceChildren(list);
             if (!data.Items?.length) this.setStatus('没有找到匹配的电影或剧集。');
         }
@@ -848,7 +1009,7 @@
             }
             const list = node('div', null, 'tw-list');
             for (const episode of episodes.Items || []) {
-                const element = this.pick(episode, () => this.confirm(picker, episode), false);
+                const element = this.pick(episode, () => this.confirm(picker, episode), 'episode');
                 if (episode.Id === selectedId) element.setAttribute('aria-pressed', 'true');
                 list.appendChild(element);
             }
@@ -884,6 +1045,8 @@
             if (resume > 0) actions.appendChild(button(verb + '（从 ' + clock(resume) + '）', () => run(resume)));
             card.appendChild(actions);
             if (picker.purpose !== 'create') card.appendChild(node('p', '换片后，正打开一起看页面和正在观看的成员会一起加载新影片，就绪后同时开始。', 'tw-muted'));
+            picker.card?.remove();
+            picker.card = card;
             picker.results.prepend(card);
             card.scrollIntoView({block: 'nearest'});
         }

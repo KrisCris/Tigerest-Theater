@@ -6,7 +6,11 @@ const withBrowser = require('./community_browser.cjs');
 const version = require('node:fs').readFileSync(path.join(__dirname, '../VERSION'), 'utf8').trim();
 const files = ['watchTogetherClient', 'watchTogetherSync', 'watchTogether'];
 const routes = Object.fromEntries(files.map(f => ['/' + f + '.js', {path: path.join(__dirname, '../native/' + f + '.js')}]));
-routes['/'] = {type: 'text/html', body: '<html><meta charset="utf-8"><div class="headerRight"><button id="tigerest-message-entry">消息</button></div>' +
+// Emby's item page button bar, as in its item.html.
+const itemView = '<div class="itemView"><div class="mainDetailButtons"><button class="btnResume hide raised detailButton">继续播放</button>' +
+    '<button class="btnPlay btnMainPlay raised detailButton">播放</button><button class="btnSyncDownload hide fab detailButton">下载</button>' +
+    '<button class="btnPlaystate fab detailButton">已播放</button><button class="btnMoreCommands fab detailButton">更多</button></div></div>';
+routes['/'] = {type: 'text/html', body: '<html><meta charset="utf-8"><div class="headerRight"><button id="tigerest-message-entry">消息</button></div>' + itemView +
     files.map(f => '<script src="/' + f + '.js"></script>').join('') + '</html>'};
 
 const fixture = `(() => {
@@ -29,7 +33,9 @@ const fixture = `(() => {
         getImageUrl: (id, options) => 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==#' + id + '/' + options.type,
         getItem: async (user, id) => episodes.find(e => e.Id === id) || {Id: id, Type: 'Series', Name: '兽王武神'},
         getSeasons: async () => ({Items: [{Id: 'season1', Name: '第 1 季', IndexNumber: 1}]}),
-        getEpisodes: async () => ({Items: episodes}), getItems: async () => ({Items: []})};
+        getEpisodes: async () => ({Items: episodes}), getItems: async () => ({Items: []}),
+        getResumableItems: async () => ({Items: [{...episodes[2], UserData: {PlaybackPositionTicks: 6000000000, PlayedPercentage: 40}}, {Id: 'tv1', Type: 'TvChannel', Name: '频道'}]}),
+        getLatestItems: async () => [{Id: 'series', Type: 'Series', Name: '兽王武神', ProductionYear: 2024, ImageTags: {Primary: 'p1', Thumb: 't1'}}]};
     const handlers = new Map();
     window.events = {on: (target, name, f) => handlers.set(name, f), trigger: (name, ...a) => handlers.get(name)?.({}, ...a)};
     window.current = null;
@@ -90,10 +96,41 @@ withBrowser(routes, async ({evaluate}) => {
     await wait(`document.querySelector('#tigerest-watch .tw-status').textContent.includes('房间码无效')`);
     assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(log.fetch.find(c => c.url.endsWith('/rooms/join')).body)`)).code, '7KQ2MZ');
 
-    // Opened from an episode page, the picker lists that season with the episode chosen.
+    // From the header the picker starts on suggestion rows.
     await evaluate(`history.replaceState(null, '', '#!/item?id=ep2&serverId=x'); document.querySelector('.tw-primary').click()`);
+    await wait(`document.querySelectorAll('#tigerest-watch .tw-shelf:not([hidden])').length === 3`, 'suggestion rows');
+    const shelves = `Array.from(document.querySelectorAll('#tigerest-watch .tw-shelf:not([hidden])'))`;
+    assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(${shelves}.map(s => s.querySelector('h3').textContent))`)), ['当前页面', '继续观看', '最近添加']);
+    assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(${shelves}.map(s => Array.from(s.querySelectorAll('.tw-pick'), p => p.textContent)))`)),
+        [['兽王武神第1季 第2集'], ['兽王武神第1季 第3集'], ['兽王武神2024']], 'full titles; channels are left out');
+    assert.equal(await evaluate(`${shelves}[1].querySelector('.tw-progress span').style.width`), '40%');
+    assert.match(await evaluate(`${shelves}[2].querySelector('img').src`), /#series\/Thumb$/, 'rows use 16:9 images');
+    assert.equal(await evaluate(`document.querySelector('#tigerest-watch .tw-status').textContent`), '');
+    await click('返回');
+    await wait(`!!document.querySelector('#tigerest-watch .tw-code-input')`, 'back to the lobby');
+
+    // Emby's item page: the entry joins the round buttons right after 播放.
+    await evaluate(`plugin.close(); document.querySelector('.itemView').dispatchEvent(new CustomEvent('itemshow', {detail: {item: {Id: 'ep2', Type: 'Episode'}}, bubbles: true}))`);
+    const bar = `JSON.stringify(Array.from(document.querySelector('.mainDetailButtons').children, b => b.classList.contains('tw-detail-entry') ? '一起看' : b.className.split(' ')[0]))`;
+    assert.deepEqual(JSON.parse(await evaluate(bar)), ['btnResume', 'btnPlay', '一起看', 'btnSyncDownload', 'btnPlaystate', 'btnMoreCommands']);
+    assert.equal(await evaluate(`document.querySelector('.tw-detail-entry').textContent`), '一起看');
+    assert.equal(await evaluate(`document.querySelector('.tw-detail-entry').classList.contains('hide')`), false);
+    await evaluate(`document.querySelector('.itemView').dispatchEvent(new CustomEvent('itemshow', {detail: {item: {Id: 'box', Type: 'BoxSet'}}, bubbles: true}))`);
+    assert.equal(await evaluate(`document.querySelectorAll('.tw-detail-entry').length`), 0, 'only films and shows get the entry');
+    for (let i = 0; i < 2; i++)
+        await evaluate(`document.querySelector('.itemView').dispatchEvent(new CustomEvent('itemshow', {detail: {item: {Id: 'ep2', Type: 'Episode'}}, bubbles: true}))`);
+    assert.deepEqual(JSON.parse(await evaluate(bar)), ['btnResume', 'btnPlay', '一起看', 'btnSyncDownload', 'btnPlaystate', 'btnMoreCommands'], 'shown again, once');
+
+    // Outside a room it creates one with that episode: the season is listed with it chosen.
+    await evaluate(`document.querySelector('.tw-detail-entry').click()`);
     await wait(`!!Array.from(document.querySelectorAll('#tigerest-watch button')).find(b => b.textContent === '创建房间')`);
     assert.equal(await evaluate(`document.querySelector('.tw-pick[aria-pressed=true]').textContent`), '第2集', 'a name that repeats the number is not shown twice');
+    await evaluate(`Array.from(document.querySelectorAll('#tigerest-watch .tw-pick')).find(p => p.textContent === '第3集').click()`);
+    await wait(`document.querySelector('#tigerest-watch .tw-card .tw-film')?.textContent === '兽王武神 第1季 第3集'`, 'another episode');
+    assert.equal(await evaluate(`document.querySelectorAll('#tigerest-watch .tw-card').length`), 1, 'one choice at a time');
+    await evaluate(`Array.from(document.querySelectorAll('#tigerest-watch .tw-pick')).find(p => p.textContent === '第2集').click()`);
+    await wait(`document.querySelector('#tigerest-watch .tw-card .tw-film')?.textContent === '兽王武神 第1季 第2集'`, 'back to episode 2');
+    assert.equal(await evaluate(`document.querySelector('.tw-pick[aria-pressed=true]').textContent`), '第2集');
     await click('创建房间');
     await wait(`!!document.querySelector('#tigerest-watch .tw-code')`, 'room view');
     const create = JSON.parse(await evaluate(`JSON.stringify(log.fetch.find(c => c.url.endsWith('/rooms') && c.method === 'POST'))`));
@@ -136,6 +173,27 @@ withBrowser(routes, async ({evaluate}) => {
     await evaluate(`document.querySelector('#tigerest-watch .tw-ask').click()`);
     await wait(`!document.querySelector('#tigerest-watch .tw-ask')`, 'backdrop cancels');
     assert.equal(await evaluate(`serverLog.filter(m => m.type === 'kick' || m.type === 'close').length`), 0, 'cancelled confirmations send nothing');
+
+    // In a room the picker adds the rest of the room's season, with the room's episode marked.
+    await click('更换影片');
+    await wait(`document.querySelectorAll('#tigerest-watch .tw-shelf:not([hidden])').length === 4`, 'suggestion rows in a room');
+    assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(${shelves}.map(s => s.querySelector('h3').textContent))`)), ['当前页面', '本剧其他集', '继续观看', '最近添加']);
+    assert.equal(await evaluate(`document.querySelector('#tigerest-watch .tw-pick[aria-current=true]').dataset.itemId`), 'ep2');
+    assert.deepEqual(JSON.parse(await evaluate(`JSON.stringify(Array.from(${shelves}[1].querySelectorAll('.tw-pick'), p => p.textContent))`)), ['第1集', '当前第2集', '第3集']);
+    await evaluate(`${shelves}[2].querySelector('.tw-pick').click()`);
+    await wait(`!!Array.from(document.querySelectorAll('#tigerest-watch button')).find(b => b.textContent === '换成这部并开始放映（从 10:00）')`, 'continue watching offers the resume point');
+    await click('返回');
+    await wait(`!document.querySelector('#tigerest-watch .tw-card') && ${shelves}.length === 4`, 'back to the rows');
+    await click('全部剧集');
+    await wait(`document.querySelector('#tigerest-watch .tw-pick[aria-pressed=true]')?.textContent === '第2集'`, 'the full season');
+    await click('返回');
+    await wait(`${shelves}.length === 4`);
+    await click('返回');
+    await wait(`!!document.querySelector('#tigerest-watch .tw-code')`, 'back to the room');
+    assert.equal(await evaluate(`serverLog.filter(m => m.type === 'changeItem').length`), 0, 'browsing sends nothing');
+    // The room's own film on its item page just shows the room.
+    await evaluate(`plugin.close(); document.querySelector('.tw-detail-entry').click()`);
+    await wait(`!!document.querySelector('#tigerest-watch .tw-code')`, 'the room page');
 
     await click('开始放映');
     await wait(`serverLog.some(m => m.type === 'changeItem')`);
