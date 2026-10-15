@@ -14,8 +14,8 @@
 - [x] Compare production CPU/GPU inference with the ANE encoder/refine policy used by the standalone probe. Keep inference precision/model unchanged; select only an improvement supported by measurements.
 - [x] Reproduce correctness issues in focused tests before fixes. Exercise discontinuity, seek, EOF, repeated speed/long-press changes and recovery. Do not call nominal output FPS proof of smooth playback.
 - [x] Build normal signed iPad app, restore it after probes; produce unsigned public IPA with no signing identity or profiles. Run AppleCore and shared-resource tests and verify normal project excludes probes.
-- [ ] Review, commit, push and merge; append Mac/iPad artifacts to existing v2.7.0 without changing its tag or replacing other-platform files. Record exact source commits, hashes and test limits; verify downloaded files and updater selection.
-- [ ] Start separate tvOS design/implementation after publication: native focus-driven browsing and shared playback/core logic, tvOS26+, Siri Remote, physical Apple TV pairing when available.
+- [x] Review, commit, push and merge; append Mac/iPad artifacts to existing v2.7.0 without changing its tag or replacing other-platform files. Record exact source commits, hashes and test limits; verify downloaded files and updater selection.
+- [x] Start separate tvOS design/implementation after publication: native focus-driven browsing and shared playback/core logic, tvOS26+, Siri Remote, physical Apple TV pairing when available.
 
 ## Review focus
 
@@ -50,3 +50,5 @@
 - Confirmed improvement is bounded fast-playback behavior and much smaller restoration transients. Sustained interpolation is not certified drop-free; Bluetooth/AirPlay, production-server playback and physical iPadOS26 remain outside this fixture validation.
 
 - Follow-up read-only packet analysis: the840-second generated continuous fixture contains20122 video packets and38 existing83.333ms PTS gaps (normal interval41.667ms). The29 gaps before the final637.854s playback position exactly match the29 filter resets; these are correct discontinuity handling, not a second runtime drop counter. The30 VO drops are a separate344–346s burst with no coincident filter reset or VO reconfiguration. Logs show cadence estimation/float-upload texture rebuilds, but do not establish a unique cause of that burst.
+
+- Publication completed: five Apple attachments appended, eight existing assets unchanged. Re-downloaded DMG/IPA/source/manifest SHA-256 all match; production Mac/iPad update policies select2.7.0 from2.6.1 and report2.7.0 current. Annotated tag6857978e still peels to355c839.
