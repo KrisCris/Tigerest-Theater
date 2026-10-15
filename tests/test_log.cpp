@@ -149,6 +149,10 @@ void TestLog::testCensorAuthTokens_data()
     << "X-MediaBrowser-Token: abcdef0123456789abcdef0123456789"
     << "X-MediaBrowser-Token: " + masked32;
 
+  QTest::newRow("Emby media authorization header, escaped and longer")
+    << "http-header-fields=[\"Authorization: MediaBrowser Token=\\\"abcdef0123456789abcdef0123456789abcd\\\"\"]"
+    << "http-header-fields=[\"Authorization: MediaBrowser Token=\\\"" + QString(36, 'x') + "\\\"\"]";
+
   QTest::newRow("bearer authorization header")
     << "Authorization: Bearer abcdef0123456789abcdef0123456789"
     << "Authorization: Bearer " + masked32;

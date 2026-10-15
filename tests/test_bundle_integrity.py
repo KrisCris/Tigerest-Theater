@@ -857,7 +857,7 @@ def test_no_embedded_tokens() -> None:
 
     player = read("src/player/PlayerComponent.cpp")
     for marker in (
-        "sanitizeMediaUrl(url)", "QUrlQuery retained", "X-Emby-Token: %1",
+        "sanitizeMediaUrl(url)", "QUrlQuery retained", "Authorization: MediaBrowser Token=\\\"%1\\\"",
         'setProperty("http-header-fields", headers)',
     ):
         require(marker in player, f"media credential header transport missing: {marker}")

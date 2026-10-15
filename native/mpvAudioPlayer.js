@@ -31,10 +31,11 @@ function cancelFadeTimeout() {
 }
 
 class mpvAudioPlayer {
-    constructor({ events, appHost, appSettings, toast }) {
+    constructor({ events, appHost, appSettings, toast, connectionManager }) {
         const self = this;
 
         self.events = events;
+        self.connectionManager = connectionManager;
         self.appHost = appHost;
         self.appSettings = appSettings;
 
@@ -85,7 +86,8 @@ class mpvAudioPlayer {
                 const ms = (options.playerStartPositionTicks || 0) / 10000;
                 self._currentPlayOptions = options;
 
-                window.api.player.load(val,
+                const authorize = window._tigerestAuthorizedStreamUrl;
+                window.api.player.load(authorize ? authorize(val, options.item, self.connectionManager) : val,
                     { startMilliseconds: ms, autoplay: true },
                     {type: 'music', headers: {'User-Agent': jmpInfo.userAgent}, metadata: options.item, media: {}},
                     '#1',

@@ -845,8 +845,11 @@ void PlayerComponent::applyMediaAccessToken(const QString& token)
   for (const QString& header : m_baseHttpHeaders)
     headers.append(header);
 
+  // libcurl drops a custom Authorization header when a redirect leaves the
+  // original host, port or scheme, so a 302 to a CDN never receives the Emby
+  // token. X-Emby-Token would be forwarded to every redirect target.
   if (!token.isEmpty())
-    headers.append(QString("X-Emby-Token: %1").arg(token));
+    headers.append(QString("Authorization: MediaBrowser Token=\"%1\"").arg(token));
 
   m_mpv->setProperty("http-header-fields", headers);
 }

@@ -633,6 +633,8 @@ if(Node_EXECUTABLE)
   endif()
   add_test(NAME test_player_lifecycle
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_player_lifecycle.js)
+  add_test(NAME test_stream_credentials
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_stream_credentials.js)
   add_test(NAME test_mpv_volume_preferences
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_mpv_volume_preferences.js)
   add_test(NAME test_stream_quality

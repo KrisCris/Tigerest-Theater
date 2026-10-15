@@ -551,8 +551,8 @@ private slots:
         QCOMPARE(controller->getProperty("aid").toString(),QString("2"));
         QCOMPARE(controller->getProperty("playlist").toList().size(),2);
         const auto headers=controller->getProperty("http-header-fields").toList();
-        QVERIFY(headers.contains("X-Emby-Token: RifeFixtureA"));
-        QVERIFY(!headers.contains("X-Emby-Token: RifeFixtureB"));
+        QVERIFY(headers.contains("Authorization: MediaBrowser Token=\"RifeFixtureA\""));
+        QVERIFY(!headers.contains("Authorization: MediaBrowser Token=\"RifeFixtureB\""));
         QCOMPARE(failures.size(),0);
         QVERIFY(!player.m_windowsRecoveryLoads.isEmpty());
         player.clearQueue();

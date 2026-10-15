@@ -271,8 +271,8 @@
             defineModule(`tigerest/settings-${section}-view.js`, settingsViewDependencies, createSettingsView(section));
 
         defineModule('tigerest/mpv-video.js', [
-            'events', 'loading', 'appRouter', 'globalize', 'apphost', 'appSettings', 'confirm'
-        ], function (events, loading, appRouter, globalize, appHost, appSettings, confirm) {
+            'events', 'loading', 'appRouter', 'globalize', 'apphost', 'appSettings', 'confirm', 'connectionManager'
+        ], function (events, loading, appRouter, globalize, appHost, appSettings, confirm, connectionManager) {
             const NativeVideoPlayer = window._mpvVideoPlayer;
             const router = moduleValue(appRouter);
             return class TigerestMpvVideoPlayer extends NativeVideoPlayer {
@@ -285,6 +285,7 @@
                         appHost: moduleValue(appHost),
                         appSettings: moduleValue(appSettings),
                         confirm: moduleValue(confirm),
+                        connectionManager: moduleValue(connectionManager),
                         // Jellyfin Desktop historically injected dashboard's
                         // setBackdropTransparency().  Current Emby exposes the
                         // equivalent compositor hook on appRouter instead.
@@ -304,8 +305,8 @@
         });
 
         defineModule('tigerest/mpv-audio.js', [
-            'events', 'apphost', 'appSettings', 'toast'
-        ], function (events, appHost, appSettings, toast) {
+            'events', 'apphost', 'appSettings', 'toast', 'connectionManager'
+        ], function (events, appHost, appSettings, toast, connectionManager) {
             const NativeAudioPlayer = window._mpvAudioPlayer;
             return class TigerestMpvAudioPlayer extends NativeAudioPlayer {
                 constructor() {
@@ -313,7 +314,8 @@
                         events: moduleValue(events),
                         appHost: moduleValue(appHost),
                         appSettings: moduleValue(appSettings),
-                        toast: moduleValue(toast)
+                        toast: moduleValue(toast),
+                        connectionManager: moduleValue(connectionManager)
                     });
                     this.name = 'Tigerest MPV Audio Player';
                 }
