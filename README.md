@@ -10,6 +10,39 @@
 
 客户端不包含影视资源。你需要已有的 Emby 服务器地址和账号；媒体库、播放与下载权限由所连接的服务器提供。本项目是非官方 Emby 客户端，与 Emby LLC 无隶属关系。
 
+## 项目特色
+
+<p align="center"><img src="screenshots/home.webp" alt="桌面沉浸式首页：左侧媒体库入口，右侧作品大图与继续观看轮播"></p>
+
+- **五个平台都能用：** Windows、Apple Silicon Mac、iPad、Android 与 Apple TV 都能连接自己的 Emby；各端内置 MPV 播放核心，无需另装播放器。
+- **一起看：** 登录大河服务器后创建房间，把 6 位房间码发给朋友，就能一起看同一部影片；所有成员都能播放、暂停、拖动和换片，各端自动对齐进度。Windows、Android、Mac 与 iPad 可用。
+- **弹幕自动匹配，纠正一次大家受益：** 播放时按作品、季度、集标题与集数自动找弹幕；大河用户手动纠正一次，所有用户都能读取这份共享对应关系。
+- **跨服务器公共评论：** 不同 Emby 服务器的观众可以讨论同一部作品，按 TMDB 与播出季集关联到「作品评论」「本集评论」，收到的回复集中在消息中心；自建服务器的登录凭据不会交给评论服务。
+- **一键画质预设：** 桌面内置默认 Anime AA、真人影视、激进测试 Anime4K 三档，`Alt+1`～`Alt+3` 随时切换并保留当前补帧状态；iPad 与 Apple TV 也提供画质选项。
+- **可选 RIFE AI 补帧：** Windows NVIDIA 最高支持 4K / 60 fps 输入并可调目标帧率；Apple Silicon Mac 与 iPad 使用 Core ML / Metal，为 1080p / 30 fps 级别的 SDR 片源输出两倍帧率。需要大河内置播放配置。
+- **沉浸式首页与流畅转场：** 大海报、作品轮播和海报飞入详情的转场，红点与「观看进度：8/12」标出还没看完的作品；Windows 与 Mac 界面动画跟随显示器刷新率运行。
+- **为每个平台调过手感：** 桌面支持离线下载，Windows 支持边缘吸附与一键全屏／窗口切换；Android 与 iPad 支持横滑跳转、亮度／音量手势、长按倍速和锁定；Apple TV 用遥控器浏览海报墙和选集。
+- **安心更新与完整中文教程：** Windows、Mac 与 Android 应用内更新核验 SHA-256，支持暂停与断点续传；安装、一起看、弹幕、字幕、补帧和故障排查都有独立的[中文 Wiki](https://github.com/Tigerest/Tigerest-Theater/wiki)。
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="screenshots/watch-together.webp" alt="一起看房间：房间码、当前影片、开始放映与成员列表"><br>一起看：房间码、当前影片与成员</td>
+    <td width="50%" align="center"><img src="screenshots/comments.webp" alt="详情页评论区：评论账号、作品评论、上报问题与评论列表"><br>评论区：作品评论、回复与问题上报</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="screenshots/quality-settings.webp" alt="MPV 画质与插件设置：配置模式、渲染后端与画质预设"><br>画质设置：内置配置、GPU-Next 与画质预设</td>
+    <td width="50%" align="center"><img src="screenshots/rife-settings.webp" alt="视频设置中的 NVIDIA RIFE 扩展、模型与目标帧率"><br>RIFE 补帧：扩展、模型与目标帧率</td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="33%" align="center"><img src="screenshots/android-home.webp" alt="Android 竖屏首页：媒体库入口、作品大图与继续观看"><br>Android 首页</td>
+    <td width="33%" align="center"><img src="screenshots/android-watch-together.webp" alt="Android 一起看房间"><br>Android 一起看</td>
+    <td width="33%" align="center"><img src="screenshots/android-messages.webp" alt="Android 消息中心：收到的回复与原发言"><br>Android 消息中心</td>
+  </tr>
+</table>
+
 ## 2.8.0 更新重点
 
 - **一起看（Windows、Android、Mac、iPad）：** 登录大河服务器后，可以和朋友组一个房间同时观看同一部影片。把 6 位房间码发给朋友即可加入，每个房间最多 4 人；所有成员都可以播放、暂停、拖动和换片。
