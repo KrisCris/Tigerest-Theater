@@ -42,10 +42,11 @@
     <td width="50%"><img src="screenshots/comments.webp" alt="详情页评论区：评论账号、作品评论、上报问题与评论列表"></td>
   </tr>
   <tr>
-    <td width="50%"><img src="screenshots/danmaku.webp" alt="桌面播放时的满屏弹幕"></td>
-    <td width="50%">
+    <td colspan="2">
       <b>弹幕自动匹配，纠正一次大家受益</b><br>
-      播放时按作品、季度、集标题与集数自动找弹幕，五个平台都能显示，也可以搜索、切换来源和调整时间偏移。匹配错了，大河用户手动纠正一次，所有用户都能读取这份共享对应关系。
+      播放时按作品、季度、集标题与集数自动找弹幕，五个平台都能显示，也可以和字幕同屏，并支持搜索、切换来源和调整时间偏移。匹配错了，大河用户手动纠正一次，所有用户都能读取这份共享对应关系。<br><br>
+      <img src="screenshots/danmaku.webp" width="49%" alt="桌面播放时的满屏弹幕">
+      <img src="screenshots/danmaku-subtitles.webp" width="49%" alt="桌面播放：弹幕与字幕同屏">
     </td>
   </tr>
   <tr>
