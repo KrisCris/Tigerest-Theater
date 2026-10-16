@@ -39,17 +39,27 @@
     <td width="50%"><img src="screenshots/comments.webp" alt="详情页评论区：评论账号、作品评论、上报问题与评论列表"></td>
   </tr>
   <tr>
+    <td width="50%"><img src="screenshots/danmaku.webp" alt="桌面播放时的满屏弹幕"></td>
+    <td width="50%">
+      <b>弹幕自动匹配，纠正一次大家受益</b><br>
+      播放时按作品、季度、集标题与集数自动找弹幕，五个平台都能显示，也可以搜索、切换来源和调整时间偏移。匹配错了，大河用户手动纠正一次，所有用户都能读取这份共享对应关系。
+    </td>
+  </tr>
+  <tr>
     <td colspan="2">
-      <b>手机和平板同样顺手</b><br>
-      Android 与 iPad 支持横滑跳转、亮度／音量手势、长按倍速和锁定，首页、一起看与消息中心都适配竖屏；Apple TV 用遥控器浏览海报墙和选集。<br><br>
+      <b>手机、折叠屏和平板同样顺手</b><br>
+      Android 适配手机、折叠屏和平板的横竖屏与可变窗口；Android 与 iPad 支持横滑跳转、亮度／音量手势、长按倍速和锁定；Apple TV 用遥控器浏览海报墙和选集。<br><br>
       <img src="screenshots/android-home.webp" width="32%" alt="Android 竖屏首页：媒体库入口、作品大图与继续观看">
       <img src="screenshots/android-watch-together.webp" width="32%" alt="Android 一起看房间">
       <img src="screenshots/android-messages.webp" width="32%" alt="Android 消息中心：收到的回复与原发言">
+      <br><br>
+      <img src="screenshots/android-tablet-detail.webp" width="32%" alt="Android 折叠屏剧集详情页：播放、一起看入口与选集">
+      <img src="screenshots/android-tablet-comments.webp" width="32%" alt="Android 折叠屏单集详情与本集评论">
+      <img src="screenshots/android-tablet-danmaku.webp" width="32%" alt="Android 折叠屏播放：弹幕与字幕同屏">
     </td>
   </tr>
 </table>
 
-- **弹幕自动匹配，纠正一次大家受益：** 播放时按作品、季度、集标题与集数自动找弹幕；大河用户手动纠正一次，所有用户都能读取这份共享对应关系。
 - **桌面离线与窗口操作：** 服务器允许时可下载作品离线播放；Windows 支持边缘吸附与一键全屏／窗口切换。
 - **安心更新与完整中文教程：** Windows、Mac 与 Android 应用内更新核验 SHA-256，支持暂停与断点续传；安装、一起看、弹幕、字幕、补帧和故障排查都有独立的[中文 Wiki](https://github.com/Tigerest/Tigerest-Theater/wiki)。
 
