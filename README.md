@@ -28,15 +28,15 @@
     </td>
   </tr>
   <tr>
-    <td width="45%">
+    <td width="50%">
       <b>一起看</b><br>
       登录大河服务器后创建房间，把 6 位房间码发给朋友，就能一起看同一部影片。点「开始放映」后成员一起进入播放器、同时开始；所有人都能播放、暂停、拖动和换片，各端自动对齐进度。Windows、Android、Mac 与 iPad 可用。
     </td>
-    <td width="55%"><img src="screenshots/watch-together.webp" alt="一起看房间：房间码、当前影片、开始放映与成员列表"></td>
+    <td width="50%"><img src="screenshots/watch-together.webp" alt="一起看房间：房间码、当前影片、开始放映与成员列表"></td>
   </tr>
   <tr>
-    <td width="55%"><img src="screenshots/comments.webp" alt="详情页评论区：评论账号、作品评论、上报问题与评论列表"></td>
-    <td width="45%">
+    <td width="50%"><img src="screenshots/comments.webp" alt="详情页评论区：评论账号、作品评论、上报问题与评论列表"></td>
+    <td width="50%">
       <b>跨服务器公共评论</b><br>
       不同 Emby 服务器的观众可以讨论同一部作品，按 TMDB 与播出季集关联到「作品评论」「本集评论」，收到的回复集中在消息中心。自建服务器的登录凭据不会交给评论服务；大河用户还能在详情页直接上报播放或字幕问题。
     </td>
