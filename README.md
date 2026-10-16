@@ -18,28 +18,25 @@
 
 <table>
   <tr>
-    <td colspan="2">
+    <td width="50%">
       <b>五个平台都能用，画质开箱即用</b><br>
-      Windows、Apple Silicon Mac、iPad、Android 与 Apple TV 都能连接自己的 Emby，各端内置 MPV 播放核心，无需另装播放器。桌面内置 shader 滤镜和画质调整，一键切换画质预设：默认档用 SSimDownscaler 改善缩小、KrigBilateral 重建色度、RAVU Zoom 放大并抗锯齿，再配合去色带与 EWA Lanczos 缩放；iPad 与 Apple TV 也能选用这套桌面预设。<br><br>
-      <b>可选 RIFE AI 补帧</b><br>
-      Windows NVIDIA 最高支持 4K / 60 fps 输入并可调目标帧率；Apple Silicon Mac 与 iPad 使用 Core ML / Metal，为 1080p / 30 fps 级别的 SDR 片源输出两倍帧率。需要大河内置播放配置。<br><br>
-      <img src="screenshots/quality-settings.webp" width="49%" alt="MPV 画质与插件设置：配置模式、渲染后端与画质预设">
-      <img src="screenshots/rife-settings.webp" width="49%" alt="视频设置中的 NVIDIA RIFE 扩展、模型与目标帧率">
+      Windows、Apple Silicon Mac、iPad、Android 与 Apple TV 都能连接自己的 Emby，各端内置 MPV 播放核心，无需另装播放器。桌面内置 shader 滤镜和画质调整，一键切换画质预设：默认档用 SSimDownscaler 改善缩小、KrigBilateral 重建色度、RAVU Zoom 放大并抗锯齿，再配合去色带与 EWA Lanczos 缩放；iPad 与 Apple TV 也能选用这套桌面预设。
     </td>
+    <td width="50%"><img src="screenshots/quality-settings.webp" alt="MPV 画质与插件设置：大河内置模式、GPU-Next 渲染与画质预设"></td>
   </tr>
   <tr>
+    <td width="50%"><img src="screenshots/watch-together.webp" alt="一起看房间：房间码、当前影片、开始放映与成员列表"></td>
     <td width="50%">
       <b>一起看</b><br>
       登录大河服务器后创建房间，把 6 位房间码发给朋友，就能一起看同一部影片。点「开始放映」后成员一起进入播放器、同时开始；所有人都能播放、暂停、拖动和换片，各端自动对齐进度。Windows、Android、Mac 与 iPad 可用。
     </td>
-    <td width="50%"><img src="screenshots/watch-together.webp" alt="一起看房间：房间码、当前影片、开始放映与成员列表"></td>
   </tr>
   <tr>
-    <td width="50%"><img src="screenshots/comments.webp" alt="详情页评论区：评论账号、作品评论、上报问题与评论列表"></td>
     <td width="50%">
       <b>跨服务器公共评论</b><br>
       不同 Emby 服务器的观众可以讨论同一部作品，按 TMDB 与播出季集关联到「作品评论」「本集评论」，收到的回复集中在消息中心。自建服务器的登录凭据不会交给评论服务；大河用户还能在详情页直接上报播放或字幕问题。
     </td>
+    <td width="50%"><img src="screenshots/comments.webp" alt="详情页评论区：评论账号、作品评论、上报问题与评论列表"></td>
   </tr>
   <tr>
     <td colspan="2">
@@ -55,6 +52,16 @@
 - **弹幕自动匹配，纠正一次大家受益：** 播放时按作品、季度、集标题与集数自动找弹幕；大河用户手动纠正一次，所有用户都能读取这份共享对应关系。
 - **桌面离线与窗口操作：** 服务器允许时可下载作品离线播放；Windows 支持边缘吸附与一键全屏／窗口切换。
 - **安心更新与完整中文教程：** Windows、Mac 与 Android 应用内更新核验 SHA-256，支持暂停与断点续传；安装、一起看、弹幕、字幕、补帧和故障排查都有独立的[中文 Wiki](https://github.com/Tigerest/Tigerest-Theater/wiki)。
+
+<table>
+  <tr>
+    <td width="50%"><img src="screenshots/rife-settings.webp" alt="视频设置中的 AI 补帧开关、RIFE 模型与目标帧率"></td>
+    <td width="50%">
+      <b>可选 RIFE AI 补帧</b><br>
+      Windows NVIDIA 最高支持 4K / 60 fps 输入，可选模型并自定目标帧率；Apple Silicon Mac 与 iPad 使用 Core ML / Metal，为 1080p / 30 fps 级别的 SDR 片源输出两倍帧率。需要大河内置播放配置，默认关闭。
+    </td>
+  </tr>
+</table>
 
 ## 2.8.0 更新重点
 
