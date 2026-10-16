@@ -201,6 +201,18 @@ Apple TV 的轻量增强会在高帧率视频或持续渲染掉帧时暂时降�
 
 项目动态与支持入口：[大河李斯特视频工作室 / 大老师的 B站主页](https://space.bilibili.com/12562485)。
 
+## Star 趋势
+
+觉得好用的话，欢迎点个 Star。
+
+<a href="https://www.star-history.com/#Tigerest/Tigerest-Theater&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Tigerest/Tigerest-Theater&type=Date&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Tigerest/Tigerest-Theater&type=Date">
+    <img alt="Tigerest Theater 的 GitHub Star 数随时间变化的折线图" src="https://api.star-history.com/svg?repos=Tigerest/Tigerest-Theater&type=Date">
+  </picture>
+</a>
+
 ## 贡献者
 
 - [大河李斯特（Tigerest）](https://github.com/Tigerest)：项目维护、开发与发布。
