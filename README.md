@@ -1,10 +1,10 @@
 # Tigerest Theater / EMBY 大河版
 
-把 Emby 媒体库、MPV 播放器、弹幕和作品讨论放在一起。支持 Windows、Apple Silicon Mac、iPad 与 Android，提供 MPV 播放、弹幕和对应平台的画质选项。
+把 Emby 媒体库、MPV 播放器、弹幕和作品讨论放在一起。支持 Windows、Apple Silicon Mac、iPad、Android 与 Apple TV，提供 MPV 播放、弹幕和对应平台的画质选项。
 
 [下载正式版](https://github.com/Tigerest/Tigerest-Theater/releases/latest) · [使用教程](https://github.com/Tigerest/Tigerest-Theater/wiki) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/Tigerest/Tigerest-Theater/issues) · [作者 B站](https://space.bilibili.com/12562485)
 
-**当前版本：Windows、Android 2.8.0；Mac、iPad 2.7.0（2.8.0 之后补充）。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
+**当前版本：Windows、Android、Mac、iPad 与 Apple TV 均为 2.8.0。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
 
 **已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.8.0 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
@@ -12,14 +12,19 @@
 
 ## 2.8.0 更新重点
 
-- **一起看：** 登录大河服务器后，可以和朋友组一个房间同时观看同一部影片。把 6 位房间码发给朋友即可加入，每个房间最多 4 人；所有成员都可以播放、暂停、拖动和换片。
+- **一起看（Windows、Android、Mac、iPad）：** 登录大河服务器后，可以和朋友组一个房间同时观看同一部影片。把 6 位房间码发给朋友即可加入，每个房间最多 4 人；所有成员都可以播放、暂停、拖动和换片。
 - **一起开始：** 点「开始放映」后，房间页上的成员一起进入播放器，全部加载完成后同时开始；播放中各客户端自动对齐进度，中途加入的成员会追上。
 - **入口：** 顶栏「消息」左边，以及电影、剧集详情页「播放」旁边（取代原来的「预告片」按钮）。选片页列出当前页面、本剧其他集、继续观看和最近添加。
 - **评论账号自助修改：** 独立评论账号可以修改显示昵称和密码，注册和改密码时再输入一次密码确认。
 - **首页媒体夹：** 「首页 → 首页媒体夹」可以隐藏媒体夹、调整顺序，按服务器和账号保存在本机。
 - **播放修复：** 服务器给出的播放地址不带令牌时不再报 401；302 跳转到其他主机时不再把令牌带过去。
+- **iPad 持续补帧：** 优化 RIFE 的 GPU 颜色转换与异步调度，保留原模型和画质预设；开启 RIFE 时避免房间同步反复微调倍速而打断补帧。
+- **Mac 与首页：** 保留 Mac 高刷新率界面优化；修复苹果三端首页中同一作品重复出现，合并时保留继续观看信息。
+- **Apple TV：** 更新版本与作品去重，提供海报墙、选集、字幕、弹幕、详情页评论和画质选项。电视端暂不包含「一起看」和 RIFE。
 
-本次先发布 Windows 与 Android；Mac 与 iPad 仍为 2.7.0，2.8.0 之后在同一发行页补充。完整范围与验证见 [2.8.0 发布说明](docs/releases/2026-10-16-v2.8.0.md)。[iPad 安装说明](docs/apple/INSTALL.md)：发布的 IPA 未签名，需使用自己的 Apple 身份重签名；不提供 App Store／TestFlight 分发。
+五个平台的安装包均已在同一发行页提供。「一起看」、评论账号自助修改和首页媒体夹设置适用于 Windows、Android、Mac 与 iPad；Apple TV 的线上房间服务尚未支持，暂不开放「一起看」。Mac／iPad 房间功能已通过隔离数据测试，真实跨设备多人播放尚未验证；补帧流畅度仍取决于片源与设备负载。完整范围与验证见 [2.8.0 发布说明](docs/releases/2026-10-16-v2.8.0.md)。
+
+iPad 与 Apple TV 的 IPA 均未签名，需使用自己的 Apple 身份签名安装；两种设备包不能互换，也不提供 App Store／TestFlight 分发。见 [iPad 安装说明](docs/apple/INSTALL.md)与 [Apple TV 安装与构建](apple/TV/README.md)。
 
 ## 下载与安装
 
@@ -28,20 +33,21 @@
 | Windows 安装版 | [2.8.0 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
 | Windows 便携版 | [2.8.0 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-x64.zip) | 同上；完整解压后运行 |
 | Android | [2.8.0 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-android.apk) | Android 15+，arm64-v8a / x86_64 |
-| Apple Silicon Mac | [2.7.0 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.7.0/TigerestTheater-2.7.0-arm64.dmg) | macOS 26+，M 系列芯片 |
-| iPad | [2.7.0 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.7.0/TigerestTheater-2.7.0-ipad.ipa) | iPadOS 26+，须自行签名安装 |
+| Apple Silicon Mac | [2.8.0 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-arm64.dmg) | macOS 26+，M 系列芯片 |
+| iPad | [2.8.0 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-ipad.ipa) | iPadOS 26+，须自行签名安装 |
+| Apple TV | [2.8.0 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-tvos.ipa) | tvOS 26+，须为 Apple TV 签名安装 |
 
 包内已包含 MPV 和基础运行库，无需另装播放器。Windows RIFE 大型组件是可选扩展；已有 NVIDIA 1.0.0 扩展可以继续使用。正式 Mac 下载仅提供 Apple Silicon 版本。
 
-[2.8.0 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-SHA256SUMS.txt)与 Windows、Android 安装包放在同一发行页；Mac 与 iPad 2.7.0 的校验值见 [2.7.0 Apple 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.7.0/TigerestTheater-2.7.0-APPLE-SHA256SUMS.txt)。
+Windows／Android 使用 [2.8.0 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-SHA256SUMS.txt)；Mac／iPad／Apple TV 使用 [2.8.0 Apple 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-APPLE-SHA256SUMS.txt)。来源与验证记录见同页的 `RELEASE-MANIFEST.json` 和 `APPLE-RELEASE-MANIFEST.json` 附件。
 
 ### 第一次使用
 
-1. 下载对应平台安装包。Windows 安装版运行向导；便携版完整解压；Mac 将应用拖入「应用程序」；Android 安装 APK。
+1. 下载对应平台安装包。Windows 安装版运行向导；便携版完整解压；Mac 将应用拖入「应用程序」；Android 安装 APK；iPad／Apple TV 按上述说明签名并安装对应 IPA。
 2. 打开客户端，选择「大河李斯特专属 EMBY」或「自建 EMBY」。
 3. 自建服务器填写完整地址，例如 `http://192.168.1.100:8096` 或 `https://example.com/emby`，然后使用该服务器账号登录。
-4. 进入作品详情并播放。需要调整播放选项时，打开 Emby 设置中的「Tigerest Theater 设置」。
-5. 想参与公共讨论时，大河用户可直接进入评论区；自建用户点击「评论账号」完成注册或登录。
+4. 进入作品详情并播放。桌面与移动端可在 Emby 设置中的「Tigerest Theater 设置」调整播放选项；Apple TV 使用原生页面和播放器菜单，画质从页面顶部「画质」进入。
+5. 想参与公共讨论时，大河用户可直接进入评论区；自建用户点击「评论账号」注册或登录；Apple TV 请使用已有的公共评论账号登录。
 
 专属服务器的权限与开通说明请查看[作者 B站主页](https://space.bilibili.com/12562485)中的充电说明；下载客户端不会自动获得服务器权限。
 
@@ -49,9 +55,11 @@ Windows 安装包目前未做 Authenticode 签名。Mac 使用 ad-hoc 签名，�
 
 ### 从旧版更新
 
-客户端启动时后台检查正式版本，以右上角更新图标红点提示；也可在「客户端」设置中点击「检查客户端更新」。下载会核验文件大小与 SHA-256，支持暂停、继续和中断后的续传。
+Windows 与 Mac 客户端启动时后台检查正式版本，以右上角更新图标红点提示；也可在「客户端」设置中点击「检查客户端更新」。下载会核验文件大小与 SHA-256，支持暂停、继续和中断后的续传。
 
-手动更新前完全退出客户端，包括 Windows 托盘。安装版覆盖安装；便携版备份并保留 `data`，使用完整新版文件；Mac 替换应用；Android 使用同签名正式 APK 覆盖安装。
+手动更新前完全退出客户端，包括 Windows 托盘。安装版覆盖安装；便携版备份并保留 `data`，使用完整新版文件；Mac 替换应用；Android 使用同签名正式 APK 覆盖安装。iPad 与 Apple TV 重新签名后覆盖安装，保留原应用标识和签名身份，不要先卸载。
+
+iPad 应用内仅检查和提示更新，不自动替换安装；Apple TV 暂无内置更新检查，请从发行页获取新版。
 
 旧版 Windows 的内置下载若反复失败，可从发行页手动安装一次。具体操作、跳过版本和校验方式见 [安装与更新](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation)。
 
@@ -67,6 +75,8 @@ Windows 安装包目前未做 Authenticode 签名。Mac 使用 ad-hoc 签名，�
 
 Android 提供双击暂停、横滑跳转、左右侧亮度／音量调节、长按临时倍速、防误触锁及选集。系统关闭自动旋转时保留当前方向。详见 [播放与设置](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback)。
 
+iPad 支持横滑跳转、左右侧亮度／音量调节、长按临时倍速、锁定和季集选择，播放时隐藏系统状态栏。Apple TV 使用遥控器操作首页与海报墙，支持选季选集、上一集／下一集、字幕选择和详情页内评论；电视端暂不提供音轨选择、离线下载、直播或服务端转码，完整范围见 [电视端说明](apple/TV/README.md)。
+
 ### 公共评论、头像与消息
 
 电影和剧集按可靠的 TMDB 标识关联公共讨论；单集还需要明确的播出季集编号。详情页区分「作品评论」「本集评论」，每页 10 条主评论，可回复和删除自己的内容，正文最多 2000 字。
@@ -77,6 +87,8 @@ Android 提供双击暂停、横滑跳转、左右侧亮度／音量调节、长
 
 缺少可靠作品编号或使用不支持的集序时，客户端会说明原因，避免把不同集数混到一起。参见 [评论账号与头像](https://github.com/Tigerest/Tigerest-Theater/wiki/Community) 和 [消息与私人报错](https://github.com/Tigerest/Tigerest-Theater/wiki/Messages-and-Reports)。
 
+Apple TV 使用原生详情页评论区，支持作品／单集切换、分页、回复和管理自己的评论；公共账号需使用已有账号登录，暂不提供公共账号注册、管理审核或与桌面相同的顶栏消息页。
+
 ### 弹幕与共享校准
 
 新配置默认启用弹幕，已有明确关闭的设置会保留。播放时先查共享匹配，再按作品、季度、集标题与集数自动识别；仍有歧义时可手动选择。
@@ -86,6 +98,8 @@ Android 提供双击暂停、横滑跳转、左右侧亮度／音量调节、长
 桌面内置弹幕下载和共享查询遇到超时或临时网络故障会等待 1 秒后自动重试一次；空结果和限流不反复请求，切集或手动换源会取消旧请求。
 
 视频来自你的 Emby；弹幕搜索和匹配信息会发送到所用弹幕服务。手动配置的第三方来源保留原设置。操作示例见 [弹幕匹配与纠正](https://github.com/Tigerest/Tigerest-Theater/wiki/Danmaku)。
+
+iPad 与 Apple TV 复用作品搜索和匹配规则，提供原生弹幕渲染，以及搜索、来源和时间偏移调整。
 
 ### 画质与 AI 补帧
 
@@ -99,6 +113,9 @@ RIFE 默认关闭，需要大河内置播放配置：
 | Apple Silicon Mac | 模型与插件随包提供，使用 Core ML / Metal | 最高逐行 SDR 1080p / 30 fps、恒定帧率，输出两倍帧率 |
 | iPad | 随包 Core ML / Metal 原生滤镜，默认关闭 | 1920×1080、BT.709 SDR、23–30 fps，固定两倍；其他规格原帧通过 |
 | Android | 暂不提供 RIFE | 使用基础播放 |
+| Apple TV | 暂不提供 RIFE | 可选原生、轻量增强及桌面画质预设 |
+
+Apple TV 的轻量增强会在高帧率视频或持续渲染掉帧时暂时降低当前视频的处理负载，并保留所选设置。完整桌面滤镜在较早电视设备上仍可能掉帧。
 
 首次 Windows 引擎准备可能需要数分钟。高目标帧率、4K 和重型模型会增加负载；屏幕刷新率不代表补帧推理能力。详细安装、目标帧率计算和排查见 [RIFE 补帧](https://github.com/Tigerest/Tigerest-Theater/wiki/RIFE)。
 
@@ -142,6 +159,7 @@ RIFE 默认关闭，需要大河内置播放配置：
 - [macOS 构建](dev/macos/README.md)
 - [Android 构建](android/README.md)
 - [iPad 安装与构建](docs/apple/INSTALL.md)
+- [Apple TV 安装与构建](apple/TV/README.md)
 - [Windows 测试环境要求](dev/windows/TESTING.md)
 - [版本变化](CHANGELOG.md)与[本次发布说明](docs/releases/2026-10-16-v2.8.0.md)
 
