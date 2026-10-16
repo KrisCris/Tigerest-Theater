@@ -6,7 +6,7 @@
 
 ## 自建 Emby 可以使用吗？
 
-可以浏览和播放自己的媒体库，也可以使用弹幕。2.6.0 可通过独立评论账号加入公共讨论；查看和发送评论都要求评论登录有效。
+可以浏览和播放自己的媒体库，也可以使用弹幕。2.6.0 起可通过独立评论账号加入公共讨论；查看和发送评论都要求评论登录有效。「一起看」目前只在大河服务器上提供。
 
 ## 为什么已经登录 Emby，还要登录评论？
 
@@ -54,15 +54,31 @@
 
 ## 安装客户端后还需要安装 MPV 吗？
 
-基础包已经包含 MPV。Windows RIFE 的大型组件按需另装扩展；Mac RIFE 模型与插件随包提供。系统 MPV 配置模式是读取你已有配置的选项，不是普通使用的前置步骤。
+基础包已经包含 MPV。Windows RIFE 的大型组件按需另装扩展；Mac 和 iPad 的 RIFE 模型随包提供。系统 MPV 配置模式是读取你已有配置的选项，不是普通使用的前置步骤。
 
 ## RIFE 和画质预设、显示器高刷是一回事吗？
 
 RIFE 生成中间帧；画质预设处理缩放、边缘和色彩等画面效果；显示器刷新率是显示设备的能力。三者会共同影响体验，开启最高档不保证更流畅。先从低目标和较轻模型开始。
 
-## Mac、Android、Windows 的功能完全一样吗？
+## 各平台的功能完全一样吗？
 
-浏览、播放、评论和弹幕为共同能力。Windows NVIDIA 与 Mac 使用不同 RIFE 后端及格式范围；Android 没有桌面 RIFE、离线下载、后台持续播放或画中画。正式 Mac 附件只提供 Apple Silicon。
+浏览、播放、评论和弹幕为共同能力。主要区别：
+
+- **RIFE：** Windows 使用 NVIDIA 可选扩展；Mac 和 iPad 随包提供，格式范围不同；Android 和 Apple TV 暂无。
+- **一起看：** Windows、Mac、Android、iPad 可用，Apple TV 暂不支持。
+- **离线下载：** Windows、Mac、iPad 可用；Android 和 Apple TV 暂无。
+- **界面：** Windows、Mac、Android、iPad 使用 Emby 网页界面加原生播放器；Apple TV 是独立的原生电视界面，没有「Tigerest Theater 设置」分类。
+- Android 没有后台持续播放或画中画。正式 Mac 附件只提供 Apple Silicon。
+
+完整对照见[教程首页](https://github.com/Tigerest/Tigerest-Theater/wiki/Home#各平台功能范围)，实现方式见[技术原理](https://github.com/Tigerest/Tigerest-Theater/wiki/Architecture)。
+
+## 一起看可以和自建服务器的朋友一起用吗？
+
+暂时不行。一起看只在大河服务器上提供，房间里每个人都要用自己的大河 Emby 账号登录，并且有权限播放房间里的影片。视频由每个人各自从 Emby 播放，一起看服务只同步进度，不转发视频。见[一起看](https://github.com/Tigerest/Tigerest-Theater/wiki/Watch-Together)。
+
+## iPad 和 Apple TV 为什么要自己签名？
+
+发行页的 IPA 不含作者的签名、证书或设备名单，不是 App Store 或 TestFlight 安装包。需要用自己的 Apple 身份签名后才能装到自己的设备上；免费账号的签名有有效期，到期后需要重新签名。见[安装与更新](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation#ipad)。
 
 ## 便携版更新最需要保留什么？
 
