@@ -1,5 +1,7 @@
 # Tigerest Theater / EMBY 大河版
 
+<p align="center"><img src="screenshots/poster.webp" alt="大河影院 · EMBY 大河版宣传海报：电脑、平板、折叠屏与手机上的沉浸式首页"></p>
+
 把 Emby 媒体库、MPV 播放器、弹幕和作品讨论放在一起。支持 Windows、Apple Silicon Mac、iPad、Android 与 Apple TV，提供 MPV 播放、弹幕和对应平台的画质选项。
 
 [下载正式版](https://github.com/Tigerest/Tigerest-Theater/releases/latest) · [使用教程](https://github.com/Tigerest/Tigerest-Theater/wiki) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/Tigerest/Tigerest-Theater/issues) · [作者 B站](https://space.bilibili.com/12562485)
