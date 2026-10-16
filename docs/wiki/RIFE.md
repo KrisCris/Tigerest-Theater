@@ -8,9 +8,10 @@ RIFE 在原视频帧之间生成中间帧，提高运动画面的输出帧率。
 | --- | --- | --- |
 | Windows x64，受支持的 NVIDIA GPU | NVIDIA 1.0.0 可选扩展，TensorRT | 最高逐行 SDR 4K / 60 fps |
 | Apple Silicon Mac | 包内模型与插件，Core ML / Metal | 最高逐行 SDR 1080p / 30 fps、恒定帧率 |
-| Android | 当前不提供 | 使用正常播放 |
+| iPad | 包内原生滤镜，Core ML / Metal | 1920×1080、BT.709 SDR、23–30 fps，固定两倍 |
+| Android、Apple TV | 当前不提供 | 使用正常播放 |
 
-以上是格式门槛，不是所有设备都能实时达到的性能承诺。Windows 不自动缩小推理分辨率或把 HDR 转为 SDR 来满足条件；Mac 的 HDR、4K、变帧率及色彩信息不完整的视频保持原帧播放。
+以上是格式门槛，不是所有设备都能实时达到的性能承诺。Windows 不自动缩小推理分辨率或把 HDR 转为 SDR 来满足条件；Mac 和 iPad 的 HDR、4K、变帧率及色彩信息不完整的视频保持原帧播放。
 
 Windows Intel／AMD 显卡可以使用基础播放，但不能使用这里的 NVIDIA 扩展。Mac 使用自己的内置方案，不安装 Windows ZIP。
 
@@ -86,6 +87,16 @@ Windows 提供 4.25 lite、4.25、4.25 heavy：
 4. 重新打开符合条件的视频，查看当前视频状态。
 
 Mac 输出两倍帧率，使用系统 Core ML / Metal。无需额外下载 Windows 扩展，也不需要自行装一套 Python 环境。
+
+## iPad 开启步骤
+
+1. 在客户端设置的「视频」中开启「AI 补帧（RIFE）」，默认关闭。
+2. 重新打开符合条件的视频：1920×1080、BT.709 SDR、23–30 fps。输出固定为两倍帧率。
+3. 其他规格的视频原帧播放，不需要手动关闭补帧。
+
+调整播放速度时补帧暂停、直接输出原帧，回到 1 倍速后短暂稳定再恢复。所以在[一起看](https://github.com/Tigerest/Tigerest-Theater/wiki/Watch-Together)房间里开启补帧时，客户端不靠微调倍速对齐进度，偏差较大时直接跳转对齐，Windows 和 Mac 也是这样。
+
+补帧的流畅度取决于片源、设备型号和温度。实测中 M5 iPad Pro 播放 1080p 动画、同时开启默认画质和弹幕，约 11 分钟没有记录到渲染或解码掉帧，但这不代表所有视频和设备都能全程流畅。
 
 ## 判断是否实时
 

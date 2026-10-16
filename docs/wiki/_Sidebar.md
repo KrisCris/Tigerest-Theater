@@ -3,6 +3,7 @@
 - [教程首页](https://github.com/Tigerest/Tigerest-Theater/wiki/Home)
 - [安装与更新](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation)
 - [服务器与登录](https://github.com/Tigerest/Tigerest-Theater/wiki/Server)
+- [一起看](https://github.com/Tigerest/Tigerest-Theater/wiki/Watch-Together)
 - [公共评论与头像](https://github.com/Tigerest/Tigerest-Theater/wiki/Community)
 - [消息与私人报错](https://github.com/Tigerest/Tigerest-Theater/wiki/Messages-and-Reports)
 - [弹幕匹配与纠正](https://github.com/Tigerest/Tigerest-Theater/wiki/Danmaku)
@@ -10,7 +11,9 @@
 - [字幕](https://github.com/Tigerest/Tigerest-Theater/wiki/Subtitles)
 - [RIFE 补帧](https://github.com/Tigerest/Tigerest-Theater/wiki/RIFE)
 - [下载与离线媒体](https://github.com/Tigerest/Tigerest-Theater/wiki/Downloads)
+- [Apple TV](https://github.com/Tigerest/Tigerest-Theater/wiki/Apple-TV)
 - [故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)
 - [常见问题](https://github.com/Tigerest/Tigerest-Theater/wiki/FAQ)
+- [技术原理](https://github.com/Tigerest/Tigerest-Theater/wiki/Architecture)
 
 [下载最新版](https://github.com/Tigerest/Tigerest-Theater/releases/latest) · [项目主页](https://github.com/Tigerest/Tigerest-Theater) · [问题反馈](https://github.com/Tigerest/Tigerest-Theater/issues)

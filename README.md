@@ -130,6 +130,7 @@ Apple TV 的轻量增强会在高帧率视频或持续渲染掉帧时暂时降�
 | 从头开始使用 | [教程首页](https://github.com/Tigerest/Tigerest-Theater/wiki/Home) |
 | 安装、更新、核验下载 | [安装与更新](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation) |
 | 连接自己的服务器或更换账号 | [服务器与登录](https://github.com/Tigerest/Tigerest-Theater/wiki/Server) |
+| 和朋友一起看同一部影片 | [一起看](https://github.com/Tigerest/Tigerest-Theater/wiki/Watch-Together) |
 | 注册评论账号、改密码、更新头像 | [公共评论与头像](https://github.com/Tigerest/Tigerest-Theater/wiki/Community) |
 | 找回复、查看修复通知、上报问题 | [消息与私人报错](https://github.com/Tigerest/Tigerest-Theater/wiki/Messages-and-Reports) |
 | 弹幕匹配错集、调时间或来源 | [弹幕教程](https://github.com/Tigerest/Tigerest-Theater/wiki/Danmaku) |
@@ -137,7 +138,9 @@ Apple TV 的轻量增强会在高帧率视频或持续渲染掉帧时暂时降�
 | 选择字幕、修正延迟、保留 ASS 特效 | [字幕教程](https://github.com/Tigerest/Tigerest-Theater/wiki/Subtitles) |
 | 安装与调试 AI 补帧 | [RIFE 教程](https://github.com/Tigerest/Tigerest-Theater/wiki/RIFE) |
 | 下载作品并离线播放 | [下载管理](https://github.com/Tigerest/Tigerest-Theater/wiki/Downloads) |
+| 在 Apple TV 上使用 | [Apple TV](https://github.com/Tigerest/Tigerest-Theater/wiki/Apple-TV) |
 | 解决异常或准备反馈 | [故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting) · [常见问题](https://github.com/Tigerest/Tigerest-Theater/wiki/FAQ) |
+| 了解各客户端的实现与架构 | [技术原理](https://github.com/Tigerest/Tigerest-Theater/wiki/Architecture) |
 
 ## 反馈与支持
 
