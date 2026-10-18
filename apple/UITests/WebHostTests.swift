@@ -6,7 +6,7 @@ final class WebHostTests: XCTestCase {
         app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["连接大河李斯特专属 EMBY 服务器"].waitForExistence(timeout:10))
-        app.buttons["连接自建 EMBY 服务器"].tap()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
         XCTAssertTrue(app.textFields["服务器地址"].waitForExistence(timeout: 10))
         app.buttons["离线媒体"].tap()
         XCTAssertTrue(app.staticTexts["尚无离线媒体"].waitForExistence(timeout: 5))
@@ -15,7 +15,7 @@ final class WebHostTests: XCTestCase {
 extension WebHostTests {
     @MainActor func testVolumeAndMuteSurvivePlayerReplacement() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
-        app.buttons["连接自建 EMBY 服务器"].tap()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
         let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
@@ -27,7 +27,7 @@ extension WebHostTests {
 
     @MainActor func testControlledBridgePlaybackAndDownload() {
         let app=XCUIApplication();app.launchArguments=["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"];app.launch()
-        app.buttons["连接自建 EMBY 服务器"].tap()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
         let field=app.textFields["服务器地址"]
         XCTAssertTrue(field.waitForExistence(timeout:10));field.tap();field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
@@ -103,7 +103,7 @@ extension WebHostTests {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
         XCTAssertTrue(statusBarContent.waitForExistence(timeout: 5))
-        app.buttons["连接自建 EMBY 服务器"].tap()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
         let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
@@ -113,7 +113,7 @@ extension WebHostTests {
 
     @MainActor func testSubtitleSettingsReachPlayerAndReset() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
-        app.buttons["连接自建 EMBY 服务器"].tap()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
         let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
@@ -128,7 +128,7 @@ extension WebHostTests {
 extension WebHostTests {
     @MainActor private func openGestureFixture() -> XCUIApplication {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
-        app.buttons["连接自建 EMBY 服务器"].tap()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
         let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
@@ -197,7 +197,7 @@ extension WebHostTests {
 extension WebHostTests {
     @MainActor func testBundledArtSettingsDanmakuAndReturnTransition() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
-        app.buttons["连接自建 EMBY 服务器"].tap()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
         let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
@@ -218,7 +218,7 @@ extension WebHostTests {
 extension WebHostTests {
     @MainActor func testSpacePausesAfterOSDAutoHideWithoutReloading() {
         let app=XCUIApplication();app.launchArguments=["--ui-testing","-TigerestPlaybackGesturesSeen","YES"];app.launch()
-        app.buttons["连接自建 EMBY 服务器"].tap()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
         let field=app.textFields["服务器地址"];field.tap();field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout:20))
@@ -250,7 +250,7 @@ extension WebHostTests {
     /// Real read-only GitHub check through WKWebView -> native bridge -> HTTP.
     @MainActor func testIPadUpdateEntryShowsPlatformStatusWithoutInstaller() {
         let app=XCUIApplication();app.launchArguments=["--ui-testing","-TigerestPlaybackGesturesSeen","YES"];app.launch()
-        app.buttons["连接自建 EMBY 服务器"].tap()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
         let field=app.textFields["服务器地址"];field.tap();field.typeText("http://127.0.0.1:18768/sub/")
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout:20))

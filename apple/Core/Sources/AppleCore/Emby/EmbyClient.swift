@@ -1,20 +1,43 @@
 import Foundation
 
+/// The media server API a session talks to. Jellyfin forked from Emby and
+/// keeps most routes, but authenticates and names some queries differently.
+public enum MediaServerKind: String, Codable, Sendable {
+    case emby, jellyfin
+
+    /// Jellyfin names its product; its releases start at 10.x (now 12.x), while Emby is still 4.x.
+    public static func classify(productName: String?, version: String?) -> MediaServerKind {
+        if productName?.range(of: "jellyfin", options: .caseInsensitive) != nil { return .jellyfin }
+        if let major = version?.split(separator: ".").first.flatMap({ Int($0) }), major >= 10 { return .jellyfin }
+        return .emby
+    }
+}
+
 public struct EmbySession: Codable, Sendable {
     public let serverURL: String
     public let userID: String
     public let accessToken: String
     public let deviceID: String
     public let serverID: String?
-    public init(serverURL: String, userID: String, accessToken: String, deviceID: String, serverID: String? = nil) {
+    /// nil in sessions saved before 2.9.0, which were all Emby.
+    public let serverKind: MediaServerKind?
+    public let serverVersion: String?
+    public var kind: MediaServerKind { serverKind ?? .emby }
+    public init(serverURL: String, userID: String, accessToken: String, deviceID: String, serverID: String? = nil,
+                serverKind: MediaServerKind? = nil, serverVersion: String? = nil) {
         self.serverURL = serverURL; self.userID = userID; self.accessToken = accessToken; self.deviceID = deviceID
-        self.serverID = serverID
+        self.serverID = serverID; self.serverKind = serverKind; self.serverVersion = serverVersion
     }
 }
 
 public struct EmbyServerInfo: Sendable {
     public let name: String
     public let id: String?
+    public let kind: MediaServerKind
+    public let version: String?
+    public init(name: String, id: String?, kind: MediaServerKind = .emby, version: String? = nil) {
+        self.name = name; self.id = id; self.kind = kind; self.version = version
+    }
 }
 
 public struct EmbyItemPage: Sendable {
@@ -79,6 +102,15 @@ public actor EmbyClient: EmbyHomeAPI {
     private let urlSession: URLSession
     private static let maxResponseBytes = 8 * 1024 * 1024
     private static let fields = "Overview,PrimaryImageAspectRatio,SeriesId,SeasonId,MediaSources,ProviderIds,DisplayOrder,DateCreated,PremiereDate,CommunityRating,UserDataLastPlayedDate,Genres,People,Studios,MediaStreams"
+    static let clientVersion = "2.9.0"
+    // Jellyfin's Fields parameter is an enum of optional data, not the names of
+    // response properties. These are Emby request names, or data Jellyfin always
+    // returns; 10.11 also dropped PresentationUniqueKey from the enum.
+    private static let embyOnlyFields: Set<String> = ["userdatalastplayeddate", "premieredate", "communityrating", "productionyear",
+        "seriesid", "seasonid", "displayorder", "officialrating", "criticrating", "indexnumber", "parentindexnumber",
+        "runtimeticks", "name", "type", "mediatype", "imagetags"]
+    // Item kinds Emby knows and Jellyfin's BaseItemKind does not.
+    private static let embyOnlyTypes: Set<String> = ["game", "gamesystem"]
 
     public init(session: EmbySession, urlSession: URLSession = .shared) throws {
         self.server = try ServerAddress(session.serverURL)
@@ -97,42 +129,61 @@ public actor EmbyClient: EmbyHomeAPI {
         let address = try ServerAddress(server)
         let json = try await send(url: address.endpoint("System/Info/Public"), urlSession: urlSession)
         guard let name = json["ServerName"].string, !name.isEmpty else { throw EmbyClientError.invalidResponse }
-        return EmbyServerInfo(name: name, id: try? identifier(json["Id"].string))
+        let version = json["Version"].string
+        return EmbyServerInfo(name: name, id: try? identifier(json["Id"].string),
+                              kind: .classify(productName: json["ProductName"].string, version: version), version: version)
     }
 
-    public static func login(server: String, username: String, password: String, deviceID: String, urlSession: URLSession = .shared) async throws -> EmbySession {
+    /// Without serverInfo the server is taken to be Emby, as before 2.9.0.
+    public static func login(server: String, username: String, password: String, deviceID: String,
+                             serverInfo info: EmbyServerInfo? = nil, urlSession: URLSession = .shared) async throws -> EmbySession {
         let address = try ServerAddress(server)
         _ = try identifier(deviceID)
         guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               username.utf8.count <= 1024, password.utf8.count <= 16384 else { throw CoreError.invalidRequest }
+        let kind = info?.kind ?? .emby
         let json = try await send(url: address.endpoint("Users/AuthenticateByName"), method: "POST",
                                   body: .object(["Username": .string(username), "Pw": .string(password)]),
-                                  deviceID: deviceID, urlSession: urlSession)
+                                  deviceID: deviceID, kind: kind, urlSession: urlSession)
         guard let userID = json["User"]["Id"].string, let token = json["AccessToken"].string,
               !token.isEmpty, safeHeaderValue(token), (try? identifier(userID)) != nil else { throw EmbyClientError.invalidResponse }
         return EmbySession(serverURL: address.baseURL.absoluteString, userID: userID, accessToken: token, deviceID: deviceID,
-                           serverID: try? identifier(json["ServerId"].string))
+                           serverID: (try? identifier(json["ServerId"].string)) ?? info?.id,
+                           serverKind: info == nil ? nil : kind, serverVersion: info?.version)
+    }
+
+    /// Jellyfin 10.9 added routes that name the user as a query parameter;
+    /// 12.x keeps the Users/{id} forms only as deprecated aliases.
+    private func userRoute(emby: String, jellyfin: String, query: [String: String]) -> (path: String, query: [String: String]) {
+        guard session.kind == .jellyfin else { return ("Users/\(session.userID)/" + emby, query) }
+        var query = query
+        query["userId"] = session.userID
+        return (jellyfin, query)
     }
 
     public func libraries() async throws -> [JSONValue] {
-        try await list("Users/\(session.userID)/Views", query: ["Limit": "200"], limit: 200)
+        let route = userRoute(emby: "Views", jellyfin: "UserViews", query: ["Limit": "200"])
+        return try await list(route.path, query: route.query, limit: 200)
     }
 
     public func resumeItems() async throws -> [JSONValue] {
-        try await list("Users/\(session.userID)/Items/Resume", query: [
+        let route = userRoute(emby: "Items/Resume", jellyfin: "UserItems/Resume", query: [
             "Limit": "20", "MediaTypes": "Video", "Recursive": "true", "Fields": Self.fields,
             // Emby 4.8–4.10 require named item types even with MediaTypes=Video.
             "IncludeItemTypes": "Episode,Movie,Video,MusicVideo",
             "EnableImages": "true", "EnableUserData": "true"
-        ], limit: 20)
+        ])
+        return try await list(route.path, query: route.query, limit: 20)
     }
 
     public func items(query: [String: String]) async throws -> EmbyItemPage {
-        try await itemPage("Users/\(session.userID)/Items", query: query)
+        let route = userRoute(emby: "Items", jellyfin: "Items", query: query)
+        return try await itemPage(route.path, query: route.query)
     }
 
     public func resumableItems(query: [String: String]) async throws -> EmbyItemPage {
-        try await itemPage("Users/\(session.userID)/Items/Resume", query: query)
+        let route = userRoute(emby: "Items/Resume", jellyfin: "UserItems/Resume", query: query)
+        return try await itemPage(route.path, query: route.query)
     }
 
     /// A library opens as a work catalogue, independent of its disk-folder layout.
@@ -152,7 +203,7 @@ public actor EmbyClient: EmbyHomeAPI {
         case "photos": types = "Photo,PhotoAlbum"
         default: types = "Series,Movie,Video"
         }
-        return try await itemPage("Users/\(session.userID)/Items", query: [
+        return try await items(query: [
             "ParentId": id, "Recursive": "true", "IncludeItemTypes": types,
             "StartIndex": String(max(0, startIndex)), "Limit": String(min(100, max(1, limit))),
             "SortBy": "SortName", "SortOrder": "Ascending", "EnableTotalRecordCount": "true",
@@ -179,7 +230,7 @@ public actor EmbyClient: EmbyHomeAPI {
         let boundedLimit = min(max(limit, 1), 100)
         var values = ["UserId": session.userID, "StartIndex": String(max(0, startIndex)), "Limit": String(boundedLimit),
                       "Fields": Self.fields, "EnableUserData": "true", "EnableImages": "true"]
-        let path: String
+        var path = ""
         switch item["Type"].string {
         case "Series":
             path = "Shows/\(id)/Seasons"
@@ -189,19 +240,22 @@ public actor EmbyClient: EmbyHomeAPI {
                 path = "Shows/\(try Self.identifier(series))/Episodes"
                 values["SeasonId"] = id
             } else {
-                path = "Users/\(session.userID)/Items"
                 values["ParentId"] = id
                 values["Recursive"] = "false"
                 values["IncludeItemTypes"] = "Episode"
             }
             values["SortBy"] = "ParentIndexNumber,IndexNumber,SortName"
         default:
-            path = "Users/\(session.userID)/Items"
             values["ParentId"] = id
             values["Recursive"] = "false"
             values["SortBy"] = "SortName"
         }
         values["SortOrder"] = "Ascending"
+        if path.isEmpty {
+            // The item list names its user in the route (Emby) or as userId (Jellyfin).
+            values["UserId"] = nil
+            (path, values) = userRoute(emby: "Items", jellyfin: "Items", query: values)
+        }
         return try await list(path, query: values, limit: boundedLimit)
     }
 
@@ -232,7 +286,8 @@ public actor EmbyClient: EmbyHomeAPI {
 
     public func item(id: String) async throws -> JSONValue {
         let id = try Self.identifier(id)
-        let result = try await request("Users/\(session.userID)/Items/\(id)")
+        let route = userRoute(emby: "Items/\(id)", jellyfin: "Items/\(id)", query: [:])
+        let result = try await request(route.path, query: route.query)
         guard result.object != nil, result["Id"].string == id else { throw EmbyClientError.invalidResponse }
         return result
     }
@@ -275,7 +330,7 @@ public actor EmbyClient: EmbyHomeAPI {
             } else if source["SupportsDirectPlay"].bool == true {
                 mediaURL = try Self.url(server.endpoint("Videos/\(id)/stream"), query: [
                     "Static": "true", "MediaSourceId": sourceID, "PlaySessionId": playSessionID,
-                    "DeviceId": session.deviceID, "api_key": session.accessToken
+                    "DeviceId": session.deviceID, tokenParameter: session.accessToken
                 ])
             } else { continue }
             return EmbyPlayback(url: mediaURL, headers: [:], item: item, mediaSourceID: sourceID,
@@ -306,7 +361,7 @@ public actor EmbyClient: EmbyHomeAPI {
                         // Official text-subtitle endpoint; keep full timestamps
                         // because MPV already seeks the media to startSeconds.
                         // https://dev.emby.media/doc/restapi/Subtitles.html
-                        externalURL = try? Self.url(server.endpoint("Videos/\(itemID)/\(sourceID)/Subtitles/\(index)/Stream.srt"), query: ["api_key": session.accessToken])
+                        externalURL = try? Self.url(server.endpoint("Videos/\(itemID)/\(sourceID)/Subtitles/\(index)/Stream.srt"), query: [tokenParameter: session.accessToken])
                     }
                     if external, externalURL == nil { continue }
                 }
@@ -336,7 +391,7 @@ public actor EmbyClient: EmbyHomeAPI {
     public nonisolated func imageURL(itemID: String, type: String, index: Int? = nil, tag: String? = nil, maxWidth: Int = 400) -> URL? {
         guard let id = try? Self.identifier(itemID),
               ["Primary", "Backdrop", "Thumb", "Logo", "Banner"].contains(type) else { return nil }
-        var values = ["MaxWidth": String(min(max(maxWidth, 1), 2048)), "Quality": "90", "api_key": session.accessToken]
+        var values = ["MaxWidth": String(min(max(maxWidth, 1), 2048)), "Quality": "90", tokenParameter: session.accessToken]
         if let tag { values["Tag"] = tag }
         let suffix = index.map { "/\(min(100, max(0, $0)))" } ?? ""
         return try? Self.url(server.endpoint("Items/\(id)/Images/\(type)" + suffix), query: values)
@@ -373,22 +428,51 @@ public actor EmbyClient: EmbyHomeAPI {
         return Array(items.prefix(limit))
     }
 
+    /// Media URLs cannot carry headers. Jellyfin 12 reads only ApiKey; Emby reads api_key.
+    private nonisolated var tokenParameter: String { session.kind == .jellyfin ? "ApiKey" : "api_key" }
+
     private func request(_ path: String, query: [String: String] = [:], method: String = "GET", body: JSONValue? = nil,
                          allowEmpty: Bool = false) async throws -> JSONValue {
-        try await Self.send(url: Self.url(server.endpoint(path), query: query), method: method, body: body,
-                            deviceID: session.deviceID, token: session.accessToken, urlSession: urlSession, allowEmpty: allowEmpty)
+        let query = session.kind == .jellyfin ? Self.jellyfinQuery(query, version: session.serverVersion) : query
+        return try await Self.send(url: Self.url(server.endpoint(path), query: query), method: method, body: body,
+                                   deviceID: session.deviceID, token: session.accessToken, kind: session.kind,
+                                   urlSession: urlSession, allowEmpty: allowEmpty)
+    }
+
+    /// Removes Fields values and item types that Jellyfin's enums do not have.
+    static func jellyfinQuery(_ query: [String: String], version: String?) -> [String: String] {
+        // PresentationUniqueKey left the enum in 10.11; keep it only for a known older server.
+        let parts = version?.split(separator: ".").compactMap { Int($0) } ?? []
+        let keepsPresentationKey = parts.count >= 2 && (parts[0] < 10 || (parts[0] == 10 && parts[1] < 11))
+        func filter(_ list: String, drop: (String) -> Bool) -> String {
+            list.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && !drop($0.lowercased()) }.joined(separator: ",")
+        }
+        var query = query
+        if let fields = query["Fields"] {
+            query["Fields"] = filter(fields) { embyOnlyFields.contains($0) || ($0 == "presentationuniquekey" && !keepsPresentationKey) }
+        }
+        if let types = query["IncludeItemTypes"] { query["IncludeItemTypes"] = filter(types) { embyOnlyTypes.contains($0) } }
+        return query
     }
 
     private static func send(url: URL, method: String = "GET", body: JSONValue? = nil, deviceID: String? = nil,
-                             token: String? = nil, urlSession: URLSession, allowEmpty: Bool = false) async throws -> JSONValue {
+                             token: String? = nil, kind: MediaServerKind = .emby, urlSession: URLSession,
+                             allowEmpty: Bool = false) async throws -> JSONValue {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
         request.httpMethod = method
         request.httpShouldHandleCookies = false
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let deviceID {
-            request.setValue("MediaBrowser Client=\"Tigerest Theater TV\", Device=\"Apple TV\", DeviceId=\"\(deviceID)\", Version=\"2.8.0\"", forHTTPHeaderField: "X-Emby-Authorization")
+            let client = "MediaBrowser Client=\"Tigerest Theater TV\", Device=\"Apple TV\", DeviceId=\"\(deviceID)\", Version=\"\(clientVersion)\""
+            if kind == .jellyfin {
+                // Jellyfin 12 disables the legacy X-Emby-* headers by default.
+                request.setValue(client + (token.map { ", Token=\"\($0)\"" } ?? ""), forHTTPHeaderField: "Authorization")
+            } else {
+                request.setValue(client, forHTTPHeaderField: "X-Emby-Authorization")
+            }
         }
-        if let token { request.setValue(token, forHTTPHeaderField: "X-Emby-Token") }
+        if let token, kind == .emby { request.setValue(token, forHTTPHeaderField: "X-Emby-Token") }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)
@@ -449,11 +533,11 @@ public actor EmbyClient: EmbyHomeAPI {
         let base = URLComponents(url: server.baseURL, resolvingAgainstBaseURL: false)!
         let sameOrigin = scheme == base.scheme && host.lowercased() == base.host?.lowercased()
             && (parts.port ?? (scheme == "https" ? 443 : 80)) == (base.port ?? (base.scheme == "https" ? 443 : 80))
-        let authKeys = Set(["api_key", "x-emby-token", "x-emby-authorization", "access_token", "token"])
+        let authKeys = Set(["api_key", "apikey", "x-emby-token", "x-mediabrowser-token", "x-emby-authorization", "access_token", "token"])
         var query = parts.queryItems ?? []
         if sameOrigin {
             query.removeAll { authKeys.contains($0.name.lowercased()) }
-            query.append(URLQueryItem(name: "api_key", value: session.accessToken))
+            query.append(URLQueryItem(name: tokenParameter, value: session.accessToken))
         } else {
             // CDN signatures often use token/access_token/api_key too. Preserve
             // those independent credentials; only remove our Emby credential.

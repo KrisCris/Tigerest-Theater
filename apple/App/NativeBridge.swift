@@ -53,7 +53,7 @@ import AppleCore
                 let (body, response) = try await model.community.data(URLRequest(url: address.endpoint("System/Info/Public")), limit: 65536)
                 let info = try JSONDecoder().decode(JSONValue.self, from: body)
                 let success = response.statusCode == 200 && (info["Id"].string != nil || info["Version"].string != nil)
-                emit("system", "serverConnectivityResult", [arg(0), .bool(success), .string(address.endpoint("web/index.html").absoluteString), .string(success ? "" : "无法连接 Emby 服务器")]); return .bool(success)
+                emit("system", "serverConnectivityResult", [arg(0), .bool(success), .string(address.endpoint("web/index.html").absoluteString), .string(success ? "" : "无法连接 Emby 或 Jellyfin 服务器")]); return .bool(success)
             case "hello": return .string("大河影院 iPad")
             case "getUserAgent": return .string(model.web.view.customUserAgent ?? "TigerestTheater/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown")")
             case "openServerSettings": model.openServerSettings(); return .null

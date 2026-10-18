@@ -169,7 +169,7 @@ private struct TVLoginView: View {
             VStack(alignment: .leading, spacing: 28) {
                 Image(systemName: "tv").font(.system(size: 110, weight: .light)).foregroundStyle(.cyan)
                 Text("让好电影\n回到大屏幕").font(.system(size: 64, weight: .bold)).lineSpacing(12)
-                Text(model.serverMode == nil ? "选择服务器，开始观看你的媒体库。" : "使用 Emby 账户登录。\n可通过 iPhone 或 iPad 输入文字。")
+                Text(model.serverMode == nil ? "选择服务器，开始观看你的媒体库。" : "使用 Emby 或 Jellyfin 账户登录。\n可通过 iPhone 或 iPad 输入文字。")
                     .font(.title3).foregroundStyle(.secondary).lineSpacing(10)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -210,7 +210,7 @@ private struct TVLoginView: View {
                     modeButton("专属服务器", subtitle: "自动选择可用线路", symbol: "sparkles.tv", mode: .dedicated)
                         .accessibilityIdentifier("tv.mode.dedicated")
                         .focused($focused, equals: "dedicated")
-                    modeButton("自建服务器", subtitle: "输入你的 Emby 服务器地址", symbol: "server.rack", mode: .selfHosted)
+                    modeButton("自建服务器", subtitle: "输入你的 Emby 或 Jellyfin 服务器地址", symbol: "server.rack", mode: .selfHosted)
                         .accessibilityIdentifier("tv.mode.selfHosted")
                         .focused($focused, equals: "selfHosted")
                 }

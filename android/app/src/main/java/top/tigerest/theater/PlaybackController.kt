@@ -133,7 +133,7 @@ class PlaybackController(private val context: Context, private val settings: Set
     @Synchronized fun dispatch(method: String,args: JSONArray): Any? {
         check(!destroyed) { "播放器已关闭" }
         when (method) {
-            "queueMedia" -> throw IllegalArgumentException("请通过 Emby 播放队列添加媒体")
+            "queueMedia" -> throw IllegalArgumentException("请通过服务器网页的播放队列添加媒体")
             "load" -> {
                 val url = args.getString(0); require(url.startsWith("http://") || url.startsWith("https://") || url.startsWith("content://")) { "不支持的媒体地址" }
                 val options = args.optJSONObject(1) ?: JSONObject(); metadata = args.optJSONObject(2) ?: JSONObject()

@@ -79,7 +79,7 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
             "isAddressOnLocalSubnet" -> java.net.NetworkInterface.getNetworkInterfaces().toList().any { item -> item.interfaceAddresses.any { it.address?.hostAddress?.startsWith("192.168.5.") == true } }
             "checkServerConnectivity" -> { val address = args.getString(0); val token = ++connection; val generation = epoch
                 network.execute {
-                    var success = false; var web = ""; var error = "无法连接 Emby 服务器，请检查网络和地址"
+                    var success = false; var web = ""; var error = "无法连接 Emby 或 Jellyfin 服务器，请检查网络和地址"
                     runCatching {
                         val base = ServerAddress.base(address)
                         http.newCall(Request.Builder().url(base+"System/Info/Public").build()).execute().use { response ->

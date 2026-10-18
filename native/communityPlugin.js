@@ -47,6 +47,9 @@
         `;
         (document.head || document.documentElement).appendChild(style);
     }
+    // Emby's item page is .itemView; Jellyfin's is #itemDetailPage.
+    const ITEM_VIEW='.itemView, .itemDetailPage';
+    const itemRoute=(id,serverId)=>window.TigerestServer?.itemRoute?.(id,serverId)??'/item?id='+encodeURIComponent(id)+'&serverId='+encodeURIComponent(serverId);
     class CommunityPlugin {
         constructor({connectionManager, events, appRouter}) {
             this.connectionManager = connectionManager;
@@ -100,7 +103,7 @@
                 if(this.state.busy){this.state.queuedFocus=focus;this.pendingFocus=null;return;}
                 this.applyFocus(this.state,focus);this.pendingFocus=null;await this.load(this.state);return;
             }
-            try {await this.appRouter.show('/item?id='+encodeURIComponent(focus.itemId)+'&serverId='+encodeURIComponent(session.serverId));}
+            try {await this.appRouter.show(itemRoute(focus.itemId,session.serverId));}
             catch(error){if(this.pendingFocus===focus)this.pendingFocus=null;throw error;}
         }
         async openPublicDiscussion(message,session){
@@ -110,7 +113,7 @@
             try{item=await window.TigerestCommunityPublicClient.locateMedia(this.connectionManager.currentApiClient(),location.media);}catch(_){}
             if(key!==JSON.stringify(this.session()))return;
             const focus={itemId:item?.Id,scope:location.media.scope,topicId:location.topicId,rootId:location.canNavigate?location.rootId:null,commentId:location.canNavigate?location.commentId:null,sessionKey:key,channel:'public'};
-            if(item&&this.appRouter?.show){this.pendingFocus=focus;await this.appRouter.show('/item?id='+encodeURIComponent(item.Id)+'&serverId='+encodeURIComponent(session.serverId));return;}
+            if(item&&this.appRouter?.show){this.pendingFocus=focus;await this.appRouter.show(itemRoute(item.Id,session.serverId));return;}
             this.close();
             const panel=node('dialog');panel.style.cssText='color:#e9eff8;background:#172335;border:1px solid #526882;width:min(900px,calc(100vw - 48px));max-height:90vh;border-radius:14px';
             const view=node('div');panel.append(button('关闭',()=>{this.close();panel.close();panel.remove();}),node('p','当前媒体库无法唯一定位此作品，可在此查看公共讨论。'),view);
@@ -127,7 +130,7 @@
             return this.available(session) && state.sessionKey === JSON.stringify(session);
         }
         async onView(event) {
-            const view=event.target.closest?.('.itemView') || event.target.querySelector?.('.itemView');
+            const view=event.target.closest?.(ITEM_VIEW) || event.target.querySelector?.(ITEM_VIEW);
             const id=event.detail?.params?.id;
             if(!view || !id || String(id).startsWith('local'))return;
             if(this.state?.view===view && this.state.item.Id===id && this.valid(this.state))return;
@@ -148,7 +151,7 @@
         }
         onItem(event) {
             const item = event.detail?.item;
-            const view = event.target.closest?.('.itemView') || event.target;
+            const view = event.target.closest?.(ITEM_VIEW) || event.target;
             this.close();
             if (!item?.Id || !['Movie','Series','Season','Episode'].includes(item.Type)) return;
             const session = this.session();
@@ -325,7 +328,7 @@
                     if(state.reportButton)state.reportButton.hidden=!Client.supported(this.session());
                     if(state.channel==='public'){
                         if(['Episode','Season'].includes(state.item.Type)&&!state.series&&state.item.SeriesId){
-                            const result=await this.connectionManager.currentApiClient().getItems(this.session().userId,{Ids:state.item.SeriesId,Fields:'ProviderIds,DisplayOrder',Limit:1});
+                            const result=await this.connectionManager.currentApiClient().getItems(this.session().userId,{Ids:state.item.SeriesId,Fields:window.TigerestServer?.fields?.('ProviderIds,DisplayOrder')??'ProviderIds,DisplayOrder',Limit:1});
                             state.series=result.Items?.find(item=>String(item.Id)===String(state.item.SeriesId));
                             if(!this.valid(state)||version!==state.version)return;
                         }

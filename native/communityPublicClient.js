@@ -15,13 +15,26 @@
         static async locateMedia(api,media){
             if(!api?.getItems||!['movie','tv'].includes(media?.mediaType)||!/^[1-9][0-9]{0,17}$/.test(media?.tmdbId||''))return null;
             const type=media.mediaType==='movie'?'Movie':'Series',userId=api.getCurrentUserId();
-            const result=await api.getItems(userId,{Recursive:true,IncludeItemTypes:type,AnyProviderIdEquals:'tmdb.'+media.tmdbId,Fields:'ProviderIds,DisplayOrder',Limit:100});
-            if((result.TotalRecordCount||0)>(result.Items?.length||0))return null;
-            const matches=(result.Items||[]).filter(i=>i.Type===type&&String(i.ProviderIds?.Tmdb||i.ProviderIds?.tmdb)===media.tmdbId);
+            const fields=window.TigerestServer?.fields?.('ProviderIds,DisplayOrder')??'ProviderIds,DisplayOrder';
+            const own=i=>i.Type===type&&String(i.ProviderIds?.Tmdb||i.ProviderIds?.tmdb)===media.tmdbId;
+            let matches=[];
+            if(window.TigerestServer?.isJellyfin?.()){
+                // Jellyfin has no provider ID filter; read the IDs of every work that has a TMDB ID.
+                for(let start=0;;start+=500){
+                    if(start>=20000)return null;
+                    const page=await api.getItems(userId,{Recursive:true,IncludeItemTypes:type,HasTmdbId:true,Fields:fields,StartIndex:start,Limit:500,EnableImages:false,EnableUserData:false});
+                    matches.push(...(page.Items||[]).filter(own));
+                    if((page.Items?.length||0)<500)break;
+                }
+            }else{
+                const result=await api.getItems(userId,{Recursive:true,IncludeItemTypes:type,AnyProviderIdEquals:'tmdb.'+media.tmdbId,Fields:fields,Limit:100});
+                if((result.TotalRecordCount||0)>(result.Items?.length||0))return null;
+                matches=(result.Items||[]).filter(own);
+            }
             if(matches.length!==1)return null;
             if(media.scope==='work')return matches[0];
             if(media.scope!=='episode'||type!=='Series')return null;
-            const episodes=await api.getItems(userId,{ParentId:matches[0].Id,Recursive:true,IncludeItemTypes:'Episode',Fields:'ProviderIds,DisplayOrder',Limit:10000});
+            const episodes=await api.getItems(userId,{ParentId:matches[0].Id,Recursive:true,IncludeItemTypes:'Episode',Fields:fields,Limit:10000});
             if((episodes.TotalRecordCount||0)>(episodes.Items?.length||0))return null;
             const exact=(episodes.Items||[]).filter(i=>{
                 try{const identity=PublicClient.mediaIdentity(i,matches[0],'episode');return identity.season===media.season&&identity.episode===media.episode;}catch(_){return false;}

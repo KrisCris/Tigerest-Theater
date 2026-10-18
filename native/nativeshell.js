@@ -16,10 +16,13 @@ const features = [
     "fileinput"
 ].filter(feature => !window.tigerestAndroidApi || !['filedownload', 'fullscreenchange'].includes(feature));
 
+// Jellyfin's web client loads these window plugins; Emby loads the same features
+// as AMD modules registered by embycompat.js.
 const getPlugins = () => {
     const basePlugins = [
         'inputPlugin',
-        ...((window.tigerestAndroidApi || (window.jmpInfo?.capabilities?.selfUpdate === false && window.jmpInfo?.capabilities?.updateCheck !== true)) ? [] : ['updatePlugin'])
+        ...((window.tigerestAndroidApi || (window.jmpInfo?.capabilities?.selfUpdate === false && window.jmpInfo?.capabilities?.updateCheck !== true)) ? [] : ['updatePlugin']),
+        'tigerestJellyfinPlugin'
     ];
 
     const mpvEnabled = jmpInfo.settings?.main?.enableMPV !== false;
@@ -49,7 +52,17 @@ window.NativeShell = {
     },
 
     downloadFile(downloadInfo) {
+        // Jellyfin passes its item with the download. Resolve it the way an
+        // Emby download is resolved, so both get the same name and library.
+        if (downloadInfo?.item && downloadInfo.url && window.tigerestEnqueueDownload) {
+            return window.tigerestEnqueueDownload(downloadInfo.url);
+        }
         return window.api.system.startDownload(downloadInfo);
+    },
+
+    // Jellyfin 12 lists this in the user menu when the app supports downloadmanagement.
+    openDownloadManager() {
+        window.tigerestOpenOfflineLibrary?.();
     },
 
     openClientSettings() {
@@ -335,7 +348,10 @@ window.NativeShell.AppHost = {
         return jmpInfo.mode;
     },
     supports(command) {
-        return features.includes(command.toLowerCase());
+        const feature = String(command).toLowerCase();
+        // Only Jellyfin opens the offline library from its own user menu.
+        if (feature === 'downloadmanagement') return features.includes('filedownload') && !!window.TigerestServer?.isJellyfin();
+        return features.includes(feature);
     },
     getDeviceProfile,
     getSyncProfile: getDeviceProfile,
@@ -547,12 +563,12 @@ async function showLegacySettingsModal() {
         modalContents.appendChild(group);
         const legend = document.createElement("legend");
         const legendHeader = document.createElement("h2");
-        legendHeader.textContent = "已保存的 Emby 服务器";
+        legendHeader.textContent = "已保存的媒体服务器";
         legend.appendChild(legendHeader);
         const legendSubHeader = document.createElement("h4");
         legendSubHeader.textContent = (
             "客户端会优先连接已保存的服务器。重置后，下次启动将先尝试内网地址，" +
-            "再尝试公网地址；此操作不会从当前 Emby 账号退出。"
+            "再尝试公网地址；此操作不会从当前媒体服务器账号退出。"
         );
         legend.appendChild(legendSubHeader);
         group.appendChild(legend);
@@ -1124,7 +1140,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     }
 
     const footer = element('div', 'tgs-footer');
-    const status = element('div', 'tgs-status', '设置保存在当前客户端配置中，不会包含 Emby 密码或令牌。');
+    const status = element('div', 'tgs-status', '设置保存在当前客户端配置中，不会包含媒体服务器密码或令牌。');
     status.setAttribute('role', 'status');
     const closeButton = element('button', 'tgs-close', host ? '返回设置' : '完成');
     footer.append(status, closeButton);
@@ -1140,7 +1156,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         status.textContent = message;
         clearTimeout(showSaved.timer);
         showSaved.timer = setTimeout(() => {
-            status.textContent = '设置保存在当前客户端配置中，不会包含 Emby 密码或令牌。';
+            status.textContent = '设置保存在当前客户端配置中，不会包含媒体服务器密码或令牌。';
         }, 2200);
     };
 
@@ -1584,8 +1600,9 @@ function installHeaderControlsStyle() {
     if (document.getElementById('tigerest-header-controls-style')) return;
     const style = document.createElement('style'); style.id = 'tigerest-header-controls-style';
     style.textContent = `
-        .headerRight { gap: 6px; align-items: center; }
-        .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-watch-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode {
+        .headerRight, .tigerest-header-actions { gap: 6px; align-items: center; }
+        .tigerest-header-actions { display: flex; }
+        :is(.headerRight,.tigerest-header-actions) .headerButton, :is(.headerRight,.tigerest-header-actions) #tigerest-message-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-watch-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-update-button, .tg-home .tg-home-window-mode {
             box-sizing: border-box; width: 36px; min-width: 36px; height: 36px; min-height: 36px;
             flex: 0 0 auto; margin: 0; padding: 0; border: 1px solid rgba(230,222,205,.18);
             border-radius: 10px; background: rgba(24,27,33,.78); color: #e9e6df;
@@ -1593,26 +1610,26 @@ function installHeaderControlsStyle() {
             font: 600 12px/1 system-ui,sans-serif; vertical-align: middle; cursor: pointer;
             transition: background .16s,border-color .16s,color .16s;
         }
-        .headerRight .headerButton:hover, .headerRight #tigerest-message-entry:hover, .headerRight #tigerest-watch-entry:hover, .headerRight #tigerest-update-button:hover, .tg-home .tg-home-window-mode:hover {
+        :is(.headerRight,.tigerest-header-actions) .headerButton:hover, :is(.headerRight,.tigerest-header-actions) #tigerest-message-entry:hover, :is(.headerRight,.tigerest-header-actions) #tigerest-watch-entry:hover, :is(.headerRight,.tigerest-header-actions) #tigerest-update-button:hover, .tg-home .tg-home-window-mode:hover {
             background: rgba(60,54,43,.9); border-color: rgba(239,195,110,.6); color: #f5d493;
         }
-        .headerRight .headerButton:focus-visible, .headerRight #tigerest-message-entry:focus-visible, .headerRight #tigerest-watch-entry:focus-visible, .headerRight #tigerest-update-button:focus-visible, .tg-home .tg-home-window-mode:focus-visible {
+        :is(.headerRight,.tigerest-header-actions) .headerButton:focus-visible, :is(.headerRight,.tigerest-header-actions) #tigerest-message-entry:focus-visible, :is(.headerRight,.tigerest-header-actions) #tigerest-watch-entry:focus-visible, :is(.headerRight,.tigerest-header-actions) #tigerest-update-button:focus-visible, .tg-home .tg-home-window-mode:focus-visible {
             outline: 2px solid #efc36e; outline-offset: 2px; border-color: #efc36e;
         }
-        .headerRight .headerButton.md-icon, .headerRight .headerButton .md-icon { font-size: 20px; }
-        .headerRight #tigerest-update-button svg { width: 20px; height: 20px; }
-        .headerRight .headerUserButton { overflow: hidden; }
-        .headerRight .headerUserButton img { object-fit: cover; border-radius: 8px; }
-        .headerRight #tigerest-message-entry, .headerRight #tigerest-watch-entry { width: auto; padding: 0 10px; white-space: nowrap; }
-        .headerRight #tigerest-mpv-settings-button { width: 46px; color: #efc36e; border-color: rgba(239,195,110,.38); background: rgba(82,63,30,.28); font-weight: 800; letter-spacing: .04em; }
+        :is(.headerRight,.tigerest-header-actions) .headerButton.md-icon, :is(.headerRight,.tigerest-header-actions) .headerButton .md-icon { font-size: 20px; }
+        :is(.headerRight,.tigerest-header-actions) #tigerest-update-button svg { width: 20px; height: 20px; }
+        :is(.headerRight,.tigerest-header-actions) .headerUserButton { overflow: hidden; }
+        :is(.headerRight,.tigerest-header-actions) .headerUserButton img { object-fit: cover; border-radius: 8px; }
+        :is(.headerRight,.tigerest-header-actions) #tigerest-message-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-watch-entry { width: auto; padding: 0 10px; white-space: nowrap; }
+        :is(.headerRight,.tigerest-header-actions) #tigerest-mpv-settings-button { width: 46px; color: #efc36e; border-color: rgba(239,195,110,.38); background: rgba(82,63,30,.28); font-weight: 800; letter-spacing: .04em; }
         #tigerest-window-mode-button, .tg-home .tg-home-window-mode { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
         #tigerest-window-mode-button .tigerest-window-label { display: none; }
         .tg-home .tg-home-window-mode { width: auto; padding: 0 10px; white-space: nowrap; }
         .tg-home .tg-home-window-mode[hidden] { display: none; }
         .tigerest-window-icon { flex: 0 0 auto; }
         #tigerest-window-mode-button:disabled, .tg-home .tg-home-window-mode:disabled { cursor: wait; opacity: .6; }
-        @media(max-width:600px) { .headerRight { flex-wrap: wrap; gap: 4px; } }
-        @media(pointer:coarse) { .headerRight .headerButton, .headerRight #tigerest-message-entry, .headerRight #tigerest-watch-entry, .headerRight #tigerest-update-button, .tg-home .tg-home-window-mode { min-height: 44px; min-width: 44px; } }
+        @media(max-width:600px) { .headerRight, .tigerest-header-actions { flex-wrap: wrap; gap: 4px; } }
+        @media(pointer:coarse) { :is(.headerRight,.tigerest-header-actions) .headerButton, :is(.headerRight,.tigerest-header-actions) #tigerest-message-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-watch-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-update-button, .tg-home .tg-home-window-mode { min-height: 44px; min-width: 44px; } }
     `;
     document.head.appendChild(style);
 }
@@ -1630,7 +1647,7 @@ function installMpvSettingsEntry() {
 
     const mount = () => {
         if (document.getElementById('tigerest-mpv-settings-button')) return;
-        const userButton = document.querySelector('.headerUserButton');
+        const userButton = window.TigerestServer?.headerUserButton() || document.querySelector('.headerUserButton');
         if (!userButton?.parentElement) return;
 
         const button = document.createElement('button');
@@ -1717,7 +1734,7 @@ function installWindowModeEntry() {
     const bound = new WeakSet();
     const mount = () => {
         if (!document.getElementById('tigerest-window-mode-button')) {
-            const userButton = document.querySelector('.headerUserButton');
+            const userButton = window.TigerestServer?.headerUserButton() || document.querySelector('.headerUserButton');
             if (userButton?.parentElement) {
                 const button = document.createElement('button');
                 button.id = 'tigerest-window-mode-button'; button.type = 'button';

@@ -521,3 +521,106 @@ private func session() -> EmbySession {
         }
     }
 }
+
+private func jellyfinSession(version: String? = "10.11.11") -> EmbySession {
+    EmbySession(serverURL: "https://media.test/jellyfin/", userID: "user1", accessToken: "private-token", deviceID: "tv-device",
+                serverID: "server", serverKind: .jellyfin, serverVersion: version)
+}
+
+// Jellyfin fixtures share the serialized suite: EmbyFixtureProtocol has one handler.
+extension EmbyClientTests {
+    @Test func publicInfoIdentifiesJellyfinByProductOrVersion() async throws {
+        let transport = EmbyFixtureProtocol.install { request in
+            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+            return reply(#"{"ServerName":"Home","Version":"10.11.11","ProductName":"Jellyfin Server","Id":"server"}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let info = try await EmbyClient.serverInfo(server: "https://media.test/jellyfin", urlSession: transport)
+        #expect(info.kind == .jellyfin)
+        #expect(info.version == "10.11.11")
+        #expect(MediaServerKind.classify(productName: nil, version: "12.2.0") == .jellyfin)
+        #expect(MediaServerKind.classify(productName: "Emby Server", version: "4.9.1.80") == .emby)
+        let old = try JSONDecoder().decode(EmbySession.self, from: Data(#"{"serverURL":"https://emby.test/","userID":"user1","accessToken":"private-token","deviceID":"tv-device"}"#.utf8))
+        #expect(old.kind == .emby)
+    }
+
+    @Test func jellyfinLoginUsesAuthorizationHeaderAndRemembersKind() async throws {
+        let transport = EmbyFixtureProtocol.install { request in
+            #expect(request.url?.absoluteString == "https://media.test/jellyfin/Users/AuthenticateByName")
+            let authorization = request.value(forHTTPHeaderField: "Authorization") ?? ""
+            #expect(authorization.hasPrefix("MediaBrowser Client=\"Tigerest Theater TV\""))
+            #expect(authorization.contains("DeviceId=\"tv-device\"") && authorization.contains("Version=\"2.9.0\""))
+            #expect(!authorization.contains("Token="))
+            #expect(request.value(forHTTPHeaderField: "X-Emby-Authorization") == nil)
+            #expect(request.value(forHTTPHeaderField: "X-Emby-Token") == nil)
+            return reply(#"{"User":{"Id":"user1"},"AccessToken":"private-token","ServerId":"server"}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let info = EmbyServerInfo(name: "Home", id: "server", kind: .jellyfin, version: "12.2.0")
+        let saved = try await EmbyClient.login(server: "https://media.test/jellyfin", username: "alice", password: "secret",
+                                               deviceID: "tv-device", serverInfo: info, urlSession: transport)
+        #expect(saved.kind == .jellyfin)
+        #expect(saved.serverVersion == "12.2.0")
+        let restored = try JSONDecoder().decode(EmbySession.self, from: JSONEncoder().encode(saved))
+        #expect(restored.kind == .jellyfin)
+    }
+
+    @Test func jellyfinRequestsUseUserQueryRoutesAndEnumFields() async throws {
+        let transport = EmbyFixtureProtocol.install { request in
+            let values = query(request.url!)
+            #expect(request.value(forHTTPHeaderField: "X-Emby-Token") == nil)
+            #expect(request.value(forHTTPHeaderField: "Authorization")?.contains("Token=\"private-token\"") == true)
+            #expect(values["userId"] == "user1")
+            #expect(values["UserId"] == nil)
+            if let fields = values["Fields"] {
+                for name in ["SeriesId", "SeasonId", "DisplayOrder", "PremiereDate", "CommunityRating", "UserDataLastPlayedDate", "PresentationUniqueKey"] {
+                    #expect(!fields.contains(name))
+                }
+                #expect(fields.contains("MediaStreams"))
+            }
+            #expect(!(values["IncludeItemTypes"] ?? "").contains("Game"))
+            switch request.url?.path {
+            case "/jellyfin/Items/movie1": return reply(#"{"Id":"movie1"}"#)
+            case "/jellyfin/UserViews", "/jellyfin/UserItems/Resume", "/jellyfin/Items": return reply(#"{"Items":[],"TotalRecordCount":0}"#)
+            default:
+                Issue.record("Unexpected Jellyfin route \(request.url?.path ?? "")")
+                return reply("{}", status: 404)
+            }
+        }
+        defer { transport.invalidateAndCancel() }
+        let client = try EmbyClient(session: jellyfinSession(), urlSession: transport)
+        _ = try await client.libraries()
+        _ = try await client.resumeItems()
+        _ = try await client.libraryItems(in: JSONValue(any: ["Id": "library", "CollectionType": "games"]))
+        _ = try await client.children(of: JSONValue(any: ["Id": "folder", "Type": "Folder"]))
+        #expect(try await client.item(id: "movie1")["Id"].string == "movie1")
+        let image = try #require(client.imageURL(itemID: "movie1", type: "Primary", tag: "tag"))
+        #expect(image.path == "/jellyfin/Items/movie1/Images/Primary")
+        #expect(query(image)["ApiKey"] == "private-token")
+        #expect(query(image)["api_key"] == nil)
+    }
+
+    @Test func jellyfinPlaybackKeepsBaseURLAndUsesApiKey() async throws {
+        let transport = EmbyFixtureProtocol.install { request in
+            #expect(request.url?.path == "/jellyfin/Items/episode1/PlaybackInfo")
+            return reply(#"{"PlaySessionId":"play1","MediaSources":[{"Id":"source1","SupportsDirectPlay":true,"MediaStreams":[{"Type":"Subtitle","Index":2,"Codec":"srt","IsExternal":true,"DeliveryMethod":"External","DeliveryUrl":"/Videos/episode1/source1/Subtitles/2/0/Stream.srt?ApiKey=stale"}]}]}"#)
+        }
+        defer { transport.invalidateAndCancel() }
+        let playback = try await EmbyClient(session: jellyfinSession(), urlSession: transport).playback(item: mediaItem())
+        #expect(playback.url.path == "/jellyfin/Videos/episode1/stream")
+        #expect(query(playback.url)["ApiKey"] == "private-token")
+        #expect(query(playback.url)["api_key"] == nil)
+        let subtitle = try #require(playback.subtitleTracks.first?.externalURL)
+        #expect(subtitle.path == "/jellyfin/Videos/episode1/source1/Subtitles/2/0/Stream.srt")
+        #expect(query(subtitle)["ApiKey"] == "private-token")
+    }
+
+    @Test func presentationKeyIsRequestedOnlyFromKnownOlderJellyfin() {
+        let fields = ["Fields": "PresentationUniqueKey,Overview,UserDataLastPlayedDate"]
+        #expect(EmbyClient.jellyfinQuery(fields, version: "10.10.7")["Fields"] == "PresentationUniqueKey,Overview")
+        #expect(EmbyClient.jellyfinQuery(fields, version: "10.11.0")["Fields"] == "Overview")
+        #expect(EmbyClient.jellyfinQuery(fields, version: "12.2.0")["Fields"] == "Overview")
+        #expect(EmbyClient.jellyfinQuery(fields, version: nil)["Fields"] == "Overview")
+        #expect(EmbyClient.jellyfinQuery(["IncludeItemTypes": "Movie,Game"], version: nil)["IncludeItemTypes"] == "Movie")
+    }
+}

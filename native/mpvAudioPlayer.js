@@ -31,11 +31,11 @@ function cancelFadeTimeout() {
 }
 
 class mpvAudioPlayer {
-    constructor({ events, appHost, appSettings, toast, connectionManager }) {
+    constructor({ events, appHost, appSettings, toast, connectionManager, ServerConnections }) {
         const self = this;
 
         self.events = events;
-        self.connectionManager = connectionManager;
+        self.connectionManager = connectionManager || ServerConnections;
         self.appHost = appHost;
         self.appSettings = appSettings;
 

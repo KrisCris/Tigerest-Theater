@@ -752,7 +752,7 @@ void SystemComponent::checkServerBase(const QString& url, const QString& base,
     else if (!networkOk)
       error = tr("网络连接失败：%1").arg(reply->errorString());
     else
-      error = tr("此地址未返回有效的 Emby 服务器信息");
+      error = tr("此地址未返回有效的 Emby 或 Jellyfin 服务器信息");
 
     // A root URL may redirect to an installation under /emby or /jellyfin.
     // Discover that path only after the exact API failed; never replace the
@@ -1035,6 +1035,7 @@ QString SystemComponent::getNativeShellScript()
 
   QStringList scriptPaths = {
     ":/qtwebchannel/qwebchannel.js",
+    ":/web-client/extension/serverKind.js",
     ":/web-client/extension/mpvVideoPlayer.js",
     ":/web-client/extension/mpvAudioPlayer.js",
     ":/web-client/extension/inputPlugin.js",
@@ -1050,6 +1051,7 @@ QString SystemComponent::getNativeShellScript()
     ":/web-client/extension/watchTogetherClient.js",
     ":/web-client/extension/watchTogetherSync.js",
     ":/web-client/extension/watchTogether.js",
+    ":/web-client/extension/jellyfinPlugin.js",
     ":/web-client/extension/updatePlugin.js",
     ":/web-client/extension/connectivityHelper.js",
     ":/web-client/extension/nativeshell.js",

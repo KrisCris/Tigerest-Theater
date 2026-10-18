@@ -55,6 +55,8 @@
     }
     const watchable = new Set(['Movie', 'Series', 'Season', 'Episode']);
     function playable(item) { return Boolean(item?.Id) && watchable.has(item.Type) && item.LocationType !== 'Virtual'; }
+    // Jellyfin always returns the year and has no such Fields value.
+    const yearField = () => window.TigerestServer?.fields?.('ProductionYear') ?? 'ProductionYear';
     // [item id, image type, tag] of a 16:9 image: the episode still, else the
     // show's thumb or backdrop, else the poster.
     function wideImage(item) {
@@ -233,7 +235,7 @@
             if (!this.restored) { this.restored = true; this.restore(); }
         }
         ensureEntry() {
-            const host = document.querySelector('.headerRight');
+            const host = window.TigerestServer?.headerActions?.() || document.querySelector('.headerRight');
             if (!host) return;
             if (!this.entry) {
                 installStyle();
@@ -874,7 +876,7 @@
             const api = this.apiClient(), userId = api?.getCurrentUserId?.(), home = picker.home = node('div');
             picker.results.replaceChildren(home);
             if (!userId) return;
-            const fields = {Fields: 'ProductionYear', EnableImageTypes: 'Primary,Thumb,Backdrop', ImageTypeLimit: 1};
+            const fields = {Fields: yearField(), EnableImageTypes: 'Primary,Thumb,Backdrop', ImageTypeLimit: 1};
             const choose = item => item.Type === 'Movie' || item.Type === 'Episode' ? this.confirm(picker, item) : this.showItem(picker, item.Id);
             const shelf = (title, load, shape = 'wide') => {
                 const section = node('section', null, 'tw-shelf'), head = node('div', null, 'tw-shelf-head'), strip = node('div', null, 'tw-strip');
@@ -980,7 +982,7 @@
             if (!term) return;
             const userId = this.apiClient()?.getCurrentUserId();
             const data = await this.request(picker, api => api.getItems(userId, {SearchTerm: term, IncludeItemTypes: 'Movie,Series',
-                Recursive: true, Limit: 30, Fields: 'ProductionYear', EnableImageTypes: 'Primary', ImageTypeLimit: 1}));
+                Recursive: true, Limit: 30, Fields: yearField(), EnableImageTypes: 'Primary', ImageTypeLimit: 1}));
             if (!data) return;
             const list = node('div', null, 'tw-list');
             for (const item of data.Items || []) list.appendChild(this.pick(item, () => this.showItem(picker, item.Id), 'poster'));

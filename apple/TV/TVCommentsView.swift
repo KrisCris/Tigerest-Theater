@@ -220,7 +220,7 @@ struct TVCommentsView: View {
                         }.disabled(model.busy || username.isEmpty || password.isEmpty)
                             .accessibilityIdentifier("tv.comments.login")
                     }
-                    Text("自建服务器的 Emby 密码不会发送给公共评论服务。请使用已有的评论账号。")
+                    Text("自建服务器的媒体账号密码不会发送给公共评论服务。请使用已有的评论账号。")
                         .font(.caption).foregroundStyle(.secondary)
                 }.focusSection()
             } else {

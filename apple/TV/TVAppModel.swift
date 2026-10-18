@@ -109,7 +109,8 @@ final class TVAppModel: ObservableObject {
                 let generation = requestID
                 if saved.serverID == nil, let info = try? await EmbyClient.serverInfo(server: saved.serverURL), let serverID = info.id {
                     guard requestID == generation else { return }
-                    saved = EmbySession(serverURL: saved.serverURL, userID: saved.userID, accessToken: saved.accessToken, deviceID: saved.deviceID, serverID: serverID)
+                    saved = EmbySession(serverURL: saved.serverURL, userID: saved.userID, accessToken: saved.accessToken, deviceID: saved.deviceID,
+                                        serverID: serverID, serverKind: saved.serverKind ?? info.kind, serverVersion: saved.serverVersion ?? info.version)
                     try store.save(saved)
                 }
                 guard requestID == generation else { return }
@@ -154,18 +155,20 @@ final class TVAppModel: ObservableObject {
         let id = beginRequest()
         do {
             let server: String
+            // The public info says whether a self-hosted server is Emby or Jellyfin.
+            var info: EmbyServerInfo?
             if serverMode == .dedicated {
                 server = try await dedicatedServer()
             } else {
                 let value = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !value.isEmpty else { throw TVError.message("请输入服务器地址。") }
                 server = value.contains("://") ? value : "http://" + value
-                _ = try await EmbyClient.publicInfo(server: server)
+                info = try await EmbyClient.serverInfo(server: server)
             }
             guard isCurrent(id) else { return }
             let deviceID = try store.deviceID()
             let saved = try await EmbyClient.login(server: server, username: username.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                   password: password, deviceID: deviceID)
+                                                   password: password, deviceID: deviceID, serverInfo: info)
             guard isCurrent(id) else { return }
             let authenticatedClient = try EmbyClient(session: saved)
             try store.save(saved)

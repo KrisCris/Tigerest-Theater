@@ -11,6 +11,8 @@
     // Emby returns same-server stream URLs without credentials when
     // AddApiKeyToDirectStreamUrl is off. Add the session token for the item's
     // own server only; the native player moves it from the URL into a header.
+    // Jellyfin builds its own URLs with the parameter its version accepts;
+    // a missing one is added as ApiKey, the only name Jellyfin 12 still reads.
     function authorizedStreamUrl(url, item, connectionManager) {
         let apiClient;
         try {
@@ -33,14 +35,16 @@
         const hash = url.indexOf('#');
         const base = hash < 0 ? url : url.slice(0, hash);
         const separator = !base.includes('?') ? '?' : /[?&]$/.test(base) ? '' : '&';
-        return base + separator + 'api_key=' + encodeURIComponent(token) + (hash < 0 ? '' : url.slice(hash));
+        const parameter = window.TigerestServer?.tokenParameter?.() || 'api_key';
+        return base + separator + parameter + '=' + encodeURIComponent(token) + (hash < 0 ? '' : url.slice(hash));
     }
     window._tigerestAuthorizedStreamUrl = authorizedStreamUrl;
 
     class mpvVideoPlayer {
-        constructor({ events, loading, appRouter, globalize, appHost, appSettings, confirm, dashboard, connectionManager }) {
+        constructor({ events, loading, appRouter, globalize, appHost, appSettings, confirm, dashboard, connectionManager, ServerConnections }) {
             this.events = events;
-            this.connectionManager = connectionManager;
+            // Jellyfin's plugin manager passes the same API client registry as ServerConnections.
+            this.connectionManager = connectionManager || ServerConnections;
             this.loading = loading;
             this.appRouter = appRouter;
             this.globalize = globalize;
@@ -542,7 +546,16 @@
         }
 
         /** Resolve Emby's root-relative external subtitle URL for libmpv. */
-        getExternalSubtitleUrl(deliveryUrl) {
+        getExternalSubtitleUrl(deliveryUrl, stream) {
+            // Jellyfin's DeliveryUrl starts after the server's Base URL, which
+            // only its API client address includes.
+            if (window.TigerestServer?.isJellyfin?.() && !stream?.IsExternalUrl && /^\/(?!\/)/.test(deliveryUrl)) {
+                const serverId = this._currentPlayOptions?.item?.ServerId;
+                let apiClient = window.ApiClient;
+                try { apiClient = (serverId && this.connectionManager?.getApiClient?.(serverId)) || apiClient; } catch (_) { /* current client */ }
+                const address = apiClient?.serverAddress?.();
+                if (address) return address.replace(/\/+$/, '') + deliveryUrl;
+            }
             try {
                 return new URL(deliveryUrl, this._currentSrc).href;
             } catch (error) {
@@ -596,7 +609,7 @@
                 if (this._subtitleTrackIndexToSetOnPlaying >= 0) {
                     const subStream = this.getStreamByIndex(streams, this._subtitleTrackIndexToSetOnPlaying);
                     if (subStream && subStream.DeliveryMethod === 'External' && subStream.DeliveryUrl) {
-                        subtitleParam = '#,' + this.getExternalSubtitleUrl(subStream.DeliveryUrl);
+                        subtitleParam = '#,' + this.getExternalSubtitleUrl(subStream.DeliveryUrl, subStream);
                         console.log('[MPV] External subtitle stream selected');
                     } else {
                         const relIndex = this.getRelativeIndexByType(streams, this._subtitleTrackIndexToSetOnPlaying, 'Subtitle');
@@ -647,7 +660,7 @@
             // Handle external subtitle URL
             if (stream && stream.DeliveryMethod === 'External' && stream.DeliveryUrl) {
                 console.log('[MPV] Loading external subtitle stream');
-                window.api.player.setSubtitleStream('#,' + this.getExternalSubtitleUrl(stream.DeliveryUrl));
+                window.api.player.setSubtitleStream('#,' + this.getExternalSubtitleUrl(stream.DeliveryUrl, stream));
                 return;
             }
 

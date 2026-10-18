@@ -30,6 +30,8 @@
         // that server. The injected settings are a start-up snapshot, so they
         // cannot identify a server entered during this session.
         if (!/^https?:$/.test(window.location.protocol) || !/\/web(?:\/|$)/i.test(window.location.pathname)) return null;
+        // Jellyfin's web client finds the server that serves it by itself.
+        if (window.TigerestServer?.isJellyfin?.()) return null;
         return () => {
             // The web client lives under /web; a path before it is a reverse-proxy prefix.
             const address = window.location.origin + window.location.pathname.replace(/\/web(?:\/.*)?$/i, '');
@@ -38,6 +40,8 @@
             request.open('GET', address + '/System/Info/Public', false);
             request.send();
             const info = request.status === 200 ? JSON.parse(request.responseText) : null;
+            // A first visit learns the server kind here, before the web client starts.
+            if (window.TigerestServer?.remember?.(info) === 'jellyfin') return null;
             // Manual mode keeps the address and port the user entered.
             return info?.Id ? {Id: info.Id, Name: info.ServerName || window.location.host, ManualAddress: address, LastConnectionMode: 2} : null;
         };

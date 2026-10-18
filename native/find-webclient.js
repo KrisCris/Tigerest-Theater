@@ -3,7 +3,7 @@ const DEFAULT_LOCAL_SERVER = `http://${DEFAULT_LOCAL_SERVER_IP}:8095/`;
 const DEFAULT_REMOTE_SERVER = 'http://nas.tigerest.top:8095/';
 const descriptions = {
     tigerest: '连接大河李斯特专属 EMBY 服务器。服务器访问权限及说明详见 B站充电页面。',
-    custom: '连接你自己搭建的 EMBY 服务器。本应用只是播放器，不包含服务器，也不提供自建服务器的影视资源。',
+    custom: '连接你自己搭建的 Emby 或 Jellyfin 服务器。本应用只是播放器，不包含服务器，也不提供自建服务器的影视资源。',
 };
 const el = id => document.getElementById(id);
 let isConnecting = false;
@@ -12,7 +12,7 @@ let mode = '';
 
 function normalizeServer(input) {
     let value = (input || '').trim();
-    if (!value) throw new Error('请填写你的 EMBY 服务器地址。');
+    if (!value) throw new Error('请填写你的 Emby 或 Jellyfin 服务器地址。');
     if (!/^[a-z][a-z\d+.-]*:\/\//i.test(value)) value = 'http://' + value;
     let url;
     try { url = new URL(value); } catch { throw new Error('地址格式不正确，请填写完整的主机和端口。'); }
@@ -41,7 +41,7 @@ function setConnecting(active) {
 function showManualConnection(address = '', error = '') {
     el('server-choice').hidden = true;
     el('connect-form').hidden = false;
-    el('title').textContent = mode === 'custom' ? '连接自建 EMBY 服务器' : '连接大河专属 EMBY';
+    el('title').textContent = mode === 'custom' ? '连接自建 Emby / Jellyfin 服务器' : '连接大河专属 EMBY';
     el('address').value = address;
     el('connection-error').textContent = error;
     el('connection-error').hidden = !error;

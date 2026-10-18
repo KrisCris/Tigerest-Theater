@@ -2,11 +2,17 @@
     'use strict';
     const stamp = value => Date.parse(value || '') || 0;
     // Emby 4.8 returns UserData.LastPlayedDate only when it is asked for.
-    const fields = 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating,PresentationUniqueKey,UserDataLastPlayedDate';
+    const EMBY_FIELDS = 'DateCreated,Overview,Genres,PrimaryImageAspectRatio,PremiereDate,CommunityRating,PresentationUniqueKey,UserDataLastPlayedDate';
+    // Jellyfin's Fields and item types are enums without some Emby names; it
+    // returns play dates, release dates and ratings without being asked.
+    const server = () => window.TigerestServer;
+    const fieldList = list => server()?.fields?.(list) ?? list;
+    const kinds = list => server()?.itemTypes?.(list) ?? list;
+    const fields = () => fieldList(EMBY_FIELDS);
     const images = {EnableUserData: true, EnableImageTypes: 'Primary,Backdrop,Thumb', ImageTypeLimit: 1};
     const types = {music: 'MusicAlbum', books: 'Book,AudioBook', audiobooks: 'MusicAlbum,AudioBook',
         musicvideos: 'MusicVideo', games: 'Game', playlists: 'Playlist', photos: 'Photo,PhotoAlbum'};
-    const playable = library => types[library.CollectionType] || 'Episode,Movie,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game';
+    const playable = library => kinds(types[library.CollectionType] || 'Episode,Movie,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game');
     // Series built from one episode carry only its series name and artwork.
     const stubs = new WeakSet();
     function check(signal) {
@@ -150,7 +156,7 @@
             && !card.latestEpisode && card.lastPlayed < recent.oldest).sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 8);
         const unknownHistory = historyCutoff ? recent.cards.filter(card => !cards.has(card.item.Id) && card.latestEpisode
             && card.latestEpisode.UserData?.Played !== true && stamp(card.latestEpisode.DateCreated) > historyCutoff).slice(0, 8) : [];
-        const episodes = {Recursive: true, IncludeItemTypes: 'Episode', Limit: 1, Fields: 'DateCreated,UserDataLastPlayedDate', EnableUserData: true, EnableImages: false};
+        const episodes = {Recursive: true, IncludeItemTypes: 'Episode', Limit: 1, Fields: fieldList('DateCreated,UserDataLastPlayedDate'), EnableUserData: true, EnableImages: false};
         const queue = unknownLatest.map(card => async () => {
             const result = await api.getItems(user, {...episodes, ParentId: card.item.Id, SortBy: 'DateCreated,SortName', SortOrder: 'Descending',
                 IsMissing: false, IsVirtualUnaired: false, IsPlaceHolder: false, ExcludeLocationTypes: 'Virtual'}, signal);
@@ -186,7 +192,7 @@
     HomeData.prototype.history = async function (library, signal, kind, allowed) {
         const api = this.api, user = api.getCurrentUserId(), records = new Map(), pages = new Set();
         // Emby 4.8 to 4.10 answer Items/Resume with nothing unless the item types are named.
-        const query = {Recursive: true, SortBy: 'DatePlayed,SortName', SortOrder: 'Descending', Limit: 100, Fields: fields, ...images,
+        const query = {Recursive: true, SortBy: 'DatePlayed,SortName', SortOrder: 'Descending', Limit: 100, Fields: fields(), ...images,
             IncludeItemTypes: playable(library)};
         if (library.kind !== 'favorites') query.ParentId = library.Id;
         if (kind === 'played') query.IsPlayed = true;
@@ -234,7 +240,7 @@
                 // Otherwise Emby omits all but one ID in each presentation group,
                 // leaving the omitted stubs without their shared identity.
                 const result = await this.api.getItems(this.api.getCurrentUserId(), {Ids: batch.map(card => card.item.Id).join(','),
-                    GroupByPresentationUniqueKey: false, Limit: 100, Fields: fields, ...images}, signal);
+                    GroupByPresentationUniqueKey: false, Limit: 100, Fields: fields(), ...images}, signal);
                 check(signal);
                 const byId = new Map(batch.map(card => [card.item.Id, card]));
                 (result.Items || []).forEach(item => { const card = byId.get(item.Id); if (card) card.item = item; });
@@ -251,11 +257,11 @@
         const favorites = library.kind === 'favorites';
         const query = {
             Recursive: true, SortBy: (order === 'release' ? 'PremiereDate' : order === 'rating' ? 'CommunityRating' : 'DateCreated') + ',SortName', SortOrder: 'Descending', Limit: 100,
-            Fields: fields, ...images,
-            IncludeItemTypes: favorites ? 'Series,Movie,Episode,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game' : playable(library)
+            Fields: fields(), ...images,
+            IncludeItemTypes: favorites ? kinds('Series,Movie,Episode,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game') : playable(library)
         };
         if (order !== 'recent' && !favorites) query.IncludeItemTypes = library.CollectionType === 'tvshows' ? 'Series'
-            : types[library.CollectionType] || 'Series,Movie,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game';
+            : kinds(types[library.CollectionType] || 'Series,Movie,Video,MusicVideo,MusicAlbum,Book,AudioBook,PhotoAlbum,Game');
         if (favorites) query.IsFavorite = true;
         else query.ParentId = library.Id;
         const cards = new Map();
@@ -296,7 +302,7 @@
                     const card = queue.shift();
                     check(signal);
                     try {
-                        const result = await api.getItems(user, { ParentId: card.item.Id, Recursive: true, IncludeItemTypes: 'Episode', SortBy: 'DateCreated', SortOrder: 'Descending', Limit: 1, Fields: fields, EnableUserData: true }, signal);
+                        const result = await api.getItems(user, { ParentId: card.item.Id, Recursive: true, IncludeItemTypes: 'Episode', SortBy: 'DateCreated', SortOrder: 'Descending', Limit: 1, Fields: fields(), EnableUserData: true }, signal);
                         check(signal);
                         const latest = (result.Items || [])[0];
                         if (latest) { card.addedAt = latest.DateCreated || card.addedAt; card.latestEpisode = latest; }

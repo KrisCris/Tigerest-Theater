@@ -17,11 +17,11 @@ struct OnboardingView: View {
                         Button("连接大河李斯特专属 EMBY 服务器") { mode = "tigerest"; beginConnection() }
                             .buttonStyle(.borderedProminent).controlSize(.large)
                         Text("已有大河专属服务器权限，可直接使用服务器账号登录。").foregroundStyle(.secondary)
-                        Button("连接自建 EMBY 服务器") { mode = "custom" }
+                        Button("连接自建 Emby / Jellyfin 服务器") { mode = "custom" }
                             .buttonStyle(.bordered).controlSize(.large)
-                        Text("连接你自己搭建或获授权使用的 Emby 服务器。").foregroundStyle(.secondary)
+                        Text("连接你自己搭建或获授权使用的 Emby 或 Jellyfin 服务器。").foregroundStyle(.secondary)
                     } else {
-                        Text(mode == "tigerest" ? "连接大河专属 EMBY" : "连接自建 EMBY 服务器").font(.title2)
+                        Text(mode == "tigerest" ? "连接大河专属 EMBY" : "连接自建 Emby / Jellyfin 服务器").font(.title2)
                         if mode == "custom" {
                             TextField("服务器地址", text: $address)
                                 .textContentType(.URL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()

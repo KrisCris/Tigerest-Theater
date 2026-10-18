@@ -122,7 +122,7 @@
                 }
             }
             if(!key)return;
-            const host=document.querySelector('.headerRight');
+            const host=window.TigerestServer?.headerActions?.()||document.querySelector('.headerRight');
             if(host && !this.entry?.isConnected){
                 style();this.entry=button('消息',()=>this.open());this.entry.id='tigerest-message-entry';
                 host.prepend(this.entry);this.badge();

@@ -14,9 +14,10 @@
         }
     }
 
+    // Returns false when the address is not a media download this library manages.
     async function enqueueNativeDownload(rawUrl) {
         const itemId = getNativeDownloadId(rawUrl);
-        if (!itemId) return;
+        if (!itemId) return false;
 
         let item = null;
         let downloadUrl = rawUrl;
@@ -43,9 +44,11 @@
                     sourceContainer = source.Container || '';
                     const serverAddress = window.ApiClient.serverAddress().replace(/\/+$/, '');
                     const directPath = source.DirectStreamUrl;
-                    downloadUrl = /^https?:\/\//i.test(directPath)
-                        ? directPath
-                        : serverAddress + (directPath.startsWith('/emby/') ? directPath : `/emby${directPath.startsWith('/') ? '' : '/'}${directPath}`);
+                    const relative = directPath.startsWith('/') ? directPath : '/' + directPath;
+                    // Emby's API lives under /emby; Jellyfin 12 removed that prefix.
+                    downloadUrl = /^https?:\/\//i.test(directPath) ? directPath
+                        : window.TigerestServer?.isJellyfin?.() || /^\/emby\//i.test(relative) ? serverAddress + relative
+                        : serverAddress + '/emby' + relative;
                 }
             }
         } catch (_) {
@@ -56,7 +59,7 @@
         // until playback info probes the stream, but the download is the media.
         const container = [sourceContainer, item?.Container, item?.MediaSources?.[0]?.Container]
             .map(value => String(value || '').split(',')[0].trim()).find(value => value && value.toLowerCase() !== 'strm') || 'media';
-        const title = item?.Name || `Emby ${itemId}`;
+        const title = item?.Name || `媒体 ${itemId}`;
         const fileName = (item?.FileName || `${title}.${container}`).replace(/\.strm$/i, `.${container}`);
         await window.NativeShell.downloadFile({
             url: downloadUrl,
@@ -65,7 +68,12 @@
             fileName
         });
         window.tigerestOpenOfflineLibrary();
+        return true;
     }
+    // Jellyfin hands its downloads to NativeShell.downloadFile instead.
+    window.tigerestEnqueueDownload = async rawUrl => {
+        if (!await enqueueNativeDownload(rawUrl)) return window.api.system.startDownload({url: rawUrl});
+    };
 
     // Emby 4.9 implements its Download command by dispatching a click on a
     // detached <a download> element.  Route those media URLs into the native
@@ -155,7 +163,7 @@
             list.replaceChildren();
             if (!items.length) {
                 const empty = document.createElement('p');
-                empty.textContent = '暂无离线媒体。请在 Emby 详情页使用下载按钮。';
+                empty.textContent = '暂无离线媒体。请在媒体详情页使用下载按钮。';
                 list.appendChild(empty);
                 return;
             }
