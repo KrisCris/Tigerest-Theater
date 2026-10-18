@@ -1,5 +1,7 @@
 # Tigerest Theater 使用教程
 
+**开发版说明：** 2.9.0 的 Jellyfin 兼容仍在实现和验收阶段，尚未发布。仓库中的 [Jellyfin 说明](../jellyfin-compatibility.md) 与 [更新说明草案](../releases/2026-10-19-v2.9.0.md) 记录目标范围；以下教程继续对应已发布版本。
+
 这里是 EMBY 大河版的中文使用说明，对应 Windows、Android 2.8.1 与 Mac、iPad、Apple TV 2.8.0。客户端支持 Windows、Apple Silicon Mac、Android、iPad 和 Apple TV；播放内容和访问权限来自你连接的 Emby 服务器。
 
 ## 第一次使用

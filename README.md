@@ -8,6 +8,8 @@
 
 **当前版本：Windows、Android 2.8.1；Mac、iPad 与 Apple TV 2.8.0。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
 
+**2.9.0 开发中：** 正在适配五端 Jellyfin，尚未发布或完成兼容验收。连接方式、平台边界见 [Jellyfin 说明](docs/jellyfin-compatibility.md)，更新范围见 [2.9.0 草案](docs/releases/2026-10-19-v2.9.0.md)。现有正式版信息不变。
+
 **已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.8.1 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
 客户端不包含影视资源。你需要已有的 Emby 服务器地址和账号；媒体库、播放与下载权限由所连接的服务器提供。本项目是非官方 Emby 客户端，与 Emby LLC 无隶属关系。
