@@ -332,3 +332,111 @@ private final class HomeFixtureProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
     private func page(_ items: [JSONValue]) -> JSONValue { .object(["Items": .array(items), "TotalRecordCount": .number(Double(items.count))]) }
 }
+
+// 2.8.1 saved a Jellyfin session with its server ID but without the server kind.
+extension TVHomeModelTests {
+    private func oldJellyfinSession() throws -> EmbySession {
+        try JSONDecoder().decode(EmbySession.self, from: Data(#"{"serverURL":"https://jellyfin-fixture.invalid","userID":"user","accessToken":"fixture","deviceID":"fixture","serverID":"jellyfin-server"}"#.utf8))
+    }
+
+    func testSavedJellyfinSessionWithoutKindIsCompletedBeforeItsFirstRequest() async throws {
+        _ = URLProtocol.registerClass(JellyfinFixtureProtocol.self)
+        addTeardownBlock { URLProtocol.unregisterClass(JellyfinFixtureProtocol.self) }
+        JellyfinFixtureProtocol.reset()
+        let saved = TVSavedSessions(), session = try oldJellyfinSession()
+        let model = TVAppModel(fixtureMode: false, store: TVSessionStore(initialSession: session, saved: saved))
+        await model.start()
+        try await eventually { JellyfinFixtureProtocol.requests().contains { $0.path == "/UserViews" } }
+        XCTAssertEqual(saved.sessions.count, 1)
+        let completed = try XCTUnwrap(saved.sessions.last)
+        XCTAssertEqual(completed.serverKind, .jellyfin)
+        XCTAssertEqual(completed.serverVersion, "12.2.0")
+        XCTAssertEqual(completed.serverID, "jellyfin-server")
+        XCTAssertEqual(completed.serverURL, "https://jellyfin-fixture.invalid")
+        XCTAssertEqual(completed.userID, "user")
+        XCTAssertEqual(completed.accessToken, "fixture")
+        XCTAssertEqual(completed.deviceID, "fixture")
+        XCTAssertEqual(model.session?.kind, .jellyfin)
+        // Jellyfin 12 answers 401 to X-Emby-Token; every account request uses Authorization.
+        let account = JellyfinFixtureProtocol.requests().filter { $0.path != "/System/Info/Public" }
+        XCTAssertFalse(account.isEmpty)
+        for request in account {
+            XCTAssertTrue(request.authorization?.contains("Token=\"fixture\"") == true, request.path)
+            XCTAssertNil(request.embyToken, request.path)
+        }
+    }
+
+    func testSignOutWhileServerIsIdentifiedSavesNothing() async throws {
+        _ = URLProtocol.registerClass(JellyfinFixtureProtocol.self)
+        addTeardownBlock { URLProtocol.unregisterClass(JellyfinFixtureProtocol.self) }
+        JellyfinFixtureProtocol.reset(holdingInfo: true)
+        let saved = TVSavedSessions(), session = try oldJellyfinSession()
+        let model = TVAppModel(fixtureMode: false, store: TVSessionStore(initialSession: session, saved: saved))
+        let starting = Task { await model.start() }
+        try await eventually { JellyfinFixtureProtocol.isHoldingInfo() }
+        await model.logout()
+        JellyfinFixtureProtocol.releaseInfo()
+        await starting.value
+        XCTAssertTrue(saved.sessions.isEmpty)
+        XCTAssertNil(model.session)
+        XCTAssertFalse(JellyfinFixtureProtocol.requests().contains { $0.path == "/UserViews" })
+    }
+
+    func testUnansweredServerInfoLeavesTheSessionForTheNextStart() async throws {
+        _ = URLProtocol.registerClass(HomeFixtureProtocol.self)
+        addTeardownBlock { URLProtocol.unregisterClass(HomeFixtureProtocol.self) }
+        HomeFixtureProtocol.reset()
+        let saved = TVSavedSessions()
+        // The fixture does not answer System/Info/Public.
+        let session = EmbySession(serverURL: "https://home-fixture.invalid", userID: "user", accessToken: "fixture", deviceID: "fixture", serverID: "fixture")
+        let model = TVAppModel(fixtureMode: false, store: TVSessionStore(initialSession: session, saved: saved))
+        await model.start()
+        try await eventually { model.homeCards.count == 2 }
+        XCTAssertTrue(saved.sessions.isEmpty, "a failed request is not saved as the server kind")
+        XCTAssertNil(model.session?.serverKind)
+    }
+}
+
+private final class JellyfinFixtureProtocol: URLProtocol, @unchecked Sendable {
+    struct Seen { let path: String; let authorization: String?; let embyToken: String? }
+    private static let lock = NSLock()
+    private static var seen: [Seen] = []
+    private static var holdInfo = false
+    private static var held: JellyfinFixtureProtocol?
+    private static let info = #"{"ServerName":"Jellyfin Fixture","Version":"12.2.0","ProductName":"Jellyfin Server","Id":"jellyfin-server"}"#
+    static func reset(holdingInfo: Bool = false) { lock.withLock { seen = []; holdInfo = holdingInfo; held = nil } }
+    static func requests() -> [Seen] { lock.withLock { seen } }
+    static func isHoldingInfo() -> Bool { lock.withLock { held != nil } }
+    static func releaseInfo() {
+        let request = lock.withLock { () -> JellyfinFixtureProtocol? in
+            let request = held
+            held = nil; holdInfo = false
+            return request
+        }
+        request?.reply(200, info)
+    }
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "jellyfin-fixture.invalid" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let path = request.url?.path ?? ""
+        let authorization = request.value(forHTTPHeaderField: "Authorization"), embyToken = request.value(forHTTPHeaderField: "X-Emby-Token")
+        let hold = Self.lock.withLock { () -> Bool in
+            Self.seen.append(Seen(path: path, authorization: authorization, embyToken: embyToken))
+            guard path == "/System/Info/Public", Self.holdInfo else { return false }
+            Self.held = self
+            return true
+        }
+        if hold { return }
+        if path == "/System/Info/Public" { reply(200, Self.info); return }
+        // Jellyfin 12 disables the legacy X-Emby-* headers by default.
+        guard embyToken == nil, authorization?.contains("Token=\"fixture\"") == true else { reply(401, "{}"); return }
+        reply(200, #"{"Items":[],"TotalRecordCount":0}"#)
+    }
+    override func stopLoading() {}
+    private func reply(_ status: Int, _ body: String) {
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!,
+                            cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+}

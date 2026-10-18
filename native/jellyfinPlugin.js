@@ -78,6 +78,8 @@
             this.type = 'tigerest';
             if (!ServerConnections || !events || !appRouter) return;
             const connectionManager = ServerConnections;
+            // The settings overlay reads the signed-in account from here.
+            window.tigerestSessionConnections = connectionManager;
             if (window._communityPlugin) this.community = new window._communityPlugin({connectionManager, events, appRouter});
             if (window._watchTogetherPlugin) this.watch = new window._watchTogetherPlugin({connectionManager, events, playbackManager, appRouter});
             // Logout starts a network operation: clear community drafts before it finishes.

@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const withBrowser=require('./community_browser.cjs');
 const shell=fs.readFileSync(path.resolve(__dirname,'../native/nativeshell.js'),'utf8');
-const renderer=shell.slice(shell.indexOf('function createRifeExtensionPanel('),shell.indexOf('async function openTigerestSettings('));
+const renderer=shell.slice(shell.indexOf('function createRifeExtensionPanel('),shell.indexOf('window.tigerestMountSettings ='));
 const catalog=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../resources/settings/settings_description.json'),'utf8'));
 const sections=catalog.filter(s=>!s.hidden && s.order && s.values);
 const descriptions={},defaults={};
@@ -162,6 +162,27 @@ withBrowser({
  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
  assert.equal(await evaluate('!!document.querySelector("#tigerest-settings-overlay")'),false);
  assert.equal(await evaluate('document.activeElement.id'),'origin','fallback closes and restores focus');
- console.log('settings UI: native category routes without redundant parent, desktop/TV/phone native alignment, single pane, search/reset/persistence, drawer rerender, keyboard activation, phone layout, cached route resume and fallback cleanup passed');
+ // Jellyfin has no Emby settings route: its user menu opens the overlay, which
+ // reads the account from the connection manager the Jellyfin plugin received.
+ await evaluate(fs.readFileSync(path.resolve(__dirname,'../native/jellyfinPlugin.js'),'utf8'));
+ await evaluate(`(()=>{const account=(server,user,names)=>({serverId:()=>server,getCurrentUserId:()=>user,
+  getUserViews:async()=>({Items:names.map((Name,index)=>({Id:server+'-'+index,Name}))})});
+  window.jellyfinAccounts={alice:account('jf-a','alice',['电影','剧集']),bob:account('jf-b','bob',['纪录片']),signedOut:account('jf-b',null,[])};
+  window.jellyfinAccount=jellyfinAccounts.alice;
+  window.jellyfinPlugin=new _tigerestJellyfinPlugin({events:{on(){}},appRouter:{show(){}},ServerConnections:{currentApiClient:()=>jellyfinAccount}});})()`);
+ const overlayLibraries=async account=>{
+  const message=`document.querySelector('#tigerest-settings-overlay .tgs-home-libraries > .tgs-help:not(.fieldDescription)')`;
+  await evaluate(`jellyfinAccount=jellyfinAccounts.${account};openTigerestSettings('home').then(value=>window.mount=value)`);
+  for(let i=0;i<40&&!(await evaluate(`!!${message}&&${message}.textContent!=='正在读取媒体夹…'`));i++)await new Promise(r=>setTimeout(r,25));
+  const shown=await evaluate(`({rows:[...document.querySelectorAll('#tigerest-settings-overlay .tgs-library-name')].map(node=>node.textContent),message:${message}.textContent})`);
+  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+  assert.equal(await evaluate('!!document.querySelector("#tigerest-settings-overlay")'),false);
+  return shown;
+ };
+ assert.deepEqual(await overlayLibraries('alice'),{rows:['电影','剧集','收藏'],message:''},'Jellyfin overlay lists the signed-in account folders');
+ assert.deepEqual(await overlayLibraries('bob'),{rows:['纪录片','收藏'],message:''},'a server or account switch shows the new account');
+ assert.deepEqual(await overlayLibraries('signedOut'),{rows:[],message:'登录服务器后，可以在这里选择首页显示的媒体夹。'},'signed out keeps no old account');
+ await evaluate('jellyfinPlugin.home.destroy()');
+ console.log('settings UI: native category routes without redundant parent, desktop/TV/phone native alignment, single pane, search/reset/persistence, drawer rerender, keyboard activation, phone layout, cached route resume, fallback cleanup and Jellyfin overlay accounts passed');
 // Qt does not tick animation frames when launched with windowsHide, even while document.hidden is false.
 },{visible:true}).catch(error=>{console.error(error);process.exitCode=1});

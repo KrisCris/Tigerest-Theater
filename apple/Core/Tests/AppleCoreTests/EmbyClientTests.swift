@@ -624,3 +624,24 @@ extension EmbyClientTests {
         #expect(EmbyClient.jellyfinQuery(["IncludeItemTypes": "Movie,Game"], version: nil)["IncludeItemTypes"] == "Movie")
     }
 }
+
+extension EmbyClientTests {
+    @Test func savedSessionWithoutKindIsCompletedFromPublicInfo() throws {
+        // 2.8.1 saved the server ID of a Jellyfin server but not its kind.
+        let old = try JSONDecoder().decode(EmbySession.self, from: Data(#"{"serverURL":"https://media.test/jellyfin/","userID":"user1","accessToken":"private-token","deviceID":"tv-device","serverID":"server"}"#.utf8))
+        #expect(old.needsServerInfo)
+        #expect(old.kind == .emby)
+        let completed = old.completed(with: EmbyServerInfo(name: "Home", id: "other", kind: .jellyfin, version: "12.2.0"))
+        #expect(completed.kind == .jellyfin)
+        #expect(completed.serverVersion == "12.2.0")
+        #expect(completed.serverID == "server", "the saved server identity is kept")
+        #expect(completed.serverURL == old.serverURL && completed.userID == old.userID)
+        #expect(completed.accessToken == old.accessToken && completed.deviceID == old.deviceID)
+        #expect(!completed.needsServerInfo)
+        let restored = try JSONDecoder().decode(EmbySession.self, from: JSONEncoder().encode(completed))
+        #expect(restored.kind == .jellyfin)
+        // A session that knows its kind keeps it.
+        #expect(!jellyfinSession().needsServerInfo)
+        #expect(jellyfinSession().completed(with: EmbyServerInfo(name: "Home", id: "server", kind: .emby, version: "4.9.1.80")).kind == .jellyfin)
+    }
+}

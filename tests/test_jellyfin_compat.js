@@ -155,6 +155,7 @@ test('the Jellyfin plugin is inert in Emby, which never passes ServerConnections
     assert.equal(plugin.id, 'tigerestjellyfinplugin');
     assert.equal(plugin.home, undefined);
     assert.equal(page.galleries.length, 0);
+    assert.equal(page.context.tigerestSessionConnections, undefined, 'Emby settings keep their router account');
 });
 
 test('Jellyfin gets the community, watch-together and home gallery with its own services', async () => {
@@ -172,6 +173,7 @@ test('Jellyfin gets the community, watch-together and home gallery with its own 
     assert.deepEqual(created.map(([name]) => name), ['community', 'watch']);
     assert.equal(created[0][1].connectionManager, connections);
     assert.equal(created[1][1].playbackManager, playbackManager);
+    assert.equal(page.context.tigerestSessionConnections, connections, 'the settings overlay reads the account from Jellyfin');
     const signedOut = subscriptions.find(([target, name]) => target === connections && name === 'localusersignedout');
     signedOut[2]();
     assert.equal(reset, 1);

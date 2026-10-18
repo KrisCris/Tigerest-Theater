@@ -28,6 +28,14 @@ public struct EmbySession: Codable, Sendable {
         self.serverURL = serverURL; self.userID = userID; self.accessToken = accessToken; self.deviceID = deviceID
         self.serverID = serverID; self.serverKind = serverKind; self.serverVersion = serverVersion
     }
+    /// Sessions saved before 2.9.0 have no server kind, and older ones no server ID.
+    public var needsServerInfo: Bool { serverID == nil || serverKind == nil }
+    /// Fills in what the saved session lacks from the server's public info,
+    /// keeping the account and the server identity already saved.
+    public func completed(with info: EmbyServerInfo) -> EmbySession {
+        EmbySession(serverURL: serverURL, userID: userID, accessToken: accessToken, deviceID: deviceID,
+                    serverID: serverID ?? info.id, serverKind: serverKind ?? info.kind, serverVersion: serverVersion ?? info.version)
+    }
 }
 
 public struct EmbyServerInfo: Sendable {

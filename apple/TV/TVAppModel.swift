@@ -107,10 +107,13 @@ final class TVAppModel: ObservableObject {
         do {
             if var saved = try store.load() {
                 let generation = requestID
-                if saved.serverID == nil, let info = try? await EmbyClient.serverInfo(server: saved.serverURL), let serverID = info.id {
+                // A 2.8.1 Jellyfin session has a server ID but no kind, and would
+                // send Emby's headers, which Jellyfin 12 rejects. Only an answer
+                // from the server is saved: if it cannot be reached, the session
+                // stays as it was and the next start asks again.
+                if saved.needsServerInfo, let info = try? await EmbyClient.serverInfo(server: saved.serverURL) {
                     guard requestID == generation else { return }
-                    saved = EmbySession(serverURL: saved.serverURL, userID: saved.userID, accessToken: saved.accessToken, deviceID: saved.deviceID,
-                                        serverID: serverID, serverKind: saved.serverKind ?? info.kind, serverVersion: saved.serverVersion ?? info.version)
+                    saved = saved.completed(with: info)
                     try store.save(saved)
                 }
                 guard requestID == generation else { return }

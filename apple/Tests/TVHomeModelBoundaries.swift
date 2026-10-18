@@ -16,10 +16,13 @@ import Foundation
         active = true; played.append(playback)
     }
 }
+/// The sessions TVAppModel saved, oldest first.
+final class TVSavedSessions: @unchecked Sendable { var sessions: [EmbySession] = [] }
 struct TVSessionStore {
     var initialSession: EmbySession? = nil
+    var saved: TVSavedSessions? = nil
     func load() throws -> EmbySession? { initialSession }
-    func save(_ session: EmbySession) throws {}
+    func save(_ session: EmbySession) throws { saved?.sessions.append(session) }
     func clear() throws {}
     func deviceID() throws -> String { "fixture-device" }
 }

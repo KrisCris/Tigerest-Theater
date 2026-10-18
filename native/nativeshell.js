@@ -1497,6 +1497,15 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     return {dispose: close, activate};
 }
 
+// Jellyfin's web client has no Emby settings route, so its settings open in
+// the overlay below. The Jellyfin plugin keeps its connection manager in
+// window.tigerestSessionConnections, and the overlay asks it for the signed-in
+// account each time it loads: a sign-out or server switch never leaves an old
+// account in the settings.
+function currentSessionApiClient() {
+    return window.tigerestSessionConnections?.currentApiClient?.() || null;
+}
+
 async function openTigerestSettings(section = 'mpv') {
     if (window.Emby?.importModule) {
         try {
@@ -1509,8 +1518,8 @@ async function openTigerestSettings(section = 'mpv') {
             if (route) return router.show(route.path + '?section=' + encodeURIComponent(section));
         } catch (error) { console.warn('Unable to open the Emby settings route'); }
     }
-    // First-run/server selection pages do not have an Emby router yet.
-    return mountTigerestSettings(null, section);
+    // Jellyfin and the first-run/server selection pages have no Emby router.
+    return mountTigerestSettings(null, section, null, null, {apiProvider: currentSessionApiClient});
 }
 window.tigerestMountSettings = mountTigerestSettings;
 window.tigerestSettingsCategories = getTigerestSettingsCategories;

@@ -129,6 +129,30 @@ test('default MPV shortcut selects its category while legacy deep links remain s
     assert.equal(shown.at(-1),'/plugins/tigerest-native-settings/settings.html?section=subtitles');
 });
 
+test('Jellyfin settings overlay reads the signed-in account each time it opens', async () => {
+    const {context}=modules();
+    const shell=fs.readFileSync(__dirname+'/../native/nativeshell.js','utf8');
+    vm.runInNewContext(shell.slice(shell.indexOf('function currentSessionApiClient('),shell.indexOf('window.tigerestMountSettings =')),context);
+    const opened=[];
+    context.mountTigerestSettings=async(host,section,onReturn,signal,options)=>{opened.push({host,section,options});return {dispose(){}};};
+    const alice={getCurrentUserId:()=>'alice'},bob={getCurrentUserId:()=>'bob'};
+    let current=alice;
+    // Jellyfin has no Emby router; its plugin keeps the connection manager here.
+    context.tigerestSessionConnections={currentApiClient:()=>current};
+    await context.openTigerestSettings('home');
+    assert.equal(opened[0].host,null,'Jellyfin opens the overlay');
+    assert.equal(opened[0].section,'home');
+    const account=opened[0].options.apiProvider;
+    assert.equal(account(),alice);
+    current=bob;
+    assert.equal(account(),bob,'a server or account switch is read when the overlay loads, not kept');
+    current=null;
+    assert.equal(account(),null,'signed out');
+    delete context.tigerestSessionConnections;
+    await context.openTigerestSettings('main');
+    assert.equal(opened[1].options.apiProvider(),null,'first-run pages have no account');
+});
+
 test('native category controllers keep the selected category through pause and resume', async () => {
     const {context,registrations}=modules();
     const plugin=new (registrations.get('tigerest/settings.js').factory())();
