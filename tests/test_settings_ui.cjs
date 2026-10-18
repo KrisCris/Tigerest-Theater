@@ -169,7 +169,12 @@ withBrowser({
   getUserViews:async()=>({Items:names.map((Name,index)=>({Id:server+'-'+index,Name}))})});
   window.jellyfinAccounts={alice:account('jf-a','alice',['电影','剧集']),bob:account('jf-b','bob',['纪录片']),signedOut:account('jf-b',null,[])};
   window.jellyfinAccount=jellyfinAccounts.alice;
-  window.jellyfinPlugin=new _tigerestJellyfinPlugin({events:{on(){}},appRouter:{show(){}},ServerConnections:{currentApiClient:()=>jellyfinAccount}});})()`);
+  // The embedded client also injects the community and watch-together plugins. They need
+  // the native bridge this fixture replaced, and the settings do not use them.
+  const unrelated={_communityPlugin:window._communityPlugin,_watchTogetherPlugin:window._watchTogetherPlugin};
+  window._communityPlugin=window._watchTogetherPlugin=undefined;
+  try{window.jellyfinPlugin=new _tigerestJellyfinPlugin({events:{on(){}},appRouter:{show(){}},ServerConnections:{currentApiClient:()=>jellyfinAccount}});}
+  finally{Object.assign(window,unrelated);}})()`);
  const overlayLibraries=async account=>{
   const message=`document.querySelector('#tigerest-settings-overlay .tgs-home-libraries > .tgs-help:not(.fieldDescription)')`;
   await evaluate(`jellyfinAccount=jellyfinAccounts.${account};openTigerestSettings('home').then(value=>window.mount=value)`);
