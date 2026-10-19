@@ -105,18 +105,7 @@ final class TVAppModel: ObservableObject {
             return
         }
         do {
-            if var saved = try store.load() {
-                let generation = requestID
-                // A 2.8.1 Jellyfin session has a server ID but no kind, and would
-                // send Emby's headers, which Jellyfin 12 rejects. Only an answer
-                // from the server is saved: if it cannot be reached, the session
-                // stays as it was and the next start asks again.
-                if saved.needsServerInfo, let info = try? await EmbyClient.serverInfo(server: saved.serverURL) {
-                    guard requestID == generation else { return }
-                    saved = saved.completed(with: info)
-                    try store.save(saved)
-                }
-                guard requestID == generation else { return }
+            if let saved = try store.load() {
                 client = try EmbyClient(session: saved)
                 session = saved
                 serverURL = saved.serverURL
@@ -221,8 +210,20 @@ final class TVAppModel: ObservableObject {
             focusTarget = "tv.library.\(homeLibraryID ?? TVMedia.id(libraries[0]))"
             return
         }
-        guard let client else { busy = false; return }
+        guard var client else { busy = false; return }
         do {
+            // Identify old sessions before account requests, including a visible
+            // retry after an unavailable server. Persist only a successful answer.
+            if let saved = session, saved.needsServerInfo,
+               let info = try? await EmbyClient.serverInfo(server: saved.serverURL) {
+                guard isCurrent(id) else { return }
+                let completed = saved.completed(with: info)
+                client = try EmbyClient(session: completed)
+                try store.save(completed)
+                session = completed
+                self.client = client
+            }
+            guard isCurrent(id) else { return }
             let newLibraries = try await client.libraries()
             guard isCurrent(id) else { return }
             libraries = EmbyHomeData.libraries(newLibraries, serverID: session?.serverID)

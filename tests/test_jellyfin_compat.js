@@ -132,6 +132,7 @@ function jellyfinPage() {
         document: {
             head: element('head'),
             getElementById: id => id === 'homeTab' && page.connected ? page.tab : null,
+            querySelectorAll: selector => selector === '[id="homeTab"]' && page.connected ? [page.tab] : [],
             querySelector: () => null,
             createElement: element,
             addEventListener: (type, fn) => { listeners[type] = fn; },
@@ -196,6 +197,26 @@ test('Jellyfin gets the community, watch-together and home gallery with its own 
     page.connected = false; page.listeners.viewshow();
     assert.deepEqual(gallery.calls.at(-1), 'destroy');
     assert.ok(!page.tab.classList.contains('tg-jellyfin-home'));
+});
+
+test('returning home mounts the visible page when Jellyfin retains an older hidden homeTab', () => {
+    const old = jellyfinPage(), fresh = jellyfinPage();
+    const plugin = new old.context._tigerestJellyfinPlugin({events:{on(){}}, appRouter:{},
+        ServerConnections:{currentApiClient:()=>null}});
+    const firstGallery = plugin.home.gallery;
+    old.visible = false;
+    old.context.document.querySelectorAll = () => [old.tab, fresh.tab];
+    old.listeners.viewshow();
+    assert.equal(plugin.home.tab, fresh.tab);
+    assert.equal(firstGallery.calls.at(-1), 'destroy');
+    assert.ok(!old.tab.classList.contains('tg-jellyfin-home'));
+    assert.ok(fresh.tab.classList.contains('tg-jellyfin-home'));
+    assert.deepEqual(plugin.home.gallery.calls, ['start']);
+    fresh.visible = false; old.visible = true;
+    old.listeners.viewshow();
+    assert.equal(plugin.home.tab, old.tab, 'cached pages can become visible again');
+    assert.ok(!fresh.tab.classList.contains('tg-jellyfin-home'));
+    plugin.home.destroy();
 });
 
 test('Modern favorites changes the hash without starting a legacy navigation promise', async () => {

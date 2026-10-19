@@ -2,6 +2,72 @@ import XCTest
 
 @MainActor
 final class TVNavigationTests: XCTestCase {
+    /// Runs only against an explicitly supplied isolated server/account.
+    func testIsolatedJellyfinLoginAndPlayback() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let url = env["TIGEREST_JELLYFIN_URL"],
+              let user = env["TIGEREST_JELLYFIN_USER"],
+              let password = env["TIGEREST_JELLYFIN_PASSWORD"],
+              let bundle = env["TIGEREST_JELLYFIN_TEST_BUNDLE"],
+              bundle.hasPrefix("top.tigerest.theater.tv."), !bundle.hasSuffix(".") else {
+            throw XCTSkip("An isolated Jellyfin account and separately signed TV test bundle are required")
+        }
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: bundle); app.launch()
+        if app.buttons["tv.logout"].waitForExistence(timeout: 3) {
+            try select("tv.logout", in: app)
+        }
+        try select("tv.mode.selfHosted", in: app)
+        func enter(_ element: XCUIElement, value: String) throws {
+            XCTAssertTrue(element.waitForExistence(timeout: 10))
+            for _ in 0..<12 {
+                if element.hasFocus { break }
+                let current = app.descendants(matching: .any).allElementsBoundByIndex.first { $0.hasFocus }
+                XCUIRemote.shared.press((current?.frame.midY ?? 0) < element.frame.midY ? .down : .up)
+            }
+            XCTAssertTrue(element.hasFocus)
+            XCUIRemote.shared.press(.select)
+            element.typeText(value)
+            XCUIRemote.shared.press(.menu)
+        }
+        try enter(app.textFields["tv.login.server"], value: url)
+        try enter(app.textFields["tv.login.username"], value: user)
+        try enter(app.secureTextFields["tv.login.password"], value: password)
+        try select("tv.login.submit", in: app)
+        let hero = app.buttons["tv.home.hero"]
+        XCTAssertTrue(hero.waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertTrue(hero.label.contains("同名验收作品"))
+        let movies = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.library.' AND label CONTAINS 'Movies'")).firstMatch
+        XCTAssertTrue(movies.exists)
+        try select(movies.identifier, in: app)
+        let movie = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.item.' AND label CONTAINS %@", "同名验收作品")).firstMatch
+        XCTAssertTrue(movie.waitForExistence(timeout: 10))
+        try select(movie.identifier, in: app)
+        XCTAssertTrue(app.buttons["tv.play"].waitForExistence(timeout: 10))
+        try select("tv.play", in: app)
+        expect("Real Jellyfin playback advances through MPV", timeout: 20) { self.position(in: app) >= 2 }
+        XCUIRemote.shared.press(.playPause)
+        expect("Remote pauses real server playback") { app.buttons["tv.player.pause"].label.contains("播放") }
+        let paused = position(in: app)
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertLessThanOrEqual(abs(position(in: app) - paused), 1)
+        let frame = XCTAttachment(screenshot: app.screenshot()); frame.name = "isolated-jellyfin-tv-frame"; frame.lifetime = .keepAlways; add(frame)
+        try select("tv.player.forward", in: app)
+        expect("Seek advances the real player by ten seconds") { self.position(in: app) >= paused + 9 }
+        let sought = position(in: app)
+        try select("tv.player.subtitles", in: app)
+        try select("tv.subtitles.off", in: app)
+        expect("Real-server subtitles can be disabled") { (app.buttons["tv.subtitles.off"].value as? String) == "已选择" }
+        XCUIRemote.shared.press(.menu)
+        expect("Subtitle panel finishes dismissing before the next remote command") { !app.buttons["tv.subtitles.off"].exists && app.buttons["tv.player.pause"].exists }
+        XCUIRemote.shared.press(.playPause)
+        expect("Remote resumes real server playback", timeout: 10) { self.position(in: app) >= sought + 2 }
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(app.buttons["tv.resume"].waitForExistence(timeout: 10))
+        try select("tv.logout", in: app)
+        XCTAssertTrue(app.buttons["tv.mode.selfHosted"].waitForExistence(timeout: 5))
+    }
+
     func testFixtureBrowseSeasonsAndEpisodes() throws {
         let app = launchFixture()
         try select("tv.library.fixture.series", in: app)

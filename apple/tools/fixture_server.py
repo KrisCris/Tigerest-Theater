@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Loopback-only fixtures; never reads production profiles or tokens."""
-import argparse,http.server,json
+"""Isolated fixtures; loopback by default, optional LAN binding for device tests."""
+import argparse,http.server,json,threading,time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=18768);parser.add_argument('--media',type=Path,required=True);args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=18768);parser.add_argument('--host',default='127.0.0.1');parser.add_argument('--media',type=Path,required=True);args=parser.parse_args()
+lifecycle_started=threading.Event()
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path.startswith('/api/v2/search/anime'):
+        if self.path=='/lifecycle/slow/System/Info/Public':
+            lifecycle_started.set();time.sleep(3)
+            data=json.dumps({'Id':'delayed-fixture','Version':'4.9'}).encode();mime='application/json'
+        elif self.path=='/lifecycle/started':
+            data=json.dumps({'started':lifecycle_started.is_set()}).encode();mime='application/json'
+        elif self.path.startswith('/api/v2/search/anime'):
             data=json.dumps({'success':True,'animes':[{'type':'tvseries','bangumiId':'123','animeTitle':'弹幕验收作品'}]}).encode();mime='application/json'
         elif self.path.startswith('/api/v2/bangumi/123'):
             data=json.dumps({'success':True,'bangumi':{'episodes':[{'episodeId':1230001,'episodeNumber':'1','episodeTitle':'第1话 开始'}]}}).encode();mime='application/json'
@@ -15,6 +21,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif self.path.startswith('/sub/System/Info/Public'):
             data=json.dumps({'Id':'fixture','Version':'4.9'}).encode();mime='application/json'
         elif self.path.startswith('/sub/web/index.html'):
+            if 'bridge-reopened=1' not in self.path:lifecycle_started.clear()
             data=(ROOT/'Tests/fixtures/index.html').read_bytes();mime='text/html; charset=utf-8'
         elif self.path=='/fixture.mp4':
             data=args.media.read_bytes();mime='video/mp4'
@@ -34,4 +41,4 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:self.wfile.write(data[start:end+1])
         except (BrokenPipeError,ConnectionResetError):pass
     def log_message(self,*args):pass
-http.server.ThreadingHTTPServer(('127.0.0.1',args.port),Handler).serve_forever()
+http.server.ThreadingHTTPServer((args.host,args.port),Handler).serve_forever()

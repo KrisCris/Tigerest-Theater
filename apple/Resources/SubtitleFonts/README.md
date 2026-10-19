@@ -1,4 +1,4 @@
-# TV subtitle font
+# Apple subtitle font
 
 `SourceHanSansSC-Regular.otf` is the unmodified Adobe Source Han Sans SC
 Regular font from the official release tree at commit
@@ -10,7 +10,8 @@ SHA-256: `f1d8611151880c6c336aabeac4640ef434fa13cbfbf1ffe82d0a71b2a5637256`
 
 It is distributed under the SIL Open Font License 1.1 in `LICENSE.txt`.
 The TV generator bundles the font under `SubtitleFonts` and the license under
-`Web/licenses/SourceHanSans-LICENSE.txt`. The iPad project is unchanged.
+`Web/licenses/SourceHanSans-LICENSE.txt`. The iPad generator bundles this directory
+as `SubtitleFonts`, including its license.
 
-TV sets MPV's default subtitle family and font directory. Authored ASS styles
+Both Apple players set MPV's default subtitle family and font directory. Authored ASS styles
 and embedded fonts remain enabled, with no forced style overrides.

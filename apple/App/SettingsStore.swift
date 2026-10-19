@@ -41,7 +41,7 @@ import AppleCore
                 if name == "mpv" && key == "shaderPreset" { value = .string("native") }
                 if name == "mpv" && key == "configMode" { value = .string("embedded") }
                 if name == "video" && key == "hardwareDecoding" { value = .string("enabled") }
-                if name == "subtitles" && key == "font" { value = .string("PingFang SC") }
+                if name == "subtitles" && key == "font" { value = .string("Source Han Sans SC") }
                 raw[key] = value
                 guard supported[name]?.contains(key) == true, entry["hidden"].bool != true else { continue }
                 var description: [String: JSONValue] = ["key": .string(key), "displayName": entry["display_name"], "help": entry["help"]]
@@ -59,6 +59,14 @@ import AppleCore
                               pair[0] != .string("osx_compat"),
                               seen.insert(String(describing: pair[0])).inserted else { return nil }
                         return .object(["value": pair[0], "title": pair[1]])
+                    })
+                }
+                if name == "subtitles" && key == "font" {
+                    description["help"] = .string("默认使用内置思源黑体，避免系统字体缺少中文字幕字形；ASS 字幕与内嵌字体仍保留自身样式。")
+                    description["options"] = .array((description["options"]?.array ?? []).map { option in
+                        option["value"].string == "Segoe UI"
+                            ? .object(["value": .string("Source Han Sans SC"), "title": .string("思源黑体（内置）")])
+                            : option
                     })
                 }
                 if name == "mpv" && key == "shaderPreset" {

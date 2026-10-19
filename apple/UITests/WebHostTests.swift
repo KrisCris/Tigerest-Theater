@@ -1,8 +1,38 @@
 import XCTest
 import UIKit
 final class WebHostTests: XCTestCase {
-    @MainActor func testOnboardingAndOfflineEntryAreAvailableWithoutNetwork() {
+    @MainActor private func makeApplication() -> XCUIApplication {
         let app = XCUIApplication()
+        // Opt-in workaround for device XCTest sessions that never receive the
+        // animation-idle notification. This changes the runner's wait only;
+        // app animations and all explicit UI/playback assertions remain active.
+        if ProcessInfo.processInfo.environment["TIGEREST_UI_SKIP_ANIMATION_IDLE_WAIT"] == "1" {
+            let setter = NSSelectorFromString("setIdleAnimationWaitEnabled:")
+            precondition(app.responds(to: setter), "This XCTest runtime cannot configure animation-idle waiting")
+            app.setValue(false, forKey: "idleAnimationWaitEnabled")
+        }
+        return app
+    }
+    @MainActor private var fixtureURL: String {
+        ProcessInfo.processInfo.environment["TIGEREST_FIXTURE_URL"] ?? "http://127.0.0.1:18768/sub/"
+    }
+    @MainActor func testSPAPageHideAndRealDocumentReplacementKeepBridgeLifecycleCorrect() {
+        let app = makeApplication()
+        app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]
+        app.launch()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
+        let field = app.textFields["服务器地址"]
+        field.tap(); field.typeText(fixtureURL)
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
+        app.buttons["验证文档生命周期"].tap()
+        let result = app.staticTexts.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "文档关闭清理及新页桥接通过", "生命周期失败")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertEqual(result.label, "文档关闭清理及新页桥接通过")
+    }
+
+    @MainActor func testOnboardingAndOfflineEntryAreAvailableWithoutNetwork() {
+        let app = makeApplication()
         app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["连接大河李斯特专属 EMBY 服务器"].waitForExistence(timeout:10))
@@ -14,9 +44,9 @@ final class WebHostTests: XCTestCase {
 }
 extension WebHostTests {
     @MainActor func testVolumeAndMuteSurvivePlayerReplacement() {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
+        let app = makeApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
         app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
-        let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
+        let field = app.textFields["服务器地址"]; field.tap(); field.typeText(fixtureURL)
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
         app.buttons["验证音量保留"].tap()
@@ -26,10 +56,10 @@ extension WebHostTests {
     }
 
     @MainActor func testControlledBridgePlaybackAndDownload() {
-        let app=XCUIApplication();app.launchArguments=["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"];app.launch()
+        let app=makeApplication();app.launchArguments=["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"];app.launch()
         app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
         let field=app.textFields["服务器地址"]
-        XCTAssertTrue(field.waitForExistence(timeout:10));field.tap();field.typeText("http://127.0.0.1:18768/sub/")
+        XCTAssertTrue(field.waitForExistence(timeout:10));field.tap();field.typeText(fixtureURL)
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout:20),app.debugDescription)
         XCTAssertFalse(app.buttons["服务器"].exists)
@@ -101,10 +131,10 @@ extension WebHostTests {
 
     @MainActor private func openQueueFixture() -> XCUIApplication {
         continueAfterFailure = false
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
+        let app = makeApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
         XCTAssertTrue(statusBarContent.waitForExistence(timeout: 5))
         app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
-        let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
+        let field = app.textFields["服务器地址"]; field.tap(); field.typeText(fixtureURL)
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
         app.buttons["验证选集"].tap()
@@ -112,9 +142,9 @@ extension WebHostTests {
     }
 
     @MainActor func testSubtitleSettingsReachPlayerAndReset() {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
+        let app = makeApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
         app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
-        let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
+        let field = app.textFields["服务器地址"]; field.tap(); field.typeText(fixtureURL)
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
         app.buttons["验证字幕设置"].tap()
@@ -127,9 +157,9 @@ extension WebHostTests {
 
 extension WebHostTests {
     @MainActor private func openGestureFixture() -> XCUIApplication {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
+        let app = makeApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
         app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
-        let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
+        let field = app.textFields["服务器地址"]; field.tap(); field.typeText(fixtureURL)
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
         app.buttons["验证播放手势"].tap()
@@ -196,9 +226,9 @@ extension WebHostTests {
 
 extension WebHostTests {
     @MainActor func testBundledArtSettingsDanmakuAndReturnTransition() {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
+        let app = makeApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
         app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
-        let field = app.textFields["服务器地址"]; field.tap(); field.typeText("http://127.0.0.1:18768/sub/")
+        let field = app.textFields["服务器地址"]; field.tap(); field.typeText(fixtureURL)
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
         for (button, result) in [("验证首页资源", "四张首页图片加载通过"), ("验证主设置画质", "主设置画质校验通过"), ("验证返回转场", "返回转场全分辨率与清理通过")] {
@@ -217,9 +247,9 @@ extension WebHostTests {
 
 extension WebHostTests {
     @MainActor func testSpacePausesAfterOSDAutoHideWithoutReloading() {
-        let app=XCUIApplication();app.launchArguments=["--ui-testing","-TigerestPlaybackGesturesSeen","YES"];app.launch()
+        let app=makeApplication();app.launchArguments=["--ui-testing","-TigerestPlaybackGesturesSeen","YES"];app.launch()
         app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
-        let field=app.textFields["服务器地址"];field.tap();field.typeText("http://127.0.0.1:18768/sub/")
+        let field=app.textFields["服务器地址"];field.tap();field.typeText(fixtureURL)
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout:20))
         app.buttons["验证实体键盘"].tap()
@@ -249,9 +279,9 @@ extension WebHostTests {
 extension WebHostTests {
     /// Real read-only GitHub check through WKWebView -> native bridge -> HTTP.
     @MainActor func testIPadUpdateEntryShowsPlatformStatusWithoutInstaller() {
-        let app=XCUIApplication();app.launchArguments=["--ui-testing","-TigerestPlaybackGesturesSeen","YES"];app.launch()
+        let app=makeApplication();app.launchArguments=["--ui-testing","-TigerestPlaybackGesturesSeen","YES"];app.launch()
         app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
-        let field=app.textFields["服务器地址"];field.tap();field.typeText("http://127.0.0.1:18768/sub/")
+        let field=app.textFields["服务器地址"];field.tap();field.typeText(fixtureURL)
         app.buttons["连接服务器"].tap()
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout:20))
         let entry=app.descendants(matching:.any).matching(NSPredicate(format:"label == %@ OR label BEGINSWITH %@","客户端更新","客户端有新版本")).firstMatch
@@ -262,5 +292,84 @@ extension WebHostTests {
         XCTAssertFalse(app.buttons["立即更新"].exists);XCTAssertFalse(app.buttons["安装更新"].exists)
         let capture=XCTAttachment(screenshot:app.screenshot());capture.name="ipad-update-status";capture.lifetime = .keepAlways;add(capture)
         app.buttons["关闭"].tap()
+    }
+}
+
+
+extension WebHostTests {
+    /// Opt-in integration coverage. The supplied account and media must belong to
+    /// an isolated Jellyfin instance; credentials are injected by the test runner.
+    @MainActor func testIsolatedJellyfinLoginAndNativePlayback() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let url = env["TIGEREST_JELLYFIN_URL"],
+              let username = env["TIGEREST_JELLYFIN_USER"],
+              let password = env["TIGEREST_JELLYFIN_PASSWORD"] else {
+            throw XCTSkip("An isolated Jellyfin server and test account are required")
+        }
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = makeApplication()
+        app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]
+        app.launch()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
+        let server = app.textFields["服务器地址"]
+        server.tap(); server.typeText(url)
+        app.buttons["连接服务器"].tap()
+        let user = app.webViews.textFields.firstMatch
+        XCTAssertTrue(user.waitForExistence(timeout: 30))
+        Thread.sleep(forTimeInterval: 3) // Allow the web login document to finish replacing its form.
+        user.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        _ = app.keyboards.firstMatch.waitForExistence(timeout: 3)
+        user.typeText(username)
+        let secret = app.webViews.secureTextFields.firstMatch
+        XCTAssertTrue(secret.exists)
+        secret.tap(); secret.typeText(password + "\n")
+        // Return submits the real web form once. A second tap while its
+        // network login is pending can start another authentication request.
+        let hero = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", "同名验收作品")).firstMatch
+        XCTAssertTrue(hero.waitForExistence(timeout: 90), app.debugDescription)
+        // An optional inspector on the isolated server measures the real WK
+        // DOM and exercises visible navigation while XCTest rotates the device.
+        if env["TIGEREST_WEB_LAYOUT_AUDIT"] == "1" {
+            defer { XCUIDevice.shared.orientation = .portrait }
+            for (orientation, marker) in [(UIDeviceOrientation.portrait, "layout-portrait-passed"), (.landscapeLeft, "layout-landscape-passed")] {
+                XCUIDevice.shared.orientation = orientation
+                XCTAssertTrue(app.staticTexts[marker].waitForExistence(timeout: 240), app.debugDescription)
+                let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = marker; shot.lifetime = .keepAlways; add(shot)
+            }
+        }
+        Thread.sleep(forTimeInterval: 1) // Capture the settled entrance rather than an intermediate animation frame.
+        let home = XCTAttachment(screenshot: app.screenshot()); home.name = "isolated-jellyfin-home"; home.lifetime = .keepAlways; add(home)
+        XCTAssertTrue(hero.waitForExistence(timeout: 15), app.debugDescription)
+        hero.tap()
+        let play = app.webViews.buttons.matching(NSPredicate(format: "label == 'Play' OR label == '播放' OR label == 'Resume' OR label == '继续播放'")).firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 15), app.debugDescription)
+        play.tap()
+        let clock = app.staticTexts["playbackTime"]
+        XCTAssertTrue(clock.waitForExistence(timeout: 20), app.debugDescription)
+        func seconds() -> Int {
+            let parts = clock.label.components(separatedBy: " / ")[0].split(separator: ":").compactMap { Int($0) }
+            return parts.reduce(0) { $0 * 60 + $1 }
+        }
+        let video = app.otherElements["playerVideo"]
+        func pausePlayback() {
+            let pause = app.buttons["pause.fill"]
+            if !pause.isHittable { video.tap() }
+            XCTAssertTrue(pause.waitForExistence(timeout: 3))
+            pause.tap()
+            XCTAssertTrue(app.buttons["play.fill"].waitForExistence(timeout: 5))
+        }
+        pausePlayback()
+        let first = seconds()
+        app.buttons["play.fill"].tap()
+        Thread.sleep(forTimeInterval: 4)
+        pausePlayback()
+        let paused = seconds()
+        XCTAssertGreaterThanOrEqual(paused, first + 2)
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertLessThanOrEqual(abs(seconds() - paused), 1)
+        let frame = XCTAttachment(screenshot: app.screenshot()); frame.name = "isolated-jellyfin-native-frame"; frame.lifetime = .keepAlways; add(frame)
+        app.buttons["退出播放"].tap()
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
     }
 }

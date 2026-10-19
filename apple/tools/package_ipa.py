@@ -93,6 +93,11 @@ def package(app, output, version, platform="ipad", minimum_installation_os=None)
         require(info.get("CFBundleIcons~ipad", {}).get("CFBundlePrimaryIcon", {}).get("CFBundleIconFiles"), "iPad icon metadata missing")
     require(not list(app.rglob("*.debug.dylib")) and not list(app.rglob("__preview.dylib")), "Debug/preview build cannot be released")
     require(not list(app.rglob("*.xctest")), "Test bundles cannot be released")
+    if not television:
+        for name in ["SourceHanSansSC-Regular.otf", "LICENSE.txt"]:
+            source = ROOT / "apple/Resources/SubtitleFonts" / name
+            bundled = app / "SubtitleFonts" / name
+            require(bundled.is_file() and digest(bundled) == digest(source), f"iPad subtitle font resource differs: {name}")
     executable = info.get("CFBundleExecutable", "")
     require(executable and Path(executable).name == executable, "Invalid application executable")
     output.mkdir(parents=True, exist_ok=True)

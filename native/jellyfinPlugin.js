@@ -32,8 +32,10 @@
         this.update();
     }
     JellyfinHome.prototype.visibleTab = function () {
-        const tab = document.getElementById('homeTab');
-        return tab && tab.getClientRects().length && !tab.closest('.hide') ? tab : null;
+        // Jellyfin may retain a hidden cached home before the current page.
+        // Its duplicate ID must not prevent mounting the visible replacement.
+        return Array.from(document.querySelectorAll('[id="homeTab"]'))
+            .find(tab => tab.getClientRects().length && !tab.closest('.hide')) || null;
     };
     JellyfinHome.prototype.openFavorites = function () {
         // The legacy layout has emby-tabs; the Modern one reads the tab from the address.

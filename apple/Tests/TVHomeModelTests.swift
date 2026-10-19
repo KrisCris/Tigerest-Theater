@@ -395,6 +395,94 @@ extension TVHomeModelTests {
         XCTAssertTrue(saved.sessions.isEmpty, "a failed request is not saved as the server kind")
         XCTAssertNil(model.session?.serverKind)
     }
+
+    func testRetryIdentifiesAnOldSessionAfterPublicInfoRecovers() async throws {
+        _ = URLProtocol.registerClass(JellyfinFixtureProtocol.self)
+        addTeardownBlock { URLProtocol.unregisterClass(JellyfinFixtureProtocol.self) }
+        JellyfinFixtureProtocol.reset(infoFailures: 1)
+        let saved = TVSavedSessions(), session = try oldJellyfinSession()
+        let model = TVAppModel(fixtureMode: false, store: TVSessionStore(initialSession: session, saved: saved))
+        await model.start()
+        XCTAssertNotNil(model.error)
+        XCTAssertTrue(saved.sessions.isEmpty)
+        let previousRequests = JellyfinFixtureProtocol.requests().count
+
+        await model.retry()
+
+        XCTAssertNil(model.error, "The visible retry must recover without quitting the application")
+        XCTAssertEqual(model.session?.serverKind, .jellyfin)
+        XCTAssertEqual(saved.sessions.count, 1)
+        XCTAssertEqual(saved.sessions.last?.accessToken, session.accessToken)
+        let retried = Array(JellyfinFixtureProtocol.requests().dropFirst(previousRequests))
+        XCTAssertEqual(retried.first?.path, "/System/Info/Public")
+        XCTAssertTrue(retried.contains { $0.path == "/UserViews" })
+        for request in retried where request.path != "/System/Info/Public" {
+            XCTAssertTrue(request.authorization?.contains("Token=\"fixture\"") == true, request.path)
+            XCTAssertNil(request.embyToken, request.path)
+        }
+    }
+
+    func testAFreshStartMigratesTheUnchangedSessionAfterPublicInfoRecovers() async throws {
+        _ = URLProtocol.registerClass(JellyfinFixtureProtocol.self)
+        addTeardownBlock { URLProtocol.unregisterClass(JellyfinFixtureProtocol.self) }
+        JellyfinFixtureProtocol.reset(infoFailures: 1)
+        let saved = TVSavedSessions(), session = try oldJellyfinSession()
+        let store = TVSessionStore(initialSession: session, saved: saved)
+        let first = TVAppModel(fixtureMode: false, store: store)
+        await first.start()
+        XCTAssertNotNil(first.error)
+        XCTAssertTrue(saved.sessions.isEmpty)
+
+        let restarted = TVAppModel(fixtureMode: false, store: store)
+        await restarted.start()
+
+        XCTAssertNil(restarted.error)
+        XCTAssertEqual(saved.sessions.count, 1)
+        let migrated = try XCTUnwrap(saved.sessions.last)
+        XCTAssertEqual(migrated.serverKind, .jellyfin)
+        XCTAssertEqual(migrated.serverURL, session.serverURL)
+        XCTAssertEqual(migrated.serverID, session.serverID)
+        XCTAssertEqual(migrated.userID, session.userID)
+        XCTAssertEqual(migrated.deviceID, session.deviceID)
+        XCTAssertEqual(migrated.accessToken, session.accessToken)
+        let subsequent = TVAppModel(fixtureMode: false, store: TVSessionStore(initialSession: migrated, saved: saved))
+        await subsequent.start()
+        XCTAssertNil(subsequent.error)
+        XCTAssertEqual(subsequent.session?.serverKind, .jellyfin)
+        XCTAssertEqual(saved.sessions.count, 1, "An already migrated session is not rewritten")
+    }
+
+    func testSignOutDuringRetryDoesNotRestoreTheOldSession() async throws {
+        try await retryInterruptedByServerChange(signOut: true)
+    }
+
+    func testServerSelectionDuringRetryDoesNotSaveTheOldSession() async throws {
+        try await retryInterruptedByServerChange(signOut: false)
+    }
+
+    private func retryInterruptedByServerChange(signOut: Bool) async throws {
+        _ = URLProtocol.registerClass(JellyfinFixtureProtocol.self)
+        addTeardownBlock { URLProtocol.unregisterClass(JellyfinFixtureProtocol.self) }
+        JellyfinFixtureProtocol.reset(infoFailures: 1)
+        let saved = TVSavedSessions(), session = try oldJellyfinSession()
+        let model = TVAppModel(fixtureMode: false, store: TVSessionStore(initialSession: session, saved: saved))
+        await model.start()
+        XCTAssertNotNil(model.error)
+        JellyfinFixtureProtocol.reset(holdingInfo: true)
+
+        let retrying = Task { await model.retry() }
+        try await eventually { JellyfinFixtureProtocol.isHoldingInfo() }
+        if signOut { await model.logout() }
+        else { model.selectServer(.selfHosted); model.serverURL = "https://next.invalid" }
+        JellyfinFixtureProtocol.releaseInfo()
+        await retrying.value
+
+        XCTAssertTrue(saved.sessions.isEmpty)
+        XCTAssertNil(model.session?.serverKind)
+        if signOut { XCTAssertNil(model.session) }
+        else { XCTAssertEqual(model.serverURL, "https://next.invalid") }
+        XCTAssertFalse(JellyfinFixtureProtocol.requests().contains { $0.path == "/UserViews" })
+    }
 }
 
 private final class JellyfinFixtureProtocol: URLProtocol, @unchecked Sendable {
@@ -402,9 +490,12 @@ private final class JellyfinFixtureProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     private static var seen: [Seen] = []
     private static var holdInfo = false
+    private static var infoFailures = 0
     private static var held: JellyfinFixtureProtocol?
     private static let info = #"{"ServerName":"Jellyfin Fixture","Version":"12.2.0","ProductName":"Jellyfin Server","Id":"jellyfin-server"}"#
-    static func reset(holdingInfo: Bool = false) { lock.withLock { seen = []; holdInfo = holdingInfo; held = nil } }
+    static func reset(holdingInfo: Bool = false, infoFailures: Int = 0) {
+        lock.withLock { seen = []; holdInfo = holdingInfo; held = nil; Self.infoFailures = infoFailures }
+    }
     static func requests() -> [Seen] { lock.withLock { seen } }
     static func isHoldingInfo() -> Bool { lock.withLock { held != nil } }
     static func releaseInfo() {
@@ -427,7 +518,15 @@ private final class JellyfinFixtureProtocol: URLProtocol, @unchecked Sendable {
             return true
         }
         if hold { return }
-        if path == "/System/Info/Public" { reply(200, Self.info); return }
+        if path == "/System/Info/Public" {
+            let unavailable = Self.lock.withLock { () -> Bool in
+                guard Self.infoFailures > 0 else { return false }
+                Self.infoFailures -= 1
+                return true
+            }
+            reply(unavailable ? 503 : 200, unavailable ? "{}" : Self.info)
+            return
+        }
         // Jellyfin 12 disables the legacy X-Emby-* headers by default.
         guard embyToken == nil, authorization?.contains("Token=\"fixture\"") == true else { reply(401, "{}"); return }
         reply(200, #"{"Items":[],"TotalRecordCount":0}"#)

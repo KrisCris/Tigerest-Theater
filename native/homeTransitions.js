@@ -2,6 +2,7 @@
     'use strict';
     window.TigerestHomeTransitions?.dispose?.();
     let active = null, last = null;
+    const frozenRoots = new WeakMap();
     const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const box = node => node?.getBoundingClientRect();
     const usable = node => { const b = box(node); return node?.isConnected && b?.width > 1 && b.height > 1; };
@@ -267,7 +268,12 @@
             }
             return clone;
         }
-        const shadow = host.attachShadow({mode: 'open'}), html = document.documentElement.cloneNode(false), body = home ? document.body.cloneNode(false) : copyTree(document.body);
+        // Jellyfin's Custom Elements v0 shim traverses open shadow trees and
+        // upgrades our inert `is` attributes, reconnecting copied input widgets.
+        // A closed root keeps the static scene outside that application shim.
+        const shadow = host.attachShadow({mode: window.CustomElements?.useNative === false ? 'closed' : 'open'});
+        frozenRoots.set(host, shadow);
+        const html = document.documentElement.cloneNode(false), body = home ? document.body.cloneNode(false) : copyTree(document.body);
         html.classList.add('tigerest-motion-html'); body.classList.remove('tigerest-motion-busy');
         if (home) {
             const copyRoot = copyTree(home); body.append(copyRoot);
@@ -345,7 +351,7 @@
                 scene=cached.light;cached.light=null;
                 cached.wrapper?.remove();cached.wrapper=null;
                 scene.style.removeProperty('filter');
-                for(const n of scene.shadowRoot?.querySelectorAll('[data-tigerest-scroll]')||[]) {
+                for(const n of frozenRoots.get(scene)?.querySelectorAll('[data-tigerest-scroll]')||[]) {
                     const [x,y]=JSON.parse(n.getAttribute('data-tigerest-scroll'));
                     (job.syncs||=[]).push(()=>{n.scrollLeft=x;n.scrollTop=y;});
                 }

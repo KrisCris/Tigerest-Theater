@@ -546,6 +546,24 @@
 			<key>package</key>
 			<string>91C29761F7EEF29E6DC06BF8</string>
 		</dict>
+		<key>F8C47B4287EC8D65BA2E613B</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>folder</string>
+			<key>path</key>
+			<string>Resources/SubtitleFonts</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>08AB90A94555CBD3B2BE2AF7</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>F8C47B4287EC8D65BA2E613B</string>
+		</dict>
 		<key>9D8EABB4B9C632203EC1188C</key>
 		<dict>
 			<key>isa</key>
@@ -781,6 +799,7 @@
 			<key>files</key>
 			<array>
 				<string>56A8D05600A8536CF5036A94</string>
+				<string>08AB90A94555CBD3B2BE2AF7</string>
 				<string>0D22CACDDB1DD98A42AA6A9E</string>
 				<string>A02024E3BCA7E6CE19D8E2A1</string>
 			</array>
@@ -1360,6 +1379,7 @@
 				<string>B0587E8C67B8C8333E24A360</string>
 				<string>67E7B97EAFD0AA3CBDC83FD6</string>
 				<string>EA4EA786C5BC9B7737331310</string>
+				<string>F8C47B4287EC8D65BA2E613B</string>
 				<string>9D8EABB4B9C632203EC1188C</string>
 				<string>6B9AF8604B8E01F0D6FA89F9</string>
 				<string>F411B6DE337B11F9A0947421</string>

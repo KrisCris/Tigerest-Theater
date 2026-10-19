@@ -42,6 +42,8 @@ def generate():
         packages.append(mpv);libs.append(obj('mpvlib','XCSwiftPackageProductDependency',productName='MPVKit',package=mpv))
     native_rife=(ROOT/'Generated/NativeRIFE/source.json').exists()
     resources=[resource]
+    ref=file('Resources/SubtitleFonts','folder');files.append(ref)
+    resources.append(obj('ipad-subtitle-fonts-resource','PBXBuildFile',fileRef=ref))
     ref=file('Resources/iPad.xcassets','folder.assetcatalog');files.append(ref)
     resources.append(obj('ipad-icons-resource','PBXBuildFile',fileRef=ref))
     if native_rife:
