@@ -12,7 +12,8 @@ body{margin:0;background:#123;color:white}.page{position:fixed;inset:0;padding:3
  let snapshot;
  for(let i=0;i<120;i++){
   snapshot=await evaluate(`(()=>{const incoming=document.querySelector('.tigerest-motion-layer .tigerest-motion-frozen');const page=incoming?.shadowRoot.querySelector('#library');if(!page)return null;const s=getComputedStyle(page);return {opacity:s.opacity,filter:s.filter,transform:s.transform,incomingAnimations:incoming.getAnimations().length}})()`);
-  if(snapshot)break;await new Promise(r=>setTimeout(r,20));
+  // The copy is drawn under the cover for a few frames before it moves.
+  if(snapshot?.incomingAnimations)break;await new Promise(r=>setTimeout(r,20));
  }
  assert.ok(snapshot,'the central incoming animation was observed');
  assert.equal(snapshot.opacity,'1','the opaque cover must hide the competing page entrance until it is finished');

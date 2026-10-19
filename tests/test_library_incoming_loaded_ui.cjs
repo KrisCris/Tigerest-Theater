@@ -13,7 +13,17 @@ body{margin:0;background:#123;color:white}.page{position:fixed;inset:0;padding:3
 <div id=library class="page hide"><h1>Library</h1><div class=itemsContainer></div></div><div class="docspinner mdl-spinner"></div>
 <script src=/transitions.js></script>`},
 '/transitions.js': {path: path.join(__dirname, '../native/homeTransitions.js')}}, async ({evaluate}) => {
+    // Count frames between the copy's insertion and its first animated frame.
     const run = (loadMs) => evaluate(`(() => {
+        window.copyFrames = {drawn: 0, primedOpacity: 0, opacity: null, willChange: null};
+        (function count() {
+            const copy = document.querySelector('.tigerest-motion-layer .tigerest-motion-frozen');
+            if (copy && !copy.getAnimations().length) { copyFrames.drawn++; copyFrames.primedOpacity = Math.max(copyFrames.primedOpacity, +getComputedStyle(copy).opacity); }
+            if (copy && copy.getAnimations().length && copyFrames.opacity === null) {
+                copyFrames.opacity = +getComputedStyle(copy).opacity; copyFrames.willChange = copy.style.willChange;
+            }
+            if (copyFrames.opacity === null) requestAnimationFrame(count);
+        })();
         document.querySelector('#home').className = 'page';
         document.querySelector('#library').className = 'page hide';
         document.querySelector('.itemsContainer').replaceChildren();
@@ -33,7 +43,7 @@ body{margin:0;background:#123;color:white}.page{position:fixed;inset:0;padding:3
             const copy = await evaluate(`(() => { const incoming = document.querySelector('.tigerest-motion-layer .tigerest-motion-frozen');
                 return incoming ? {cards: incoming.shadowRoot.querySelectorAll('.card').length, spinner: !!incoming.shadowRoot.querySelector('.mdlSpinnerActive'),
                     animations: incoming.getAnimations().length} : null; })()`);
-            if (copy) return copy;
+            if (copy && copy.animations) return copy;
             await new Promise(r => setTimeout(r, 10));
         }
         return null;
@@ -44,6 +54,10 @@ body{margin:0;background:#123;color:white}.page{position:fixed;inset:0;padding:3
     assert.equal(copy.cards, 12, 'the incoming copy holds the loaded view: ' + JSON.stringify(copy));
     assert.equal(copy.spinner, false, 'the incoming copy does not show the loading spinner');
     assert.ok(copy.animations > 0, 'the central incoming animation still runs');
+    const primed = await evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(copyFrames))))');
+    assert.ok(primed.drawn >= 2, 'the copy is drawn under the cover before it moves: ' + JSON.stringify(primed));
+    assert.ok(primed.opacity !== null && primed.primedOpacity <= .01, 'the copy is not visible before its animation: ' + JSON.stringify(primed));
+    assert.match(primed.willChange, /transform/, 'the copy keeps its own layer from priming into the animation');
     await evaluate('fixtureTransition');
     const waited = await evaluate('TigerestHomeTransitions.last.incomingWaitMs');
     assert.ok(waited >= 300 && waited < 1000, 'the cover waited for the view to load: ' + waited);
