@@ -297,8 +297,8 @@ extension WebHostTests {
 
 
 extension WebHostTests {
-    /// Opt-in integration coverage. The supplied account and media must belong to
-    /// an isolated Jellyfin instance; credentials are injected by the test runner.
+    /// Opt-in integration coverage using an isolated instance or a dedicated
+    /// remote test account; credentials are injected by the test runner.
     @MainActor func testIsolatedJellyfinLoginAndNativePlayback() throws {
         let env = ProcessInfo.processInfo.environment
         guard let url = env["TIGEREST_JELLYFIN_URL"],
@@ -316,6 +316,10 @@ extension WebHostTests {
         server.tap(); server.typeText(url)
         app.buttons["连接服务器"].tap()
         let user = app.webViews.textFields.firstMatch
+        let manualLogin = app.webViews.buttons.matching(NSPredicate(format: "label == '手动登录' OR label == 'Manual Login' OR label == 'Manual login'")).firstMatch
+        let loginReady = expectation(for: NSPredicate { _, _ in user.exists || manualLogin.exists }, evaluatedWith: nil)
+        wait(for: [loginReady], timeout: 45)
+        if !user.exists { manualLogin.tap() }
         XCTAssertTrue(user.waitForExistence(timeout: 30))
         Thread.sleep(forTimeInterval: 3) // Allow the web login document to finish replacing its form.
         user.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
@@ -326,7 +330,16 @@ extension WebHostTests {
         secret.tap(); secret.typeText(password + "\n")
         // Return submits the real web form once. A second tap while its
         // network login is pending can start another authentication request.
-        let hero = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", "同名验收作品")).firstMatch
+        if let libraryName = env["TIGEREST_JELLYFIN_TEST_LIBRARY_NAME"] {
+            let library = app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", libraryName)).firstMatch
+            XCTAssertTrue(library.waitForExistence(timeout: 90))
+            // Animation idle waiting is disabled only in the physical-device
+            // harness; let the entrance settle before targeting a library.
+            Thread.sleep(forTimeInterval: 3)
+            library.tap()
+        }
+        let itemTitle = env["TIGEREST_JELLYFIN_TEST_ITEM_TITLE"] ?? "同名验收作品"
+        let hero = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", itemTitle)).firstMatch
         XCTAssertTrue(hero.waitForExistence(timeout: 90), app.debugDescription)
         // An optional inspector on the isolated server measures the real WK
         // DOM and exercises visible navigation while XCTest rotates the device.
@@ -341,7 +354,15 @@ extension WebHostTests {
         Thread.sleep(forTimeInterval: 1) // Capture the settled entrance rather than an intermediate animation frame.
         let home = XCTAttachment(screenshot: app.screenshot()); home.name = "isolated-jellyfin-home"; home.lifetime = .keepAlways; add(home)
         XCTAssertTrue(hero.waitForExistence(timeout: 15), app.debugDescription)
+        // Touching a small, unselected cover previews it first. The hero then
+        // acquires that title and becomes the first matching button.
+        let selectingCover = hero.frame.height < app.frame.height * 0.3
         hero.tap()
+        if selectingCover {
+            let previewReady = expectation(for: NSPredicate { _, _ in hero.exists && hero.frame.height >= app.frame.height * 0.3 }, evaluatedWith: nil)
+            wait(for: [previewReady], timeout: 5)
+            hero.tap()
+        }
         let play = app.webViews.buttons.matching(NSPredicate(format: "label == 'Play' OR label == '播放' OR label == 'Resume' OR label == '继续播放'")).firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 15), app.debugDescription)
         play.tap()
@@ -368,6 +389,12 @@ extension WebHostTests {
         XCTAssertGreaterThanOrEqual(paused, first + 2)
         Thread.sleep(forTimeInterval: 1.5)
         XCTAssertLessThanOrEqual(abs(seconds() - paused), 1)
+        if env["TIGEREST_JELLYFIN_TEST_ITEM_TITLE"] != nil {
+            app.buttons["goforward.10"].tap()
+            let sought = NSPredicate { _, _ in seconds() >= paused + 9 }
+            let seek = expectation(for: sought, evaluatedWith: nil)
+            wait(for: [seek], timeout: 15)
+        }
         let frame = XCTAttachment(screenshot: app.screenshot()); frame.name = "isolated-jellyfin-native-frame"; frame.lifetime = .keepAlways; add(frame)
         app.buttons["退出播放"].tap()
         XCTAssertTrue(play.waitForExistence(timeout: 10))

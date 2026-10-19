@@ -36,16 +36,24 @@ final class TVNavigationTests: XCTestCase {
         try select("tv.login.submit", in: app)
         let hero = app.buttons["tv.home.hero"]
         XCTAssertTrue(hero.waitForExistence(timeout: 30), app.debugDescription)
-        XCTAssertTrue(hero.label.contains("同名验收作品"))
-        let movies = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.library.' AND label CONTAINS 'Movies'")).firstMatch
-        XCTAssertTrue(movies.exists)
-        try select(movies.identifier, in: app)
-        let movie = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.item.' AND label CONTAINS %@", "同名验收作品")).firstMatch
-        XCTAssertTrue(movie.waitForExistence(timeout: 10))
-        try select(movie.identifier, in: app)
+        if let itemTitle = env["TIGEREST_JELLYFIN_TEST_ITEM_TITLE"] {
+            if let libraryID = env["TIGEREST_JELLYFIN_TEST_LIBRARY_ID"] {
+                try focus("tv.library." + libraryID, in: app)
+            }
+            expect("The selected test library previews the intended item", timeout: 30) { hero.label.contains(itemTitle) }
+            try select("tv.home.hero", in: app)
+        } else {
+            XCTAssertTrue(hero.label.contains("同名验收作品"))
+            let movies = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.library.' AND label CONTAINS 'Movies'")).firstMatch
+            XCTAssertTrue(movies.exists)
+            try select(movies.identifier, in: app)
+            let movie = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.item.' AND label CONTAINS %@", "同名验收作品")).firstMatch
+            XCTAssertTrue(movie.waitForExistence(timeout: 10))
+            try select(movie.identifier, in: app)
+        }
         XCTAssertTrue(app.buttons["tv.play"].waitForExistence(timeout: 10))
         try select("tv.play", in: app)
-        expect("Real Jellyfin playback advances through MPV", timeout: 20) { self.position(in: app) >= 2 }
+        expect("Real Jellyfin playback advances through MPV", timeout: 45) { self.position(in: app) >= 2 }
         XCUIRemote.shared.press(.playPause)
         expect("Remote pauses real server playback") { app.buttons["tv.player.pause"].label.contains("播放") }
         let paused = position(in: app)
@@ -293,11 +301,15 @@ final class TVNavigationTests: XCTestCase {
 
     /// Exercise the focus engine and remote, including scrolling to offscreen rows.
     private func select(_ identifier: String, in app: XCUIApplication) throws {
+        try focus(identifier, in: app)
+        XCUIRemote.shared.press(.select)
+    }
+
+    private func focus(_ identifier: String, in app: XCUIApplication) throws {
         let target = app.buttons[identifier]
         XCTAssertTrue(target.waitForExistence(timeout: 8), "Missing button: \(identifier)")
         for _ in 0..<24 {
             if target.hasFocus {
-                XCUIRemote.shared.press(.select)
                 return
             }
             let current = app.buttons.allElementsBoundByIndex.first { $0.hasFocus }
@@ -323,6 +335,9 @@ final class TVNavigationTests: XCTestCase {
 
     private func position(in app: XCUIApplication) -> Int {
         let element = app.staticTexts["tv.player.position"]
+        if !element.exists && app.buttons["tv.player.reveal"].exists {
+            XCUIRemote.shared.press(.down)
+        }
         guard element.exists, let elapsed = element.label.components(separatedBy: " / ").first else { return -1 }
         return clockSeconds(elapsed)
     }
