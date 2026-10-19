@@ -63,9 +63,11 @@
         if (button) { if (!button.classList.contains('emby-tab-button-active')) button.click(); return; }
         if (Date.now() < until) setTimeout(() => selectLegacyTab(index, until), 50);
     }
+    let removeCardNavigation = null;
     function attachMotion({appRouter, connections}) {
         const motion = window.TigerestHomeMotion;
         if (!motion) return null;
+        removeCardNavigation?.();
         const go = replaceHash;
         const pageJs = {
             replace(target) {
@@ -92,7 +94,34 @@
         };
         // back() and show() wait on any earlier show() that never saw its view.
         const settle = result => Promise.race([result, new Promise(resolve => setTimeout(resolve, 2500))]);
-        return motion.attach({router: appRouter, pageJs, manager: connections, viewManager: {currentViewInfo: jellyfinRoute}, libraryUrl, settle});
+        const dispose = motion.attach({router: appRouter, pageJs, manager: connections, viewManager: {currentViewInfo: jellyfinRoute}, libraryUrl, settle});
+        // Modern React cards use a plain overlay link instead of the legacy
+        // itemAction handler. Send that link through the same router hook as
+        // the gallery so WKWebView retains the document and return context.
+        const openCard = event => {
+            if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            const anchor = event.target.closest?.('.card .cardScalable > a[href]');
+            if (!anchor || anchor.matches('.itemAction,.cardImageContainer') || anchor.hasAttribute('download')
+                || (anchor.target && anchor.target !== '_self')
+                || event.target.closest('button,input,select,textarea,[data-action]')) return;
+            const card = anchor.closest('.card[data-id]'), item = card?.dataset;
+            if (!item || !['Movie', 'Series', 'Season', 'Episode', 'Video'].includes(item.type)) return;
+            const url = new URL(anchor.href, location.href), current = new URL(location.href);
+            const [path, query] = url.hash.replace(/^#!?/, '').split('?'), params = new URLSearchParams(query);
+            if (url.origin !== current.origin || url.pathname !== current.pathname || url.search !== current.search
+                || path !== '/details' || params.get('id') !== item.id) return;
+            const serverId = item.serverid || connections.currentApiClient().serverId();
+            if (params.has('serverId') && params.get('serverId') !== serverId) return;
+            event.preventDefault(); event.stopPropagation();
+            appRouter.showItem({Id: item.id, Type: item.type, ServerId: serverId}, serverId);
+        };
+        document.addEventListener('click', openCard, true);
+        const remove = () => {
+            document.removeEventListener('click', openCard, true);
+            if (removeCardNavigation === remove) removeCardNavigation = null;
+        };
+        removeCardNavigation = remove;
+        return () => { remove(); dispose?.(); };
     }
 
     // Jellyfin's desktop detail page floats a 25vw poster over the backdrop and

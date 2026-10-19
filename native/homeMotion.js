@@ -176,7 +176,7 @@
                 return navigate();
             };
             const capture = event => {
-                const node = event.target.closest?.('.cardImageContainer,.cardOverlayContainer,img.cardImage,.listItemImage');
+                const node = event.target.closest?.('.cardImageContainer,.cardOverlayContainer,img.cardImage,.listItemImage,.card .cardScalable > a[href]');
                 const card = node?.closest('.card,.listItem,[data-id]'), item = itemFromCard(card);
                 if (item && !motion.busy) pressedPoster = {id: String(item.Id), item, node: card.querySelector('img.cardImage') || card.querySelector('img') || card.querySelector('.cardImageContainer') || card.querySelector('.listItemImage') || node, at: Date.now()};
             };
