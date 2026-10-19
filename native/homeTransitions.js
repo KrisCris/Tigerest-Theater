@@ -502,7 +502,13 @@
             cover.style.background='#0b0d12';const previous=page(),result=await navigate();
             const target=await wait(job,()=>{const n=page();return n && (n!==previous || (samePage && !gallery.active)) ? n : null;});
             if (target && !job.signal.aborted) {
-                await sleep(job,100);const incoming=frozen(job,false);cover.replaceChildren(incoming);sync(job);
+                await sleep(job,100);
+                // The opaque cover hides the page's own entrance. Snapshot its
+                // final pixels, not an early low-opacity/blurred frame that
+                // would suddenly become sharp when the cover is removed.
+                // The central incoming animation below still runs in full.
+                for (const a of target.getAnimations?.()||[]) if (Number.isFinite(a.effect?.getComputedTiming().endTime)) {try{a.finish();}catch{}}
+                const incoming=frozen(job,false);cover.replaceChildren(incoming);sync(job);
                 await animate(job,incoming,[{opacity:0,transform:'scale(.82)',offset:0},{opacity:1,transform:'scale(1.008)',offset:.82},{opacity:1,transform:'none',offset:1}],{duration:460,easing:'cubic-bezier(.16,.8,.22,1)'});
             }
             return result;
