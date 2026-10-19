@@ -226,6 +226,24 @@
 			<key>fileRef</key>
 			<string>63344657058E0EA1F8EFD364</string>
 		</dict>
+		<key>4CA1E9A6E3B1795676DF7618</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>TV/TVServerPickerView.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>539086762C3705C4EF934B3D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>4CA1E9A6E3B1795676DF7618</string>
+		</dict>
 		<key>E1D1B199775576170174B6A4</key>
 		<dict>
 			<key>isa</key>
@@ -645,6 +663,7 @@
 				<string>B5D9A930288B403E180AEFED</string>
 				<string>C9BD21996FF49BBC99333455</string>
 				<string>866B18FA05402F88E614313D</string>
+				<string>539086762C3705C4EF934B3D</string>
 				<string>32A913174C222D4A29AA7490</string>
 				<string>DAB69B208C4A7FBA705F36D6</string>
 				<string>5E1F04910A77913C0A1EA48D</string>
@@ -957,6 +976,7 @@
 				<string>84786CAF55D8F9089AEAE8EC</string>
 				<string>6BABB3B78EC3C2377591A44C</string>
 				<string>63344657058E0EA1F8EFD364</string>
+				<string>4CA1E9A6E3B1795676DF7618</string>
 				<string>E1D1B199775576170174B6A4</string>
 				<string>79CEDE3E484F285D611783BB</string>
 				<string>5BD9AB05FC2AAED816870A96</string>

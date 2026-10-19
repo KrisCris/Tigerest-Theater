@@ -46,3 +46,24 @@ import Testing
     let long = "{\"version\":1,\"servers\":[],\"padding\":\"" + String(repeating: "x", count: 5000) + "\"}"
     #expect(try policy.validate(section: "main", key: "knownServers", value: .string(long)) == .string(long))
 }
+
+@Test func nativeServerHistoryKeepsSeparateSessionsAndOnlyExplicitLogoutClearsAuthentication() throws {
+    func session(_ address: String, _ token: String) -> EmbySession {
+        EmbySession(serverURL: address, userID: "test-user", accessToken: token, deviceID: "fixture", serverID: "id", serverKind: .jellyfin)
+    }
+    let a = session("https://same.test/a/", "token-a"), b = session("https://same.test/b/", "token-b")
+    var state = ServerSessionHistory(current: a)
+    try state.commit(b, mode: "custom", at: 2)
+    #expect(ServerHistory.parse(state.history).map(\.address) == [b.serverURL, a.serverURL])
+    #expect(state.cached(key: "custom:" + a.serverURL)?.accessToken == "token-a")
+    let restored = try JSONDecoder().decode(ServerSessionHistory.self, from: JSONEncoder().encode(state))
+    #expect(restored.current?.serverURL == b.serverURL)
+    try state.forget(key: "custom:" + a.serverURL)
+    #expect(state.cached(key: "custom:" + a.serverURL)?.accessToken == "token-a")
+    #expect(throws: (any Error).self) { try state.forget(key: "custom:" + b.serverURL) }
+    state.logout()
+    #expect(state.current == nil)
+    #expect(state.cached(key: "custom:" + b.serverURL) == nil)
+    #expect(state.cached(key: "custom:" + a.serverURL)?.accessToken == "token-a")
+    #expect(!state.history.contains("token-"))
+}

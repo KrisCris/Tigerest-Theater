@@ -81,10 +81,10 @@ async function devtools(url) {
         requests.push(`${req.method} ${req.url}${req.headers['sec-fetch-mode'] ? ' (page)' : ''}`);
         if (req.url === '/disconnect/web/index.html') {
             req.socket.destroy();
-        } else if (req.url === '/emby/System/Info/Public' || req.url === '/badweb/System/Info/Public' || req.url === '/disconnect/System/Info/Public') {
+        } else if (req.url === '/emby/System/Info/Public' || req.url === '/badweb/System/Info/Public' || req.url === '/disconnect/System/Info/Public' || req.url === '/jellyfin/System/Info/Public') {
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ Id: 'onboarding-test-server', ServerName: 'Fixture' }));
-        } else if (req.url === '/emby/web/index.html') {
+            res.end(JSON.stringify({ Id: 'onboarding-test-server', ServerName: 'Fixture', Version: req.url.startsWith('/jellyfin/') ? '10.11.11' : '4.9' }));
+        } else if (req.url === '/emby/web/index.html' || req.url === '/jellyfin/web/index.html') {
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.end('<!doctype html><title>Fixture Emby</title><p id="fixture">自己的 Emby 已连接</p>');
         } else {
@@ -155,6 +155,8 @@ async function devtools(url) {
             const config = JSON.parse(fs.readFileSync(path.join(profile, 'Tigerest Theater.conf'), 'utf8'));
             return config.sections.main.userWebClient === `${origin}/emby` && config.sections.main.serverConnectionMode === 'custom';
         }, 'persisted custom address');
+        const remembered = () => JSON.parse(JSON.parse(fs.readFileSync(path.join(profile, 'Tigerest Theater.conf'), 'utf8')).sections.main.knownServers).servers;
+        assert.deepEqual(remembered().map(x => x.address), [`${origin}/emby/`], 'real Qt commits remembered metadata after HTML success');
         const nativeChecks = requests.filter(value => value === 'GET /emby/System/Info/Public').length;
         await cdp.evaluate("window.tigerestSwitchServer()");
         await until(() => cdp.evaluate("Boolean(document.querySelector('#choose-custom') && window.api && !document.querySelector('#choose-custom').disabled)"), 'explicit server choices');
@@ -185,12 +187,26 @@ async function devtools(url) {
         assert.equal(JSON.parse(fs.readFileSync(path.join(profile, 'Tigerest Theater.conf'), 'utf8')).sections.main.userWebClient, `${origin}/emby`);
         await cdp.evaluate("document.querySelector('#cancel-switch-button').click()");
         await until(() => cdp.evaluate("Boolean(document.querySelector('#fixture'))"), 'cancel after disconnected document');
+        assert.deepEqual(remembered().map(x => x.address), [`${origin}/emby/`], 'failed and cancelled HTML loads never enter history');
+        await cdp.evaluate("window.tigerestSwitchServer()");
+        await until(() => cdp.evaluate("Boolean(document.querySelector('#choose-custom') && window.api && !document.querySelector('#choose-custom').disabled)"), 'chooser before second base path');
+        await cdp.evaluate("document.querySelector('#choose-custom').click()");
+        await submit(`${origin}/jellyfin`);
+        await until(() => cdp.evaluate("location.pathname === '/jellyfin/web/index.html' && !!document.querySelector('#fixture')"), 'second server loaded');
+        assert.deepEqual(remembered().map(x => x.address), [`${origin}/jellyfin/`, `${origin}/emby/`], 'same hostname and server ID retain different base paths');
+        await cdp.evaluate("window.tigerestSwitchServer()");
+        await until(() => cdp.evaluate("document.querySelectorAll('.saved-server-open').length === 2"), 'saved cards');
+        await cdp.evaluate(`document.querySelector('[data-key="custom:${origin}/emby/"] .saved-server-open').click()`);
+        await until(() => cdp.evaluate("location.pathname === '/emby/web/index.html' && !!document.querySelector('#fixture')"), 'saved card returns to first server');
+        assert.deepEqual(remembered().map(x => x.address), [`${origin}/emby/`, `${origin}/jellyfin/`]);
+        assert.equal(await cdp.evaluate("JSON.parse(localStorage.getItem('servercredentials3')).Servers[0].Id"), 'onboarding-test-server');
+        const beforeRestart = remembered();
         await stop();
         await launch();
         await until(() => cdp.evaluate("Boolean(document.querySelector('#fixture'))"), 'saved server reconnection');
-        assert.equal(requests.filter(value => value === 'GET /emby/System/Info/Public').length, 2, 'one native connection check per launch');
+        assert.deepEqual(remembered(), beforeRestart, 'restart retains both records and last connection order');
         assert.ok(!requests.some(value => value.startsWith('HEAD ')), 'unnecessary HEAD redirect check');
-        console.log('PASS: real Qt startup, errors, exact port/path, explicit switch without reconnect, saved address and credentials after cancel, persistent reconnection');
+        console.log('PASS: real Qt startup, errors, exact port/path, explicit switch without reconnect, saved address and credentials after cancel, persistent reconnection, native history rollback and base-path card return');
     } catch(error) {
         console.error('Native startup diagnostics', startupErrors);
         try { console.error('Navigation history', await cdp.send('Page.getNavigationHistory')); } catch {}

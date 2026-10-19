@@ -36,9 +36,10 @@ struct TVRootView: View {
             .padding(.vertical, 32)
         }
         .preferredColorScheme(.dark)
-        .modifier(TVExitHandler(enabled: !showQuality && (model.canGoBack || (!model.isAuthenticated && model.serverMode != nil))) {
+        .modifier(TVExitHandler(enabled: !showQuality && !model.showServerPicker && (model.canGoBack || (!model.isAuthenticated && model.serverMode != nil))) {
             model.handleExit(from: exitContext)
         })
+        .fullScreenCover(isPresented: $model.showServerPicker, onDismiss: { model.closeServerSettings() }) { TVServerPickerView(model: model) }
         .fullScreenCover(isPresented: $showQuality) { TVQualitySettings(player: model.player) }
         .onChange(of: model.focusTarget) { _, target in focused = target }
     }
@@ -66,6 +67,8 @@ struct TVRootView: View {
                 ProgressView().accessibilityLabel("正在加载")
             }
             if model.isAuthenticated {
+                Button { model.openServerSettings() } label: { Label("服务器", systemImage: "server.rack") }
+                    .accessibilityIdentifier("tv.servers").focused($focused, equals: "tv.servers")
                 Button { showQuality = true } label: { Label("画质", systemImage: "sparkles.tv") }
                     .accessibilityIdentifier("tv.quality")
                     .focused($focused, equals: "tv.quality")
@@ -158,7 +161,7 @@ struct TVRootView: View {
     }
 }
 
-private struct TVLoginView: View {
+struct TVLoginView: View {
     @ObservedObject var model: TVAppModel
     @State private var username = ""
     @State private var password = ""
@@ -173,9 +176,11 @@ private struct TVLoginView: View {
                     .font(.title3).foregroundStyle(.secondary).lineSpacing(10)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 if let mode = model.serverMode {
                     Text(mode == .dedicated ? "专属服务器" : "自建服务器").font(.title.bold())
+                    if let error = model.error { Text(error).font(.callout).foregroundStyle(.orange) }
                     if mode == .selfHosted {
                         TextField("服务器地址（含 http:// 或 https://）", text: $model.serverURL)
                             .accessibilityIdentifier("tv.login.server")
@@ -206,6 +211,7 @@ private struct TVLoginView: View {
                     }
                     .padding(.top, 8)
                 } else {
+                    TVServerListView(model: model)
                     Text("连接服务器").font(.title.bold())
                     modeButton("专属服务器", subtitle: "自动选择可用线路", symbol: "sparkles.tv", mode: .dedicated)
                         .accessibilityIdentifier("tv.mode.dedicated")
@@ -215,12 +221,11 @@ private struct TVLoginView: View {
                         .focused($focused, equals: "selfHosted")
                 }
             }
-            .frame(width: 650)
-            .disabled(model.busy)
+            }.frame(width: 650)
         }
         .padding(.horizontal, 30)
         .frame(maxHeight: .infinity)
-        .onAppear { focused = "dedicated" }
+        .onAppear { focused = model.serverMode == nil ? "dedicated" : model.serverMode == .selfHosted ? "server" : "username" }
         .onChange(of: model.serverMode) { _, mode in
             password = ""
             focused = mode == nil ? "dedicated" : mode == .selfHosted ? "server" : "username"

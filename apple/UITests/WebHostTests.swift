@@ -53,7 +53,7 @@ final class WebHostTests: XCTestCase {
             app.webViews.buttons["检查保存地址和会话"].tap()
             let saved = app.webViews.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '保存地址 '")).firstMatch
             XCTAssertTrue(saved.waitForExistence(timeout: 5))
-            XCTAssertTrue(saved.label.contains(original) && saved.label.contains("模式 custom") && saved.label.contains("会话 original-session") && saved.label.contains("缓存 150"))
+            XCTAssertTrue(saved.label.contains(original) && saved.label.contains("模式 custom") && saved.label.contains("会话 original-session") && saved.label.contains("缓存 150") && saved.label.contains("历史 selection-old"))
         }
         app.webViews.buttons["检查非法切服目标"].tap()
         XCTAssertTrue(app.staticTexts["非法目标和模式已拒绝"].waitForExistence(timeout: 5))
@@ -69,6 +69,92 @@ final class WebHostTests: XCTestCase {
         app.webViews.buttons["检查新页历史"].tap()
         XCTAssertTrue(app.staticTexts["新页历史与保存地址通过"].waitForExistence(timeout: 5))
     }
+    @MainActor func testRememberedServersConnectEditRemoveAndReturn() {
+        continueAfterFailure = false
+        let base = URL(string: fixtureURL)!.deletingLastPathComponent().absoluteString
+        let app = makeApplication(); app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]; app.launch()
+        func enter(_ suffix: String) {
+            let field = app.textFields["服务器地址"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5)); field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+            let old = field.value as? String ?? ""
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old == "服务器地址" ? 0 : old.count) + base + suffix)
+            XCTAssertEqual(field.value as? String, base + suffix)
+            app.buttons["连接服务器"].tap()
+        }
+        func chooser() {
+            Thread.sleep(forTimeInterval: 0.8) // Let the previous sheet finish dismissing.
+            app.webViews.buttons["切换服务器"].tap()
+            XCTAssertTrue(app.staticTexts["已连接的服务器"].waitForExistence(timeout: 5))
+        }
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap(); enter("selection-old")
+        XCTAssertTrue(app.staticTexts["事务页面 selection-old 就绪"].waitForExistence(timeout: 15))
+        chooser()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap(); enter("selection-new")
+        XCTAssertTrue(app.staticTexts["事务页面 selection-new 就绪"].waitForExistence(timeout: 15))
+        chooser()
+        let oldKey = "custom:" + base + "selection-old/"
+        let newKey = "custom:" + base + "selection-new/"
+        XCTAssertTrue(app.buttons["server.connect." + oldKey].exists)
+        XCTAssertFalse(app.buttons["server.remove." + newKey].exists)
+        app.buttons["server.connect." + oldKey].tap()
+        XCTAssertTrue(app.staticTexts["事务页面 selection-old 就绪"].waitForExistence(timeout: 15))
+        chooser()
+        app.buttons["server.edit." + newKey].tap(); enter("selection-edited")
+        XCTAssertTrue(app.staticTexts["事务页面 selection-edited 就绪"].waitForExistence(timeout: 15))
+        chooser()
+        XCTAssertFalse(app.buttons["server.connect." + newKey].exists)
+        app.buttons["server.remove." + oldKey].tap()
+        XCTAssertTrue(app.buttons["确认移除"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.8) // External audit disables idle waits; let the popover reach its final position.
+        app.buttons["确认移除"].tap()
+        XCTAssertTrue(app.buttons["server.connect." + oldKey].waitForNonExistence(timeout: 5))
+        app.buttons["取消"].tap()
+        XCTAssertTrue(app.staticTexts["事务页面 selection-edited 就绪"].waitForExistence(timeout: 5))
+        app.terminate(); app.launchArguments.append("--ui-testing-keep-profile"); app.launch()
+        XCTAssertTrue(app.staticTexts["事务页面 selection-edited 就绪"].waitForExistence(timeout: 15))
+        chooser()
+        XCTAssertTrue(app.buttons["server.connect.custom:" + base + "selection-edited/"].exists)
+        XCTAssertFalse(app.buttons["server.connect." + oldKey].exists)
+        app.buttons["管理配置档"].tap()
+        let name = app.textFields["名称"]; XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("History isolation")
+        app.buttons["创建"].tap()
+        XCTAssertTrue(app.buttons["连接自建 Emby / Jellyfin 服务器"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["已连接的服务器"].exists)
+        app.buttons["管理配置档"].tap()
+        XCTAssertTrue(app.buttons["默认配置"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.8)
+        app.buttons["默认配置"].tap()
+        XCTAssertTrue(app.staticTexts["事务页面 selection-edited 就绪"].waitForExistence(timeout: 15))
+        chooser()
+        XCTAssertTrue(app.buttons["server.connect.custom:" + base + "selection-edited/"].exists)
+        app.buttons["取消"].tap()
+    }
+
+    @MainActor func testProfileStartupSurvivesOldChooserDismissal() throws {
+        guard ProcessInfo.processInfo.environment["TIGEREST_TEST_PRESET_URL"] != nil else {
+            throw XCTSkip("Build the isolated validation app with a fixture-only server_defaults.json")
+        }
+        continueAfterFailure = false
+        let base = URL(string: fixtureURL)!.deletingLastPathComponent().absoluteString
+        let app = makeApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
+        let address = app.textFields["服务器地址"]; address.tap(); address.typeText(base + "selection-old")
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["事务页面 selection-old 就绪"].waitForExistence(timeout: 15))
+        app.webViews.buttons["设置专属启动测试"].tap()
+        XCTAssertTrue(app.staticTexts["专属启动设置就绪"].waitForExistence(timeout: 5))
+        app.webViews.buttons["切换服务器"].tap()
+        XCTAssertTrue(app.buttons["管理配置档"].waitForExistence(timeout: 5)); Thread.sleep(forTimeInterval: 0.8)
+        app.buttons["管理配置档"].tap()
+        let name = app.textFields["名称"]; XCTAssertTrue(name.waitForExistence(timeout: 5)); Thread.sleep(forTimeInterval: 0.8)
+        name.tap(); name.typeText("Startup isolation"); app.buttons["创建"].tap()
+        XCTAssertTrue(app.buttons["连接自建 Emby / Jellyfin 服务器"].waitForExistence(timeout: 5)); Thread.sleep(forTimeInterval: 0.8)
+        app.buttons["管理配置档"].tap()
+        XCTAssertTrue(app.buttons["默认配置"].waitForExistence(timeout: 5)); Thread.sleep(forTimeInterval: 0.8)
+        app.buttons["默认配置"].tap()
+        XCTAssertTrue(app.staticTexts["事务页面 selection-delayed 就绪"].waitForExistence(timeout: 25), "Dismissing the old profile chooser must not cancel the selected profile's dedicated startup")
+    }
+
     @MainActor func testSPAPageHideAndRealDocumentReplacementKeepBridgeLifecycleCorrect() {
         let app = makeApplication()
         app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]
@@ -413,13 +499,14 @@ extension WebHostTests {
         // Touching a small, unselected cover previews it first. The hero then
         // acquires that title and becomes the first matching button.
         let selectingCover = hero.frame.height < app.frame.height * 0.3
+        let play = app.webViews.buttons.matching(NSPredicate(format: "label == 'Play' OR label == '播放' OR label == 'Resume' OR label == '继续播放'")).firstMatch
         hero.tap()
         if selectingCover {
-            let previewReady = expectation(for: NSPredicate { _, _ in hero.exists && hero.frame.height >= app.frame.height * 0.3 }, evaluatedWith: nil)
-            wait(for: [previewReady], timeout: 5)
-            hero.tap()
+            // Library cards open details directly; home rail cards preview the hero.
+            let previewReady = expectation(for: NSPredicate { _, _ in play.exists || (hero.exists && hero.frame.height >= app.frame.height * 0.3) }, evaluatedWith: nil)
+            wait(for: [previewReady], timeout: 10)
+            if !play.exists { hero.tap() }
         }
-        let play = app.webViews.buttons.matching(NSPredicate(format: "label == 'Play' OR label == '播放' OR label == 'Resume' OR label == '继续播放'")).firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 15), app.debugDescription)
         play.tap()
         let clock = app.staticTexts["playbackTime"]

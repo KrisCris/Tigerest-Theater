@@ -84,6 +84,63 @@ final class TVNavigationTests: XCTestCase {
         XCTAssertTrue(app.buttons["tv.mode.selfHosted"].waitForExistence(timeout: 5))
     }
 
+    func testRememberedServersSwitchAndRetainSessions() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let bundle = env["TIGEREST_JELLYFIN_TEST_BUNDLE"], bundle.hasPrefix("top.tigerest.theater.tv."),
+              let a = env["TIGEREST_JELLYFIN_URL"], let userA = env["TIGEREST_JELLYFIN_USER"], let passwordA = env["TIGEREST_JELLYFIN_PASSWORD"],
+              let b = env["TIGEREST_SECOND_URL"], let userB = env["TIGEREST_SECOND_USER"], let passwordB = env["TIGEREST_SECOND_PASSWORD"] else {
+            throw XCTSkip("Two isolated servers and an independent validation bundle are required")
+        }
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: bundle); app.launch()
+        if app.buttons["tv.logout"].waitForExistence(timeout: 3) { try select("tv.logout", in: app) }
+        func enter(_ field: XCUIElement, _ value: String) throws {
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            for _ in 0..<16 {
+                if field.hasFocus { break }
+                let current = app.descendants(matching: .any).allElementsBoundByIndex.first { $0.hasFocus }
+                XCUIRemote.shared.press((current?.frame.midY ?? 0) < field.frame.midY ? .down : .up)
+            }
+            XCTAssertTrue(field.hasFocus); XCUIRemote.shared.press(.select)
+            field.typeText(value); XCUIRemote.shared.press(.menu)
+        }
+        func login(_ url: String, _ user: String, _ password: String) throws {
+            try enter(app.textFields["tv.login.server"], url)
+            try enter(app.textFields["tv.login.username"], user)
+            try enter(app.secureTextFields["tv.login.password"], password)
+            try select("tv.login.submit", in: app)
+            XCTAssertTrue(app.buttons["tv.home.hero"].waitForExistence(timeout: 30))
+            expect("The server picker closes after successful login") { !app.buttons["tv.servers.cancel"].exists }
+        }
+        func key(_ url: String) -> String { "custom:" + (url.hasSuffix("/") ? url : url + "/") }
+        try select("tv.mode.selfHosted", in: app); try login(a, userA, passwordA)
+        try select("tv.servers", in: app)
+        XCTAssertTrue(app.buttons["tv.server.connect." + key(a)].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["tv.server.remove." + key(a)].exists)
+        try select("tv.servers.add", in: app); try login(b, userB, passwordB)
+        try select("tv.servers", in: app)
+        try select("tv.server.connect." + key(a), in: app)
+        expect("A cached session returns without credentials", timeout: 30) { !app.buttons["tv.servers.cancel"].exists && app.buttons["tv.home.hero"].exists }
+        try select("tv.servers", in: app)
+        try select("tv.server.edit." + key(b), in: app)
+        XCTAssertTrue(app.textFields["tv.login.server"].waitForExistence(timeout: 5))
+        XCTAssertTrue((app.textFields["tv.login.server"].value as? String)?.hasPrefix(b) == true)
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(app.buttons["tv.server.connect." + key(a)].waitForExistence(timeout: 5))
+        try select("tv.server.remove." + key(b), in: app)
+        let confirm = app.buttons["确认移除"]; XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        try select("确认移除", in: app)
+        expect("Removal only removes the remembered record") { !app.buttons["tv.server.connect." + key(b)].exists }
+        try select("tv.servers.cancel", in: app)
+        XCTAssertTrue(app.buttons["tv.home.hero"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["tv.home.hero"].waitForExistence(timeout: 30))
+        try select("tv.servers", in: app)
+        XCTAssertTrue(app.buttons["tv.server.connect." + key(a)].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["tv.server.connect." + key(b)].exists)
+        try select("tv.servers.cancel", in: app)
+    }
+
     func testFixtureBrowseSeasonsAndEpisodes() throws {
         let app = launchFixture()
         try select("tv.library.fixture.series", in: app)
@@ -314,7 +371,7 @@ final class TVNavigationTests: XCTestCase {
     }
 
     private func focus(_ identifier: String, in app: XCUIApplication) throws {
-        let target = app.buttons[identifier]
+        let target = app.buttons[identifier].firstMatch
         if identifier.hasPrefix("tv.item."), !target.exists, app.buttons["tv.home.hero"].waitForExistence(timeout: 30) {
             // The home rail is lazy: offscreen cards acquire accessibility
             // elements only as the remote scrolls them into view.
@@ -323,9 +380,14 @@ final class TVNavigationTests: XCTestCase {
                 if app.buttons.allElementsBoundByIndex.contains(where: { $0.identifier.hasPrefix("tv.item.") && $0.hasFocus }) { break }
                 XCUIRemote.shared.press(.down)
             }
-            for _ in 0..<30 {
+            // Entering the rail can focus its middle and unload the first
+            // cards. Search toward the beginning before scanning forward.
+            for direction in [XCUIRemote.Button.left, .right] {
+                for _ in 0..<40 {
+                    if target.exists { break }
+                    XCUIRemote.shared.press(direction)
+                }
                 if target.exists { break }
-                XCUIRemote.shared.press(.right)
             }
         }
         XCTAssertTrue(target.waitForExistence(timeout: 8), "Missing button: \(identifier)")
@@ -343,7 +405,11 @@ final class TVNavigationTests: XCTestCase {
             let vertical = targetFrame.midY - currentFrame.midY
             let horizontal = targetFrame.midX - currentFrame.midX
             let direction: XCUIRemote.Button
-            if abs(vertical) > max(50, min(currentFrame.height, targetFrame.height) * 0.6) {
+            if identifier == "tv.home.hero", current.identifier.hasPrefix("tv.library.") {
+                // Stay in the selected library: moving vertically here previews
+                // another library before the rail navigation has even begun.
+                direction = .right
+            } else if abs(vertical) > max(50, min(currentFrame.height, targetFrame.height) * 0.6) {
                 direction = vertical > 0 ? .down : .up
             } else {
                 direction = horizontal > 0 ? .right : .left

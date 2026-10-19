@@ -35,7 +35,7 @@ import AppleCore
     init() {
         let testing = ProcessInfo.processInfo.arguments.contains("--ui-testing")
         let root = URL.applicationSupportDirectory.appending(path: testing ? "UITestProfiles" : "Profiles")
-        if testing {
+        if testing && !ProcessInfo.processInfo.arguments.contains("--ui-testing-keep-profile") {
             try? FileManager.default.removeItem(at: root)
             UserDefaults(suiteName:"TigerestUITestUpdates")?.removePersistentDomain(forName:"TigerestUITestUpdates")
         }
@@ -70,19 +70,26 @@ import AppleCore
         server=try? ServerAddress(settings.get("main","userWebClient").string ?? "")
         web=WebHost(model:self);showConnection=server==nil;start();objectWillChange.send()
     }
-    func connect(_ input: String, mode: String) async throws {
-        try await selectServer(input, mode: mode, target: nil)
+    func connect(_ input: String, mode: String, replacing: String? = nil) async throws {
+        try await selectServer(input, mode: mode, target: nil, replacing: replacing)
     }
-    func finishServerSelection(_ input: String, mode: String, target: String) async -> Bool {
+    func finishServerSelection(_ input: String, mode: String, target: String, history: String? = nil) async -> Bool {
         guard ["custom", "tigerest"].contains(mode), let address = try? ServerAddress(input),
               let url = URL(string: target), WebHost.origin(url) == address.origin else { return false }
-        do { try await selectServer(input, mode: mode, target: url); return true }
+        do {
+            if let history { try ServerHistory.validate(history) }
+            try await selectServer(input, mode: mode, target: url, suppliedHistory: history); return true
+        }
         catch { return false }
     }
-    private func selectServer(_ input: String, mode: String, target: URL?) async throws {
+    private func selectServer(_ input: String, mode: String, target: URL?, replacing: String? = nil, suppliedHistory: String? = nil) async throws {
+        // An old view task can be cancelled before its first actor turn.
+        // It must not invalidate the newer profile's selection in that case.
+        try Task.checkCancellation()
         guard ["custom", "tigerest"].contains(mode) else { throw CoreError.invalidSetting }
         cancelServerSelection(); serverSelectionError = false
         let selection = selectionID, profile = profiles.currentID
+        let previous = currentHistoryServer
         var candidate: WebHost?
         do {
             let address = try await checkServer(input)
@@ -93,7 +100,8 @@ import AppleCore
             try await host.loadForSelection(address, mode: mode, target: target)
             try Task.checkCancellation()
             guard profile == profiles.currentID, selection == selectionID else { throw CancellationError() }
-            try settings.setServerConnection(address, mode: mode)
+            let history = try suppliedHistory ?? ServerHistory.remember(settings.get("main", "knownServers").string ?? "", mode: mode, address: address.baseURL.absoluteString, replacing: replacing, current: previous)
+            try settings.setServerConnection(address, mode: mode, history: history.isEmpty ? nil : history)
             // No suspension between persistence and replacement: cancelled or stale
             // documents never write the profile or dispatch native side effects.
             web.close(); player.stop(notify: true); setEmbySession(.null)
@@ -112,7 +120,8 @@ import AppleCore
     }
     func checkServer(_ input: String) async throws -> ServerAddress {
         let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let address = try ServerAddress(value.contains("://") ? value : "http://" + value)
+        guard let canonical = ServerHistory.canonicalAddress(value.contains("://") ? value : "http://" + value) else { throw CoreError.invalidAddress }
+        let address = try ServerAddress(canonical)
         var request = URLRequest(url: address.endpoint("System/Info/Public"))
         request.timeoutInterval = 5
         let (body, response) = try await community.data(request, limit: 65536)
@@ -120,12 +129,12 @@ import AppleCore
         guard response.statusCode == 200, info["Id"].string != nil || info["Version"].string != nil else { throw URLError(.badServerResponse) }
         return address
     }
-    func connectDedicated() async throws {
+    func connectDedicated(replacing: String? = nil) async throws {
         let profile = profiles.currentID
         let presets = ServerPresets.bundled
         let candidates = ServerPresets.onLocalSubnet(presets.localIP) ? [presets.local, presets.remote] : [presets.remote]
         for (index, candidate) in candidates.enumerated() {
-            do { try await connect(candidate, mode: "tigerest"); return }
+            do { try await connect(candidate, mode: "tigerest", replacing: replacing); return }
             catch {
                 try Task.checkCancellation()
                 guard profile == profiles.currentID else { throw CancellationError() }
@@ -144,6 +153,19 @@ import AppleCore
                 catch { if !Task.isCancelled { loading = false; connectionFailure = "专属服务器暂时无法连接，请检查网络后重试，也可以先打开离线媒体。" } }
             }
         } else { web.open(server) }
+    }
+    var currentHistoryServer: ServerHistory.Current? {
+        guard let server else { return nil }
+        let savedMode = settings.get("main", "serverConnectionMode").string ?? ""
+        let mode = savedMode.isEmpty ? (ServerPresets.bundled.contains(server) ? "tigerest" : "custom") : savedMode
+        return .init(mode: mode, address: server.baseURL.absoluteString)
+    }
+    var currentServerKey: String? { currentHistoryServer.flatMap { ServerHistory.key(mode: $0.mode, address: $0.address) } }
+    var rememberedServers: [ServerHistory.Record] { ServerHistory.list(settings.get("main", "knownServers").string ?? "", current: currentHistoryServer) }
+    func forgetServer(_ key: String) throws {
+        guard key != currentServerKey else { throw CoreError.invalidSetting }
+        try settings.set("main", "knownServers", .string(ServerHistory.forget(settings.get("main", "knownServers").string ?? "", key: key)))
+        objectWillChange.send()
     }
     func openServerSettings() { connectionTask?.cancel(); cancelServerSelection(); loading = false; showConnection = true }
 }

@@ -18,11 +18,21 @@ import Foundation
 }
 /// The sessions TVAppModel saved, oldest first.
 final class TVSavedSessions: @unchecked Sendable { var sessions: [EmbySession] = [] }
+final class TVSessionBox { var value: ServerSessionHistory; init(_ value: ServerSessionHistory) { self.value = value } }
 struct TVSessionStore {
-    var initialSession: EmbySession? = nil
-    var saved: TVSavedSessions? = nil
-    func load() throws -> EmbySession? { initialSession }
-    func save(_ session: EmbySession) throws { saved?.sessions.append(session) }
-    func clear() throws {}
+    private let box: TVSessionBox
+    let saved: TVSavedSessions?
+    init(initialSession: EmbySession? = nil, saved: TVSavedSessions? = nil) {
+        box = TVSessionBox(ServerSessionHistory(current: initialSession)); self.saved = saved
+    }
+    init(state: ServerSessionHistory) { box = TVSessionBox(state); saved = nil }
+    func loadState() throws -> ServerSessionHistory { box.value }
+    func load() throws -> EmbySession? { box.value.current }
+    func save(_ session: EmbySession) throws { box.value.updateCurrent(session); saved?.sessions.append(session) }
+    func commit(_ session: EmbySession, mode: String, replacing: String?, name: String?) throws {
+        try box.value.commit(session, mode: mode, replacing: replacing, name: name); saved?.sessions.append(session)
+    }
+    func forget(_ key: String) throws { try box.value.forget(key: key) }
+    func clear() throws { box.value.logout() }
     func deviceID() throws -> String { "fixture-device" }
 }

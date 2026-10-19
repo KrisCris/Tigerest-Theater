@@ -91,3 +91,29 @@ Ruling: existing user's execute-handoff authorization covers the supplied
 contract and native adaptations; no new design approval is needed. iPad
 continues staged WK document commit; TV uses authenticated library success
 because its native application has no HTML document.
+
+## Integration checkpoint
+
+All three Windows inputs are merged. Shared Node/Chrome/Qt regressions,
+AppleCore 113 tests, bridge 7 tests, TV model 37 tests, native Mac remembered
+servers, physical iPad history/edit/restart/profile isolation, and physical
+TV A/B session return/remove/restart pass. Mac latest four real interaction
+matrices pass 31 steps each. Prior iPad matrices retain their actual source
+revisions; final unified-menu WK and HTTPS runs are tracked separately.
+
+Independent review found one iPad cancellation-ownership race. The chooser
+now cancels only its own Task, and a cancelled selection checks cancellation
+before changing the generation. A physical test with a fixture-only generated
+server_defaults.json covers switching from an empty profile back to a saved
+dedicated profile. An ordinary old-code run passed (timing dependent); delaying
+only the test build's old-view onDisappear callback by 0.5 seconds produced
+RED with global cancellation and GREEN with task-owned cancellation. Production
+sources retain no callback delay or fixture presets. The original fixture's
+unsupported cache170 was corrected to500; those earlier failures are excluded.
+
+TV device tests exposed focus gaps between the left card buttons and both the
+add row and far-right cancel header. Explicit focus sections fixed both, and
+the complete remembered-server flow passes. Remaining tasks are final resource
+generation, production-format packaging, final device playback/menu checks,
+and sanitized NAS delivery. Manual-only/performance boundaries will be stated
+in the final report instead of marked as passed.

@@ -16,7 +16,7 @@ import AppleCore
     var changed: ((String, JSONValue) -> Void)?
     private var supported: [String: Set<String>] = [
         "home": ["displayOrder", "libraryLayout"],
-        "main": ["checkForUpdates", "enableMPV", "allowBrowserZoom", "userWebClient", "serverConnectionMode"],
+        "main": ["checkForUpdates", "enableMPV", "allowBrowserZoom", "userWebClient", "serverConnectionMode", "knownServers"],
         "audio": ["channels", "normalize"],
         "video": ["aiRife", "hardwareDecoding", "deinterlace", "cache", "aspect", "sync_mode", "default_playback_speed", "audio_delay.normal", "force_transcode_hevc", "force_transcode_4k", "force_transcode_av1", "force_transcode_hdr", "force_transcode_hi10p", "force_transcode_dovi", "always_force_transcode", "allow_transcode_to_hevc", "prefer_transcode_to_h265"],
         "mpv": ["shaderPreset", "enableDanmaku", "audioLanguage", "subtitleLanguage", "cachePause", "deband", "toneMapping"],
@@ -111,11 +111,12 @@ import AppleCore
         try JSONEncoder().encode(next).write(to: file, options: .atomic)
         values = next; changed?(section, .object(next[section] ?? [:]))
     }
-    func setServerConnection(_ address: ServerAddress, mode: String) throws {
+    func setServerConnection(_ address: ServerAddress, mode: String, history: String? = nil) throws {
         guard ["custom", "tigerest"].contains(mode) else { throw CoreError.invalidSetting }
         var next = values
         next["main", default: [:]]["userWebClient"] = try policy.validate(section: "main", key: "userWebClient", value: .string(address.baseURL.absoluteString))
         next["main", default: [:]]["serverConnectionMode"] = try policy.validate(section: "main", key: "serverConnectionMode", value: .string(mode))
+        if let history { next["main", default: [:]]["knownServers"] = try policy.validate(section: "main", key: "knownServers", value: .string(history)) }
         try JSONEncoder().encode(next).write(to: file, options: .atomic)
         values = next; changed?("main", .object(next["main"] ?? [:]))
     }

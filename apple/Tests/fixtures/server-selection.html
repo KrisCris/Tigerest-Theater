@@ -4,24 +4,27 @@
 <input aria-label="原页未保存文本" value="保留原页状态" style="font:inherit;width:90%">
 <p id="identity"></p>
 <button onclick="api.system.openServerSettings()">切换服务器</button>
+<button onclick="dedicatedStartup()">设置专属启动测试</button>
 <button onclick="inspect()">检查保存地址和会话</button>
 <button onclick="historyCheck()">检查新页历史</button>
 <button onclick="invalidTarget()">检查非法切服目标</button>
 <script>
 let api;
 const status=document.querySelector('#status'),kind=location.pathname.split('/')[1];
+window.addEventListener('unhandledrejection',event=>{status.textContent='夹具失败 '+event.reason?.message;});
 document.querySelector('#title').textContent='事务页面 '+kind;
 const identity=Math.random().toString(36).slice(2);
 document.querySelector('#identity').textContent='页面身份 '+identity;
 if(kind==='selection-delayed'){const image=new Image();image.src='/selection-hold.png';document.body.appendChild(image);}
 (async()=>{api=await window.apiPromise;
  if(kind==='selection-old'){localStorage.setItem('selection-fixture-auth','original-session');await api.settings.setValue('video','cache',150);}
- if(kind==='selection-delayed')await api.settings.setValue('video','cache',170);
+ if(kind==='selection-delayed')await api.settings.setValue('video','cache',500);
  status.textContent='事务页面 '+kind+' 就绪';})();
-async function inspect(){status.textContent='保存地址 '+await api.settings.value('main','userWebClient')+'；模式 '+await api.settings.value('main','serverConnectionMode')+'；会话 '+localStorage.getItem('selection-fixture-auth')+'；缓存 '+await api.settings.value('video','cache');}
+async function dedicatedStartup(){await api.settings.setValue('main','serverConnectionMode','tigerest');status.textContent='专属启动设置就绪';}
+async function inspect(){status.textContent='保存地址 '+await api.settings.value('main','userWebClient')+'；模式 '+await api.settings.value('main','serverConnectionMode')+'；会话 '+localStorage.getItem('selection-fixture-auth')+'；缓存 '+await api.settings.value('video','cache')+'；历史 '+JSON.parse(await api.settings.value('main','knownServers')).servers.map(x=>x.address.split('/').filter(Boolean).at(-1)).sort().join(',');}
 async function historyCheck(){
  const saved=await api.settings.value('main','userWebClient');
- status.textContent=(history.length===1&&saved.includes('/selection-new')?'新页历史与保存地址通过':'历史或配置失败 '+history.length);
+ status.textContent=(history.length===1&&saved.includes('/selection-new')&&JSON.parse(await api.settings.value('main','knownServers')).servers.map(x=>x.address.split('/').filter(Boolean).at(-1)).sort().join(',')==='selection-new,selection-old'?'新页历史与保存地址通过':'历史或配置失败 '+history.length);
 }
 async function invalidTarget(){
  const rejected=await api.system.finishServerSelection(location.origin+'/selection-new','custom','https://other.invalid/web/index.html');

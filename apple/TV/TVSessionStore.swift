@@ -10,20 +10,31 @@ struct TVSessionStore {
         self.service = service
     }
 
-    func load() throws -> EmbySession? {
-        guard let data = try read(account: "session") else { return nil }
-        return try JSONDecoder().decode(EmbySession.self, from: data)
+    func loadState() throws -> ServerSessionHistory {
+        if let data = try read(account: "server-state") { return try JSONDecoder().decode(ServerSessionHistory.self, from: data) }
+        let old = try read(account: "session").map { try JSONDecoder().decode(EmbySession.self, from: $0) }
+        let mode = old.flatMap { try? ServerAddress($0.serverURL) }.map { ServerPresets.bundled.contains($0) ? "tigerest" : "custom" } ?? "custom"
+        return ServerSessionHistory(current: old, mode: mode)
     }
-
+    private func writeState(_ state: ServerSessionHistory) throws {
+        // One Keychain write commits history and the active session together.
+        try write(JSONEncoder().encode(state), account: "server-state")
+        SecItemDelete(query(account: "session") as CFDictionary)
+    }
+    func load() throws -> EmbySession? { try loadState().current }
     func save(_ session: EmbySession) throws {
-        try write(JSONEncoder().encode(session), account: "session")
+        var state = try loadState(); state.updateCurrent(session); try writeState(state)
     }
-
+    func commit(_ session: EmbySession, mode: String, replacing: String?, name: String?) throws {
+        var state = try loadState()
+        try state.commit(session, mode: mode, replacing: replacing, name: name)
+        try writeState(state)
+    }
+    func forget(_ key: String) throws {
+        var state = try loadState(); try state.forget(key: key); try writeState(state)
+    }
     func clear() throws {
-        let status = SecItemDelete(query(account: "session") as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw StoreError(status: status)
-        }
+        var state = try loadState(); state.logout(); try writeState(state)
     }
 
     func deviceID() throws -> String {

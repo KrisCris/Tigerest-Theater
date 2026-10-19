@@ -17,6 +17,7 @@ with tempfile.TemporaryDirectory(prefix="tv-home-model-package-") as directory:
     (sources / "TVHomeModelBoundaries.swift").symlink_to(ROOT / "Tests/TVHomeModelBoundaries.swift")
     (tests / "TVHomeModelTests.swift").symlink_to(ROOT / "Tests/TVHomeModelTests.swift")
     (tests / "TVEpisodeModelTests.swift").symlink_to(ROOT / "Tests/TVEpisodeModelTests.swift")
+    (tests / "TVServerHistoryTests.swift").symlink_to(ROOT / "Tests/TVServerHistoryTests.swift")
     (package / "Package.swift").write_text('''// swift-tools-version: 6.0
 import PackageDescription
 let package = Package(name: "TVHomeModelTests", platforms: [.macOS("26.0")],

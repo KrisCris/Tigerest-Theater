@@ -32,6 +32,10 @@ final class TVAppModel: ObservableObject {
     @Published private(set) var busy = false
     @Published private(set) var serverMode: TVServerMode?
     @Published var serverURL = ""
+    @Published var showServerPicker = false
+    @Published private(set) var savedServers = ServerSessionHistory()
+    @Published private(set) var connectingServerKey: String?
+    private var editingServerKey: String?
     @Published private(set) var pages: [TVBrowsePage] = []
     @Published private(set) var selectedItem: JSONValue?
     @Published private(set) var focusTarget: String?
@@ -74,6 +78,7 @@ final class TVAppModel: ObservableObject {
          store: TVSessionStore = TVSessionStore()) {
         self.fixtureMode = fixtureMode
         self.store = store
+        if !fixtureMode { savedServers = (try? store.loadState()) ?? ServerSessionHistory() }
         homeOrder = fixtureMode ? .resume : EmbyHomeOrder(rawValue: UserDefaults.standard.string(forKey: "tv.home.displayOrder") ?? "") ?? .resume
         player.onStopped = { [weak self] item, position, duration in
             self?.updateProgress(item: item, position: position, duration: duration)
@@ -119,6 +124,7 @@ final class TVAppModel: ObservableObject {
     func selectServer(_ mode: TVServerMode) {
         invalidateRequest()
         serverMode = mode
+        editingServerKey = nil; connectingServerKey = nil
         error = nil
         if mode == .dedicated {
             let presets = ServerPresets.bundled
@@ -131,6 +137,7 @@ final class TVAppModel: ObservableObject {
     func resetServerSelection() {
         invalidateRequest()
         serverMode = nil
+        editingServerKey = nil; connectingServerKey = nil
         error = nil
         serverURL = ""
     }
@@ -144,17 +151,20 @@ final class TVAppModel: ObservableObject {
             error = "请输入用户名。"
             return
         }
+        let mode = serverMode!, submittedURL = serverURL, replacing = editingServerKey
         let id = beginRequest()
         do {
             let server: String
             // The public info says whether a self-hosted server is Emby or Jellyfin.
             var info: EmbyServerInfo?
-            if serverMode == .dedicated {
+            if mode == .dedicated {
                 server = try await dedicatedServer()
+                info = try await EmbyClient.serverInfo(server: server)
             } else {
-                let value = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                let value = submittedURL.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !value.isEmpty else { throw TVError.message("请输入服务器地址。") }
-                server = value.contains("://") ? value : "http://" + value
+                guard let canonical = ServerHistory.canonicalAddress(value.contains("://") ? value : "http://" + value) else { throw CoreError.invalidAddress }
+                server = canonical
                 info = try await EmbyClient.serverInfo(server: server)
             }
             guard isCurrent(id) else { return }
@@ -163,14 +173,72 @@ final class TVAppModel: ObservableObject {
                                                    password: password, deviceID: deviceID, serverInfo: info)
             guard isCurrent(id) else { return }
             let authenticatedClient = try EmbyClient(session: saved)
-            try store.save(saved)
-            session = saved
-            client = authenticatedClient
-            serverURL = saved.serverURL
-            busy = false
-            await refresh()
+            let loadedLibraries = try await authenticatedClient.libraries()
+            guard isCurrent(id) else { return }
+            try commitServer(saved, client: authenticatedClient, libraries: loadedLibraries,
+                             mode: mode == .dedicated ? "tigerest" : "custom", replacing: replacing, name: info?.name)
         } catch {
             fail(error, request: id)
+        }
+    }
+
+    var rememberedServers: [ServerHistory.Record] { savedServers.records }
+    var currentServerKey: String? { savedServers.currentKey }
+    func openServerSettings() {
+        invalidateRequest(); cancelHome(); resetServerSelection(); showServerPicker = true
+    }
+    func closeServerSettings() { resetServerSelection(); showServerPicker = false }
+    func editServer(_ record: ServerHistory.Record) {
+        selectServer(.selfHosted); serverURL = record.address; editingServerKey = record.key
+    }
+    func forgetServer(_ key: String) {
+        invalidateRequest()
+        do { try store.forget(key); savedServers = try store.loadState(); error = nil }
+        catch { self.error = error.localizedDescription }
+    }
+    func connectRememberedServer(_ record: ServerHistory.Record) async {
+        invalidateRequest(); serverMode = nil; editingServerKey = nil; connectingServerKey = record.key
+        let id = beginRequest()
+        do {
+            let address = record.mode == "tigerest" ? try await dedicatedServer() : record.address
+            let info = try await EmbyClient.serverInfo(server: address)
+            guard isCurrent(id) else { return }
+            guard let previous = savedServers.cached(key: record.key),
+                  previous.serverID == nil || info.id == nil || previous.serverID == info.id else {
+                serverMode = record.mode == "tigerest" ? .dedicated : .selfHosted
+                serverURL = address; busy = false; return
+            }
+            let candidate = EmbySession(serverURL: address, userID: previous.userID, accessToken: previous.accessToken,
+                                        deviceID: previous.deviceID, serverID: info.id, serverKind: info.kind, serverVersion: info.version)
+            let candidateClient = try EmbyClient(session: candidate)
+            let loadedLibraries = try await candidateClient.libraries()
+            guard isCurrent(id) else { return }
+            try commitServer(candidate, client: candidateClient, libraries: loadedLibraries, mode: record.mode, replacing: nil, name: info.name)
+        } catch {
+            guard isCurrent(id) else { return }
+            busy = false; self.error = error.localizedDescription
+            if (error as? EmbyClientError) == .unauthorized {
+                serverMode = record.mode == "tigerest" ? .dedicated : .selfHosted
+                serverURL = record.address
+            }
+        }
+    }
+    private func commitServer(_ candidate: EmbySession, client candidateClient: EmbyClient, libraries loaded: [JSONValue],
+                              mode: String, replacing: String?, name: String?) throws {
+        // A failed/cancelled candidate never changes the active session or its history.
+        try store.commit(candidate, mode: mode, replacing: replacing, name: name)
+        cancelHome(); player.stop(); clearEpisodeContext()
+        detailReturnItemID = nil; localEpisodeUserData = [:]
+        pages = []; selectedItem = nil; resume = []; homeCards = []; homeLibraryID = nil; homeCardID = nil
+        homeCache = [:]; homeError = nil; homeDirty = false; pendingStopReports = 0
+        session = candidate; client = candidateClient; serverURL = candidate.serverURL
+        savedServers = try store.loadState()
+        libraries = EmbyHomeData.libraries(loaded, serverID: candidate.serverID)
+        busy = false; error = nil; serverMode = nil; showServerPicker = false
+        editingServerKey = nil; connectingServerKey = nil; focusTarget = nil
+        if let first = libraries.first {
+            previewLibrary(TVMedia.id(first), refresh: true)
+            focusTarget = "tv.library." + TVMedia.id(first)
         }
     }
 
@@ -180,7 +248,7 @@ final class TVAppModel: ObservableObject {
         player.stop()
         clearEpisodeContext(); detailReturnItemID = nil; localEpisodeUserData = [:]
         do {
-            if !fixtureMode { try store.clear() }
+            if !fixtureMode { try store.clear(); savedServers = try store.loadState() }
             session = nil
             client = nil
             fixtureActive = false
