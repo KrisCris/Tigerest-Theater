@@ -7,8 +7,11 @@ const TIGEREST_PAGE_PENDING_CLASS = 'tigerest-page-pending';
 const TIGEREST_TAB_BUTTON_SELECTOR = '.main-tab-button';
 const TIGEREST_TAB_CONTENT_SELECTOR = '.tabContent';
 const TIGEREST_ARTWORK_SELECTOR = '.detailImageContainer, .cardImageContainer, .primaryImage, img.cardImage, .backdropImage';
-// Chromium (Qt, Android): an element with a backdrop filter is a Backdrop Root.
-const TIGEREST_BACKDROP_ROOTS = /Chrome\/\d/.test(globalThis.navigator?.userAgent || '');
+// Chromium 143 and later (checked through 155, the Android WebView in use)
+// make an element with a backdrop filter a Backdrop Root. QtWebEngine 6.9
+// (Chromium 130) still lets a nested backdrop filter see and re-blur the
+// page under its glass parent, so its header keeps the nested filters.
+const TIGEREST_BACKDROP_ROOTS = +(/Chrome\/(\d+)\./.exec(globalThis.navigator?.userAgent || '')?.[1] || 0) >= 143;
 const TIGEREST_FLAT_GLASS = 'data-tigerest-flat-glass';
 const tigerestMotionPreference = window.matchMedia?.('(prefers-reduced-motion: reduce)') || {matches: false};
 let tigerestAmbientImage = '';
@@ -568,8 +571,9 @@ function mountTigerestAppearanceStyles() {
                     backdrop-filter: blur(28px) saturate(1.38);
                 }
 ${TIGEREST_BACKDROP_ROOTS ? `
-                /* See flattenTigerestHeaderGlass(). Hovered and focused
-                   controls keep their real filter, so states stay exact. */
+                /* See flattenTigerestHeaderGlass(). Hovered, pressed and
+                   focused controls keep their real filter, so states stay
+                   exact; the colour is recomputed when they leave it. */
                 .skinHeader [${TIGEREST_FLAT_GLASS}]:not(:hover):not(:focus-visible):not(:active) {
                     -webkit-backdrop-filter: none !important;
                     backdrop-filter: none !important;
@@ -965,39 +969,193 @@ function tigerestFilteredColor(filter, color) {
     return [r, g, b, a];
 }
 
+// Chromium stops drawing a button's native look once the page sets its
+// background or border, and the control paints from its CSS alone (Jellyfin's
+// header buttons keep `appearance: auto` this way). Compare with an untouched
+// control of the same kind and colour scheme, which page styles cannot reach.
+let tigerestControlProbe = null;
+const TIGEREST_CONTROL_LOOK = ['background-color', 'background-image',
+    ...['top', 'right', 'bottom', 'left'].flatMap(side => ['style', 'width', 'color'].map(part => `border-${side}-${part}`))];
+function tigerestSkinnedControl(node, style) {
+    if (['none', ''].includes(style.appearance)) return true;
+    const button = node.localName === 'button' || node.localName === 'input' && ['button', 'submit', 'reset'].includes(node.type);
+    if (!button || node.namespaceURI !== 'http://www.w3.org/1999/xhtml') return false;
+    if (!tigerestControlProbe?.host.isConnected) {
+        const host = document.createElement('tigerest-control-probe');
+        host.style.cssText = 'all:initial;position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;contain:strict';
+        tigerestControlProbe = {host, shadow: host.attachShadow({mode: 'closed'}), looks: new Map()};
+        document.documentElement.append(host);
+    }
+    const key = [node.localName, node.type || '', style.colorScheme].join('|');
+    let look = tigerestControlProbe.looks.get(key);
+    if (!look) {
+        const probe = document.createElement(node.localName);
+        if (node.localName === 'input') probe.type = node.type;
+        probe.style.colorScheme = style.colorScheme;
+        tigerestControlProbe.shadow.replaceChildren(probe);
+        const unstyled = getComputedStyle(probe);
+        look = TIGEREST_CONTROL_LOOK.map(property => unstyled.getPropertyValue(property));
+        tigerestControlProbe.shadow.replaceChildren();
+        tigerestControlProbe.looks.set(key, look);
+    }
+    return TIGEREST_CONTROL_LOOK.some((property, index) => style.getPropertyValue(property) !== look[index]);
+}
+
 // In Chromium an element with a backdrop filter is a Backdrop Root. The
 // header's own glass therefore hides the page from every backdrop filter
 // inside it (ours on .headerTop, themes' on buttons, titles and tabs): each
-// only re-filters the header's flat translucent background and lays that
-// colour under itself, yet costs a filter pass on every scrolled frame. Paint
-// that colour directly instead. Only uniform-colour cases are replaced.
+// only re-filters the flat translucent background its root holds and lays
+// that colour under itself, yet costs a filter pass on every scrolled frame.
+// Paint that colour directly instead. Anything not provably one colour
+// (patterned or shadowed backgrounds, painted pseudo-elements, unmodelled
+// filters, native-looking controls, a control in a hover, press or focus
+// state) keeps its real filter.
 function flattenTigerestHeaderGlass() {
     if (!TIGEREST_BACKDROP_ROOTS) return;
     const settled = node => !node.matches(':hover,:focus-visible,:active');
     for (const header of document.querySelectorAll('.skinHeader')) {
         const nodes = [...header.querySelectorAll('*')];
-        const kept = new Set(nodes.filter(node => node.hasAttribute(TIGEREST_FLAT_GLASS) && !settled(node)));
         // Read every filter and background as the page states them.
-        for (const node of nodes) if (!kept.has(node)) node.removeAttribute(TIGEREST_FLAT_GLASS);
+        for (const node of nodes) node.removeAttribute(TIGEREST_FLAT_GLASS);
         const styles = new Map([header, ...nodes].map(node => [node, getComputedStyle(node)]));
         const value = (node, property) => tigerestSettledValue(node, styles.get(node), property);
         if (value(header, 'backdrop-filter') === 'none') continue;
-        const filtered = node => node === header || kept.has(node) || value(node, 'backdrop-filter') !== 'none';
+        // Each Backdrop Root trigger ends what a descendant's filter sees.
+        const isolates = node => {
+            const style = styles.get(node);
+            return node === header || value(node, 'backdrop-filter') !== 'none' || value(node, 'filter') !== 'none' ||
+                +value(node, 'opacity') < 1 || style.maskImage !== 'none' || (style.webkitMaskImage || 'none') !== 'none' ||
+                style.clipPath !== 'none' || style.mixBlendMode !== 'normal' ||
+                /(?:^|[\s,])(?:filter|backdrop-filter|opacity|mask|mask-image|clip-path|mix-blend-mode)(?:$|[\s,])/.test(style.willChange);
+        };
+        const px = (value, size = 0) => value.trim().endsWith('%') ? parseFloat(value) * size / 100 : parseFloat(value) || 0;
+        const visible = color => (tigerestColor(color)?.[3] ?? 1) !== 0;
+        const sides = ['top', 'right', 'bottom', 'left'];
+        const bordered = style => sides.some(side => px(style.getPropertyValue(`border-${side}-width`)) > 0 &&
+            !['none', 'hidden'].includes(style.getPropertyValue(`border-${side}-style`)) && visible(style.getPropertyValue(`border-${side}-color`)));
+        const pseudoPainted = (node, pseudo) => {
+            const style = getComputedStyle(node, pseudo);
+            return !['none', 'normal'].includes(style.content) && (style.content !== '""' || style.backgroundImage !== 'none' ||
+                visible(style.backgroundColor) || style.boxShadow !== 'none' || bordered(style) || style.outlineStyle !== 'none');
+        };
+        const textRects = node => [...node.childNodes].filter(child => child.nodeType === Node.TEXT_NODE && child.data.trim())
+            .flatMap(child => { const range = document.createRange(); range.selectNodeContents(child); return [...range.getClientRects()]; });
+        const rects = new Map(), rect = node => rects.get(node) || rects.set(node, node.getBoundingClientRect()).get(node);
+        const overlaps = (a, b, grow = 0) => a.left - grow < b.right && b.left < a.right + grow && a.top - grow < b.bottom && b.top < a.bottom + grow;
+        const within = (box, inner, inset = [0, 0, 0, 0]) => inner.left >= box.left + inset[3] - .5 && inner.right <= box.right - inset[1] + .5 &&
+            inner.top >= box.top + inset[0] - .5 && inner.bottom <= box.bottom - inset[2] + .5;
+        // How far a box's outer shadows and outline reach beyond it.
+        const reach = style => {
+            let extent = style.outlineStyle !== 'none' ? Math.max(0, px(style.outlineWidth) + px(style.outlineOffset)) : 0;
+            if (style.boxShadow !== 'none') for (const shadow of style.boxShadow.split(/,(?![^(]*\))/)) {
+                if (/\binset\b/.test(shadow)) continue;
+                const [x = 0, y = 0, blur = 0, spread = 0] = (shadow.replace(/[a-z]+\([^)]*\)/gi, '').match(/-?[\d.]+px/g) || []).map(parseFloat);
+                extent = Math.max(extent, Math.abs(x) + Math.abs(y) + blur + Math.max(0, spread));
+            }
+            return extent;
+        };
+        const replaced = 'img, svg, video, canvas, iframe, object, embed, picture, input, select, textarea, progress, meter';
+        // A pseudo-element can paint outside its owner's box. Its nearest
+        // clipping ancestor is a safe upper bound; without one, any part of
+        // the header may be covered. Do not infer pseudo geometry from its
+        // owner (positioned and transformed decorations commonly overflow).
+        const pseudoBounds = (node, pseudo) => {
+            let bound = rect(header);
+            for (let parent = node; parent && styles.has(parent); parent = parent.parentElement) {
+                const style = styles.get(parent);
+                if (['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX) &&
+                    ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowY) ||
+                    /\b(?:paint|strict|content)\b/.test(style.contain)) { bound = rect(parent); break; }
+            }
+            const style = getComputedStyle(node, pseudo), owner = styles.get(node);
+            const length = value => /^-?[\d.]+px$/.test(value);
+            // Common underline/decorations: a known absolute box in this
+            // positioned owner. More complex transforms or automatic sizes
+            // retain the conservative clipping bound above.
+            let translatedOnly = true;
+            for (let parent = node; parent && styles.has(parent); parent = parent.parentElement) {
+                const transform = styles.get(parent).transform;
+                if (transform !== 'none' && !/^matrix\(1, 0, 0, 1, [-\d.]+, [-\d.]+\)$/.test(transform)) translatedOnly = false;
+            }
+            if (translatedOnly && owner.position !== 'static' && style.position === 'absolute' && style.transform === 'none' &&
+                ['left', 'top', 'width', 'height', 'marginLeft', 'marginTop'].every(key => length(style[key]))) {
+                const outer = rect(node), borderBox = style.boxSizing === 'border-box';
+                const left = outer.left + px(owner.borderLeftWidth) + px(style.left) + px(style.marginLeft);
+                const top = outer.top + px(owner.borderTopWidth) + px(style.top) + px(style.marginTop);
+                const width = px(style.width) + (borderBox ? 0 : px(style.paddingLeft) + px(style.paddingRight) + px(style.borderLeftWidth) + px(style.borderRightWidth));
+                const height = px(style.height) + (borderBox ? 0 : px(style.paddingTop) + px(style.paddingBottom) + px(style.borderTopWidth) + px(style.borderBottomWidth));
+                const area = grown({left, top, right: left + width, bottom: top + height}, reach(style));
+                return {left: Math.max(bound.left, area.left), top: Math.max(bound.top, area.top),
+                    right: Math.min(bound.right, area.right), bottom: Math.min(bound.bottom, area.bottom)};
+            }
+            return bound;
+        };
+        // Where a box paints: its box with shadows and outline, or its text.
+        const grown = (box, by) => ({left: box.left - by, top: box.top - by, right: box.right + by, bottom: box.bottom + by});
+        const paintings = new Map();
+        const painting = node => paintings.get(node) ?? paintings.set(node, (() => {
+            const style = styles.get(node);
+            if (style.visibility === 'hidden' || !node.getClientRects().length) return [];
+            const box = visible(value(node, 'background-color')) || value(node, 'background-image') !== 'none' || style.boxShadow !== 'none' ||
+                bordered(style) || style.outlineStyle !== 'none' || node.matches(replaced);
+            const areas = box ? [grown(rect(node), reach(style))] : textRects(node);
+            for (const pseudo of ['::before', '::after']) if (pseudoPainted(node, pseudo)) areas.push(pseudoBounds(node, pseudo));
+            return areas;
+        })()).get(node);
+        // The colour model holds only where every ancestor's background fully
+        // covers the node, nothing else of theirs (borders, text, inset
+        // shadows, painted pseudo-elements) lies under it, and no other box of
+        // the root (a sibling's drop shadow, an icon) paints into its area.
+        // A backdrop filter samples only its own box, so neighbours outside
+        // it do not count.
+        const uniformUnder = (node, chain) => {
+            const box = rect(node);
+            for (const parent of chain) {
+                const style = styles.get(parent), outer = rect(parent);
+                if (value(parent, 'background-image') !== 'none' || /\binset\b/.test(value(parent, 'box-shadow')) ||
+                    pseudoPainted(parent, '::before') || pseudoPainted(parent, '::after') || style.outlineStyle !== 'none' && px(style.outlineOffset) < 0 ||
+                    textRects(parent).some(text => overlaps(text, box))) return false;
+                const border = sides.map(side => px(style.getPropertyValue(`border-${side}-width`)));
+                if (bordered(style) && !within(outer, box, border)) return false;
+                if (!visible(value(parent, 'background-color'))) continue;
+                if (style.backgroundClip === 'text') return false;
+                const padding = sides.map(side => px(style.getPropertyValue(`padding-${side}`)));
+                const clip = {'padding-box': border, 'content-box': border.map((width, index) => width + padding[index])}[style.backgroundClip] || [0, 0, 0, 0];
+                if (!within(outer, box, clip)) return false;
+                // Rounded corners leave their outside uncovered.
+                const radius = Math.max(...['top-left', 'top-right', 'bottom-right', 'bottom-left'].flatMap(corner =>
+                    style.getPropertyValue(`border-${corner}-radius`).split(/\s+/).map(part => px(part, Math.max(outer.width, outer.height)))));
+                if (radius > 0 && [[outer.left, outer.top], [outer.right - radius, outer.top], [outer.left, outer.bottom - radius], [outer.right - radius, outer.bottom - radius]]
+                    .some(([left, top]) => overlaps({left, top, right: left + radius, bottom: top + radius}, box))) return false;
+            }
+            const root = chain[0], skipped = new Set(chain);
+            for (const other of root.querySelectorAll('*')) {
+                if (other !== node && !skipped.has(other) && !node.contains(other) &&
+                    // A sub-pixel seam (a lifted tab) is not paint under the box.
+                    painting(other).some(area => overlaps(area, box, -1))) return false;
+            }
+            return true;
+        };
         const flat = [];
         for (const node of nodes) {
-            const filter = value(node, 'backdrop-filter');
-            // A colour would also drop a native control's own appearance.
-            if (kept.has(node) || filter === 'none' || !settled(node) || !['none', ''].includes(styles.get(node).appearance)) continue;
-            // What the old Backdrop Root holds under the node: the root's own
+            const style = styles.get(node), filter = value(node, 'backdrop-filter');
+            const clip = style.backgroundClip.split(',').at(-1).trim();
+            const coversBackdrop = clip === 'border-box' || ['padding-box', 'content-box'].includes(clip) &&
+                sides.every(side => px(style.getPropertyValue(`border-${side}-width`)) === 0 &&
+                    (clip === 'padding-box' || px(style.getPropertyValue(`padding-${side}`)) === 0));
+            if (filter === 'none' || !settled(node) || value(node, 'filter') !== 'none' || style.mixBlendMode !== 'normal' ||
+                !coversBackdrop ||
+                !tigerestSkinnedControl(node, style)) continue;
+            // What the Backdrop Root holds under the node: the root's own
             // background, then those of the plain ancestors in between.
             const chain = [];
             for (let parent = node.parentElement; parent; parent = parent.parentElement) {
                 chain.unshift(parent);
-                if (filtered(parent)) break;
+                if (isolates(parent)) break;
             }
-            let under = [0, 0, 0, 0];
+            let under = uniformUnder(node, chain) ? [0, 0, 0, 0] : null;
             for (const parent of chain) {
-                const color = tigerestColor(value(parent, 'background-color'));
+                const color = under && tigerestColor(value(parent, 'background-color'));
                 if (!color) { under = null; break; }
                 under = tigerestOver(color, under);
             }
@@ -1008,7 +1166,18 @@ function flattenTigerestHeaderGlass() {
             // under the same images paints the same pixels.
             flat.push([node, tigerestOver(own, backdrop)]);
         }
+        // A retained child filter still samples its original Backdrop Root.
+        // Removing that root (even if its own pixels match) changes what the
+        // child sees. Keep filtered ancestors whenever a descendant must keep
+        // its real filter; process bottom-up so this propagates outward.
+        const replacements = new Set(flat.map(([node]) => node));
+        for (const node of [...nodes].reverse()) {
+            if (value(node, 'backdrop-filter') === 'none' || replacements.has(node)) continue;
+            for (let parent = node.parentElement; parent && parent !== header; parent = parent.parentElement)
+                replacements.delete(parent);
+        }
         for (const [node, color] of flat) {
+            if (!replacements.has(node)) continue;
             const value = `rgba(${color.slice(0, 3).map(v => +v.toFixed(2)).join(', ')}, ${+color[3].toFixed(4)})`;
             if (node.style.getPropertyValue('--tigerest-flat-glass-bg') !== value) node.style.setProperty('--tigerest-flat-glass-bg', value);
             node.setAttribute(TIGEREST_FLAT_GLASS, '');
@@ -1032,9 +1201,19 @@ function observeTigerestHeaderGlass() {
     const relevant = node => node?.nodeType === Node.ELEMENT_NODE &&
         (node.matches('.skinHeader, style, link') || !!node.closest('.skinHeader') || !!node.querySelector?.('.skinHeader'));
     new MutationObserver(records => {
-        if (records.some(record => record.target === document.head || record.target === document.body && record.type === 'attributes'
-            || relevant(record.target) || [...record.addedNodes].some(relevant))) scheduleTigerestHeaderGlass();
-    }).observe(document.documentElement, {subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style']});
+        if (records.some(record => record.target === document.head || record.target === document.body && record.type === 'attributes' ||
+            relevant(record.type === 'characterData' ? record.target.parentElement : record.target) ||
+            [...record.addedNodes, ...record.removedNodes].some(relevant))) scheduleTigerestHeaderGlass();
+    }).observe(document.documentElement, {subtree: true, childList: true, characterData: true, attributes: true,
+        attributeFilter: ['class', 'style', 'href', 'media', 'rel', 'disabled']});
+    // A linked stylesheet applies once it loads, not when it is inserted.
+    const loaded = event => { if (event.target?.localName === 'link') scheduleTigerestHeaderGlass(); };
+    document.addEventListener('load', loaded, true);
+    document.addEventListener('error', loaded, true);
+    // Hover, press and focus restyle controls without a mutation.
+    const interaction = event => { if (event.target?.closest?.('.skinHeader')) scheduleTigerestHeaderGlass(); };
+    for (const type of ['pointerover', 'pointerout', 'pointerdown', 'pointerup', 'pointercancel', 'focusin', 'focusout'])
+        document.addEventListener(type, interaction, {capture: true, passive: true});
     window.addEventListener('resize', scheduleTigerestHeaderGlass);
     scheduleTigerestHeaderGlass();
 }
