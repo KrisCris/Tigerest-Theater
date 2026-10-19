@@ -458,7 +458,12 @@ extension WebHostTests {
         let manualLogin = app.webViews.buttons.matching(NSPredicate(format: "label == '手动登录' OR label == 'Manual Login' OR label == 'Manual login'")).firstMatch
         let loginReady = expectation(for: NSPredicate { _, _ in user.exists || manualLogin.exists }, evaluatedWith: nil)
         wait(for: [loginReady], timeout: 45)
-        if !user.exists { manualLogin.tap() }
+        if !user.exists {
+            // Device audits disable XCTest animation-idle waiting. The manual
+            // button appears before its login page finishes sliding into place.
+            Thread.sleep(forTimeInterval: 3)
+            if !user.exists { manualLogin.tap() }
+        }
         XCTAssertTrue(user.waitForExistence(timeout: 30))
         Thread.sleep(forTimeInterval: 3) // Allow the web login document to finish replacing its form.
         user.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
