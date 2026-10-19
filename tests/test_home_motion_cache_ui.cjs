@@ -53,8 +53,8 @@ withBrowser(routes,async({evaluate,call,url})=>{
    constructor(){super();window.snapshotConstructors++;}
    connectedCallback(){window.snapshotConnections++;}
   },{extends:'input'});
-  const style=document.createElement('style');style.textContent='[is="fixture-snapshot-scroll"]{width:230px;height:100px;overflow:auto;border:3px solid rgb(31,79,121);padding:7px}';document.head.append(style);
-  const scroller=document.createElement('div',{is:'fixture-snapshot-scroll'});scroller.id='snapshot-scroll';scroller.setAttribute('is','fixture-snapshot-scroll');
+  const style=document.createElement('style');style.textContent='.fixture-snapshot-scroll{width:230px;height:100px;overflow:auto;border:3px solid rgb(31,79,121);padding:7px}';document.head.append(style);
+  const scroller=document.createElement('div',{is:'fixture-snapshot-scroll'});scroller.id='snapshot-scroll';scroller.className='fixture-snapshot-scroll';scroller.setAttribute('is','fixture-snapshot-scroll');
   const content=document.createElement('div');content.style.cssText='width:600px;height:800px';
   const field=document.createElement('input',{is:'fixture-snapshot-input'});field.id='snapshot-field';field.type='checkbox';field.value='live value';field.checked=true;field.indeterminate=true;content.append(field);
   const text=document.createElement('input',{is:'fixture-snapshot-input'});text.id='snapshot-text';text.value='edited without an attribute';content.append(text);
@@ -70,7 +70,9 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.equal(staticControls.constructors,0,'frozen pictures must not construct duplicate Emby-style application controls');
  assert.equal(staticControls.connections,0,'frozen pictures must not reconnect scrolling, timers or requests');
  assert.deepEqual(staticControls.scroll,[60,180]);
- assert.equal(staticControls.is,'fixture-snapshot-scroll','attribute selectors retain the original appearance');
+ // Emby and Jellyfin style their controls by class, never by `is`; a copied
+ // `is` lets custom element polyfills upgrade the copy.
+ assert.equal(staticControls.is,null,'copies leave out the is attribute');
  assert.equal(staticControls.border,'rgb(31, 79, 121)');
  assert.equal(staticControls.value,'live value');assert.equal(staticControls.checked,true,'live form state is copied');assert.equal(staticControls.indeterminate,true);assert.equal(staticControls.text,'edited without an attribute');assert.deepEqual(staticControls.files,['snapshot.txt']);
  assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(staticControls.live[k]-staticControls.copy[k])))<1,'static customized built-ins keep exact visible geometry');
@@ -230,7 +232,7 @@ withBrowser(routes,async({evaluate,call,url})=>{
   assert.equal(cancelledWarm,true,kind+' must abort unused in-flight background decoding before animating');
  }
  // Legacy Custom Elements v0 shims walk open shadow roots and upgrade nodes
- // by their `is` attribute. A static clone must stay outside that traversal.
+ // by their `is` attribute. A static clone must not carry an upgrade-triggering attribute.
  const legacySnapshot = await evaluate(`(async()=>{
   const previous=window.CustomElements,previousInfo=window.jmpInfo,attachShadow=Element.prototype.attachShadow,roots=new WeakMap();
   window.CustomElements={useNative:false};window.jmpInfo={...previousInfo,platform:'ipad'};
@@ -239,7 +241,7 @@ withBrowser(routes,async({evaluate,call,url})=>{
   const scroller=document.createElement('div');scroller.id='v0-snapshot-scroll';scroller.style='width:200px;height:100px;overflow:auto';
   const content=document.createElement('div');content.style='width:600px;height:800px';scroller.append(content);libraryRoot.append(scroller);scroller.scrollLeft=60;scroller.scrollTop=180;
   let upgradedCopies=0;const seen=new WeakSet();
-  const walk=root=>{for(const node of root.querySelectorAll('*')){if(node.shadowRoot)walk(node.shadowRoot);if(node.id==='v0-snapshot-input'&&node!==field&&!seen.has(node)){seen.add(node);upgradedCopies++;}}};
+  const walk=root=>{for(const node of root.querySelectorAll('*')){if(node.shadowRoot)walk(node.shadowRoot);if(node.getAttribute('is')==='fixture-v0-input'&&node!==field&&!seen.has(node)){seen.add(node);upgradedCopies++;}}};
   const observer=new MutationObserver(()=>walk(document));observer.observe(document,{childList:true,subtree:true});
   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   TigerestHomeTransitions.invalidate(false);await TigerestHomeTransitions.prewarm();
@@ -253,9 +255,9 @@ withBrowser(routes,async({evaluate,call,url})=>{
  })()`);
  assert.equal(legacySnapshot.upgradedCopies,0,'legacy component shims must not activate frozen controls');
  assert.ok(legacySnapshot.width>0,'isolated snapshots still participate in rendering');
- assert.equal(legacySnapshot.promoted,true,'iPad promotes the same closed snapshot into its scene');
+ assert.equal(legacySnapshot.promoted,true,'iPad promotes the same snapshot into its scene');
  assert.equal(legacySnapshot.cacheHit,true);
- assert.deepEqual(legacySnapshot.scroll,[60,180],'cached iPad scenes restore scroll offsets through the retained closed root');
+ assert.deepEqual(legacySnapshot.scroll,[60,180],'cached iPad scenes restore scroll offsets in the sanitized snapshot');
  await evaluate('TigerestHomeMotion.reset()');assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'account reset releases the cached background');
  await evaluate('TigerestHomeTransitions.prewarm()');await call('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'viewport changes cannot use the old background');
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});assert.equal(await evaluate('TigerestHomeTransitions.prewarm()'),false);assert.equal(await evaluate('TigerestHomeTransitions.cacheState.bytes'),0);

@@ -11,6 +11,7 @@ const http = require('node:http');
 const net = require('node:net');
 const { randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
+const configVersion = JSON.parse(fs.readFileSync(path.join(__dirname, '../resources/settings/settings_description.json'), 'utf8')).find(section => section.section === '__meta__').version;
 
 async function until(check, label) {
     for (let i = 0; i < 150; i++) {
@@ -65,19 +66,22 @@ async function devtools(url) {
     const executable = path.resolve(process.argv[2]);
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tigerest-onboarding-test-'));
     const id = randomUUID().replaceAll('-', '');
-    const profileName = `Onboarding-${id}`;
+    // macOS UNIX socket paths include the profile name and have a short limit.
+    const profileName = `Onboarding-${id.slice(0, 8)}`;
     const profile = path.join(root, 'profiles', id);
     fs.mkdirSync(profile, { recursive: true });
     fs.writeFileSync(path.join(profile, 'profile.json'), JSON.stringify({ name: profileName }));
     fs.writeFileSync(path.join(profile, 'Tigerest Theater.conf'), JSON.stringify({
-        version: 10, sections: { main: { enableWindowsTrayIcon: false } },
+        version: configVersion, sections: { main: { enableWindowsTrayIcon: false } },
     }));
     const requests = [];
     const fixture = http.createServer((req, res) => {
         // Requests from the page carry Fetch Metadata; the client's native
         // connection check does not.
         requests.push(`${req.method} ${req.url}${req.headers['sec-fetch-mode'] ? ' (page)' : ''}`);
-        if (req.url === '/emby/System/Info/Public') {
+        if (req.url === '/disconnect/web/index.html') {
+            req.socket.destroy();
+        } else if (req.url === '/emby/System/Info/Public' || req.url === '/badweb/System/Info/Public' || req.url === '/disconnect/System/Info/Public') {
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ Id: 'onboarding-test-server', ServerName: 'Fixture' }));
         } else if (req.url === '/emby/web/index.html') {
@@ -89,10 +93,10 @@ async function devtools(url) {
     });
     const fixturePort = await listen(fixture);
     const origin = `http://127.0.0.1:${fixturePort}`;
-    let child, cdp;
+    let child, cdp, startupErrors = '';
     async function stop() {
         cdp?.close(); cdp = null;
-        if (child && child.exitCode === null) {
+        if (child && child.exitCode === null && child.signalCode === null) {
             const exited = new Promise(resolve => child.once('exit', resolve));
             child.kill(); await exited;
         }
@@ -103,10 +107,13 @@ async function devtools(url) {
         await new Promise(resolve => reservation.close(resolve));
         child = spawn(executable, ['--config-dir', root, '--profile', profileName,
             '--disable-gpu', '--remote-debugging-port', `127.0.0.1:${port}`], {
-            windowsHide: !process.env.TIGEREST_ONBOARDING_INSPECT, stdio: 'ignore',
+            windowsHide: !process.env.TIGEREST_ONBOARDING_INSPECT, stdio: ['ignore', 'ignore', 'pipe'],
         });
+        startupErrors = '';
+        child.stderr.on('data', chunk => { startupErrors = (startupErrors + chunk).slice(-8000); });
         const target = await until(async () => {
-            assert.equal(child.exitCode, null, 'app exited early');
+            assert.equal(child.exitCode, null, 'app exited early: ' + startupErrors);
+            assert.equal(child.signalCode, null, 'app terminated early: ' + startupErrors);
             try {
                 const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
                 return list.find(item => item.type === 'page');
@@ -134,6 +141,9 @@ async function devtools(url) {
         await submit(`${origin}/emby`);
         await until(() => cdp.evaluate("Boolean(document.querySelector('#fixture'))"), 'own server page');
         assert.equal(await cdp.evaluate('location.href'), `${origin}/emby/web/index.html`);
+        await until(async () => (await cdp.send('Page.getNavigationHistory')).currentIndex === 0, 'successful load clears old server history');
+        const connectedHistory = await cdp.send('Page.getNavigationHistory');
+        assert.equal(connectedHistory.currentIndex, 0, 'a successful connection starts a new server history');
         // The page records the chosen server for Emby, so its own sign-in
         // opens instead of the welcome tour and Emby Connect.
         const recorded = await cdp.evaluate("JSON.parse(localStorage.getItem('servercredentials3') || '{}').Servers");
@@ -145,12 +155,47 @@ async function devtools(url) {
             const config = JSON.parse(fs.readFileSync(path.join(profile, 'Tigerest Theater.conf'), 'utf8'));
             return config.sections.main.userWebClient === `${origin}/emby` && config.sections.main.serverConnectionMode === 'custom';
         }, 'persisted custom address');
+        const nativeChecks = requests.filter(value => value === 'GET /emby/System/Info/Public').length;
+        await cdp.evaluate("window.tigerestSwitchServer()");
+        await until(() => cdp.evaluate("Boolean(document.querySelector('#choose-custom') && window.api && !document.querySelector('#choose-custom').disabled)"), 'explicit server choices');
+        assert.equal(await cdp.evaluate("document.querySelector('#server-choice').hidden"), false);
+        assert.equal(requests.filter(value => value === 'GET /emby/System/Info/Public').length, nativeChecks, 'switch must not auto-connect');
+        await cdp.evaluate("document.querySelector('#choose-custom').click()");
+        assert.equal(await cdp.evaluate("document.querySelector('#address').value"), `${origin}/emby`);
+        await cdp.evaluate("document.querySelector('#cancel-switch-button').click()");
+        await until(() => cdp.evaluate("Boolean(document.querySelector('#fixture'))"), 'cancel returns to previous server');
+        assert.equal(await cdp.evaluate("JSON.parse(localStorage.getItem('servercredentials3')).Servers[0].Id"), 'onboarding-test-server');
+        assert.equal(JSON.parse(fs.readFileSync(path.join(profile, 'Tigerest Theater.conf'), 'utf8')).sections.main.userWebClient, `${origin}/emby`);
+        await cdp.evaluate("window.tigerestSwitchServer()");
+        await until(() => cdp.evaluate("Boolean(document.querySelector('#choose-custom') && window.api && !document.querySelector('#choose-custom').disabled)"), 'switch before failed web document');
+        await cdp.evaluate("document.querySelector('#choose-custom').click()");
+        await submit(`${origin}/badweb`);
+        await until(() => requests.some(value => value.startsWith('GET /badweb/web/index.html')), 'failing web document requested');
+        await until(() => cdp.evaluate("Boolean(document.querySelector('#choose-custom') && window.api && !document.querySelector('#choose-custom').disabled)"), 'failed document returns to chooser');
+        await until(() => JSON.parse(fs.readFileSync(path.join(profile, 'Tigerest Theater.conf'), 'utf8')).sections.main.userWebClient === `${origin}/emby`, 'failed document restores saved destination');
+        await cdp.evaluate("document.querySelector('#choose-custom').click()");
+        assert.equal(await cdp.evaluate("document.querySelector('#address').value"), `${origin}/emby`, 'chooser session cache cannot restore the failed address');
+        await cdp.evaluate("document.querySelector('#cancel-switch-button').click()");
+        await until(() => cdp.evaluate("Boolean(document.querySelector('#fixture'))"), 'failed switch still permits cancel to original server');
+        await cdp.evaluate("window.tigerestSwitchServer()");
+        await until(() => cdp.evaluate("Boolean(document.querySelector('#choose-custom') && window.api && !document.querySelector('#choose-custom').disabled)"), 'chooser before disconnected document');
+        await cdp.evaluate("document.querySelector('#choose-custom').click()");
+        await submit(`${origin}/disconnect`);
+        await until(() => cdp.evaluate("Boolean(document.querySelector('#server-choice') && !document.querySelector('#server-choice').hidden && document.querySelector('#choice-description').textContent.includes('失败'))"), 'connection failure unlocks original chooser');
+        assert.equal(JSON.parse(fs.readFileSync(path.join(profile, 'Tigerest Theater.conf'), 'utf8')).sections.main.userWebClient, `${origin}/emby`);
+        await cdp.evaluate("document.querySelector('#cancel-switch-button').click()");
+        await until(() => cdp.evaluate("Boolean(document.querySelector('#fixture'))"), 'cancel after disconnected document');
         await stop();
         await launch();
         await until(() => cdp.evaluate("Boolean(document.querySelector('#fixture'))"), 'saved server reconnection');
         assert.equal(requests.filter(value => value === 'GET /emby/System/Info/Public').length, 2, 'one native connection check per launch');
         assert.ok(!requests.some(value => value.startsWith('HEAD ')), 'unnecessary HEAD redirect check');
-        console.log('PASS: real Qt startup choices, help, empty custom form, HTTP errors, exact port/path, persistent reconnection');
+        console.log('PASS: real Qt startup, errors, exact port/path, explicit switch without reconnect, saved address and credentials after cancel, persistent reconnection');
+    } catch(error) {
+        console.error('Native startup diagnostics', startupErrors);
+        try { console.error('Navigation history', await cdp.send('Page.getNavigationHistory')); } catch {}
+        try { console.error('Fixture failure state', await cdp.evaluate('({url:location.href,api:!!window.api,choices:!!document.querySelector("#choose-custom"),error:document.querySelector("#connection-error")?.textContent,description:document.querySelector("#choice-description")?.textContent})')); } catch {}
+        throw error;
     } finally {
         await stop();
         await new Promise(resolve => fixture.close(resolve));

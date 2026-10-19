@@ -1,0 +1,21 @@
+/* The rules of a popular third-party Jellyfin theme (Abyss, imported through
+   a server's custom CSS) that move the detail poster and the header. Written
+   to reproduce its selectors and values; it is not a copy of the theme. */
+.headerTop { padding: 2em 0 !important; }
+.skinHeader { background-color: transparent; }
+.pageTitle.pageTitleWithLogo.pageTitleWithDefaultLogo, #itemDetailPage .pageTitle { display: none !important; }
+.layout-tv .itemBackdrop, .layout-desktop .itemBackdrop { height: 20vh !important; }
+.layout-tv .detailRibbon, .layout-desktop .detailRibbon { background: rgba(0, 0, 0, .2) !important; margin-top: 0; padding-top: .5em; padding-bottom: .5em; }
+#itemDetailPage .detailLogo { position: static; margin-left: 32.5%; display: block; margin-bottom: 2vh; }
+.mainDetailButtons { font-size: 120%; }
+@media (max-width: 100em) { .mainDetailButtons { font-size: 155%; } }
+.detailButton { max-width: 15vw !important; }
+#itemDetailPage .detailButton { padding: 8px !important; margin-right: 8px !important; }
+#itemDetailPage .btnPlay { max-width: none !important; }
+#itemDetailPage .btnPlay .detailButton-content { flex-direction: row !important; }
+.layout-desktop #itemDetailPage .btnPlay { margin-right: 12px !important; padding: .4em 1.4em .4em 1em !important; }
+.layout-desktop #itemDetailPage .btnPlay .detailButton-content::after { content: "Play"; margin-left: .45em; font-weight: 700; font-size: .9em; }
+.layout-tv .detailImageContainer .card, .layout-desktop .detailImageContainer .card { position: fixed !important; top: 15% !important; }
+.layout-desktop .detailPageSecondaryContainer.padded-left { padding-left: max(env(safe-area-inset-left), 32.45vw); }
+#loginPage h1 { display: none; }
+#loginPage .padded-left.padded-right.padded-bottom-page { margin-top: 8em; }

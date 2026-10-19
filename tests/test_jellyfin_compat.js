@@ -126,9 +126,13 @@ function jellyfinPage() {
         get isConnected() { return page.connected; }
     };
     const listeners = {};
+    const routeListeners = new Set();
     const context = {
         console: { info() {}, warn() {} }, Promise, setInterval: () => 7, clearInterval() {},
-        location: {hash: '#/home'},
+        addEventListener: (type, fn) => { if (type === 'hashchange') routeListeners.add(fn); },
+        removeEventListener: (type, fn) => { if (type === 'hashchange') routeListeners.delete(fn); },
+        location: {hash: '#/home', replaced: 0, get href() { return 'http://jf.test/web/index.html' + this.hash; },
+            replace(url) { this.replaced++; this.hash = '#' + url.split('#')[1]; }},
         document: {
             head: element('head'),
             getElementById: id => id === 'homeTab' && page.connected ? page.tab : null,
@@ -147,7 +151,7 @@ function jellyfinPage() {
     };
     context.window = context;
     vm.runInNewContext(source('jellyfinPlugin.js'), context);
-    page.context = context; page.listeners = listeners;
+    page.context = context; page.listeners = listeners; page.routeChanged = () => routeListeners.forEach(fn => fn());
     return page;
 }
 
@@ -219,6 +223,17 @@ test('returning home mounts the visible page when Jellyfin retains an older hidd
     plugin.home.destroy();
 });
 
+test('hash-only tab changes stop and resume the gallery without a polling tick', () => {
+    const page = jellyfinPage();
+    const plugin = new page.context._tigerestJellyfinPlugin({events:{on(){}}, appRouter:{}, ServerConnections:{}});
+    const gallery = page.galleries[0];
+    page.visible = false; page.routeChanged();
+    assert.deepEqual(gallery.calls, ['start', 'stop']);
+    page.visible = true; page.routeChanged();
+    assert.deepEqual(gallery.calls, ['start', 'stop', 'start']);
+    plugin.home.destroy();
+});
+
 test('Modern favorites changes the hash without starting a legacy navigation promise', async () => {
     const page = jellyfinPage(), shown = [];
     let legacyClicks = 0;
@@ -229,6 +244,7 @@ test('Modern favorites changes the hash without starting a legacy navigation pro
         ServerConnections:{currentApiClient:()=>null}});
     await plugin.home.openFavorites();
     assert.equal(page.context.location.hash, '#/home?tab=1');
+    assert.equal(page.context.location.replaced, 1, 'like the Legacy tab, favorites adds no history entry');
     assert.deepEqual(shown, [], 'same-page tab changes do not emit the viewshow appRouter waits for');
     assert.equal(legacyClicks, 0, 'a hidden tab must not desynchronize Modern route state');
 });

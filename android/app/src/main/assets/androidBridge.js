@@ -21,7 +21,7 @@
   const operations={
    player:'load queueMedia clearQueue seekTo stop streamSwitch pause play showMessage setVolume volume setMuted muted getAudioDeviceList setAudioDevice setAudioStream setSubtitleStream getSubtitleStreams setAudioDelay setSubtitleDelay setVideoOnlyMode setVideoRectangle setPlaybackRate getPosition getDuration mpvDiagnostics getWebPlaylist getCurrentWebPlaylistItemId setWebPlaylist notifyShuffleChange notifyRepeatChange notifyFullscreenChange notifyRateChange notifyQueueChange notifyPlaybackStop notifyDurationChange notifyPlaybackState notifyPosition notifySeek notifyMetadata notifyVolumeChange notifyStreamingBitrateResult',
    settings:'setValue resetToDefault value',
-   system:'communityRequest communitySourceAvatar communityCancel communityCredential communitySetEmbySession exit restart hello isAddressOnLocalSubnet checkServerConnectivity cancelServerConnectivity openExternalUrl systemInformation getUserAgent debugInformation setReportDiagnosticsScope collectReportDiagnostics checkForUpdates appUpdateState downloadAppUpdate installAppUpdate cancelAppUpdate skipAppUpdate deferAppUpdate',
+   system:'communityRequest communitySourceAvatar communityCancel communityCredential communitySetEmbySession exit restart hello isAddressOnLocalSubnet checkServerConnectivity cancelServerConnectivity finishServerSelection takeServerSelectionError openExternalUrl systemInformation getUserAgent debugInformation setReportDiagnosticsScope collectReportDiagnostics checkForUpdates appUpdateState downloadAppUpdate installAppUpdate cancelAppUpdate skipAppUpdate deferAppUpdate',
    window:'setFullScreen isFullScreen beginPlaybackSession endPlaybackSession requestPlaybackFullScreen setCursorVisibility',
    danmaku:'search episodes match load loadUrl importFile setSource sources setEnabled',
   };
@@ -33,6 +33,10 @@
   for(const [component,names]of Object.entries(operations)){api[component]={};for(const name of names.split(' '))api[component][name]=method(component,name);}
   for(const [component,names]of Object.entries(notifications)){api[component]??={};for(const name of names.split(' '))api[component][name]=signal(component,name);}
   Object.assign(api.system,{isWindows:false,isMacos:false,isAndroid:true});
+  // Native prompts have a user-controlled completion/cancel lifecycle, without
+  // the bridge's 30-second operation timeout. WebHost supplies the EditText.
+  api.system.editServerAddress=value=>closed?Promise.reject(new Error('页面已关闭')):
+   Promise.resolve(global.prompt('Tigerest.ServerAddress',String(value||'')));
   return {api,receive(message){
    if(closed)return;
    if(message.id){const request=pending.get(message.id);if(!request)return;clearTimeout(request.timeout);pending.delete(message.id);message.error?request.reject(new Error(message.error)):request.resolve(message.result);}

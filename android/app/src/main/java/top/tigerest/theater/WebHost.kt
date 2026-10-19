@@ -20,6 +20,9 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
     private val loader = WebViewAssetLoader.Builder().addPathHandler("/assets/",WebViewAssetLoader.AssetsPathHandler(activity)).build()
     private var script: ScriptHandler? = null
     private var configured = ""
+    private data class Selection(val target: String, val previousAddress: String, val previousMode: String, var started: Boolean = false, var mainUrl: String = target)
+    private var selection: Selection? = null
+    private var selectionError = false
     init {
         require(WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) { "请更新 Android System WebView 后重试" }
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
@@ -34,19 +37,50 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
                 val saved = settings.string("main","userWebClient")
                 val allowed = origin == ASSET_ORIGIN || (saved.isNotBlank() && runCatching { ServerAddress.origin(saved) }.getOrNull() == origin)
                 if(allowed) {
+                    selection?.let { if(origin != ASSET_ORIGIN) it.mainUrl = address }
                     // A document-start script registered during this callback misses the already
                     // starting navigation. Restart it after registration when switching servers.
-                    if(configured != origin) { configure(origin); view.post { view.loadUrl(address) }; return true }
+                    // The asset origin is already in the allowlist. Keep the
+                    // current server registered so history Back/Cancel injects
+                    // its bridge even when WebView skips this callback.
+                    if(origin != ASSET_ORIGIN && configured != origin) { configure(origin); view.post { view.loadUrl(address) }; return true }
                     return false
                 }
                 if(request.url.scheme in listOf("http","https")) activity.openExternal(address)
                 return true
             }
-            override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { bridge.pageStarted(); activity.loading(true) }
-            override fun onPageFinished(view: WebView,url: String) { DiagnosticsLog.app.record("info","WebView main document loaded"); activity.loading(false); activity.updateWindowMetrics() }
-            override fun onReceivedError(view: WebView,request: WebResourceRequest,error: android.webkit.WebResourceError) { if(request.isForMainFrame) { DiagnosticsLog.app.record("error","WebView main document load failed code=${error.errorCode}"); activity.webError("网页加载失败（${error.errorCode}），请检查连接后重试") } }
+            override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) {
+                selection?.let { if(url == it.target) it.started = true; if(!url.startsWith(ASSET_ORIGIN)) it.mainUrl = url }
+                bridge.pageStarted(); activity.loading(true)
+            }
+            override fun onPageFinished(view: WebView,url: String) {
+                selection?.let { pending ->
+                    if(pending.started && url == view.url && runCatching { ServerAddress.origin(url.substringBefore('?').substringBefore('#')) == ServerAddress.origin(pending.target.substringBefore('?').substringBefore('#')) }.getOrDefault(false)) {
+                        selection = null; view.clearHistory()
+                    }
+                }
+                DiagnosticsLog.app.record("info","WebView main document loaded"); activity.loading(false); activity.updateWindowMetrics()
+            }
+            override fun onReceivedError(view: WebView,request: WebResourceRequest,error: android.webkit.WebResourceError) { if(request.isForMainFrame) {
+                DiagnosticsLog.app.record("error","WebView main document load failed code=${error.errorCode}")
+                rollbackSelection(); activity.webError("网页加载失败（${error.errorCode}），请检查连接后重试")
+            } }
+            override fun onReceivedHttpError(view: WebView,request: WebResourceRequest,response: WebResourceResponse) {
+                if(request.isForMainFrame) { rollbackSelection(); activity.webError("网页加载失败（HTTP ${response.statusCode}），请检查地址后重试") }
+            }
+            override fun onReceivedSslError(view: WebView,handler: android.webkit.SslErrorHandler,error: android.net.http.SslError) {
+                handler.cancel()
+                val mainUrl = selection?.mainUrl ?: view.url
+                if(error.url.substringBefore('#') == mainUrl?.substringBefore('#')) { rollbackSelection(); activity.webError("服务器证书无效，请检查地址后重试") }
+            }
         }
         view.webChromeClient = object: WebChromeClient() {
+            override fun onJsPrompt(view: WebView, url: String, message: String, defaultValue: String?, result: android.webkit.JsPromptResult): Boolean {
+                if(message != "Tigerest.ServerAddress") return super.onJsPrompt(view,url,message,defaultValue,result)
+                if(url.substringBefore('?').substringBefore('#') != ONBOARDING) { result.cancel(); return true }
+                activity.editServerAddress(defaultValue.orEmpty()) { value -> if(value == null) result.cancel() else result.confirm(value) }
+                return true
+            }
             override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                 if(BuildConfig.DEBUG && message.message().startsWith("TGS phase ")) android.util.Log.i("TigerestWeb",message.message())
                 // Server scripts can include authenticated URLs in errors. Keep diagnostics structural.
@@ -81,6 +115,33 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
     private fun asset(path: String) = activity.assets.open(path).bufferedReader().use { it.readText() }
     fun open(url: String) { val origin = if(url.startsWith(ASSET_ORIGIN)) ASSET_ORIGIN else ServerAddress.origin(url.substringBefore('?').substringBefore('#')); configure(origin); view.loadUrl(url) }
     fun openSaved() { val saved = settings.string("main","userWebClient"); open(saved.ifBlank { ONBOARDING }) }
+    fun finishServerSelection(server: String, mode: String, target: String): Boolean {
+        if(selection != null || view.url?.substringBefore('?')?.substringBefore('#') != ONBOARDING) return false
+        require(mode in setOf("custom","tigerest"))
+        val origin = ServerAddress.origin(server)
+        require(origin == ServerAddress.origin(target))
+        selection = Selection(target,settings.string("main","userWebClient"),settings.string("main","serverConnectionMode"))
+        settings.set("main","userWebClient",server); settings.set("main","serverConnectionMode",mode)
+        configure(origin); view.loadUrl(target)
+        return true
+    }
+    fun rollbackSelection(failed: Boolean = true): Boolean {
+        val pending = selection ?: return false
+        selection = null
+        selectionError = failed
+        settings.set("main","userWebClient",pending.previousAddress); settings.set("main","serverConnectionMode",pending.previousMode)
+        configure(if(pending.previousAddress.isBlank()) ASSET_ORIGIN else ServerAddress.origin(pending.previousAddress))
+        view.stopLoading()
+        val history = view.copyBackForwardList()
+        val chooser = (history.currentIndex downTo 0).firstOrNull { history.getItemAtIndex(it).url.startsWith(ONBOARDING) }
+        view.post {
+            if(chooser != null && chooser < history.currentIndex) view.goBackOrForward(chooser - history.currentIndex)
+            else if(chooser == history.currentIndex) view.reload()
+            else view.loadUrl("$ONBOARDING?choose=1")
+        }
+        return true
+    }
+    fun takeServerSelectionError(): Boolean = selectionError.also { selectionError = false }
     fun restore(state: android.os.Bundle) {
         val saved = settings.string("main","userWebClient")
         configure(if(saved.isBlank()) ASSET_ORIGIN else ServerAddress.origin(saved))

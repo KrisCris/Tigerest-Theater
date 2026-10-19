@@ -30,13 +30,14 @@
         <form id="connect-form" hidden>
             <button id="back-button" class="text-button" type="button">← 返回选择服务器</button>
             <h1 id="title"></h1>
-            <p class="address-help">填写完整地址，包含 http / https 和端口。</p>
+            <p class="address-help">输入服务器域名或 IP，可包含端口和子路径。未填写协议时使用 http；HTTPS 服务器请以 https:// 开头。</p>
             <label class="sr-only" for="address">Emby / Jellyfin 服务器地址</label>
             <input type="text" id="address" spellcheck="false" autocomplete="url" inputmode="url">
             <div class="connection-progress"><span id="spinner" hidden></span><span id="connection-status" role="status"></span></div>
             <p id="connection-error" role="alert" hidden></p>
             <button id="connect-button" type="submit"></button>
         </form>
+        <button id="cancel-switch-button" class="text-button" type="button" hidden>取消切换，返回当前服务器</button>
         <button id="offline-button" class="text-button" type="button">打开离线媒体</button>
     </div>
     <script src="find-webclient.lang.js"></script>

@@ -8,7 +8,7 @@ const { test } = require('node:test');
 
 // Only the browser DOM and native network boundary are doubled. The shipped
 // connection controller runs unchanged, including asynchronous cancellation.
-function page({ saved = '', mode = '', lan = false, connect } = {}) {
+function page({ saved = '', mode = '', lan = false, connect, switching = false, editAddress, finishSelection } = {}) {
     const elements = new Map();
     function element(id) {
         if (!elements.has(id)) elements.set(id, {
@@ -33,8 +33,10 @@ function page({ saved = '', mode = '', lan = false, connect } = {}) {
     };
     check.abort = () => {};
     const window = {
-        apiPromise: Promise.resolve(), jmpInfo: { settings }, location: '',
-        api: { system: { isAddressOnLocalSubnet: () => lan, cancelServerConnectivity() {} } },
+        apiPromise: Promise.resolve(), jmpInfo: { settings }, location: switching ? { search: '?choose=1' } : '',
+        history: { length: switching ? 2 : 1, back() { window.wentBack = true; } },
+        tigerestAndroidApi: editAddress ? { system: { editServerAddress: editAddress } } : null,
+        api: { system: { isAddressOnLocalSubnet: () => lan, cancelServerConnectivity() {}, finishServerSelection: finishSelection } },
         jmpCheckServerConnectivity: check, tigerestOpenOfflineLibrary() {},
     };
     const context = vm.createContext({
@@ -45,6 +47,36 @@ function page({ saved = '', mode = '', lan = false, connect } = {}) {
     return { element, requests, settings, window, context };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test('native selection owns saving and navigation; Back cannot split its commit', async () => {
+    let finish, args;
+    const p = page({ saved: 'https://old.example/', mode: 'custom', switching: true,
+        finishSelection: (...values) => { args = values; return new Promise(resolve => { finish = resolve; }); } });
+    await settle();
+    await p.element('choose-custom').emit('click');
+    p.element('address').value = 'https://new.example/';
+    const pending = p.element('connect-form').emit('submit');
+    await settle();
+    assert.deepEqual(args, ['https://new.example/', 'custom', 'https://new.example/web/index.html']);
+    await p.element('cancel-switch-button').emit('click');
+    assert.equal(p.window.tigerestServerSelectionBack(), true);
+    assert.equal(p.window.wentBack, undefined);
+    assert.equal(p.settings.main.userWebClient, 'https://old.example/');
+    finish(true); await pending;
+    assert.deepEqual(p.window.location, { search: '?choose=1' });
+});
+
+test('rejected native selection retains old settings and allows another choice', async () => {
+    const p = page({ saved: 'https://old.example/', mode: 'custom', switching: true,
+        finishSelection: async () => false });
+    await settle(); await p.element('choose-custom').emit('click');
+    p.element('address').value = 'https://new.example/';
+    await p.element('connect-form').emit('submit');
+    assert.equal(p.settings.main.userWebClient, 'https://old.example/');
+    assert.equal(p.element('connection-error').hidden, false);
+    await p.element('cancel-switch-button').emit('click');
+    assert.equal(p.window.wentBack, true);
+});
 
 test('first launch waits for a server choice without probing any server', async () => {
     const p = page({ lan: true });
@@ -115,8 +147,48 @@ test('returning to choices during native subnet lookup cannot start a stale conn
     finish(true);
     await pending;
     assert.deepEqual(p.requests, []);
-    assert.equal(p.settings.main.serverConnectionMode, 'custom');
+    assert.equal(p.settings.main.serverConnectionMode, '');
     assert.equal(p.element('address').value, '');
+});
+
+test('explicit switching shows choices without connecting or erasing the saved server', async () => {
+    const p = page({ saved: 'https://example.org/jellyfin/', mode: 'custom', switching: true });
+    await settle();
+    assert.deepEqual(p.requests, []);
+    assert.equal(p.element('server-choice').hidden, false);
+    await p.element('choose-custom').emit('click');
+    assert.equal(p.element('address').value, 'https://example.org/jellyfin/');
+    await p.element('back-button').emit('click');
+    await p.element('cancel-switch-button').emit('click');
+    assert.equal(p.window.wentBack, true);
+    assert.equal(p.settings.main.userWebClient, 'https://example.org/jellyfin/');
+    assert.equal(p.settings.main.serverConnectionMode, 'custom');
+});
+
+test('failed replacement leaves the original launch destination intact', async () => {
+    const p = page({ saved: 'https://old.example/', mode: 'custom', switching: true, connect: async () => { throw Error('offline'); } });
+    await settle();
+    await p.element('choose-custom').emit('click');
+    p.element('address').value = 'https://new.example/';
+    await p.element('connect-form').emit('submit');
+    assert.equal(p.settings.main.userWebClient, 'https://old.example/');
+    assert.equal(p.settings.main.serverConnectionMode, 'custom');
+});
+
+test('Android native address editing preserves cancel and sends accepted text through normal validation', async () => {
+    let result = null;
+    const p = page({ switching: true, saved: 'https://old.example/', mode: 'custom', editAddress: async () => result });
+    await settle();
+    await p.element('choose-custom').emit('click');
+    await p.element('address').emit('click');
+    assert.equal(p.element('address').value, 'https://old.example/');
+    result = 'https://example.org:8920/jellyfin/';
+    await p.element('address').emit('click');
+    assert.equal(p.element('address').value, result);
+    assert.equal(p.settings.main.userWebClient, 'https://old.example/');
+    await p.element('connect-form').emit('submit');
+    assert.deepEqual(p.requests, [result]);
+    assert.equal(p.settings.main.userWebClient, result);
 });
 
 test('back cancels an in-flight connection and a late result cannot navigate or save it', async () => {

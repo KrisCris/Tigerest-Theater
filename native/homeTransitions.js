@@ -2,7 +2,6 @@
     'use strict';
     window.TigerestHomeTransitions?.dispose?.();
     let active = null, last = null;
-    const frozenRoots = new WeakMap();
     const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const box = node => node?.getBoundingClientRect();
     const usable = node => { const b = box(node); return node?.isConnected && b?.width > 1 && b.height > 1; };
@@ -234,10 +233,14 @@
             let clone;
             if (customizedBuiltin(node)) {
                 // cloneNode upgrades customized built-ins and reconnects Emby's
-                // scrollers/tabs in this static picture. Keep their attribute
-                // selectors, but create ordinary elements without an `is` option.
+                // scrollers/tabs in this static picture. Create ordinary elements
+                // without an `is` option, and leave out the `is` attribute too:
+                // Jellyfin's webcomponents v0 polyfill upgrades any element that
+                // carries one, in this open shadow tree as well, and runs the
+                // control's callbacks on the copy. Neither Emby's nor Jellyfin's
+                // stylesheets select on `is`; classes keep the appearance.
                 clone = document.createElement(node.localName);
-                for (const attr of node.attributes) clone.setAttributeNS(attr.namespaceURI,attr.name,attr.value);
+                for (const attr of node.attributes) if (attr.name !== 'is') clone.setAttributeNS(attr.namespaceURI,attr.name,attr.value);
                 if (node.tagName === 'INPUT' && node.type === 'file') clone.files = node.files;
                 else if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA') clone.value = node.value;
                 if (node.tagName === 'INPUT') { clone.checked = node.checked; clone.indeterminate = node.indeterminate; }
@@ -268,12 +271,7 @@
             }
             return clone;
         }
-        // Jellyfin's Custom Elements v0 shim traverses open shadow trees and
-        // upgrades our inert `is` attributes, reconnecting copied input widgets.
-        // A closed root keeps the static scene outside that application shim.
-        const shadow = host.attachShadow({mode: window.CustomElements?.useNative === false ? 'closed' : 'open'});
-        frozenRoots.set(host, shadow);
-        const html = document.documentElement.cloneNode(false), body = home ? document.body.cloneNode(false) : copyTree(document.body);
+        const shadow = host.attachShadow({mode: 'open'}), html = document.documentElement.cloneNode(false), body = home ? document.body.cloneNode(false) : copyTree(document.body);
         html.classList.add('tigerest-motion-html'); body.classList.remove('tigerest-motion-busy');
         if (home) {
             const copyRoot = copyTree(home); body.append(copyRoot);
@@ -351,7 +349,7 @@
                 scene=cached.light;cached.light=null;
                 cached.wrapper?.remove();cached.wrapper=null;
                 scene.style.removeProperty('filter');
-                for(const n of frozenRoots.get(scene)?.querySelectorAll('[data-tigerest-scroll]')||[]) {
+                for(const n of scene.shadowRoot?.querySelectorAll('[data-tigerest-scroll]')||[]) {
                     const [x,y]=JSON.parse(n.getAttribute('data-tigerest-scroll'));
                     (job.syncs||=[]).push(()=>{n.scrollLeft=x;n.scrollTop=y;});
                 }
