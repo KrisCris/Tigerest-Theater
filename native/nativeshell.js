@@ -277,6 +277,9 @@ if (settingsDescriptionsFromStorage) {
 jmpInfo.settingsDescriptionsUpdate = [];
 jmpInfo.settingsUpdate = [];
 window.apiPromise = createApi().then(async api => {
+    // Jellyfin constructs its plugins synchronously while these native reads
+    // are in flight. Publish the ready bridge before refreshing saved settings.
+    window.api = api;
     // Native selection can commit/roll back while this origin is unloaded.
     // Both the injected bootstrap and this origin's cache may be stale.
     if (api.settings.value) {

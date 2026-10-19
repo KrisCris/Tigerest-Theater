@@ -28,6 +28,18 @@
     // page.js replace is a hash replace, and favorites is the home's second
     // tab, named in the address by Modern and a same-page tab in Legacy, where
     // the address stays #/home. It is reported as Emby's favorites address.
+    function replaceHash(address) {
+        const oldURL = location.href, newURL = oldURL.split('#')[0] + '#' + address;
+        if (!window.tigerestIPadApi) { location.replace(newURL); return; }
+        // WKWebView can reload the document on absolute location.replace(),
+        // discarding the native bridge and the motion return chain. Retain the
+        // router's history state, and announce the actual hash replacement.
+        history.replaceState(history.state, '', newURL);
+        if (oldURL !== newURL) {
+            window.dispatchEvent(new PopStateEvent('popstate', {state: history.state}));
+            window.dispatchEvent(new HashChangeEvent('hashchange', {oldURL, newURL}));
+        }
+    }
     const favoritesPath = '/home?tab=favorites';
     function legacyFavorites() {
         return !modernLayout() && !!visiblePage()?.querySelector('#favoritesTab.is-active');
@@ -54,7 +66,7 @@
     function attachMotion({appRouter, connections}) {
         const motion = window.TigerestHomeMotion;
         if (!motion) return null;
-        const go = address => location.replace(location.href.split('#')[0] + '#' + address);
+        const go = replaceHash;
         const pageJs = {
             replace(target) {
                 const address = String(target).replace(/^#!?/, ''), home = jellyfinRoute().path.startsWith('/home');
@@ -258,7 +270,7 @@
             // viewshow. appRouter.show waits for that event and would leave all
             // later showItem calls waiting. Follow Modern's own hash links, in
             // place like the Legacy tab: returning home then leaves one entry.
-            window.location.replace(window.location.href.split('#')[0] + '#/home?tab=1');
+            replaceHash('/home?tab=1');
             return Promise.resolve();
         }
         const page = this.tab?.closest('.page') || document;

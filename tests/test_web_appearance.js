@@ -275,7 +275,7 @@ function appearanceMutationObserver(document, mutationObservers) {
     return mutationObservers.find(observer => observer.target === document.documentElement);
 }
 
-function runNativeShell() {
+function runNativeShell({nativeApi, inspectWindow} = {}) {
     const document = makeDocument();
     const storage = new Map();
     const jmpInfo = {
@@ -311,7 +311,7 @@ function runNativeShell() {
             constructor(callback) { this.callback = callback; }
             observe() {}
         },
-        QWebChannel: class {},
+        QWebChannel: class { constructor(transport, ready) { if (nativeApi) ready({objects: nativeApi}); } },
         setTimeout() { return 1; },
         clearTimeout() {},
     };
@@ -321,6 +321,7 @@ function runNativeShell() {
         context,
         {filename: 'nativeshell.js'},
     );
+    inspectWindow?.(window);
     return window.NativeShell;
 }
 
@@ -1026,3 +1027,18 @@ testNestedTabContentIsNotMistakenForTopLevelContent();
 testReducedMotionRulesDoNotDisableServerAnimations();
 testRespectsReducedMotion();
 console.log('web appearance: all checks passed');
+
+
+require('node:test')('Jellyfin plugins can use the native bridge while saved settings are still loading', async () => {
+    const connected = [];
+    const system = {communityResponse: {connect: handler => connected.push(handler)}};
+    let window, queried = false;
+    const nativeApi = {system, settings: {value() { queried = true; return new Promise(() => {}); }}};
+    runNativeShell({nativeApi, inspectWindow: value => window = value});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(queried, true, 'native settings reply is deliberately delayed');
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'native', 'communityBridge.js'), 'utf8'), {window, console, setTimeout, clearTimeout});
+    assert.doesNotThrow(() => new window.TigerestCommunityBridge(window.api?.system),
+        'the synchronous Jellyfin plugin constructor must not lose its bridge during settings refresh');
+    assert.equal(connected.length, 1);
+});

@@ -105,7 +105,7 @@
         const cards = Array.from(root.querySelectorAll('.card,[data-id],[data-item-id]')).filter(node => String(itemFromCard(node)?.Id) === String(id));
         // Jellyfin's legacy home keeps the hidden home tab's cards before the active favorites tab.
         const card = cards.find(node => node.getBoundingClientRect?.().width > 1) || cards[0];
-        return card?.querySelector('img.cardImage') || card?.querySelector('img') || card?.querySelector('.cardImageContainer') || (card?.matches('.cardImageContainer') ? card : null);
+        return card?.querySelector('img.cardImage') || card?.querySelector('img') || card?.querySelector('.cardImageContainer') || card?.querySelector('.listItemImage') || (card?.matches('.cardImageContainer') ? card : null);
     }
     const motion = {
         get entry() { return entry; },
@@ -176,9 +176,9 @@
                 return navigate();
             };
             const capture = event => {
-                const node = event.target.closest?.('.cardImageContainer,.cardOverlayContainer,img.cardImage');
-                const card = node?.closest('.card,[data-id]'), item = itemFromCard(card);
-                if (item && !motion.busy) pressedPoster = {id: String(item.Id), item, node: card.querySelector('img.cardImage') || card.querySelector('img') || card.querySelector('.cardImageContainer') || node, at: Date.now()};
+                const node = event.target.closest?.('.cardImageContainer,.cardOverlayContainer,img.cardImage,.listItemImage');
+                const card = node?.closest('.card,.listItem,[data-id]'), item = itemFromCard(card);
+                if (item && !motion.busy) pressedPoster = {id: String(item.Id), item, node: card.querySelector('img.cardImage') || card.querySelector('img') || card.querySelector('.cardImageContainer') || card.querySelector('.listItemImage') || node, at: Date.now()};
             };
             document.addEventListener('pointerdown', capture, true);
             router.back = back; router.goHome = home; router.showItem = showItem;
