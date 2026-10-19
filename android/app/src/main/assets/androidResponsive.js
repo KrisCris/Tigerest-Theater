@@ -127,12 +127,17 @@
     window.addEventListener('tigerest-window-changed', apply);
     window.addEventListener('resize', apply);
     document.addEventListener('DOMContentLoaded', apply);
-    window.addEventListener('pagehide',()=>{
+    // Jellyfin's web client dispatches its own pagehide from view elements;
+    // only the browser's pagehide for the document ends this page.
+    const leave = event => {
+        if (!event.isTrusted || (event.target !== document && event.target !== window)) return;
+        window.removeEventListener('pagehide', leave);
         closeMenu();menu?.remove();more?.remove();actionsHost?.classList.remove('tgs-header-condensed');
         disposed=true; headerResize?.disconnect(); headerChanges?.disconnect();
         cancelAnimationFrame(frame); restoreHeaderHeight();
         window.removeEventListener('tigerest-window-changed',apply);
         window.removeEventListener('resize',apply);
-    },{once:true});
+    };
+    window.addEventListener('pagehide', leave);
     if (document.readyState !== 'loading') apply();
 })();

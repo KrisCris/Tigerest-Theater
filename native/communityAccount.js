@@ -11,7 +11,10 @@
                 onTrust:session=>{window.TigerestCommunityClient.setTrustedServer(this.session?.caps?.embyExchangeServerId||'');this.mappingSession(session);},onChange:()=>this.identityChanged()});
             if(window.TigerestCommunityAvatar)this.avatars=new window.TigerestCommunityAvatar({session:this.session,sourceAvatar:(emby,options)=>this.bridge.sourceAvatar(emby,options)});
             window.TigerestCommunityClient.setTrustedServer('');this.sync();
-            window.addEventListener('pagehide',()=>this.session.setSession(null),{once:true});
+            // Jellyfin's web client dispatches its own pagehide from view elements;
+            // only the browser's pagehide for the document ends this page.
+            const leave=event=>{if(!event.isTrusted||(event.target!==document&&event.target!==window))return;window.removeEventListener('pagehide',leave);this.session.setSession(null);};
+            window.addEventListener('pagehide',leave);
         }
         subscribe(listener){this.listeners.add(listener);return ()=>this.listeners.delete(listener);}
         // The same author under a new name: lists reload, drafts stay.

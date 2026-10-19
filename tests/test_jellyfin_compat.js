@@ -248,3 +248,25 @@ test('a Jellyfin download goes through the offline library, and other addresses 
     await context.tigerestEnqueueDownload('https://media.test/jellyfin/some/file.bin');
     assert.deepEqual(started.map(info => info.url), ['https://media.test/jellyfin/some/file.bin']);
 });
+
+test('no page script takes a Jellyfin view change for leaving the page', () => {
+    // Jellyfin's web client dispatches untrusted, bubbling pagehide events from view
+    // elements. Every page-lifecycle listener checks for the browser's pagehide for
+    // the document and is not a once listener, which a view change would use up.
+    const root = path.join(__dirname, '..');
+    const files = ['native', 'android/app/src/main/assets', 'apple/Resources']
+        .flatMap(folder => fs.readdirSync(path.join(root, folder)).filter(name => name.endsWith('.js')).map(name => folder + '/' + name));
+    const listeners = [];
+    for (const file of files) {
+        const text = fs.readFileSync(path.join(root, file), 'utf8');
+        for (const [call] of text.matchAll(/addEventListener\(\s*['"]pagehide['"][^;]*/g)) {
+            const handler = /^addEventListener\(\s*['"]pagehide['"]\s*,\s*([\w$]+)\s*\)$/.exec(call)?.[1];
+            assert.ok(handler, `${file}: ${call}`);
+            const guard = new RegExp(`const ${handler}\\s*=\\s*event\\s*=>\\s*\\{\\s*if\\s*\\(\\s*!event\\.isTrusted\\s*\\|\\|\\s*\\(event\\.target\\s*!==\\s*(global\\.)?document\\s*&&\\s*event\\.target\\s*!==\\s*(global|window)\\)\\)\\s*return;\\s*(global|window)\\.removeEventListener\\(\\s*'pagehide'\\s*,\\s*${handler}\\s*\\)`);
+            assert.match(text, guard, `${file}: ${handler} must only follow the document's own pagehide`);
+            listeners.push(file);
+        }
+    }
+    assert.deepEqual(listeners.sort(), ['android/app/src/main/assets/androidBridge.js', 'android/app/src/main/assets/androidResponsive.js',
+        'apple/Resources/ipadBridge.js', 'apple/Resources/ipadResponsive.js', 'native/communityAccount.js', 'native/updatePlugin.js']);
+});

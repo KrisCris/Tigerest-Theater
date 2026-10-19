@@ -221,6 +221,9 @@
     global.TigerestUpdate={start,check,open,close,destroy};
     global._updatePlugin=class { constructor() { this.name='Update Plugin';this.type='input';this.id='updatePlugin';start(); } };
     document.addEventListener('DOMContentLoaded',render,{once:true});
-    global.addEventListener('pagehide',destroy,{once:true});
+    // Jellyfin's web client dispatches its own pagehide from view elements;
+    // only the browser's pagehide for the document ends this page.
+    const leave=event=>{if(!event.isTrusted||(event.target!==document&&event.target!==global))return;global.removeEventListener('pagehide',leave);destroy();};
+    global.addEventListener('pagehide',leave);
     start();
 })(window);
