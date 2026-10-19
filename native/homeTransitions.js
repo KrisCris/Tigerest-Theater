@@ -233,10 +233,14 @@
             let clone;
             if (customizedBuiltin(node)) {
                 // cloneNode upgrades customized built-ins and reconnects Emby's
-                // scrollers/tabs in this static picture. Keep their attribute
-                // selectors, but create ordinary elements without an `is` option.
+                // scrollers/tabs in this static picture. Create ordinary elements
+                // without an `is` option, and leave out the `is` attribute too:
+                // Jellyfin's webcomponents v0 polyfill upgrades any element that
+                // carries one, in this open shadow tree as well, and runs the
+                // control's callbacks on the copy. Neither Emby's nor Jellyfin's
+                // stylesheets select on `is`; classes keep the appearance.
                 clone = document.createElement(node.localName);
-                for (const attr of node.attributes) clone.setAttributeNS(attr.namespaceURI,attr.name,attr.value);
+                for (const attr of node.attributes) if (attr.name !== 'is') clone.setAttributeNS(attr.namespaceURI,attr.name,attr.value);
                 if (node.tagName === 'INPUT' && node.type === 'file') clone.files = node.files;
                 else if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA') clone.value = node.value;
                 if (node.tagName === 'INPUT') { clone.checked = node.checked; clone.indeterminate = node.indeterminate; }

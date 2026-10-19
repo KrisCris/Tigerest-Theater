@@ -53,8 +53,8 @@ withBrowser(routes,async({evaluate,call,url})=>{
    constructor(){super();window.snapshotConstructors++;}
    connectedCallback(){window.snapshotConnections++;}
   },{extends:'input'});
-  const style=document.createElement('style');style.textContent='[is="fixture-snapshot-scroll"]{width:230px;height:100px;overflow:auto;border:3px solid rgb(31,79,121);padding:7px}';document.head.append(style);
-  const scroller=document.createElement('div',{is:'fixture-snapshot-scroll'});scroller.id='snapshot-scroll';scroller.setAttribute('is','fixture-snapshot-scroll');
+  const style=document.createElement('style');style.textContent='.fixture-snapshot-scroll{width:230px;height:100px;overflow:auto;border:3px solid rgb(31,79,121);padding:7px}';document.head.append(style);
+  const scroller=document.createElement('div',{is:'fixture-snapshot-scroll'});scroller.id='snapshot-scroll';scroller.className='fixture-snapshot-scroll';scroller.setAttribute('is','fixture-snapshot-scroll');
   const content=document.createElement('div');content.style.cssText='width:600px;height:800px';
   const field=document.createElement('input',{is:'fixture-snapshot-input'});field.id='snapshot-field';field.type='checkbox';field.value='live value';field.checked=true;field.indeterminate=true;content.append(field);
   const text=document.createElement('input',{is:'fixture-snapshot-input'});text.id='snapshot-text';text.value='edited without an attribute';content.append(text);
@@ -70,7 +70,9 @@ withBrowser(routes,async({evaluate,call,url})=>{
  assert.equal(staticControls.constructors,0,'frozen pictures must not construct duplicate Emby-style application controls');
  assert.equal(staticControls.connections,0,'frozen pictures must not reconnect scrolling, timers or requests');
  assert.deepEqual(staticControls.scroll,[60,180]);
- assert.equal(staticControls.is,'fixture-snapshot-scroll','attribute selectors retain the original appearance');
+ // Emby and Jellyfin style their controls by class, never by `is`; a copied
+ // `is` lets custom element polyfills upgrade the copy.
+ assert.equal(staticControls.is,null,'copies leave out the is attribute');
  assert.equal(staticControls.border,'rgb(31, 79, 121)');
  assert.equal(staticControls.value,'live value');assert.equal(staticControls.checked,true,'live form state is copied');assert.equal(staticControls.indeterminate,true);assert.equal(staticControls.text,'edited without an attribute');assert.deepEqual(staticControls.files,['snapshot.txt']);
  assert.ok(Math.max(...['x','y','width','height'].map(k=>Math.abs(staticControls.live[k]-staticControls.copy[k])))<1,'static customized built-ins keep exact visible geometry');
