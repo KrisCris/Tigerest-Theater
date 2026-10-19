@@ -40,8 +40,16 @@ final class TVNavigationTests: XCTestCase {
             if let libraryID = env["TIGEREST_JELLYFIN_TEST_LIBRARY_ID"] {
                 try focus("tv.library." + libraryID, in: app)
             }
-            expect("The selected test library previews the intended item", timeout: 30) { hero.label.contains(itemTitle) }
-            try select("tv.home.hero", in: app)
+            if let itemID = env["TIGEREST_JELLYFIN_TEST_ITEM_ID"] {
+                // Resume history can change the first hero between runs.
+                // Focus the explicitly supplied media card before opening it.
+                try focus("tv.item." + itemID, in: app)
+                expect("The selected test card previews the intended item", timeout: 30) { hero.label.contains(itemTitle) }
+                try select("tv.home.hero", in: app)
+            } else {
+                expect("The selected test library previews the intended item", timeout: 30) { hero.label.contains(itemTitle) }
+                try select("tv.home.hero", in: app)
+            }
         } else {
             XCTAssertTrue(hero.label.contains("同名验收作品"))
             let movies = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.library.' AND label CONTAINS 'Movies'")).firstMatch
@@ -307,6 +315,19 @@ final class TVNavigationTests: XCTestCase {
 
     private func focus(_ identifier: String, in app: XCUIApplication) throws {
         let target = app.buttons[identifier]
+        if identifier.hasPrefix("tv.item."), !target.exists, app.buttons["tv.home.hero"].waitForExistence(timeout: 30) {
+            // The home rail is lazy: offscreen cards acquire accessibility
+            // elements only as the remote scrolls them into view.
+            try focus("tv.home.hero", in: app)
+            for _ in 0..<3 {
+                if app.buttons.allElementsBoundByIndex.contains(where: { $0.identifier.hasPrefix("tv.item.") && $0.hasFocus }) { break }
+                XCUIRemote.shared.press(.down)
+            }
+            for _ in 0..<30 {
+                if target.exists { break }
+                XCUIRemote.shared.press(.right)
+            }
+        }
         XCTAssertTrue(target.waitForExistence(timeout: 8), "Missing button: \(identifier)")
         for _ in 0..<24 {
             if target.hasFocus {

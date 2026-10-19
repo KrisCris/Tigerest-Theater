@@ -1,0 +1,31 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<body style="background:#101218;color:white;font:22px system-ui;padding:30px">
+<h1 id="title">切服事务夹具</h1><p id="status">等待原生桥接</p>
+<input aria-label="原页未保存文本" value="保留原页状态" style="font:inherit;width:90%">
+<p id="identity"></p>
+<button onclick="api.system.openServerSettings()">切换服务器</button>
+<button onclick="inspect()">检查保存地址和会话</button>
+<button onclick="historyCheck()">检查新页历史</button>
+<button onclick="invalidTarget()">检查非法切服目标</button>
+<script>
+let api;
+const status=document.querySelector('#status'),kind=location.pathname.split('/')[1];
+document.querySelector('#title').textContent='事务页面 '+kind;
+const identity=Math.random().toString(36).slice(2);
+document.querySelector('#identity').textContent='页面身份 '+identity;
+if(kind==='selection-delayed'){const image=new Image();image.src='/selection-hold.png';document.body.appendChild(image);}
+(async()=>{api=await window.apiPromise;
+ if(kind==='selection-old'){localStorage.setItem('selection-fixture-auth','original-session');await api.settings.setValue('video','cache',150);}
+ if(kind==='selection-delayed')await api.settings.setValue('video','cache',170);
+ status.textContent='事务页面 '+kind+' 就绪';})();
+async function inspect(){status.textContent='保存地址 '+await api.settings.value('main','userWebClient')+'；模式 '+await api.settings.value('main','serverConnectionMode')+'；会话 '+localStorage.getItem('selection-fixture-auth')+'；缓存 '+await api.settings.value('video','cache');}
+async function historyCheck(){
+ const saved=await api.settings.value('main','userWebClient');
+ status.textContent=(history.length===1&&saved.includes('/selection-new')?'新页历史与保存地址通过':'历史或配置失败 '+history.length);
+}
+async function invalidTarget(){
+ const rejected=await api.system.finishServerSelection(location.origin+'/selection-new','custom','https://other.invalid/web/index.html');
+ const modes=await api.system.finishServerSelection(location.origin+'/selection-new','invalid',location.origin+'/selection-new/web/index.html');
+ status.textContent=!rejected&&!modes?'非法目标和模式已拒绝':'非法切服被接受';
+}
+</script>

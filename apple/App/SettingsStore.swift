@@ -111,6 +111,14 @@ import AppleCore
         try JSONEncoder().encode(next).write(to: file, options: .atomic)
         values = next; changed?(section, .object(next[section] ?? [:]))
     }
+    func setServerConnection(_ address: ServerAddress, mode: String) throws {
+        guard ["custom", "tigerest"].contains(mode) else { throw CoreError.invalidSetting }
+        var next = values
+        next["main", default: [:]]["userWebClient"] = try policy.validate(section: "main", key: "userWebClient", value: .string(address.baseURL.absoluteString))
+        next["main", default: [:]]["serverConnectionMode"] = try policy.validate(section: "main", key: "serverConnectionMode", value: .string(mode))
+        try JSONEncoder().encode(next).write(to: file, options: .atomic)
+        values = next; changed?("main", .object(next["main"] ?? [:]))
+    }
     func reset(_ section: String) throws {
         guard let defaults = policy.defaults[section] else { throw CoreError.invalidSetting }
         var next = values; next[section] = defaults

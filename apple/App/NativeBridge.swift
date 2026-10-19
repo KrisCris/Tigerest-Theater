@@ -56,6 +56,8 @@ import AppleCore
                 emit("system", "serverConnectivityResult", [arg(0), .bool(success), .string(address.endpoint("web/index.html").absoluteString), .string(success ? "" : "无法连接 Emby 或 Jellyfin 服务器")]); return .bool(success)
             case "hello": return .string("大河影院 iPad")
             case "getUserAgent": return .string(model.web.view.customUserAgent ?? "TigerestTheater/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown")")
+            case "finishServerSelection": return .bool(await model.finishServerSelection(arg(0).string ?? "", mode: arg(1).string ?? "", target: arg(2).string ?? ""))
+            case "takeServerSelectionError": return .bool(model.takeServerSelectionError())
             case "openServerSettings": model.openServerSettings(); return .null
             case "openQualitySettings": model.showQuality = true; return .null
             case "openProfiles": model.showProfiles = true; return .null

@@ -46,7 +46,7 @@ struct LibraryPresentation: View {
     let host: WebHost
     @ObservedObject var player: PlaybackController
     var body: some View {
-        WebView(host: host).allowsHitTesting(!player.active).accessibilityHidden(player.active)
+        WebView(host: host).id(ObjectIdentifier(host)).allowsHitTesting(!player.active).accessibilityHidden(player.active)
     }
 }
 

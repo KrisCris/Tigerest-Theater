@@ -16,6 +16,15 @@ import AppleCore
     @Published var loading = false
     @Published var connectionFailure: String?
     private var connectionTask: Task<Void, Never>?
+    private var selectionID = UUID()
+    private var pendingWeb: WebHost?
+    private var serverSelectionError = false
+    private func cancelServerSelection() {
+        selectionID = UUID(); pendingWeb?.cancelSelection(); pendingWeb = nil
+    }
+    func takeServerSelectionError() -> Bool {
+        let result = serverSelectionError; serverSelectionError = false; return result
+    }
     let diagnostics = DiagnosticsLog()
     lazy var updates = UpdateController(model:self)
     lazy var danmaku = DanmakuRepository(model: self)
@@ -52,7 +61,7 @@ import AppleCore
         offlinePlayback=(coordinator,record.id)
     }
     func selectProfile(_ id: UUID) throws {
-        connectionTask?.cancel(); connectionFailure = nil
+        connectionTask?.cancel(); cancelServerSelection(); connectionFailure = nil
         player.stop(notify:true);community.clear();web.close()
         try profiles.select(id)
         settings=try SettingsStore(directory:profiles.directory)
@@ -62,11 +71,44 @@ import AppleCore
         web=WebHost(model:self);showConnection=server==nil;start();objectWillChange.send()
     }
     func connect(_ input: String, mode: String) async throws {
-        let profile = profiles.currentID
-        let address = try await checkServer(input)
-        try Task.checkCancellation()
-        guard profile == profiles.currentID else { throw CancellationError() }
-        try saveConnection(address, mode: mode)
+        try await selectServer(input, mode: mode, target: nil)
+    }
+    func finishServerSelection(_ input: String, mode: String, target: String) async -> Bool {
+        guard ["custom", "tigerest"].contains(mode), let address = try? ServerAddress(input),
+              let url = URL(string: target), WebHost.origin(url) == address.origin else { return false }
+        do { try await selectServer(input, mode: mode, target: url); return true }
+        catch { return false }
+    }
+    private func selectServer(_ input: String, mode: String, target: URL?) async throws {
+        guard ["custom", "tigerest"].contains(mode) else { throw CoreError.invalidSetting }
+        cancelServerSelection(); serverSelectionError = false
+        let selection = selectionID, profile = profiles.currentID
+        var candidate: WebHost?
+        do {
+            let address = try await checkServer(input)
+            try Task.checkCancellation()
+            guard profile == profiles.currentID, selection == selectionID else { throw CancellationError() }
+            let host = WebHost(model: self, active: false)
+            candidate = host; pendingWeb = host
+            try await host.loadForSelection(address, mode: mode, target: target)
+            try Task.checkCancellation()
+            guard profile == profiles.currentID, selection == selectionID else { throw CancellationError() }
+            try settings.setServerConnection(address, mode: mode)
+            // No suspension between persistence and replacement: cancelled or stale
+            // documents never write the profile or dispatch native side effects.
+            web.close(); player.stop(notify: true); setEmbySession(.null)
+            web = host; pendingWeb = nil
+            server = address; showConnection = false; loading = false
+            error = nil; connectionFailure = nil
+            host.activate(); objectWillChange.send()
+        } catch {
+            candidate?.cancelSelection()
+            if selection == selectionID {
+                pendingWeb = nil
+                if !Task.isCancelled && !(error is CancellationError) { serverSelectionError = true }
+            }
+            throw error
+        }
     }
     func checkServer(_ input: String) async throws -> ServerAddress {
         let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -91,15 +133,8 @@ import AppleCore
             }
         }
     }
-    private func saveConnection(_ address: ServerAddress, mode: String) throws {
-        try settings.set("main", "userWebClient", .string(address.baseURL.absoluteString))
-        try settings.set("main", "serverConnectionMode", .string(mode))
-        server = address; showConnection = false; error = nil; connectionFailure = nil
-        setEmbySession(.null)
-        web.open(address)
-    }
     func start() {
-        connectionTask?.cancel(); connectionFailure = nil
+        connectionTask?.cancel(); cancelServerSelection(); connectionFailure = nil
         guard let server else { return }
         let mode = settings.get("main", "serverConnectionMode").string ?? ""
         if mode == "tigerest" || (mode.isEmpty && ServerPresets.bundled.contains(server)) {
@@ -110,5 +145,5 @@ import AppleCore
             }
         } else { web.open(server) }
     }
-    func openServerSettings() { connectionTask?.cancel(); loading = false; showConnection = true }
+    func openServerSettings() { connectionTask?.cancel(); cancelServerSelection(); loading = false; showConnection = true }
 }

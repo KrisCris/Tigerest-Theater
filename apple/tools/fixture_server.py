@@ -7,7 +7,17 @@ parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=1
 lifecycle_started=threading.Event()
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path=='/lifecycle/slow/System/Info/Public':
+        if self.path == '/selection-hold.png':
+            time.sleep(8);data=b'';mime='image/png'
+        elif self.path.startswith('/selection-') and self.path.endswith('/System/Info/Public'):
+            data=json.dumps({'Id':self.path.split('/')[1],'Version':'10.11.11'}).encode();mime='application/json'
+        elif self.path.startswith('/selection-') and '/web/index.html' in self.path:
+            if self.path.startswith('/selection-denied/'):
+                self.send_error(403);return
+            if self.path.startswith('/selection-disconnected/'):
+                self.connection.shutdown(2);self.connection.close();return
+            data=(ROOT/'Tests/fixtures/server-selection.html').read_bytes();mime='text/html; charset=utf-8'
+        elif self.path=='/lifecycle/slow/System/Info/Public':
             lifecycle_started.set();time.sleep(3)
             data=json.dumps({'Id':'delayed-fixture','Version':'4.9'}).encode();mime='application/json'
         elif self.path=='/lifecycle/started':

@@ -16,6 +16,59 @@ final class WebHostTests: XCTestCase {
     @MainActor private var fixtureURL: String {
         ProcessInfo.processInfo.environment["TIGEREST_FIXTURE_URL"] ?? "http://127.0.0.1:18768/sub/"
     }
+    @MainActor func testServerSelectionPreservesOldPageUntilHTMLLoadsAndClearsHistoryOnSuccess() {
+        continueAfterFailure = false
+        let base = URL(string: fixtureURL)!.deletingLastPathComponent().absoluteString
+        let original = base + "selection-old"
+        let app = makeApplication()
+        app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]
+        app.launch()
+        func enter(_ url: String) {
+            let field = app.textFields["服务器地址"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            let current = field.value as? String ?? ""
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current == "服务器地址" ? 0 : current.count) + url)
+        }
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap(); enter(original)
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["事务页面 selection-old 就绪"].waitForExistence(timeout: 15))
+        let identity = app.webViews.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '页面身份 '")).firstMatch.label
+        for failedServer in ["selection-denied", "selection-disconnected", "selection-delayed"] {
+            app.webViews.buttons["切换服务器"].tap()
+            XCTAssertTrue(app.buttons["取消"].waitForExistence(timeout: 5))
+            Thread.sleep(forTimeInterval: 0.8) // Wait for the sheet to settle before tapping.
+            app.buttons["连接自建 Emby / Jellyfin 服务器"].tap()
+            XCTAssertTrue(app.textFields["服务器地址"].waitForExistence(timeout: 5))
+            XCTAssertTrue((app.textFields["服务器地址"].value as? String)?.contains("selection-old") == true)
+            enter(base + failedServer); app.buttons["连接服务器"].tap()
+            if failedServer == "selection-delayed" {
+                Thread.sleep(forTimeInterval: 1)
+            } else {
+                XCTAssertTrue(app.staticTexts["连接错误"].waitForExistence(timeout: 15), "HTML failure must return to the chooser")
+            }
+            app.buttons["取消"].tap()
+            XCTAssertTrue(app.webViews.staticTexts[identity].waitForExistence(timeout: 5), "Cancel/failure must preserve the original document")
+            XCTAssertEqual(app.webViews.textFields["原页未保存文本"].value as? String, "保留原页状态")
+            app.webViews.buttons["检查保存地址和会话"].tap()
+            let saved = app.webViews.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '保存地址 '")).firstMatch
+            XCTAssertTrue(saved.waitForExistence(timeout: 5))
+            XCTAssertTrue(saved.label.contains(original) && saved.label.contains("模式 custom") && saved.label.contains("会话 original-session") && saved.label.contains("缓存 150"))
+        }
+        app.webViews.buttons["检查非法切服目标"].tap()
+        XCTAssertTrue(app.staticTexts["非法目标和模式已拒绝"].waitForExistence(timeout: 5))
+        app.webViews.buttons["切换服务器"].tap()
+        XCTAssertTrue(app.buttons["取消"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.8)
+        app.buttons["连接自建 Emby / Jellyfin 服务器"].tap(); enter(base + "selection-denied")
+        app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["连接错误"].waitForExistence(timeout: 15))
+        enter(base + "selection-new"); app.buttons["连接服务器"].tap()
+        XCTAssertTrue(app.staticTexts["事务页面 selection-new 就绪"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.webViews.staticTexts[identity].exists)
+        app.webViews.buttons["检查新页历史"].tap()
+        XCTAssertTrue(app.staticTexts["新页历史与保存地址通过"].waitForExistence(timeout: 5))
+    }
     @MainActor func testSPAPageHideAndRealDocumentReplacementKeepBridgeLifecycleCorrect() {
         let app = makeApplication()
         app.launchArguments = ["--ui-testing", "-TigerestPlaybackGesturesSeen", "YES"]
