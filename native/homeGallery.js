@@ -9,6 +9,30 @@
         if (box.left < frame.left) list.scrollLeft += box.left - frame.left;
         else if (box.right > frame.right) list.scrollLeft += box.right - frame.right;
     }
+    // Animations running on the host or its ancestors, such as a page entrance,
+    // move it by transforms that getBoundingClientRect includes. Return the top
+    // where it settles: undo their translate and scale, outermost first. Static
+    // transforms stay; settle() receives each animation to measure again after.
+    function settledTop(node, settle) {
+        const moving = [];
+        let exact = true;
+        for (let element = node; element; element = element.parentElement) {
+            const running = (element.getAnimations?.() || []).filter(animation => animation.playState !== 'finished');
+            running.forEach(settle);
+            if (!running.some(animation => animation.effect?.getKeyframes?.().some(frame => 'transform' in frame))) continue;
+            const style = getComputedStyle(element);
+            if (style.transform === 'none') continue;
+            const matrix = new DOMMatrixReadOnly(style.transform);
+            if (matrix.b || matrix.m14 || matrix.m24 || matrix.m34 || !(matrix.d > 0)) exact = false;
+            else moving.unshift({element, scale: matrix.d, shift: matrix.f, origin: parseFloat(style.transformOrigin.split(' ')[1]) || 0});
+        }
+        let undo = top => top;
+        if (exact) for (const {element, scale, shift, origin} of moving) {
+            const outer = undo, start = outer(element.getBoundingClientRect().top) - shift - origin * (1 - scale);
+            undo = top => start + origin + (outer(top) - start - origin - shift) / scale;
+        }
+        return undo(node.getBoundingClientRect().top);
+    }
     const css = `
     body.tg-home-active .skinHeader, body.tg-home-active .mainDrawer, body.tg-home-active .appFooter, body.tg-home-active .appfooter { display: none !important; }
     body.tg-home-active .view-home-home { left: 0 !important; right: 0 !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
@@ -270,7 +294,12 @@
         });
         listen(this.coverList, 'focusin', event => { const button = event.target.closest('.tg-cover'); if (button) { this.finishEntrance(); reveal(this.coverList, button); if (Number(button.dataset.index) !== this.index) this.select(Number(button.dataset.index), false); } });
         listen(this.retry, 'click', () => this.selectedLibrary ? this.preview(this.selectedLibrary.Id, true) : this.start({}));
-        this.resize = () => this.root.style.setProperty('--home-height', Math.max(320, window.innerHeight - this.host.getBoundingClientRect().top - 8) + 'px');
+        // A finished or cancelled animation changes no size, so neither observer reports it.
+        const settling = new WeakSet(), settle = animation => {
+            if (settling.has(animation)) return;
+            settling.add(animation); animation.finished.then(this.resize, this.resize);
+        };
+        this.resize = () => this.root.style.setProperty('--home-height', Math.max(320, window.innerHeight - settledTop(this.host, settle) - 8) + 'px');
         listen(window, 'resize', this.resize);
         this.resizeObserver = new ResizeObserver(this.resize); this.resizeObserver.observe(host);
         try { localStorage.removeItem('tigerest-home-style'); } catch (error) {}

@@ -522,6 +522,10 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_jellyfin_home_layout.cjs
                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_jellyfin_home_layout_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_home_gallery_entrance_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_gallery_entrance_ui.cjs
+                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_home_gallery_entrance_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_window_mode_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_nativeshell_window_button.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
