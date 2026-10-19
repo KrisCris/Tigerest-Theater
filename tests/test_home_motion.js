@@ -11,6 +11,14 @@ function setup(){
  return {motion,router,pageJs,account,state,calls,dispose,c,originalHome,history,listeners};
 }
 const library={Id:'library',Type:'CollectionFolder',CollectionType:'movies'},card={item:{Id:'work',Type:'Movie'}};
+test('an unbound client navigates libraries without entering the Emby transition renderer',async()=>{
+ const s=setup();s.dispose();
+ s.c.TigerestHomeTransitions={library(){throw Error('Emby route bindings are unavailable');}};
+ let navigated=0;
+ const result=await s.motion.openLibrary({library,navigate:()=>{navigated++;return 'routed';}});
+ assert.equal(navigated,1);assert.equal(result,'routed');
+ assert.equal(s.motion.handleNativeBack(),false);
+});
 test('a work opened from home returns by replacing detail with its library, then normal home history',async()=>{
  const s=setup();await s.motion.openItem({card,library,navigate:()=>s.router.showItem(card.item)});
  await s.router.back();assert.deepEqual(s.calls,[['item','work'],['replace','/library?id=library&serverId=server']]);

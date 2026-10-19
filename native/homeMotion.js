@@ -192,6 +192,9 @@
         },
         async openLibrary({gallery: home, library, navigate}) {
             if (motion.busy) return;
+            // Jellyfin supplies its own router but does not attach the Emby
+            // view/history services required by the transition renderer.
+            if (!bindings) return navigate();
             const ticket = ++revision, session = account();
             const result = await effect('library', {gallery: home, navigate, samePage: library.kind === 'favorites'});
             if (bindings && ticket === revision && session === account()) {
