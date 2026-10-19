@@ -936,9 +936,9 @@ function tigerestOver(top, bottom) {
 }
 
 // A running transition reports its current frame; the page states its end.
-function tigerestSettledValue(node, style, property) {
+function tigerestSettledValue(style, property, animations) {
     const key = property.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-    for (const animation of node.getAnimations?.() || []) {
+    for (const animation of animations) {
         if (animation.transitionProperty !== property) continue;
         const end = animation.effect?.getKeyframes?.().at(-1)?.[key];
         if (end) return end;
@@ -1018,7 +1018,14 @@ function flattenTigerestHeaderGlass() {
         // Read every filter and background as the page states them.
         for (const node of nodes) node.removeAttribute(TIGEREST_FLAT_GLASS);
         const styles = new Map([header, ...nodes].map(node => [node, getComputedStyle(node)]));
-        const value = (node, property) => tigerestSettledValue(node, styles.get(node), property);
+        // getAnimations flushes pending animation/style state. Each node's
+        // list is stable throughout this read-only pass; reuse it for all
+        // properties instead of flushing again for every ancestor lookup.
+        const animations = new Map();
+        const value = (node, property) => {
+            if (!animations.has(node)) animations.set(node, node.getAnimations?.() || []);
+            return tigerestSettledValue(styles.get(node), property, animations.get(node));
+        };
         if (value(header, 'backdrop-filter') === 'none') continue;
         // Each Backdrop Root trigger ends what a descendant's filter sees.
         const isolates = node => {

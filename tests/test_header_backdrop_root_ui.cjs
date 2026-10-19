@@ -128,6 +128,14 @@ async function run({evaluate, call}) {
     assert.equal(shipped['.emby-tabs-slider'], 'blur(15px)', 'tabs under a sibling shadow keep their real filter');
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('.native')).backdropFilter`), 'blur(15px)', 'an unstyled native control keeps its own look and filter');
     const flat = {rest: await shot(), hover: await hover()};
+    const animationReads = await evaluate(`(() => {
+        const original=Element.prototype.getAnimations;let reads=0;
+        Element.prototype.getAnimations=function(...args){if(this.closest('.skinHeader'))reads++;return original.apply(this,args)};
+        try{flattenTigerestHeaderGlass();return {reads,nodes:document.querySelectorAll('.skinHeader,.skinHeader *').length};}
+        finally{Element.prototype.getAnimations=original;}
+    })()`);
+    assert.ok(animationReads.reads <= animationReads.nodes,
+        'a header pass must not flush animation state repeatedly for each CSS property: '+JSON.stringify(animationReads));
     if (process.env.TIGEREST_HEADER_EVIDENCE) {
         fs.mkdirSync(process.env.TIGEREST_HEADER_EVIDENCE, {recursive: true});
         for (const [kind, variants] of Object.entries({nested, flat}))
