@@ -7,31 +7,36 @@ const entries = shell.slice(shell.indexOf('function installHorizontalShelfDraggi
 const makePage = windowControls => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{margin:0;background:#151923;color:#fff;font:16px sans-serif}.headerRight{display:flex;justify-content:flex-end;gap:4px}.headerButton{min-width:44px;height:40px}</style><body>
 <script>
+(async () => {
 ${history}
 window.switches = 0; window.opened = []; window.saved = [];
 window.tigerestSwitchServer = () => switches++;
 window.tigerestOpenMpvSettings = section => opened.push(section);
 window.tigerestOpenOfflineLibrary = () => opened.push('offline');
 // The page is served from the remembered server's base path.
-const current = location.origin + '/jellyfin/';
+const current = window.current = location.origin + '/jellyfin/';
 window.errors = []; window.addEventListener('error', event => errors.push(event.message));
 window.jmpInfo = {capabilities: {desktopWindowControls: ${windowControls}}, settings: {main: {userWebClient: current, serverConnectionMode: 'custom',
   knownServers: TigerestServerHistory.remember('', {mode: 'custom', address: current, at: 1700000000000})}}};
 window.fullscreen = false; window.fullscreenRequests = [];
-window.api = {settings: {value: async () => jmpInfo.settings.main.knownServers}, window: {isFullScreen: async () => fullscreen,
+window.api = {settings: {value: async () => jmpInfo.settings.main.knownServers}, window: {setCursorVisibility() {}, isFullScreen: async () => fullscreen,
   setFullScreen: async value => { fullscreenRequests.push(value); fullscreen = value; }, fullScreenSwitched: {connect() {}}}};
 window.initCompleted = Promise.resolve();
 let identity = null, ready; const readyPromise = new Promise(resolve => { ready = resolve; });
 window.TigerestServer = {base: location.origin + '/jellyfin', get identity() { return identity; }, ready: readyPromise, headerUserButton: () => document.querySelector('.headerUserButton')};
 window.finishIdentity = value => { identity = value; ready('jellyfin'); };
-</script>
-<script>${entries};installServerSwitchEntry();</script>`;
+${entries};installServerSwitchEntry();
+})();</script>`;
 const page = makePage(false);
-withBrowser({'/': {type: 'text/html', body: page}, '/jellyfin/web/index.html': {type: 'text/html', body: page},
-    '/modern/web/index.html': {type: 'text/html', body: makePage(true)}}, async ({evaluate, call}) => {
+// Run in a real same-origin child realm. Qt injects its full native shell into
+// the top frame; those observers must not bind a second copy to fixture buttons.
+const host = '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,iframe{margin:0;width:100%;height:100%;border:0}iframe{display:block}</style><iframe id="fixture" src="/jellyfin/web/index.html"></iframe>';
+withBrowser({'/': {type: 'text/html', body: host}, '/jellyfin/web/index.html': {type: 'text/html', body: page},
+    '/modern/web/index.html': {type: 'text/html', body: makePage(true)}}, async ({evaluate: rawEvaluate, call}) => {
+    const evaluate = expression => rawEvaluate(`document.getElementById('fixture').contentWindow.eval(${JSON.stringify(expression)})`);
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     const settle = () => evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
-    await evaluate(`location.href = '/jellyfin/web/index.html'`).catch(() => {});
+    await rawEvaluate('(async () => { await window.initCompleted; window.TigerestUpdate?.destroy(); })()');
     for (let i = 0; i < 50 && !await evaluate(`location.pathname === '/jellyfin/web/index.html' && !!window.finishIdentity`).catch(() => false); i++) await wait(50);
     await evaluate(`document.body.insertAdjacentHTML('beforeend', '<header class="skinHeader"><div class="headerRight"><button class="headerButton" id="cast">投屏</button><button class="headerButton headerUserButton" aria-label="账户">A</button></div></header>')`);
     await wait(80);

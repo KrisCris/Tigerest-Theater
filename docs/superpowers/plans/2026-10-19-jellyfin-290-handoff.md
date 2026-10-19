@@ -209,3 +209,38 @@ JF16：用户报告Android连接Jellyfin动画比Emby卡。独占手机期间已
 用户要求Mac追加动画说明已完成：NAS“Jellyfin-2.9.0-Mac动画缺失与卡顿专项补充-2026-10-19.md”，包含旧包不含完整JF13的基线说明、路由/动画/性能/Apple差异验收。最终增量包尚未导出，仍必须在本轮最终验证与SHA固定后提供。
 
 当前Windows隔离实例未重新给用户启动，手机已更新到JF16页头优化试验构建，尚不含随后原生切服事务；不得把两端标记为同一个最终构建。正式客户端与manual-user-profile保留。
+
+### Mac并行代码包已交付：4db34c7
+
+已固定提交4db34c7ae424e5c1d58d3d28ac4f1eb2e5503664，包含JF11–16当前实现与测试。Node231/231、受影响Qt CTest7/7（77.99秒）、Qt原生切服HTTP403/断连/取消恢复通过，AndroidJVM/lint/assemble与16KB验证通过。Mac增量包已写入并读回哈希核对：//Dx4600-tigerest/dx4600/网络交流/Jellyfin-2.9.0-Mac交互修复增量包-4db34c7.zip；前置6736b4b，ZIP SHA256 aecf5dd22baea5b88367b5ed379e9238915749e63eefe258ba6ccde5439cb355，bundle SHA256 52292104a813e21c20bc4a9ebc186539d987e9c7e1f9a829b2cc318ab4dfc522。已给用户代码包与Mac代码接收说明链接，可立刻开始Apple独立编译和验收。
+
+用户随后反馈安卓动画基本正常，顶栏仍不自然。真实远程Jellyfin页面847×948：skinHeader高177.196，safeTop43.429；headerTop高104.274、上下padding各29.76，底147.702；headerTabs top114.970、高61.464。顶栏最新修复尚未写入产品，不在4db34c7包里，需继续定位其负位移/间距来源并测试，另发小增量。
+
+当前设备安装的是此前JF16页头优化构建，尚未安装4db34c7事务APK；该APK aeba57d64a14625f81b41ce6f512c8cc8552417f2aecac6236e9e8492e04fbf4已构建验证。Windows EXE已在隔离build暂存，但manual-user-profile试用实例仍未重启。4db34c7并非最终全平台完成；不要停用跟进。外部Windows性能探针jf16-windows-remote.cjs在等登录输入框阶段超时，需补失败DOM诊断，暂未得出性能结论。
+
+## 2026-10-19 JF17 固定与统一服务器列表实现交回 Claude
+
+用户确认Android动画基本正常，提出按钮设计应整体收拢、统一记住Emby/Jellyfin服务器；并明确说Claude额度恢复，可以让她来写。Codex已先固定JF17产品提交 `31e7c46f4114ecef92bebcfff92b6e6b214705fb`，再提交执行清单 `af83c4f75f8f5d681b81199bca83cb3a3e15aa30`，见 `2026-10-19-unified-server-picker.md`。同一Claude桌面会话已收到正式实现交接（消息标题与空输入框确认），**现在Claude是该轮唯一产品源码写入者**。Codex只维护既有验收文档和外部证据；交付后再固定源码重建，不能照旧“Codex接手”段落并行修改。
+
+JF17：远程主题headerTop 2em上下padding和tabs负margin造成交叠，真实规则夹具64项失败；修复后Chrome五宽通过，Qt home/page-layout/server-entry/gallery-entrance 4/4，41.76秒。共享菜单暂时增加直达“服务器”，后续由Claude合并客户端菜单。Android新APK SHA256 `dcc7d20767d67838de712190e23f0f95a514fc4a80205c1bc1e90399e399e6f4`，89069237字节，16KB校验通过，install-r实际成功。真实远程tv页一个可见服务器入口；headerTop top43.43/h60，tabs top103.43/h53.46，不重叠。Page.captureScreenshot两次关闭CDP连接，停止重复；设备PID26961未退出，exit-info只有此前安装和旧崩溃，不能称本次app crash或截图验收通过。不要为截图清数据/改WebView。
+
+Mac现有4db34c7包可直接开跑；JF17增量和新的服务器列表未来另导出。Windows本轮构建完成、测试通过，手动试用manifest仍旧829，必须实际重开并核对后更新。最终native切服Android验收/Windows真实远程perf仍需完成，勿将旧播放矩阵或只读DOM当这些全部通过。自动跟进已更新最新所有权并保持ACTIVE。
+
+JF17交付补记：Windows用户隔离实例已实际重开（PID371440），沿用manual-user-profile/Default；真实远程首页自动登录可见，点击服务器进入原生选择页、取消后回到同一已登录媒体库，已目视确认。EXE SHA256 eebbcdb15f81c081459c9949e9bd88faecc76abab98ba1704e7c51be67bae3c0。手机已从安装目录读取base.apk SHA256并匹配dcc7d207…；原生screencap取得真实顶栏画面，去除screencap的347字节多显示器警告前缀后可正常查看，顶栏/标签未重叠，服务器按钮可见。CDP截图断开仅是该截图路径限制，不据此称app失败。manual-trial-current.json已准确改为31e7c46；这些不代替最终新列表流程验收。
+
+新增Mac小增量 `//Dx4600-tigerest/dx4600/网络交流/Jellyfin-2.9.0-Mac顶栏增量-31e7c46.zip`，6846字节，SHA256 b14561d3e75429fa0557cc379f7b128de5385dcc8f80da5fff59c0b716e8fb97。前置4db34c7，固定31e7c46，bundle verify/zip逐条manifest/NAS回读均通过；旁边有 `Jellyfin-2.9.0-Mac顶栏补充-31e7c46.md`。不包含正在由Claude实现的统一服务器历史与菜单。Claude已实际开始读设置/事务；Codex不再产品写入，不在其编辑中重复构建。后续以明确commit交付为验收起点。
+
+固定31e7c46补测：Windows真实远程独立Qt探针本次正常登录并完成媒体夹冷/热、详情与返回，P95 25/16.7/16.7/8.4ms、落点0、无残留层；有90/68及158/92ms长任务，不写成全面性能结论。Android当前包直达chooser→取消精确返回旧URL，原生settings.value往返成功，地址模式保留；probe首次错误检查了Android不存在的Qt openServerSettings，已修探针且未改产品。证据与细节见主验收新增段。手机forward9223已清理。Claude仍写统一列表，尚未交付，不与其抢源码/构建。
+22:30 JST只读跟进：Claude已有中间提交a599df8（Remember connected servers in the native chooser），客户端菜单/Android响应式/入口测试仍有未提交修改。其13:24 UTC消息正在以真实12.2 Modern和10.11.11 Legacy验证服务器入口，日志22:29仍更新；尚未明确交回，不能把中间提交当最终交付。Codex未改产品、未启动构建或重复已完成的31e7c46验证。后续等待最终SHA和停止编辑声明，再接独立审查、原生构建、两端更新与新Mac增量。
+22:40 JST：Claude明确交付50a7086并停止后，Codex独立Node47/47、Chrome列表/菜单/Android顶栏通过，Windows原生构建与Android testDebugUnitTest/lintDebug/assembleDebug成功。尚未安装新包。审查复现三项Important：首次迁移A显示但成功切B后A未持久化；历史卡连接中点专属入口导致旧请求以新mode提交；Modern客户端按钮迁移后窗口按钮insertBefore跨父节点抛NotFoundError。已通过同一Claude会话发回修复并确认主消息已发送，第三项补入队列。Claude重新成为唯一产品写入者，Codex暂停产品修改/构建，准备外部原生事务验证与Mac文档，等待修复明确交付。两端用户数据未清理；Windows隔离实例已为更新关闭，须最终重开。
+
+## 2026-10-19 统一列表最终交付（取代上述进行中状态）
+
+Claude于13:44:34 UTC明确交回最终产品 `6fe1b3d2343d61b43f18c36c36ba6f69a01a9c9a` 并停止。此前abaa214已被amend替代；不得继续使用。三项审查问题均已修复并回归。Codex只调整菜单测试的隔离宿主及交付文档，没有再改产品实现。
+
+- Windows从该产品提交完成配置、构建和安装暂存；Android JVM/lint/assemble成功，20个原生库16KB对齐通过，包内资源完整性12项通过。Node独立53/53。Qt受影响7项最终全部通过（首轮6/7，菜单fixture与原生注入重复绑定导致失败；改同源iframe隔离后保留单击一次断言，Qt单项7.03秒、Chrome五宽通过）。真实Qt原生事务fixture另验证成功写历史、HTML403/断连不写入、取消/原WebStorage保留、双basepath往返及重启持久化。证据前缀history-*保存在外部verification目录。
+- Android已install-r更新 `top.tigerest.theater.debug`，实际base.apk哈希与产物一致。手机原登录、地址保留；首页入口→取消、实际本地Jellyfin10.9.11→历史卡返回原远程服务器通过，原远程认证仍有效，迁移的旧地址未丢失。只移除本轮生成的临时历史项。手机留在原远程首页，临时9223 forward/18960 reverse已清理。
+- Windows用户隔离实例已实际重开，PID376084，沿用manual-user-profile/Default；目视为已登录远程首页且新服务器标签可见。此轮真实用户窗口的点击/取消未作为通过证据（用户输入交错），事务结果来自隔离Qt fixture。正式客户端未动。
+- EXE SHA256 `0a60586160538b0fe8123e46f656239e78d34c3668d52b8864d38740ad78c18f`；APK SHA256 `ce1d7f7dd90466d6ec1d19dfe654bb14e86349fde02cadbb48b394cdf799a508`。外部manual-trial-current.json记录实际运行状态。
+- 新包只迁移旧配置中的当前服务器，不可能恢复从未保存的全部地址；此后连接成功的Emby/Jellyfin进入同一历史列表。窗口模式和更新状态按钮继续独立保留。既有Modern社区消息/一起看可见性不在本轮新改动范围。
+- Mac本轮交接从既有6736b4b完整历史基线提供累计增量，包含JF10–17及新历史/菜单、共享schema和Apple待办。已读Apple回传433a528；保留其独立Apple改动，不盲套旧共享候选补丁。Apple原生chooser、资源同步和最新平台验收由Mac继续，不能称Windows已验证Apple。本轮未重跑全部版本的播放/性能矩阵，旧矩阵保留旧SHA范围。

@@ -73,6 +73,10 @@
 - [ ] Include the shared data/bridge contract and exact Apple-native work still needed. Do not edit Apple product files while Mac is working independently unless explicitly coordinated.
 - [ ] Codex reviews diff, fixes issues via Claude if available, builds Windows/Android in isolation, validates real devices/API separately from fixtures, preserves user trial profiles, installs approved debug updates, and exports validated incremental Mac bundle with SHA/manifest.
 
+## Delivery outcome (2026-10-19)
+
+Claude delivered model/UI/menu/contract commits a599df8, 145dfc7 and 50a7086, then fixed three independent review findings in final product 6fe1b3d. Codex completed scoped native builds, 53 Node tests, seven affected Qt targets (menu harness isolated and rerun), Chrome menu widths, real Android selection/login checks and actual updates of both trial clients. Detailed evidence and limits are in the verification report and latest handoff. The implementation bullets above are the original work specification, not a claim that every optional matrix case has been rerun. Desktop window mode/update remain separate visible controls; Apple native implementation and latest platform validation are explicitly handed to Mac. No push/merge/release.
+
 ## Already verified before this round
 
 `31e7c46`: branded toolbar regression red (64 failures) then Chrome five widths green; Qt layout/home/entry/entrance 4/4 (41.76 seconds); browser entry/header tests green. Android APK SHA256 `dcc7d20767d67838de712190e23f0f95a514fc4a80205c1bc1e90399e399e6f4`, install-r succeeded and native page reports one visible server entry and nonoverlapping top/tabs. Screenshot CDP disconnect does not imply an app crash; PID remained 26961 and exit-info showed no new process exit. Full final transaction device checks and Windows user-instance refresh still belong to Codex. Previous real playback matrices remain historical evidence, not tests rerun at this commit.
