@@ -16,9 +16,19 @@ withBrowser({'/': {type:'text/html', body:`<!doctype html><meta charset="utf-8">
         await evaluate(`document.querySelector('.${host}').append(document.createElement('span'))`);
         await new Promise(r=>setTimeout(r,80));
         assert.equal(await evaluate(`document.querySelectorAll('.${host} .tigerest-switch-toolbar').length`),1,'mutation does not duplicate');
+        await evaluate(`{const toolbar=document.querySelector('.${host}');toolbar.replaceWith(toolbar.cloneNode(true));}`);
+        await new Promise(r=>setTimeout(r,80));
+        const clonedBefore = await evaluate('switches');
+        await evaluate(`document.querySelector('.tigerest-switch-toolbar').click()`);
+        assert.equal(await evaluate('switches'),clonedBefore+1,host+': cloned toolbar keeps one working native entry');
     }
     await evaluate(`document.body.innerHTML='<div class="standalonePage"><h1>Login</h1></div>'`);
     await new Promise(r=>setTimeout(r,80));
     assert.equal(await evaluate(`document.querySelector('.tigerest-switch-entry').textContent`),'切换服务器','logged-out pages keep their explicit entry');
+    await evaluate(`{const page=document.querySelector('.standalonePage');page.replaceWith(page.cloneNode(true));}`);
+    await new Promise(r=>setTimeout(r,80));
+    const before = await evaluate('switches');
+    await evaluate(`document.querySelector('.tigerest-switch-entry').click()`);
+    assert.equal(await evaluate('switches'),before+1,'cloned standalone page keeps its native entry');
     console.log(JSON.stringify({passed:true,hosts:3,standalone:true}));
 }).catch(error=>{console.error(error);process.exitCode=1;});

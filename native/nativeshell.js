@@ -1797,26 +1797,34 @@ function installServerSwitchEntry() {
     document.head.appendChild(style);
     const selector = '.standalonePage,#loginPage,#selectServerPage,#connectPage,#addServerPage,#selectUserPage';
     const toolbarSelector = '.headerRight,.tigerest-header-actions,.tg-home-nav-heading';
+    const bound = new WeakSet();
+    const bind = button => {
+        if (bound.has(button)) return;
+        bound.add(button);
+        button.addEventListener('click', window.tigerestSwitchServer);
+    };
     const mount = root => {
         const toolbars = [...root.querySelectorAll(toolbarSelector)];
         if (root.matches?.(toolbarSelector)) toolbars.unshift(root);
         for (const toolbar of toolbars) {
-            if (toolbar.querySelector('.tigerest-switch-toolbar')) continue;
+            const existing = toolbar.querySelector('.tigerest-switch-toolbar');
+            if (existing) { bind(existing); continue; }
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'headerButton headerSectionItem tigerest-switch-toolbar';
             button.textContent = '服务器'; button.title = '切换服务器';
             button.setAttribute('aria-label', '切换服务器');
-            button.addEventListener('click', window.tigerestSwitchServer);
+            bind(button);
             toolbar.insertBefore(button, [...toolbar.children].find(node => node.matches('.headerUserButton')) || null);
         }
         const pages = [...root.querySelectorAll(selector)];
         if (root.matches?.(selector)) pages.unshift(root);
         for (const page of pages) {
-            if (page.querySelector('.tigerest-switch-entry')) continue;
+            const existing = page.querySelector('.tigerest-switch-entry');
+            if (existing) { bind(existing); continue; }
             const button = document.createElement('button');
             button.type = 'button'; button.className = 'tigerest-switch-entry'; button.textContent = '切换服务器';
-            button.addEventListener('click', window.tigerestSwitchServer);
+            bind(button);
             page.insertBefore(button, page.firstChild);
         }
     };
