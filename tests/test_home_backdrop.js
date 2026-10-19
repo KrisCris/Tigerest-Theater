@@ -96,3 +96,38 @@ test('a smaller concurrent decode cannot displace a retained larger raster',asyn
  assert.equal(f.decodes,before,'finishing a small capture must not force another large-image source decode');
  f.context.TigerestHomeBackdrop.dispose();assert.ok(f.originals.every(b=>b.closed));
 });
+
+test('same-origin versioned server artwork decodes from its cached bytes, off the page thread',async()=>{
+ // Chromium decodes an <img> source on the main thread while the media wall
+ // scrolls; a Blob source is decoded on a worker thread.
+ const f=bitmapFixture(),requests=[],sources=[],original=f.context.createImageBitmap;let fail=false;
+ f.context.location={href:'http://fixture/web/index.html',origin:'http://fixture'};
+ f.context.fetch=async(url,options)=>{requests.push([url,options.cache,options.credentials]);if(fail)throw Error('offline');return {ok:true,blob:async()=>({blobSource:url})};};
+ f.context.createImageBitmap=async(source,options)=>{sources.push(source.blobSource?'blob':source.tagName||'bitmap');
+  return source.blobSource?original({tagName:'IMG'},options):original(source,options);};
+ await f.build('http://fixture/emby/Items/7/Images/Primary?maxHeight=540&tag=v7');
+ assert.deepEqual(requests,[['http://fixture/emby/Items/7/Images/Primary?maxHeight=540&tag=v7','force-cache','same-origin']]);
+ assert.deepEqual(sources,['blob','bitmap'],'decoded from bytes, then copied for the worker');
+ sources.length=0;await f.build('http://other.example/Items/7/Images/Primary?tag=v7');await f.build('http://fixture/avatar.png');
+ assert.deepEqual(sources.filter(s=>s!=='bitmap'),['IMG','IMG'],'cross-origin and mutable images keep the element source');
+ sources.length=0;fail=true;await f.build('http://fixture/Items/8/Images/Primary?tag=v8');
+ assert.deepEqual(sources.filter(s=>s!=='bitmap'),['IMG'],'a failed fetch falls back to the element');
+ f.context.TigerestHomeBackdrop.dispose();assert.ok(f.originals.every(b=>b.closed));
+});
+
+test('an off-screen media card is skipped as a whole subtree',async()=>{
+ // Long media walls hold hundreds of cards; their contents are never in view.
+ const measured=[],node=(name,top,children=[])=>({name,tagName:'DIV',childElementCount:children.length,textContent:'',children,closest:()=>null,
+  matches:selector=>name.startsWith('card')&&selector.includes('.card'),getBoundingClientRect(){measured.push(name);return {x:0,y:top,width:100,height:100,top,bottom:top+100,left:0,right:100};}});
+ const root=node('root',0,[node('card-visible',10,[node('visible-image',10)]),node('card-below',5000,[node('below-image',5000),node('below-title',5100)])]);
+ const order=[];(function flat(n){for(const c of n.children){order.push(c);flat(c);}})(root);
+ const context={AbortController,performance,setTimeout,clearTimeout,innerWidth:1000,innerHeight:700,Worker:class{postMessage(){queueMicrotask(()=>this.onmessage({data:{bitmap:{close(){}}}}));}terminate(){}},OffscreenCanvas:class{},
+  Blob,URL:class extends URL{static createObjectURL(){return 'blob:x';}static revokeObjectURL(){}},createImageBitmap:async()=>({close(){}}),
+  NodeFilter:{SHOW_ELEMENT:1,FILTER_ACCEPT:1,FILTER_REJECT:2},getComputedStyle:()=>({visibility:'visible',display:'block',opacity:'1',backgroundColor:'transparent'}),
+  document:{createTreeWalker:(start,show,filter)=>{const queue=[...order];return {nextNode(){while(queue.length){const n=queue.shift();
+   if(filter.acceptNode(n)===2){const skip=new Set();(function all(x){for(const c of x.children){skip.add(c);all(c);}})(n);for(let i=queue.length-1;i>=0;i--)if(skip.has(queue[i]))queue.splice(i,1);continue;}return n;}return null;}};}}};
+ context.window=context;vm.runInNewContext(fs.readFileSync(__dirname+'/../native/homeBackdrop.js','utf8'),context);
+ assert.ok(await context.TigerestHomeBackdrop.build(root,new AbortController().signal));
+ assert.ok(measured.includes('visible-image'),'visible card contents are captured');
+ assert.deepEqual(measured.filter(n=>n.startsWith('below')),[],'contents of an off-screen card are not measured');
+});

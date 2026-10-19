@@ -18,12 +18,19 @@
         clearTimeout(warmTimer);warmTimer=null;
         if(schedule&&!active&&!reduced())warmTimer=setTimeout(()=>prewarm(),180);
     }
+    // Scrolling, lazy loading and animations mutate the page every frame, so
+    // relevance is decided from selectors alone: backgroundRoot() reads layout.
+    // Any shown page counts, which can only invalidate more often, not less.
+    const shownRoots='.mainAnimatedPage:not(.hide):not(.page-hidden),.page:not(.hide):not(.page-hidden)';
     function changes(records){
         if(active)return;
-        const root=backgroundRoot();
-        if(records.some(m=>!(m.type==='attributes'&&m.oldValue===m.target.getAttribute(m.attributeName))&&
-            !m.target.closest?.('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache')&&
-            (root?.contains(m.target)||m.target.matches?.('.mainAnimatedPage,.page,.skinHeader,.backdropContainer,.backgroundContainer'))))invalidate();
+        const roots=homeActive()?'.tg-home-host':shownRoots;
+        if(records.some(m=>{
+            const node=m.target.nodeType===Node.ELEMENT_NODE?m.target:m.target.parentElement;
+            return node&&!(m.type==='attributes'&&m.oldValue===m.target.getAttribute(m.attributeName))&&
+                !node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache')&&
+                (!!node.closest(roots)||node.matches('.mainAnimatedPage,.page,.skinHeader,.backdropContainer,.backgroundContainer'));
+        }))invalidate();
     }
     function settled(root,signal){
         // The ambient layers live outside the page/home root. Freeze their

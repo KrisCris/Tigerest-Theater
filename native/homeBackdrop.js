@@ -21,6 +21,20 @@
             return JSON.stringify([source.href, node.naturalWidth, node.naturalHeight]);
         } catch { return null; }
     }
+    // Chromium decodes an <img> source on the page thread, which stalls a
+    // scrolling media wall; a Blob source is decoded on a worker thread.
+    // Same-origin server artwork is immutable per tag, and the page's own
+    // request has already put its bytes in the HTTP cache.
+    async function decodeSource(node, options) {
+        try {
+            const source = new URL(node.currentSrc || node.src, location.href);
+            if (window.fetch && source.origin === location.origin && /\/Items\/[^/]+\/Images\/[^/]+(?:\/\d+)?$/i.test(source.pathname) && source.searchParams.get('tag')) {
+                const response = await fetch(source.href, {cache: 'force-cache', credentials: 'same-origin'});
+                if (response.ok) return await createImageBitmap(await response.blob(), options);
+            }
+        } catch {}
+        return createImageBitmap(node, options);
+    }
     async function resizedImage(node, options) {
         const key = imageKey(node), entry = key && decoded.get(key);
         if (entry && entry.bitmap.width >= options.resizeWidth && entry.bitmap.height >= options.resizeHeight) {
@@ -28,7 +42,7 @@
             try { return await createImageBitmap(entry.bitmap, options); }
             catch { if (decoded.get(key) === entry) forget(key); }
         }
-        const bitmap = await createImageBitmap(node, options), size = bitmap.width * bitmap.height;
+        const bitmap = await decodeSource(node, options), size = bitmap.width * bitmap.height;
         if (!key || disposed || size > maxPixels) return bitmap;
         let copy;
         try { copy = await createImageBitmap(bitmap); }
@@ -95,7 +109,11 @@
         // Skip motion layers, the held poster and Emby's hidden cached views as
         // whole subtrees instead of measuring each of their nodes.
         const skipped='.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache,[data-tigerest-poster-held],.mainAnimatedPage.hide,.page.hide,.page.page-hidden';
-        const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT,{acceptNode:node=>node.matches(skipped)?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
+        // A media card is a self-contained box: off screen, none of its
+        // contents can be, so long walls are measured only where visible.
+        const outside=r=>r.bottom<0||r.top>innerHeight||r.right<0||r.left>innerWidth;
+        const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT,{acceptNode:node=>node.matches(skipped)||
+            (node.matches('.card,.listItem')&&outside(node.getBoundingClientRect()))?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
         for (let node=root.closest(skipped)?null:root; node; node=walker.nextNode()) {
             if (signal.aborted) return null;
             const r=node.getBoundingClientRect();
