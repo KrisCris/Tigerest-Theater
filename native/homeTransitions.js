@@ -152,12 +152,16 @@
     // them after the route has changed. Wait under the opaque cover until that
     // is over and the page stops growing: a copy taken earlier flew in an
     // empty view, and the real cards were then styled and laid out on the
-    // main thread in the middle of the incoming animation.
+    // main thread in the middle of the incoming animation. Jellyfin's lazy
+    // loader then sets the visible cards' artwork (dropping data-src): a copy
+    // taken before that flew in blank cards whose artwork popped in later.
     async function loaded(job, target, timeout = 2400) {
         const begin = performance.now();
         let count = -1, steady = 0;
+        const shown = node => { const r = node.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth; };
         await wait(job, () => {
-            const busy = [...document.querySelectorAll('.docspinner.mdlSpinnerActive')].some(n => n.getClientRects().length);
+            const busy = [...document.querySelectorAll('.docspinner.mdlSpinnerActive')].some(n => n.getClientRects().length) ||
+                [...target.querySelectorAll('[data-src]')].some(shown);
             const nodes = target.getElementsByTagName('*').length;
             steady = !busy && nodes === count ? steady + 1 : 0; count = nodes;
             return steady >= 2 && performance.now() - begin >= 100;

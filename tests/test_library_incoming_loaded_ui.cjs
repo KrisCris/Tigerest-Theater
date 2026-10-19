@@ -32,8 +32,11 @@ body{margin:0;background:#123;color:white}.page{position:fixed;inset:0;padding:3
             document.querySelector('#library').className = 'page';
             const spinner = document.querySelector('.docspinner'); spinner.classList.add('mdlSpinnerActive');
             if (${loadMs} >= 0) setTimeout(() => {
-                document.querySelector('.itemsContainer').append(...Array.from({length: 12}, () => Object.assign(document.createElement('div'), {className: 'card'})));
+                // Cards arrive with lazy artwork that the loader sets a little later.
+                const cards = Array.from({length: 12}, () => { const card = Object.assign(document.createElement('div'), {className: 'card lazy'}); card.dataset.src = 'art'; return card; });
+                document.querySelector('.itemsContainer').append(...cards);
                 spinner.classList.remove('mdlSpinnerActive');
+                setTimeout(() => cards.forEach(card => { card.removeAttribute('data-src'); card.style.backgroundImage = 'linear-gradient(#c33, #36c)'; }), 200);
             }, ${loadMs});
         }});
         return true; })()`);
@@ -42,6 +45,7 @@ body{margin:0;background:#123;color:white}.page{position:fixed;inset:0;padding:3
         for (const until = Date.now() + 6000; Date.now() < until;) {
             const copy = await evaluate(`(() => { const incoming = document.querySelector('.tigerest-motion-layer .tigerest-motion-frozen');
                 return incoming ? {cards: incoming.shadowRoot.querySelectorAll('.card').length, spinner: !!incoming.shadowRoot.querySelector('.mdlSpinnerActive'),
+                    pendingArt: incoming.shadowRoot.querySelectorAll('.card[data-src]').length,
                     animations: incoming.getAnimations().length} : null; })()`);
             if (copy && copy.animations) return copy;
             await new Promise(r => setTimeout(r, 10));
@@ -53,6 +57,7 @@ body{margin:0;background:#123;color:white}.page{position:fixed;inset:0;padding:3
     assert.ok(copy, 'the central incoming animation was observed');
     assert.equal(copy.cards, 12, 'the incoming copy holds the loaded view: ' + JSON.stringify(copy));
     assert.equal(copy.spinner, false, 'the incoming copy does not show the loading spinner');
+    assert.equal(copy.pendingArt, 0, 'the incoming copy holds the visible cards artwork: ' + JSON.stringify(copy));
     assert.ok(copy.animations > 0, 'the central incoming animation still runs');
     const primed = await evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(copyFrames))))');
     assert.ok(primed.drawn >= 2, 'the copy is drawn under the cover before it moves: ' + JSON.stringify(primed));
@@ -60,7 +65,7 @@ body{margin:0;background:#123;color:white}.page{position:fixed;inset:0;padding:3
     assert.match(primed.willChange, /transform/, 'the copy keeps its own layer from priming into the animation');
     await evaluate('fixtureTransition');
     const waited = await evaluate('TigerestHomeTransitions.last.incomingWaitMs');
-    assert.ok(waited >= 300 && waited < 1000, 'the cover waited for the view to load: ' + waited);
+    assert.ok(waited >= 500 && waited < 1300, 'the cover waited for the view to load: ' + waited);
 
     // A view that never finishes loading still animates in after the bounded wait.
     const start = Date.now();
