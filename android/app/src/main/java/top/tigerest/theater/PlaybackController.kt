@@ -26,13 +26,16 @@ class PlaybackController(private val context: Context, private val settings: Set
     private val starts = ConcurrentLinkedQueue<Long>()
     @Volatile private var eventGeneration = 0L
     private var destroyed = false
-    private var surfaceAttached = false
+    // Only a file mpv actually starts is queued for its START_FILE event.
+    private val surfaceGate = VideoSurfaceGate { generation, url ->
+        if(!destroyed && state.active && generation == state.generation) { starts.add(generation); MPVLib.command(arrayOf("loadfile",url,"replace")) }
+    }
     private var surfaceDimensions = ""
     private val danmakuClock = DanmakuClock()
     @Volatile private var clockEpoch = 0L
     @Volatile var pauseIntent = 0L; private set
     private val resizeOutput = Runnable {
-        if(!destroyed && surfaceAttached && state.active && video) {
+        if(!destroyed && surfaceGate.hasSurface && state.active && video) {
             // Recreate EGL after the Android buffer queue settles. A size property update alone
             // can leave the old buffer geometry visible on a paused, resized SurfaceView.
             MPVLib.setPropertyString("vo","null")
@@ -92,8 +95,9 @@ class PlaybackController(private val context: Context, private val settings: Set
             override fun onSeekTo(pos: Long) { dispatch("seekTo",JSONArray().put(pos)) }
         },main)
     }
-    fun attach(surface: Surface) { if (!destroyed) { surfaceAttached = true; MPVLib.attachSurface(surface); MPVLib.setPropertyString("vo","gpu"); MPVLib.setPropertyString("force-window","yes") } }
-    fun detach() { surfaceAttached = false; main.removeCallbacks(resizeOutput); if (!destroyed) { MPVLib.setPropertyString("vo","null"); MPVLib.setPropertyString("force-window","no"); MPVLib.detachSurface() } }
+    // The video output opens on the surface first; then a video load held for it starts.
+    @Synchronized fun attach(surface: Surface) { if (!destroyed) { MPVLib.attachSurface(surface); MPVLib.setPropertyString("vo","gpu"); MPVLib.setPropertyString("force-window","yes"); surfaceGate.attached() } }
+    @Synchronized fun detach() { surfaceGate.detached(); main.removeCallbacks(resizeOutput); if (!destroyed) { MPVLib.setPropertyString("vo","null"); MPVLib.setPropertyString("force-window","no"); MPVLib.detachSurface() } }
     fun surfaceSize(width: Int,height: Int) {
         if(destroyed || width<=0 || height<=0) return
         val next = "${width}x$height"; if(next == surfaceDimensions) return
@@ -141,7 +145,7 @@ class PlaybackController(private val context: Context, private val settings: Set
                 DiagnosticsLog.app.record("info","Player load requested video=$video")
                 audio = args.opt(3) ?: 1; subtitle = args.opt(4) ?: -1; startMs = options.optDouble("startMilliseconds",0.0)
                 endTemporarySpeed()
-                val generation = state.begin(url); starts.add(generation); durationMs = 0; clockEpoch++
+                val generation = state.begin(url); durationMs = 0; clockEpoch++
                 currentId = EpisodeQueue.currentIdFor(queued,metadata.optJSONObject("metadata") ?: JSONObject())
                 val headers = metadata.optJSONObject("headers") ?: JSONObject()
                 val fields = headers.keys().asSequence().map { key -> require(key == "User-Agent" || key == "Referer") { "不支持的媒体请求头" }; val value = headers.getString(key); require(!value.contains('\n') && !value.contains('\r')); "$key: $value" }.toList()
@@ -150,10 +154,12 @@ class PlaybackController(private val context: Context, private val settings: Set
                 audioManager.requestAudioFocus(focus); mediaSession.isActive = true
                 main.post { if(!destroyed && state.active && generation == state.generation) { visible(video); itemChanged(metadata.optJSONObject("metadata") ?: JSONObject()) } }
                 emit("windowVisible",video); emit("onMetaData",metadata,url)
-                MPVLib.command(arrayOf("loadfile",url,"replace"))
+                // A video waits until the view shown above has its surface. The file it
+                // replaces must not keep playing meanwhile.
+                if(!surfaceGate.load(generation,url,video)) MPVLib.command(arrayOf("stop"))
                 return true
             }
-            "stop" -> { endTemporarySpeed(); val generation = state.generation; val active = state.end(generation); MPVLib.command(arrayOf("stop")); audioManager.abandonAudioFocusRequest(focus); mediaSession.isActive = false; main.post { if(!state.active && generation == state.generation) visible(false) }; emit("windowVisible",false); if(active){emit("canceled");emit("stopped")}; return true }
+            "stop" -> { endTemporarySpeed(); surfaceGate.cancel(); val generation = state.generation; val active = state.end(generation); MPVLib.command(arrayOf("stop")); audioManager.abandonAudioFocusRequest(focus); mediaSession.isActive = false; main.post { if(!state.active && generation == state.generation) visible(false) }; emit("windowVisible",false); if(active){emit("canceled");emit("stopped")}; return true }
             "pause" -> { endTemporarySpeed();pauseIntent++;pausedByFocus=false;MPVLib.setPropertyBoolean("pause",true) }
             "play" -> MPVLib.setPropertyBoolean("pause",false)
             "showMessage" -> MPVLib.command(arrayOf("show-text",args.getString(0).take(200),"3000"))
@@ -267,5 +273,5 @@ class PlaybackController(private val context: Context, private val settings: Set
     override fun eventProperty(property: String) { if(property == "track-list") emit("onVideoRecangleChanged") }
     // Watch-together reads this before the pause so it reports away instead of pausing the room.
     fun background() { endTemporarySpeed(); if(state.active && !state.paused) { emit("backgrounded"); dispatch("pause",JSONArray()) } }
-    fun destroy() { if(destroyed) return; endTemporarySpeed(); state.end(state.generation); destroyed = true; main.removeCallbacks(resizeOutput); context.unregisterReceiver(noisyReceiver); MPVLib.removeObserver(this); MPVLib.removeLogObserver(this); MPVLib.destroy(); mediaSession.release(); audioManager.abandonAudioFocusRequest(focus) }
+    fun destroy() { if(destroyed) return; endTemporarySpeed(); surfaceGate.cancel(); state.end(state.generation); destroyed = true; main.removeCallbacks(resizeOutput); context.unregisterReceiver(noisyReceiver); MPVLib.removeObserver(this); MPVLib.removeLogObserver(this); MPVLib.destroy(); mediaSession.release(); audioManager.abandonAudioFocusRequest(focus) }
 }
