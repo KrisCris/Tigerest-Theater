@@ -12,6 +12,11 @@ let mode = '';
 const explicitChoice = /(?:^|[?&])choose=1(?:&|$)/.test(window.location.search || '');
 let editingAddress = false;
 let committingSelection = false;
+// Remembered servers (native/serverHistory.js): the card being connected, the
+// card whose address is being edited, and per-card connection errors.
+let listConnecting = null;
+let replacingKey = null;
+const cardErrors = new Map();
 
 function cancelServerSwitch() {
     if (committingSelection) return;
@@ -22,6 +27,7 @@ function cancelServerSwitch() {
 // Used by Android's hardware/gesture Back before WebView history handling.
 window.tigerestServerSelectionBack = () => {
     if (committingSelection) return true;
+    if (listConnecting) { cancelConnection(); return true; }
     if (!el('connect-form').hidden) { showChoices(); return true; }
     if (explicitChoice && window.history.length > 1) { cancelServerSwitch(); return true; }
     return false;
@@ -94,20 +100,126 @@ function cancelConnection() {
     window.jmpCheckServerConnectivity.abort?.();
     window.api?.system.cancelServerConnectivity();
     setConnecting(false);
+    if (listConnecting) { listConnecting = null; renderSavedServers(); }
 }
 
 function showChoices() {
     if (committingSelection) return;
     cancelConnection();
+    replacingKey = null;
     el('server-choice').hidden = false;
     el('connect-form').hidden = true;
     el('choice-description').textContent = '请选择你要连接的服务器。';
+    renderSavedServers();
 }
 
-async function connectServers(servers) {
+function savedMode(address) {
+    return address ? (isTigerestDefaultServer(address) ? 'tigerest' : 'custom') : '';
+}
+
+function savedServers() {
+    const main = window.jmpInfo.settings.main, current = main.userWebClient || '';
+    return window.TigerestServerHistory?.list(main.knownServers || '', {current, mode: main.serverConnectionMode || savedMode(current)}) || [];
+}
+
+function node(tag, className, text) {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text) element.textContent = text;
+    return element;
+}
+
+function displayAddress(address) {
+    try {
+        const url = new URL(address);
+        return (url.protocol === 'https:' ? 'https://' : '') + url.host + url.pathname.replace(/\/$/, '');
+    } catch { return address; }
+}
+
+// Self-hosted servers this profile has opened. Names come from the servers
+// and are rendered as text only.
+function renderSavedServers() {
+    const servers = savedServers();
+    el('tigerest-current').hidden = !servers.some(server => server.mode === 'tigerest' && server.current);
+    const items = servers.filter(server => server.mode === 'custom').map(server => {
+        const busy = listConnecting === server.key, error = cardErrors.get(server.key) || '';
+        const label = server.name || displayAddress(server.address);
+        const item = node('li', 'saved-server' + (server.current ? ' is-current' : ''));
+        item.dataset.key = server.key;
+        const open = node('button', 'saved-server-open');
+        open.type = 'button';
+        open.disabled = isConnecting || committingSelection;
+        const kind = server.kind === 'jellyfin' ? 'Jellyfin' : server.kind === 'emby' ? 'Emby' : '';
+        open.append(node('span', 'saved-server-name', label),
+            node('span', 'saved-server-meta', [kind, server.name && displayAddress(server.address)].filter(Boolean).join(' · ') || '连接后识别服务器类型'));
+        if (server.current) open.append(node('span', 'saved-server-tag', '当前'));
+        open.setAttribute('aria-label', `连接 ${label}${server.current ? '（当前服务器）' : ''}`);
+        open.addEventListener('click', () => connectSaved(server));
+        const status = node('p', 'saved-server-status' + (error ? ' is-error' : ''), busy ? '正在连接…' : error);
+        status.setAttribute('role', error ? 'alert' : 'status');
+        status.hidden = !busy && !error;
+        const actions = node('div', 'saved-server-actions'), confirm = node('div', 'saved-server-confirm');
+        confirm.hidden = true;
+        const action = (text, handler, extra = '') => {
+            const button = node('button', 'saved-server-action' + extra, text);
+            button.type = 'button';
+            button.disabled = isConnecting || committingSelection;
+            button.addEventListener('click', handler);
+            return button;
+        };
+        if (busy) {
+            const cancel = action('取消', () => cancelConnection());
+            cancel.disabled = false;
+            actions.append(cancel);
+        } else {
+            if (error) actions.append(action('重试', () => connectSaved(server)));
+            actions.append(action('编辑地址', () => editSaved(server)));
+        }
+        // The current server is the startup target and cannot be removed.
+        if (!server.current && !busy) {
+            const remove = action('移除', () => { actions.hidden = true; confirm.hidden = false; keep.focus(); }, ' is-danger');
+            const keep = action('保留', () => { confirm.hidden = true; actions.hidden = false; remove.focus(); });
+            confirm.append(node('p', '', `从列表移除“${label}”？不会退出登录，也不会删除服务器上的内容。`),
+                action('确认移除', () => forgetSaved(server.key), ' is-danger'), keep);
+            actions.append(remove);
+        }
+        item.append(open, status, actions, confirm);
+        return item;
+    });
+    el('saved-server-list').replaceChildren(...items);
+    el('saved-servers').hidden = !items.length;
+}
+
+function connectSaved(server) {
+    if (isConnecting || committingSelection) return;
+    mode = 'custom';
+    replacingKey = null;
+    cardErrors.delete(server.key);
+    return connectServers([server.address], {card: server.key});
+}
+
+function editSaved(server) {
+    if (isConnecting || committingSelection) return;
+    mode = 'custom';
+    cardErrors.delete(server.key);
+    showManualConnection(server.address);
+    replacingKey = server.key;
+}
+
+function forgetSaved(key) {
+    const main = window.jmpInfo.settings.main;
+    cardErrors.delete(key);
+    main.knownServers = window.TigerestServerHistory.forget(main.knownServers || '', key);
+    renderSavedServers();
+    const next = el('saved-server-list').querySelector?.('.saved-server-open');
+    (next || el('choose-custom')).focus();
+}
+
+async function connectServers(servers, {card = null} = {}) {
     if (isConnecting) return;
     const generation = ++connectionGeneration;
     setConnecting(true);
+    if (card) { listConnecting = card; renderSavedServers(); }
     el('connection-error').hidden = true;
     let error = '';
     for (const input of [...new Set(servers)]) {
@@ -120,9 +232,13 @@ async function connectServers(servers) {
             if (generation !== connectionGeneration) return;
             if (window.api.system.finishServerSelection) {
                 // Native code owns the settings/navigation transaction and its
-                // rollback. A cancel must not split those two operations.
+                // rollback. A cancel must not split those two operations. The
+                // remembered list is committed only once the server page loads.
                 committingSelection = true;
-                const accepted = await window.api.system.finishServerSelection(server, mode, resolvedUrl);
+                const main = window.jmpInfo.settings.main;
+                const remembered = window.TigerestServerHistory && 'knownServers' in main
+                    ? window.TigerestServerHistory.remember(main.knownServers || '', {mode, address: server, replacing: replacingKey}) : '';
+                const accepted = await window.api.system.finishServerSelection(server, mode, resolvedUrl, remembered);
                 if (accepted === false) throw new Error('无法切换服务器，请重试');
                 return;
             }
@@ -137,12 +253,21 @@ async function connectServers(servers) {
             error = failure.message || '无法连接服务器';
         }
     }
-    showManualConnection(el('address').value,
-        `${error}。请检查地址、端口及当前网络是否能访问该服务器。`);
+    const message = `${error}。请检查地址、端口及当前网络是否能访问该服务器。`;
+    if (card) {
+        // A saved server that is offline keeps its card and the rest of the list.
+        cardErrors.set(card, message);
+        setConnecting(false);
+        listConnecting = null;
+        renderSavedServers();
+        return;
+    }
+    showManualConnection(el('address').value, message);
 }
 
 async function chooseMode(selected) {
     mode = selected;
+    replacingKey = null;
     const saved = window.jmpInfo.settings.main.userWebClient || '';
     showManualConnection(mode === 'custom' && !isTigerestDefaultServer(saved) ? saved : '');
     if (mode === 'tigerest') {
@@ -178,7 +303,10 @@ el('address').addEventListener('keydown', event => {
 el('offline-button').addEventListener('click', () => window.tigerestOpenOfflineLibrary());
 document.addEventListener('keydown', event => {
     if (committingSelection && event.key === 'Escape') { event.preventDefault(); return; }
-    if (event.key === 'Escape' && isConnecting) {
+    if (event.key === 'Escape' && listConnecting) {
+        event.preventDefault();
+        cancelConnection();
+    } else if (event.key === 'Escape' && isConnecting) {
         event.preventDefault();
         cancelConnection();
         showManualConnection(el('address').value);
@@ -198,7 +326,8 @@ document.addEventListener('keydown', event => {
     }
     const main = window.jmpInfo.settings.main;
     const saved = main.userWebClient || '';
-    mode = main.serverConnectionMode || (saved ? (isTigerestDefaultServer(saved) ? 'tigerest' : 'custom') : '');
+    mode = main.serverConnectionMode || savedMode(saved);
+    renderSavedServers();
     if (await window.api.system.takeServerSelectionError?.()) {
         return window.tigerestServerSelectionFailed();
     }

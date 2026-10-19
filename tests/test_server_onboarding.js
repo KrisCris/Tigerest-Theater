@@ -8,25 +8,37 @@ const { test } = require('node:test');
 
 // Only the browser DOM and native network boundary are doubled. The shipped
 // connection controller runs unchanged, including asynchronous cancellation.
-function page({ saved = '', mode = '', lan = false, connect, switching = false, editAddress, finishSelection } = {}) {
+function fakeElement(tag = 'div') {
+    return {
+        tag, value: '', textContent: '', className: '', hidden: false, disabled: false, style: {}, dataset: {}, children: [],
+        attributes: new Map([['data-original-text', '服务器地址']]),
+        listeners: new Map(), classList: { add() {}, remove() {} },
+        get firstChild() { return this.children[0] || null; },
+        append(...nodes) { this.children.push(...nodes); },
+        replaceChildren(...nodes) { this.children = nodes; },
+        addEventListener(event, listener) { this.listeners.set(event, listener); },
+        getAttribute(name) { return this.attributes.get(name); },
+        setAttribute(name, value) { this.attributes.set(name, value); },
+        focus() { this.focused = true; this.listeners.get('focus')?.({ target: this }); },
+        // Descendants by class, in document order.
+        all(className) {
+            return this.children.flatMap(child => [...(child.className.split(' ').includes(className) ? [child] : []), ...child.all(className)]);
+        },
+        querySelector(selector) { return this.all(selector.replace(/^\./, ''))[0] || null; },
+        async emit(event) {
+            return this.listeners.get(event)?.({ target: this, preventDefault() {}, stopPropagation() {} });
+        },
+    };
+}
+
+function page({ saved = '', mode = '', known, lan = false, connect, switching = false, editAddress, finishSelection } = {}) {
     const elements = new Map();
     function element(id) {
-        if (!elements.has(id)) elements.set(id, {
-            value: '', textContent: '', hidden: false, disabled: false, style: {},
-            attributes: new Map([['data-original-text', '服务器地址']]),
-            listeners: new Map(), classList: { add() {}, remove() {} },
-            addEventListener(event, listener) { this.listeners.set(event, listener); },
-            getAttribute(name) { return this.attributes.get(name); },
-            setAttribute(name, value) { this.attributes.set(name, value); },
-            focus() { this.listeners.get('focus')?.({ target: this }); },
-            async emit(event) {
-                return this.listeners.get(event)?.({ target: this, preventDefault() {}, stopPropagation() {} });
-            },
-        });
+        if (!elements.has(id)) elements.set(id, fakeElement());
         return elements.get(id);
     }
     const requests = [];
-    const settings = { main: { userWebClient: saved, serverConnectionMode: mode } };
+    const settings = { main: { userWebClient: saved, serverConnectionMode: mode, ...(known === undefined ? {} : { knownServers: known }) } };
     const check = async url => {
         requests.push(url);
         return connect ? connect(url) : `${url.replace(/\/+$/, '')}/web/index.html`;
@@ -41,10 +53,16 @@ function page({ saved = '', mode = '', lan = false, connect, switching = false, 
     };
     const context = vm.createContext({
         window, URL, console: { log() {}, error() {}, warn() {} },
-        document: { getElementById: element, addEventListener() {}, removeEventListener() {} },
+        document: { getElementById: element, createElement: fakeElement, addEventListener() {}, removeEventListener() {} },
     });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../native/serverHistory.js'), 'utf8'), context);
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../native/find-webclient.js'), 'utf8'), context);
-    return { element, requests, settings, window, context };
+    const cards = () => element('saved-server-list').children.map(item => ({
+        item, key: item.dataset.key, name: item.all('saved-server-name')[0].textContent, meta: item.all('saved-server-meta')[0].textContent,
+        current: item.all('saved-server-tag').length > 0, open: item.all('saved-server-open')[0],
+        status: item.all('saved-server-status')[0], button: text => item.all('saved-server-action').find(button => button.textContent === text) || null,
+    }));
+    return { element, requests, settings, window, context, cards };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
@@ -57,13 +75,126 @@ test('native selection owns saving and navigation; Back cannot split its commit'
     p.element('address').value = 'https://new.example/';
     const pending = p.element('connect-form').emit('submit');
     await settle();
-    assert.deepEqual(args, ['https://new.example/', 'custom', 'https://new.example/web/index.html']);
+    assert.deepEqual(args.slice(0, 3), ['https://new.example/', 'custom', 'https://new.example/web/index.html']);
     await p.element('cancel-switch-button').emit('click');
     assert.equal(p.window.tigerestServerSelectionBack(), true);
     assert.equal(p.window.wentBack, undefined);
     assert.equal(p.settings.main.userWebClient, 'https://old.example/');
     finish(true); await pending;
     assert.deepEqual(p.window.location, { search: '?choose=1' });
+});
+
+const history = require('../native/serverHistory.js');
+const known = (...entries) => entries.reduce((text, [address, extra = {}], n) =>
+    history.annotate(history.remember(text, { mode: 'custom', address, at: 1_700_000_000_000 + n }), { mode: 'custom', address, ...extra }), '');
+
+test('remembered servers are listed with the current one marked and not removable', async () => {
+    const p = page({ saved: 'https://b.example/jellyfin/', mode: 'custom', switching: true,
+        known: known(['https://a.example/', { name: 'Alpha', kind: 'emby' }], ['https://b.example/jellyfin/', { name: '<b>Beta</b>', kind: 'jellyfin' }]) });
+    await settle();
+    assert.equal(p.element('saved-servers').hidden, false);
+    const cards = p.cards();
+    assert.deepEqual(cards.map(card => [card.name, card.meta, card.current]),
+        [['<b>Beta</b>', 'Jellyfin · https://b.example/jellyfin', true], ['Alpha', 'Emby · https://a.example', false]]);
+    assert.equal(cards[0].button('移除'), null, 'the startup server cannot be removed');
+    assert.ok(cards[1].button('移除'));
+    assert.deepEqual(p.requests, [], 'listing never probes servers');
+});
+
+test('a saved address from before the list appears once, and the dedicated server is not a self-hosted card', async () => {
+    const p = page({ saved: 'https://old.example/emby/', mode: 'custom', switching: true });
+    await settle();
+    assert.deepEqual(p.cards().map(card => [card.key, card.current]), [['custom:https://old.example/emby/', true]]);
+    const dedicated = page({ saved: 'http://nas.tigerest.top:8095/', mode: 'tigerest', switching: true });
+    await settle();
+    assert.equal(dedicated.element('saved-servers').hidden, true);
+    assert.equal(dedicated.element('tigerest-current').hidden, false);
+});
+
+test('choosing a saved server connects it and hands the updated list to the native commit', async () => {
+    let args;
+    const p = page({ saved: 'https://a.example/', mode: 'custom', switching: true,
+        known: known(['https://a.example/'], ['https://b.example/', { name: 'Beta' }]), finishSelection: async (...values) => { args = values; return true; } });
+    await settle();
+    await p.cards().find(card => card.name === 'Beta').open.emit('click');
+    assert.deepEqual(p.requests, ['https://b.example/']);
+    assert.deepEqual(args.slice(0, 3), ['https://b.example/', 'custom', 'https://b.example/web/index.html']);
+    assert.deepEqual(history.parse(args[3]).map(server => [server.address, server.name]), [['https://b.example/', 'Beta'], ['https://a.example/', undefined]]);
+    assert.equal(p.settings.main.userWebClient, 'https://a.example/', 'settings change only inside the native transaction');
+});
+
+test('an offline saved server keeps its card, shows the error and can be retried', async () => {
+    let online = false;
+    const p = page({ saved: 'https://a.example/', mode: 'custom', switching: true, known: known(['https://a.example/'], ['https://b.example/']),
+        connect: async url => { if (!online) throw new Error('HTTP 502'); return `${url}web/index.html`; }, finishSelection: async () => true });
+    await settle();
+    await p.cards().find(card => card.key === 'custom:https://b.example/').open.emit('click');
+    let card = p.cards().find(card => card.key === 'custom:https://b.example/');
+    assert.equal(p.element('server-choice').hidden, false, 'the list stays in place');
+    assert.equal(p.cards().length, 2);
+    assert.match(card.status.textContent, /502/);
+    assert.equal(card.status.hidden, false);
+    online = true;
+    await card.button('重试').emit('click');
+    assert.deepEqual(p.requests, ['https://b.example/', 'https://b.example/']);
+    assert.equal(p.settings.main.knownServers, known(['https://a.example/'], ['https://b.example/']), 'nothing is saved before the native commit');
+});
+
+test('Back during a saved-server connection cancels it and a late answer is ignored', async () => {
+    let finish, committed = false;
+    const p = page({ saved: 'https://a.example/', mode: 'custom', switching: true, known: known(['https://a.example/'], ['https://b.example/']),
+        connect: () => new Promise(resolve => { finish = resolve; }), finishSelection: async () => { committed = true; return true; } });
+    await settle();
+    const pending = p.cards()[0].open.emit('click');
+    await settle();
+    assert.equal(p.cards()[0].status.textContent, '正在连接…');
+    assert.equal(p.window.tigerestServerSelectionBack(), true);
+    assert.equal(p.window.wentBack, undefined, 'Back first cancels the connection, not the switch');
+    finish('https://b.example/web/index.html');
+    await pending; await settle();
+    assert.equal(committed, false);
+    assert.equal(p.cards()[0].status.hidden, true);
+});
+
+test('removing a server needs confirmation and only edits the list', async () => {
+    const p = page({ saved: 'https://a.example/', mode: 'custom', switching: true, known: known(['https://a.example/'], ['https://b.example/', { name: 'Beta' }]) });
+    await settle();
+    let beta = p.cards().find(card => card.name === 'Beta');
+    await beta.button('移除').emit('click');
+    assert.equal(p.cards().length, 2, 'one click only asks');
+    await beta.item.all('saved-server-action').find(button => button.textContent === '保留').emit('click');
+    assert.equal(p.cards().length, 2);
+    await beta.item.all('saved-server-action').find(button => button.textContent === '确认移除').emit('click');
+    assert.deepEqual(p.cards().map(card => card.key), ['custom:https://a.example/']);
+    assert.deepEqual(history.parse(p.settings.main.knownServers).map(server => server.address), ['https://a.example/']);
+    assert.equal(p.settings.main.userWebClient, 'https://a.example/');
+});
+
+test('editing a saved address replaces that record once the new address commits', async () => {
+    let args;
+    const p = page({ saved: 'https://a.example/', mode: 'custom', switching: true, known: known(['https://a.example/'], ['http://b.example:8096/']),
+        finishSelection: async (...values) => { args = values; return true; } });
+    await settle();
+    await p.cards().find(card => card.key === 'custom:http://b.example:8096/').button('编辑地址').emit('click');
+    assert.equal(p.element('address').value, 'http://b.example:8096/');
+    p.element('address').value = 'https://b.example/';
+    await p.element('connect-form').emit('submit');
+    assert.deepEqual(history.parse(args[3]).map(server => server.address), ['https://b.example/', 'https://a.example/']);
+});
+
+test('a failed server page leaves the remembered list unchanged and the chooser usable', async () => {
+    const text = known(['https://a.example/']);
+    const p = page({ saved: 'https://a.example/', mode: 'custom', switching: true, known: text, finishSelection: async () => true });
+    await settle();
+    await p.element('choose-custom').emit('click');
+    p.element('address').value = 'https://broken.example/';
+    await p.element('connect-form').emit('submit');
+    // Native rollback after the HTML load fails.
+    p.window.tigerestServerSelectionFailed();
+    assert.equal(p.settings.main.knownServers, text);
+    assert.equal(p.element('server-choice').hidden, false);
+    assert.deepEqual(p.cards().map(card => card.key), ['custom:https://a.example/']);
+    assert.equal(p.cards()[0].open.disabled, false);
 });
 
 test('rejected native selection retains old settings and allows another choice', async () => {

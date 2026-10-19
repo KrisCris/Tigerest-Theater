@@ -606,7 +606,7 @@ if(Node_EXECUTABLE)
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_jellyfin_motion.js)
   add_test(NAME test_server_onboarding
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_server_onboarding.js
-                   ${CMAKE_CURRENT_SOURCE_DIR}/test_server_seed.js)
+                   ${CMAKE_CURRENT_SOURCE_DIR}/test_server_seed.js ${CMAKE_CURRENT_SOURCE_DIR}/test_server_history.js)
   execute_process(COMMAND ${Node_EXECUTABLE} -p "typeof WebSocket === 'function' && typeof fetch === 'function'"
                   OUTPUT_VARIABLE NODE_HAS_WEBENGINE_TEST_APIS OUTPUT_STRIP_TRAILING_WHITESPACE)
   if(WIN32 AND NODE_HAS_WEBENGINE_TEST_APIS STREQUAL "true")

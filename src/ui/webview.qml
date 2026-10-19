@@ -363,10 +363,10 @@ Window
       components.system.serverSettingsRequested.connect(function() {
         web.url = "qrc:///web-client/extension/find-webclient.html?choose=1";
       })
-      components.system.serverSelectionFinished.connect(function(server, mode, target) {
+      components.system.serverSelectionFinished.connect(function(server, mode, target, history) {
         if (web.serverSelection) return;
         web.serverSelection = {
-          target: target, started: false,
+          target: target, started: false, history: history,
           previousAddress: components.settings.value("main", "userWebClient"),
           previousMode: components.settings.value("main", "serverConnectionMode")
         };
@@ -416,6 +416,9 @@ Window
       {
         if (web.serverSelection && web.serverSelection.started &&
             loadingInfo.url.toString() === web.url.toString() && /^https?:/.test(web.url.toString())) {
+          // Only a loaded server page becomes a remembered server.
+          if (web.serverSelection.history)
+            components.settings.setValue("main", "knownServers", web.serverSelection.history);
           web.serverSelection = null;
           web.history.clear();
         }

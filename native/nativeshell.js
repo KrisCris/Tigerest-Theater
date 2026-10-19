@@ -284,6 +284,13 @@ window.apiPromise = createApi().then(async api => {
             const value = await api.settings.value('main', key);
             if (typeof value === 'string') rawSettings.main[key] = value;
         }
+        // Hosts without the remembered-server setting keep working without it.
+        if ('knownServers' in rawSettings.main) {
+            try {
+                const value = await api.settings.value('main', 'knownServers');
+                if (typeof value === 'string') rawSettings.main.knownServers = value;
+            } catch (error) { console.warn('Remembered servers are unavailable'); }
+        }
         window.sessionStorage.setItem('settings', JSON.stringify(rawSettings));
     }
     return api;
@@ -1784,6 +1791,30 @@ function installWindowModeEntry() {
 installMpvSettingsEntry();
 installWindowModeEntry();
 installHorizontalShelfDragging();
+
+// A loaded server page names its remembered-server record. The native
+// selection commits that record once this page has loaded, so wait past the
+// load and read the setting again before annotating it.
+async function annotateRememberedServer() {
+    const model = window.TigerestServerHistory, server = window.TigerestServer;
+    if (!model || !server?.base || !/^https?:$/.test(window.location.protocol)) return;
+    const kind = await server.ready;
+    await window.initCompleted;
+    const main = window.jmpInfo.settings.main;
+    if (!('knownServers' in main) || !server.identity) return;
+    if (document.readyState !== 'complete') await new Promise(resolve => window.addEventListener('load', resolve, {once: true}));
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    const current = main.userWebClient, mode = main.serverConnectionMode || 'custom';
+    if (!current || model.canonicalAddress(server.base + '/') !== model.canonicalAddress(current)) return;
+    let text = main.knownServers || '';
+    try {
+        const fresh = await window.api.settings.value('main', 'knownServers');
+        if (typeof fresh === 'string') text = fresh;
+    } catch (error) { return; }
+    const next = model.annotate(text, {mode, address: current, name: server.identity.name, kind, serverId: server.identity.serverId});
+    if (next !== text) main.knownServers = next;
+}
+annotateRememberedServer().catch(() => {});
 
 function installServerSwitchEntry() {
     if (!document.body) { document.addEventListener('DOMContentLoaded', installServerSwitchEntry, {once: true}); return; }

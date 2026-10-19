@@ -13,15 +13,21 @@
             <p class="eyebrow">欢迎来到大河影院</p>
             <h1 id="choice-title">你的影院，从这里开始</h1>
             <p class="intro">选择要连接的媒体服务器</p>
+            <section id="saved-servers" aria-labelledby="saved-title" hidden>
+                <h2 id="saved-title">连接过的自建服务器</h2>
+                <p class="saved-help">移除只影响此列表，不会退出登录，也不会删除服务器上的内容。</p>
+                <ul id="saved-server-list"></ul>
+            </section>
             <div class="server-options">
                 <button id="choose-tigerest" class="server-option" type="button" aria-describedby="choice-description">
                     <span class="option-number" aria-hidden="true">01</span>
+                    <span id="tigerest-current" class="option-badge" hidden>当前</span>
                     <span>连接大河李斯特专属<br>EMBY 服务器</span>
                     <span class="option-arrow" aria-hidden="true">↗</span>
                 </button>
                 <button id="choose-custom" class="server-option" type="button" aria-describedby="choice-description">
                     <span class="option-number" aria-hidden="true">02</span>
-                    <span>连接自建<br>Emby / Jellyfin 服务器</span>
+                    <span>添加或连接自建<br>Emby / Jellyfin 服务器</span>
                     <span class="option-arrow" aria-hidden="true">↗</span>
                 </button>
             </div>
@@ -40,6 +46,7 @@
         <button id="cancel-switch-button" class="text-button" type="button" hidden>取消切换，返回当前服务器</button>
         <button id="offline-button" class="text-button" type="button">打开离线媒体</button>
     </div>
+    <script src="serverHistory.js"></script>
     <script src="find-webclient.lang.js"></script>
     <script src="find-webclient.js"></script>
 </body>

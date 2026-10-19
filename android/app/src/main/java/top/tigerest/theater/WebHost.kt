@@ -20,7 +20,7 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
     private val loader = WebViewAssetLoader.Builder().addPathHandler("/assets/",WebViewAssetLoader.AssetsPathHandler(activity)).build()
     private var script: ScriptHandler? = null
     private var configured = ""
-    private data class Selection(val target: String, val previousAddress: String, val previousMode: String, var started: Boolean = false, var mainUrl: String = target)
+    private data class Selection(val target: String, val previousAddress: String, val previousMode: String, val history: String, var started: Boolean = false, var mainUrl: String = target)
     private var selection: Selection? = null
     private var selectionError = false
     init {
@@ -56,6 +56,8 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
             override fun onPageFinished(view: WebView,url: String) {
                 selection?.let { pending ->
                     if(pending.started && url == view.url && runCatching { ServerAddress.origin(url.substringBefore('?').substringBefore('#')) == ServerAddress.origin(pending.target.substringBefore('?').substringBefore('#')) }.getOrDefault(false)) {
+                        // Only a loaded server page becomes a remembered server.
+                        if(pending.history.isNotEmpty()) runCatching { settings.set("main","knownServers",pending.history) }
                         selection = null; view.clearHistory()
                     }
                 }
@@ -99,7 +101,7 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
             if(isMain && source.toString().trimEnd('/') in allowed) message.data?.let { bridge.request(it,reply) }
         }
         val bootstrap = JSONObject().put("version",BuildConfig.VERSION_NAME).put("deviceName","${android.os.Build.MODEL} / Android").put("mode","desktop").put("userAgent",view.settings.userAgentString).put("scriptPath","$ASSET_ORIGIN/assets/shared").put("mpvConfigMode","embedded").put("mpvConfigDir","安卓应用内配置").put("settings",settings.values).put("sections",settings.sections).put("settingsDescriptions",settings.descriptions)
-        val nativeFiles = listOf("serverKind.js","mpvVideoPlayer.js","mpvAudioPlayer.js","inputPlugin.js","sessionNavigationPlugin.js","communityClient.js","communityBridge.js","communitySession.js","communityAvatar.js","communityPublicClient.js","communityAccount.js","communityMessages.js","communityPlugin.js","watchTogetherClient.js","watchTogetherSync.js","watchTogether.js","jellyfinPlugin.js","connectivityHelper.js","nativeshell.js","offline.js","homeData.js","homeGallery.js","homeBackdrop.js","homeTransitions.js","homeMotion.js","embycompat.js","webAppearance.js","updatePlugin.js")
+        val nativeFiles = listOf("serverKind.js","mpvVideoPlayer.js","mpvAudioPlayer.js","inputPlugin.js","sessionNavigationPlugin.js","communityClient.js","communityBridge.js","communitySession.js","communityAvatar.js","communityPublicClient.js","communityAccount.js","communityMessages.js","communityPlugin.js","watchTogetherClient.js","watchTogetherSync.js","watchTogether.js","jellyfinPlugin.js","connectivityHelper.js","serverHistory.js","nativeshell.js","offline.js","homeData.js","homeGallery.js","homeBackdrop.js","homeTransitions.js","homeMotion.js","embycompat.js","webAppearance.js","updatePlugin.js")
         val injected = StringBuilder("(()=>{if(window!==window.top)return;\nwindow.__tigerestBootstrap=${bootstrap};\n").append(asset("androidBridge.js"))
         for(file in nativeFiles) {
             if(BuildConfig.DEBUG) injected.append("\nconsole.info('TGS phase start $file');")
@@ -115,12 +117,13 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
     private fun asset(path: String) = activity.assets.open(path).bufferedReader().use { it.readText() }
     fun open(url: String) { val origin = if(url.startsWith(ASSET_ORIGIN)) ASSET_ORIGIN else ServerAddress.origin(url.substringBefore('?').substringBefore('#')); configure(origin); view.loadUrl(url) }
     fun openSaved() { val saved = settings.string("main","userWebClient"); open(saved.ifBlank { ONBOARDING }) }
-    fun finishServerSelection(server: String, mode: String, target: String): Boolean {
+    fun finishServerSelection(server: String, mode: String, target: String, history: String = ""): Boolean {
         if(selection != null || view.url?.substringBefore('?')?.substringBefore('#') != ONBOARDING) return false
         require(mode in setOf("custom","tigerest"))
         val origin = ServerAddress.origin(server)
         require(origin == ServerAddress.origin(target))
-        selection = Selection(target,settings.string("main","userWebClient"),settings.string("main","serverConnectionMode"))
+        if(history.isNotEmpty()) SettingsPolicy.validate("main","knownServers",history,"")
+        selection = Selection(target,settings.string("main","userWebClient"),settings.string("main","serverConnectionMode"),history)
         settings.set("main","userWebClient",server); settings.set("main","serverConnectionMode",mode)
         configure(origin); view.loadUrl(target)
         return true
