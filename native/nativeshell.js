@@ -1,3 +1,10 @@
+window.tigerestSwitchServer = async function () {
+    const api = window.api || await window.apiPromise;
+    if (api?.system?.openServerSettings) return api.system.openServerSettings();
+    // A deliberate switch bypasses saved-server auto-connect without deleting it.
+    window.location.href = window.jmpInfo.scriptPath + '/find-webclient.html?choose=1';
+};
+
 const features = [
     "filedownload",
     "displaylanguage",
@@ -269,7 +276,18 @@ if (settingsDescriptionsFromStorage) {
 
 jmpInfo.settingsDescriptionsUpdate = [];
 jmpInfo.settingsUpdate = [];
-window.apiPromise = createApi();
+window.apiPromise = createApi().then(async api => {
+    // Native selection can commit/roll back while this origin is unloaded.
+    // Both the injected bootstrap and this origin's cache may be stale.
+    if (api.settings.value) {
+        for (const key of ['userWebClient', 'serverConnectionMode']) {
+            const value = await api.settings.value('main', key);
+            if (typeof value === 'string') rawSettings.main[key] = value;
+        }
+        window.sessionStorage.setItem('settings', JSON.stringify(rawSettings));
+    }
+    return api;
+});
 window.initCompleted = new Promise(async (resolve) => {
     window.api = await window.apiPromise;
     const settingUpdate = (section, key) => (
@@ -567,24 +585,18 @@ async function showLegacySettingsModal() {
         legend.appendChild(legendHeader);
         const legendSubHeader = document.createElement("h4");
         legendSubHeader.textContent = (
-            "客户端会优先连接已保存的服务器。重置后，下次启动将先尝试内网地址，" +
-            "再尝试公网地址；此操作不会从当前媒体服务器账号退出。"
+            "返回客户端服务器选择页。保留已保存的地址、登录信息与播放器设置。"
         );
         legend.appendChild(legendSubHeader);
         group.appendChild(legend);
 
         const resetSavedServer = document.createElement("button");
         resetSavedServer.className = "raised button-cancel block btnCancel emby-button";
-        resetSavedServer.textContent = "重置服务器地址"
+        resetSavedServer.textContent = "切换服务器"
         resetSavedServer.style.marginLeft = "auto";
         resetSavedServer.style.marginRight = "auto";
         resetSavedServer.style.maxWidth = "50%";
-        resetSavedServer.addEventListener("click", async () => {
-            window.jmpInfo.settings.main.userWebClient = '';
-            window.jmpInfo.settings.main.serverConnectionMode = '';
-            if (window.tigerestIPadApi) window.api.system.openServerSettings();
-            else window.location.href = jmpInfo.scriptPath + "/find-webclient.html";
-        });
+        resetSavedServer.addEventListener("click", window.tigerestSwitchServer);
         group.appendChild(resetSavedServer);
     }
 
@@ -1396,14 +1408,9 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
                 checkUpdate.addEventListener('click', () => window.TigerestUpdate.check().catch(() => {}));
                 actions.appendChild(checkUpdate);
             }
-            if (jmpInfo.settings.main.userWebClient) {
-                const resetServer = element('button', 'tgs-action', '重置已保存的服务器地址');
-                resetServer.addEventListener('click', () => {
-                    window.jmpInfo.settings.main.userWebClient = '';
-                    window.jmpInfo.settings.main.serverConnectionMode = '';
-                    if (window.tigerestIPadApi) window.api.system.openServerSettings();
-                    else window.location.href = jmpInfo.scriptPath + '/find-webclient.html';
-                });
+            {
+                const resetServer = element('button', 'tgs-action', '切换服务器');
+                resetServer.addEventListener('click', window.tigerestSwitchServer);
                 actions.appendChild(resetServer);
             }
             const offline = element('button', 'tgs-action', '打开下载与离线媒体管理');
@@ -1777,6 +1784,39 @@ function installWindowModeEntry() {
 installMpvSettingsEntry();
 installWindowModeEntry();
 installHorizontalShelfDragging();
+
+function installServerSwitchEntry() {
+    if (!document.body) { document.addEventListener('DOMContentLoaded', installServerSwitchEntry, {once: true}); return; }
+    if (/find-webclient\.html/i.test(window.location.pathname)) return;
+    const style = document.createElement('style');
+    style.textContent = '.tigerest-switch-entry{display:block!important;position:relative!important;width:auto!important;max-width:100%;margin:8px auto 18px!important;padding:10px 18px!important;border:1px solid #a88a50!important;border-radius:8px;background:#211e19!important;color:#f0c675!important;font:500 15px/1.4 system-ui!important;cursor:pointer;z-index:1}';
+    document.head.appendChild(style);
+    const selector = '.standalonePage,#loginPage,#selectServerPage,#connectPage,#addServerPage,#selectUserPage';
+    const mount = root => {
+        const pages = [...root.querySelectorAll(selector)];
+        if (root.matches?.(selector)) pages.unshift(root);
+        for (const page of pages) {
+            if (page.querySelector('.tigerest-switch-entry')) continue;
+            const button = document.createElement('button');
+            button.type = 'button'; button.className = 'tigerest-switch-entry'; button.textContent = '切换服务器';
+            button.addEventListener('click', window.tigerestSwitchServer);
+            page.insertBefore(button, page.firstChild);
+        }
+    };
+    mount(document);
+    new MutationObserver(records => {
+        const roots = new Set();
+        for (const record of records) {
+            const page = record.target.closest?.(selector);
+            if (page) roots.add(page);
+            for (const node of record.addedNodes) {
+                if (node.nodeType === 1 && !node.closest('.tigerest-motion-layer,.tigerest-motion-cache,.tigerest-motion-poster')) roots.add(node);
+            }
+        }
+        for (const root of roots) if (root.isConnected) mount(root);
+    }).observe(document.body, {childList: true, subtree: true});
+}
+installServerSwitchEntry();
 
 let lastFullscreenState = window.jmpInfo.settings.main.fullscreen;
 

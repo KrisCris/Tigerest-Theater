@@ -9,6 +9,45 @@ const el = id => document.getElementById(id);
 let isConnecting = false;
 let connectionGeneration = 0;
 let mode = '';
+const explicitChoice = /(?:^|[?&])choose=1(?:&|$)/.test(window.location.search || '');
+let editingAddress = false;
+let committingSelection = false;
+
+function cancelServerSwitch() {
+    if (committingSelection) return;
+    cancelConnection();
+    if (explicitChoice && window.history.length > 1) window.history.back();
+    else showChoices();
+}
+// Used by Android's hardware/gesture Back before WebView history handling.
+window.tigerestServerSelectionBack = () => {
+    if (committingSelection) return true;
+    if (!el('connect-form').hidden) { showChoices(); return true; }
+    if (explicitChoice && window.history.length > 1) { cancelServerSwitch(); return true; }
+    return false;
+};
+window.tigerestServerSelectionFailed = () => {
+    committingSelection = false;
+    showChoices();
+    el('choice-description').textContent = '服务器网页加载失败，请重新选择服务器并检查地址。';
+    return true;
+};
+
+async function editServerAddress() {
+    const edit = window.tigerestAndroidApi?.system?.editServerAddress;
+    if (!edit || editingAddress || isConnecting) return;
+    editingAddress = true;
+    try {
+        const value = await edit(el('address').value);
+        if (typeof value === 'string' && !el('connect-form').hidden) {
+            el('address').value = value;
+            el('connect-button').disabled = !value.trim();
+        }
+    } catch {
+        el('connection-error').textContent = '无法打开地址编辑器，请重试。';
+        el('connection-error').hidden = false;
+    } finally { editingAddress = false; }
+}
 
 function normalizeServer(input) {
     let value = (input || '').trim();
@@ -47,7 +86,7 @@ function showManualConnection(address = '', error = '') {
     el('connection-error').hidden = !error;
     el('connection-status').textContent = '';
     setConnecting(false);
-    el('address').focus();
+    if (!window.tigerestAndroidApi?.system?.editServerAddress) el('address').focus();
 }
 
 function cancelConnection() {
@@ -58,6 +97,7 @@ function cancelConnection() {
 }
 
 function showChoices() {
+    if (committingSelection) return;
     cancelConnection();
     el('server-choice').hidden = false;
     el('connect-form').hidden = true;
@@ -78,12 +118,21 @@ async function connectServers(servers) {
             el('connection-status').textContent = `正在连接 ${server}`;
             const resolvedUrl = await window.jmpCheckServerConnectivity(server);
             if (generation !== connectionGeneration) return;
+            if (window.api.system.finishServerSelection) {
+                // Native code owns the settings/navigation transaction and its
+                // rollback. A cancel must not split those two operations.
+                committingSelection = true;
+                const accepted = await window.api.system.finishServerSelection(server, mode, resolvedUrl);
+                if (accepted === false) throw new Error('无法切换服务器，请重试');
+                return;
+            }
             // Keep the address and external port chosen by this user.
             window.jmpInfo.settings.main.userWebClient = server;
             window.jmpInfo.settings.main.serverConnectionMode = mode;
             window.location = resolvedUrl;
             return;
         } catch (failure) {
+            committingSelection = false;
             if (generation !== connectionGeneration) return;
             error = failure.message || '无法连接服务器';
         }
@@ -94,9 +143,8 @@ async function connectServers(servers) {
 
 async function chooseMode(selected) {
     mode = selected;
-    window.jmpInfo.settings.main.serverConnectionMode = mode;
-    window.jmpInfo.settings.main.userWebClient = '';
-    showManualConnection();
+    const saved = window.jmpInfo.settings.main.userWebClient || '';
+    showManualConnection(mode === 'custom' && !isTigerestDefaultServer(saved) ? saved : '');
     if (mode === 'tigerest') {
         const generation = connectionGeneration;
         const onLan = await window.api.system.isAddressOnLocalSubnet(DEFAULT_LOCAL_SERVER_IP);
@@ -120,8 +168,16 @@ el('address').addEventListener('input', () => {
     if (!isConnecting) el('connect-button').disabled = !el('address').value.trim();
 });
 el('back-button').addEventListener('click', showChoices);
+el('cancel-switch-button').addEventListener('click', cancelServerSwitch);
+el('address').addEventListener('click', editServerAddress);
+el('address').addEventListener('keydown', event => {
+    if (window.tigerestAndroidApi?.system?.editServerAddress && ['Enter', ' '].includes(event.key)) {
+        event.preventDefault(); editServerAddress();
+    }
+});
 el('offline-button').addEventListener('click', () => window.tigerestOpenOfflineLibrary());
 document.addEventListener('keydown', event => {
+    if (committingSelection && event.key === 'Escape') { event.preventDefault(); return; }
     if (event.key === 'Escape' && isConnecting) {
         event.preventDefault();
         cancelConnection();
@@ -135,9 +191,18 @@ document.addEventListener('keydown', event => {
     el('choose-tigerest').disabled = el('choose-custom').disabled = true;
     await window.apiPromise;
     el('choose-tigerest').disabled = el('choose-custom').disabled = false;
+    el('cancel-switch-button').hidden = !explicitChoice || window.history.length < 2;
+    if (window.tigerestAndroidApi?.system?.editServerAddress) {
+        el('address').readOnly = true;
+        el('address').setAttribute('aria-haspopup', 'dialog');
+    }
     const main = window.jmpInfo.settings.main;
     const saved = main.userWebClient || '';
     mode = main.serverConnectionMode || (saved ? (isTigerestDefaultServer(saved) ? 'tigerest' : 'custom') : '');
+    if (await window.api.system.takeServerSelectionError?.()) {
+        return window.tigerestServerSelectionFailed();
+    }
+    if (explicitChoice) return showChoices();
     if (!['tigerest', 'custom'].includes(mode)) return showChoices();
     main.serverConnectionMode = mode;
     showManualConnection(saved);

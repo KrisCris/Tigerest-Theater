@@ -42,6 +42,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     private lateinit var controls: VideoControls
     private lateinit var progress: ProgressBar
     private var webFileCallback: ValueCallback<Array<Uri>>? = null
+    private var serverAddressDialog: android.app.AlertDialog? = null
     private var importToken = 0L
     private var hinge = JSONObject()
     private var currentInsets: WindowInsets? = null
@@ -114,7 +115,8 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
                 if(video.visibility == View.VISIBLE && playbackTouchLocked) { controls.showUnlock(); return }
                 if(video.visibility == View.VISIBLE) { model.player.dispatch("stop",JSONArray()); endPlaybackSession() }
                 else if(model.player.state.active && model.player.isVideo()) { video.visibility = View.VISIBLE; setPlaybackScreenAwake(true); setFullscreen(true); controls.showControls() }
-                else web.evaluateJavascript("Boolean(window.TigerestHomeMotion && window.TigerestHomeMotion.handleNativeBack())") { handled ->
+                else if(webHost.rollbackSelection(false)) return
+                else web.evaluateJavascript("Boolean(window.tigerestServerSelectionBack?.() || (window.TigerestHomeMotion && window.TigerestHomeMotion.handleNativeBack()))") { handled ->
                     if(handled != "true") { if(web.canGoBack()) web.goBack() else finish() }
                 }
             } })
@@ -149,6 +151,33 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     fun notify(message: String) { if(!isFinishing) Toast.makeText(this,message,Toast.LENGTH_LONG).show() }
     fun openExternal(url: String) { runCatching { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url))) }.onFailure { notify("没有可打开链接的浏览器") } }
     fun chooseWebFile(callback: ValueCallback<Array<Uri>>,intent: Intent) { webFileCallback?.onReceiveValue(null); webFileCallback = callback; webFile.launch(intent) }
+    fun editServerAddress(initial: String, complete: (String?) -> Unit) {
+        serverAddressDialog?.dismiss()
+        val editor = EditText(this).apply {
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+            hint = "https://example.org:8920/jellyfin/"
+            setText(initial); setSelection(text.length)
+        }
+        val padding = (20 * resources.displayMetrics.density).toInt()
+        val content = FrameLayout(this).apply { setPadding(padding,0,padding,0); addView(editor,FrameLayout.LayoutParams(-1,-2)) }
+        var accepted = false
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("服务器地址").setView(content)
+            .setPositiveButton("使用此地址") { _,_ -> accepted = true }
+            .setNegativeButton("取消",null).create()
+        dialog.setOnDismissListener {
+            if(serverAddressDialog === dialog) serverAddressDialog = null
+            complete(if(accepted) editor.text.toString() else null)
+        }
+        editor.setOnEditorActionListener { _,action,_ ->
+            if(action == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) { accepted = true; dialog.dismiss(); true } else false
+        }
+        serverAddressDialog = dialog
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        dialog.show(); editor.requestFocus()
+    }
     fun chooseDanmakuFile() { importToken = danmaku.currentToken(); danmakuFile.launch(arrayOf("text/*","application/json","application/xml","application/octet-stream")) }
     fun toggleDanmaku() { model.settings.set("mpv","enableDanmaku",!model.settings.bool("mpv","enableDanmaku")); overlay.rebuild() }
     fun showWebSettings(section: String = "video") {
@@ -213,5 +242,5 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     override fun onPause() { DiagnosticsLog.app.record("info","Activity paused"); if(::controls.isInitialized) controls.cancelGesture(); updates.paused(this); super.onPause() }
     override fun onStop() { super.onStop(); DiagnosticsLog.app.record("info","Activity stopped"); if(::webHost.isInitialized) { controls.playbackHidden();if(!isChangingConfigurations) model.player.background() } }
     override fun onSaveInstanceState(outState: Bundle) { if(::webHost.isInitialized) webHost.view.saveState(outState); super.onSaveInstanceState(outState) }
-    override fun onDestroy() { contentResolver.unregisterContentObserver(rotationObserver); if(updates.engine.changed === updateListener) updates.engine.changed = {}; updates.paused(this); getSystemService(DisplayManager::class.java).unregisterDisplayListener(this); webFileCallback?.onReceiveValue(null); if(::bridge.isInitialized) bridge.close(); if(::webHost.isInitialized) webHost.close(); super.onDestroy() }
+    override fun onDestroy() { serverAddressDialog?.dismiss(); contentResolver.unregisterContentObserver(rotationObserver); if(updates.engine.changed === updateListener) updates.engine.changed = {}; updates.paused(this); getSystemService(DisplayManager::class.java).unregisterDisplayListener(this); webFileCallback?.onReceiveValue(null); if(::bridge.isInitialized) bridge.close(); if(::webHost.isInitialized) webHost.close(); super.onDestroy() }
 }

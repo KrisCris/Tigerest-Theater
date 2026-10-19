@@ -42,6 +42,14 @@
             closeMenu();actionsHost?.classList.remove('tgs-header-condensed');more?.remove();actionsHost=host;more=null;
         }
         if (!host) return;
+        // The expanded toolbar uses the server's layout unchanged. Avoid
+        // un-hiding and measuring every action during page entrance/layout.
+        if (!matchMedia('(max-width:600px)').matches) {
+            host.classList.remove('tgs-header-condensed');
+            if (more) more.hidden=true;
+            closeMenu();
+            return;
+        }
         // Emby can replace its header with cloned markup; cloned entries have no handlers.
         for (const stale of host.querySelectorAll('#tigerest-header-more')) if(stale!==more)stale.remove();
         if (!more) {
@@ -112,7 +120,15 @@
             headerChanges=new MutationObserver(records=>{
                 let changed=false;
                 for(const record of records){
-                    if(record.type==='childList'){changed=true;continue;}
+                    if(record.type==='childList'){
+                        // Poster walls and frozen scenes can add thousands of
+                        // nodes. Only changes to the toolbar (or its replacement)
+                        // require removing condensed styles and measuring it.
+                        const headerNode=node=>node.nodeType===1 &&
+                            (node===header || node.contains(header) || node.matches('.skinHeader') || node.querySelector('.skinHeader'));
+                        if(header?.contains(record.target) || [...record.addedNodes,...record.removedNodes].some(headerNode)) changed=true;
+                        continue;
+                    }
                     if(!header?.contains(record.target)||record.target===more)continue;
                     if(record.attributeName==='class'&&withoutOwnClasses(record.oldValue)===withoutOwnClasses(record.target.className))continue;
                     closeMenu();

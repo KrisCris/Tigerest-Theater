@@ -51,5 +51,11 @@ withBrowser({
  assert.equal(await evaluate(`document.querySelector('#tigerest-header-menu').open`),true);
  await resize(580);
  assert.equal(await evaluate(`document.querySelector('#tigerest-header-menu').open`),false,'resize dismisses stale secondary actions');
+ await evaluate(`window.headerReads=0;for(const node of document.querySelectorAll('.headerRight > *')){const read=node.getClientRects.bind(node);node.getClientRects=()=>{headerReads++;return read()}};document.querySelector('main').append(document.createElement('div'))`);
+ await settle();
+ assert.equal(await evaluate('headerReads'),0,'unrelated media content must not remeasure and restyle the toolbar');
+ await evaluate('headerReads=0');
+ await resize(847);
+ assert.equal(await evaluate('headerReads'),0,'expanded layouts do not need compact toolbar geometry');
  console.log(JSON.stringify({passed:true,rightAligned:true,overflowMenu:true,originalHandlers:true,headerReplacement:true,resize:true,android}));
 }).catch(error=>{console.error(error);process.exitCode=1;});

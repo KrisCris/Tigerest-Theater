@@ -73,6 +73,12 @@ public:
   Q_INVOKABLE QStringList networkAddresses() const;
 
   Q_INVOKABLE void openExternalUrl(const QString& url);
+  Q_INVOKABLE void openServerSettings();
+  Q_SIGNAL void serverSettingsRequested();
+  Q_INVOKABLE bool finishServerSelection(const QString& server, const QString& mode, const QString& target);
+  Q_SIGNAL void serverSelectionFinished(const QString& server, const QString& mode, const QString& target);
+  Q_INVOKABLE void markServerSelectionError() { m_serverSelectionError = true; }
+  Q_INVOKABLE bool takeServerSelectionError() { const bool failed = m_serverSelectionError; m_serverSelectionError = false; return failed; }
 
   // Native download/offline library API. Source URLs and authorization data are
   // kept in memory only; the persistent index contains local metadata only.
@@ -190,6 +196,7 @@ private:
   QNetworkReply* m_connectivityCheckReply;
   QNetworkReply* m_resolveUrlReply;
   quint64 m_connectivityGeneration = 0;
+  bool m_serverSelectionError = false;
   QHash<QString, QVariantMap> m_downloads;
   QHash<QString, QUrl> m_downloadUrls;
   QHash<QString, ActiveDownload*> m_activeDownloads;

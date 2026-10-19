@@ -1,12 +1,22 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-function setup(){
- const sent=[],context={window:{},setTimeout,clearTimeout,console,URL};context.window=context;
+function setup(prompt){
+ const sent=[],context={window:{},setTimeout,clearTimeout,console,URL,prompt};context.window=context;
  const file=path.join(__dirname,'../app/src/main/assets/androidBridge.js');
  vm.createContext(context);vm.runInContext(fs.existsSync(file)?fs.readFileSync(file,'utf8'):'',context);
  assert.equal(typeof context.createAndroidBridge,'function','platform transport is implemented');
  const bridge=context.createAndroidBridge({postMessage:s=>sent.push(JSON.parse(s))},{settings:{},sections:[],settingsDescriptions:{}});
  return {bridge,sent};
 }
+test('address edit uses a native prompt without timing out a user or sending a bridge request',async()=>{
+ let answer=null,initial;
+ const {bridge,sent}=setup((message,value)=>{initial=value;return answer;});
+ assert.equal(await bridge.api.system.editServerAddress('https://old.example/'),null);
+ assert.equal(initial,'https://old.example/');
+ answer='https://new.example:8920/jellyfin/';
+ assert.equal(await bridge.api.system.editServerAddress(''),answer);
+ assert.equal(sent.length,0);
+ bridge.close();
+});
 test('load forwards actual metadata and resolves Qt-style callback from the native reply',async()=>{
  const {bridge,sent}=setup();let callback;
  const p=bridge.api.player.load('https://media.example/video',{startMilliseconds:24000},{metadata:{IndexNumber:3}},1,-1,result=>callback=result);

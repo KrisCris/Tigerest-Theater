@@ -9,7 +9,13 @@
     const path = () => current().contextPath || current().path || bindings?.router.currentViewPath?.() || '';
     const effect = (kind, options) => window.TigerestHomeTransitions?.[kind]
         ? window.TigerestHomeTransitions[kind](options) : Promise.resolve().then(options.navigate);
+    // Emby and Jellyfin item detail pages; only Emby has virtual library lists.
+    const isDetail = node => !!(node.matches?.('.view-item-item') || node.matches?.('.itemDetailPage'));
+    // A client whose router can leave a navigation promise pending bounds it,
+    // so a transition cover never waits on it forever.
+    const settle = result => bindings?.settle ? bindings.settle(result) : result;
     const libraryUrl = library => {
+        if (bindings.libraryUrl) return bindings.libraryUrl(library);
         if (library.kind === 'favorites') return '/home?tab=favorites';
         const route = bindings.router.getRouteUrl({...library, ServerId: bindings.manager.currentApiClient().serverId()});
         const base = bindings.router.baseUrl?.();
@@ -31,7 +37,7 @@
     function currentLibrary() {
         if (matchesLibrary()) return libraryContext.library;
         const root=visibleRoot(), params=current().params||{};
-        if (root.matches?.('.view-item-item') || document.body.classList.contains('tg-home-active')) return null;
+        if (isDetail(root) || document.body.classList.contains('tg-home-active')) return null;
         if (params.tab==='favorites' || /[?&]tab=favorites(?:&|$)/.test(path())) return {Id:'tigerest-favorites',kind:'favorites'};
         const id=params.topParentId||params.parentId;
         return id ? {Id:id,Type:'CollectionFolder'} : null;
@@ -42,6 +48,9 @@
         while (!signal.aborted && Date.now() < until) {
             lists = Array.from(visibleRoot().querySelectorAll('.virtualItemsContainer')).filter(list => list._itemSource?.length && list.fetchItems);
             if (lists.length) break;
+            // Jellyfin renders the loaded page of cards without a virtual list.
+            const rendered = posterNode(id)?.getBoundingClientRect();
+            if (rendered?.width > 1 && rendered.height > 1) return;
             await new Promise(resolve => setTimeout(resolve, 32));
         }
         if (signal.aborted) return;
@@ -82,7 +91,9 @@
         const root = roots.at(-1) || document;
         if (detail) {
             // Emby keeps a hidden side-poster before the visible main poster in DOM order.
-            for (const selector of ['.detailImageContainer-main img.cardImage','.detailImageContainer img','.detailImageContainer .primaryImage','.detailImageContainer','.itemDetailImage']) {
+            // Jellyfin draws its detail poster as a card background.
+            for (const selector of ['.detailImageContainer-main img.cardImage','.detailImageContainer img','.detailImageContainer .primaryImage',
+                '.detailImageContainer .cardImageContainer','.detailImageContainer','.itemDetailImage']) {
                 const visible = Array.from(root.querySelectorAll(selector)).find(node => {
                     const rect = node.getBoundingClientRect();
                     return rect.width > 1 && rect.height > 1 && getComputedStyle(node).visibility !== 'hidden';
@@ -91,7 +102,9 @@
             }
             return null;
         }
-        const card = Array.from(root.querySelectorAll('.card,[data-id],[data-item-id]')).find(node => String(itemFromCard(node)?.Id) === String(id));
+        const cards = Array.from(root.querySelectorAll('.card,[data-id],[data-item-id]')).filter(node => String(itemFromCard(node)?.Id) === String(id));
+        // Jellyfin's legacy home keeps the hidden home tab's cards before the active favorites tab.
+        const card = cards.find(node => node.getBoundingClientRect?.().width > 1) || cards[0];
         return card?.querySelector('img.cardImage') || card?.querySelector('img') || card?.querySelector('.cardImageContainer') || (card?.matches('.cardImageContainer') ? card : null);
     }
     const motion = {
@@ -111,7 +124,7 @@
                 if (matchesEntry()) {
                     const ticket = ++revision;
                     const returning = entry, fromHome = returning.origin === 'home', nested = returning.origin === 'detail';
-                    const navigate = () => fromHome ? options.pageJs.replace(returning.libraryPath, {}, true) : originals.back.apply(router, args);
+                    const navigate = () => fromHome ? options.pageJs.replace(returning.libraryPath, {}, true) : settle(originals.back.apply(router, args));
                     let targetId = returning.itemId;
                     // A restored detail page keeps the pressed card; another card for the same episode may precede it.
                     const pressed = () => returning.source?.isConnected && visibleRoot().contains(returning.source) ? returning.source : null;
@@ -129,7 +142,7 @@
                 if (matchesLibrary()) {
                     if (libraryContext.library.kind === 'favorites') return home.apply(router, args);
                     const ticket = ++revision;
-                    const result = await effect('homeReturn', {navigate: () => originals.back.apply(router, args), findGallery: () => gallery});
+                    const result = await effect('homeReturn', {navigate: () => settle(originals.back.apply(router, args)), findGallery: () => gallery});
                     if (ticket === revision) entry = libraryContext = null;
                     return result;
                 }
@@ -139,7 +152,7 @@
                 if (motion.busy) return;
                 const ticket = ++revision, favorites = matchesLibrary() && libraryContext.library.kind === 'favorites';
                 const navigate = favorites ? (libraryContext.favoritesReturn === 'pop' ? () => options.pageJs.back() : () => options.pageJs.replace('/home', {}, true))
-                    : () => originals.goHome.apply(router, args);
+                    : () => settle(originals.goHome.apply(router, args));
                 const result = await effect('homeReturn', {navigate, findGallery: () => gallery});
                 if (ticket === revision) entry = libraryContext = null;
                 return result;
@@ -155,10 +168,10 @@
                     pressedPoster = null;
                     return motion.openItem({card: {item: resolved}, library, source: pending.node, origin: 'library', navigate});
                 }
-                // An episode chosen on a series or episode page flies to its own detail artwork.
-                if (pressed && resolved.Type === 'Episode' && visibleRoot().matches?.('.view-item-item')) {
+                // Keep the complete series -> season -> episode parent chain.
+                if (!motion.busy && resolved && ['Season', 'Episode'].includes(resolved.Type) && isDetail(visibleRoot())) {
                     pressedPoster = null;
-                    return motion.openItem({card: {item: resolved}, library: null, source: pending.node, origin: 'detail', navigate});
+                    return motion.openItem({card: {item: resolved}, library: null, source: pressed ? pending.node : null, origin: 'detail', navigate});
                 }
                 return navigate();
             };
@@ -192,8 +205,8 @@
         },
         async openLibrary({gallery: home, library, navigate}) {
             if (motion.busy) return;
-            // Jellyfin supplies its own router but does not attach the Emby
-            // view/history services required by the transition renderer.
+            // Without attached route services the transition renderer cannot
+            // restore the return context; navigate directly.
             if (!bindings) return navigate();
             const ticket = ++revision, session = account();
             const result = await effect('library', {gallery: home, navigate, samePage: library.kind === 'favorites'});

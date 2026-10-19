@@ -325,6 +325,22 @@ Window
     url: mainWindow.webUrl
     focus: true
     property string currentHoveredUrl: ""
+    property var serverSelection: null
+    function rollbackServerSelection() {
+      const pending = serverSelection;
+      if (!pending) return;
+      serverSelection = null;
+      components.settings.setValue("main", "userWebClient", pending.previousAddress);
+      components.settings.setValue("main", "serverConnectionMode", pending.previousMode);
+      // With error pages disabled, failures before commit leave the chooser
+      // document in place. Unlock it rather than going back past it.
+      components.system.markServerSelectionError();
+      web.stop();
+      web.runJavaScript("Boolean(window.tigerestServerSelectionFailed?.())", function(handled) {
+        if (handled) components.system.takeServerSelectionError();
+        else web.goBack();
+      });
+    }
     onLinkHovered: function(hoveredUrl)
     {
       web.currentHoveredUrl = hoveredUrl;
@@ -342,6 +358,22 @@ Window
       console.log("WebEngineView size:", width, "x", height, "backgroundColor:", backgroundColor)
       forceActiveFocus()
       mainWindow.reloadWebClient.connect(reload)
+      // Remote pages cannot navigate to bundled files. Keep this fixed native
+      // destination separate from the external URL API and retain Back/Cancel.
+      components.system.serverSettingsRequested.connect(function() {
+        web.url = "qrc:///web-client/extension/find-webclient.html?choose=1";
+      })
+      components.system.serverSelectionFinished.connect(function(server, mode, target) {
+        if (web.serverSelection) return;
+        web.serverSelection = {
+          target: target, started: false,
+          previousAddress: components.settings.value("main", "userWebClient"),
+          previousMode: components.settings.value("main", "serverConnectionMode")
+        };
+        components.settings.setValue("main", "userWebClient", server);
+        components.settings.setValue("main", "serverConnectionMode", mode);
+        web.url = target;
+      })
 
       // Handle CSP workaround from C++
       components.system.pageContentReady.connect(function(html, finalUrl, hadCSP) {
@@ -376,10 +408,17 @@ Window
       //
       if (loadingInfo.status == WebEngineView.LoadStartedStatus)
       {
+        if (web.serverSelection && loadingInfo.url.toString() === web.serverSelection.target)
+          web.serverSelection.started = true;
         console.log("WebEngineLoadRequest starting: " + loadingInfo.url);
       }
       else if (loadingInfo.status == WebEngineView.LoadSucceededStatus)
       {
+        if (web.serverSelection && web.serverSelection.started &&
+            loadingInfo.url.toString() === web.url.toString() && /^https?:/.test(web.url.toString())) {
+          web.serverSelection = null;
+          web.history.clear();
+        }
         console.log("WebEngineLoadRequest success: " + loadingInfo.url);
         // Let the first composed web frame replace the startup cover instead
         // of briefly exposing Emby's blue loading canvas.
@@ -388,6 +427,10 @@ Window
       }
       else if (loadingInfo.status == WebEngineView.LoadFailedStatus)
       {
+        if (web.serverSelection && web.serverSelection.started) {
+          web.rollbackServerSelection();
+          return;
+        }
         console.log("WebEngineLoadRequest failure: " + loadingInfo.url + " error code: " + loadingInfo.errorCode);
         mainWindow.startupCoverVisible = false
         errorLabel.visible = true

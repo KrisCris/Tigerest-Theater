@@ -294,6 +294,7 @@ function runNativeShell() {
     const window = {
         document,
         jmpInfo,
+        location: {pathname: '/web/index.html', href: 'https://fixture.invalid/web/index.html'},
         qt: {webChannelTransport: {}},
         sessionStorage: {
             getItem(key) { return storage.has(key) ? storage.get(key) : null; },

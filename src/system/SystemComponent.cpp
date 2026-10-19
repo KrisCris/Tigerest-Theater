@@ -909,6 +909,24 @@ void SystemComponent::openExternalUrl(const QString& url)
   QDesktopServices::openUrl(QUrl(url));
 }
 
+void SystemComponent::openServerSettings()
+{
+  emit serverSettingsRequested();
+}
+
+bool SystemComponent::finishServerSelection(const QString& server, const QString& mode, const QString& target)
+{
+  const QUrl source(server), destination(target);
+  if (!source.isValid() || !destination.isValid() || source.host().isEmpty() ||
+      (source.scheme() != "http" && source.scheme() != "https") ||
+      !source.userInfo().isEmpty() || !destination.userInfo().isEmpty() ||
+      source.scheme() != destination.scheme() || source.host() != destination.host() ||
+      source.port(source.scheme() == "https" ? 443 : 80) != destination.port(destination.scheme() == "https" ? 443 : 80) ||
+      (mode != "custom" && mode != "tigerest")) return false;
+  emit serverSelectionFinished(server, mode, target);
+  return true;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 void SystemComponent::runUserScript(QString script)
 {

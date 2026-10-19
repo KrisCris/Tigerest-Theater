@@ -47,7 +47,7 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
         // event processing and gestures. A worker load must not interleave an old
         // file's finish/stop, and diagnostics must never read Views off-thread.
         val onUi = component in setOf("player","settings","window") ||
-            component == "system" && method in setOf("systemInformation","debugInformation")
+            component == "system" && method in setOf("systemInformation","debugInformation","finishServerSelection","takeServerSelectionError")
         if(onUi) activity.runOnUiThread(operation) else executor.execute(operation)
     }
     private fun call(component: String, method: String, args: JSONArray): Any? = when(component) {
@@ -59,6 +59,8 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
             else -> throw IllegalArgumentException("设置操作无效")
         }
         "system" -> when(method) {
+            "finishServerSelection" -> activity.webHost.finishServerSelection(args.getString(0),args.getString(1),args.getString(2))
+            "takeServerSelectionError" -> activity.webHost.takeServerSelectionError()
             "communityRequest" -> { community.request(args.getString(0),args.getJSONObject(1)); true }
             "communitySourceAvatar" -> { community.sourceAvatar(args.getString(0),args.getJSONObject(1)); true }
             "communityCancel" -> { community.cancel(args.getString(0)); true }

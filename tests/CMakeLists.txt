@@ -495,6 +495,10 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_episode_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_episode_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_jellyfin_motion_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_jellyfin_motion_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_jellyfin_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_web_appearance_worlds_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_web_appearance_worlds_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
@@ -526,6 +530,10 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_jellyfin_home_layout.cjs
                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_jellyfin_home_layout_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_jellyfin_page_layout_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_jellyfin_page_layout_ui.cjs
+                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_jellyfin_page_layout_webengine PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
   add_test(NAME test_home_gallery_entrance_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_gallery_entrance_ui.cjs
                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
@@ -590,7 +598,8 @@ if(Node_EXECUTABLE)
   add_test(NAME test_emby_apphost
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_emby_apphost.js)
   add_test(NAME test_jellyfin_compat
-           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_jellyfin_compat.js)
+           COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_jellyfin_compat.js
+                   ${CMAKE_CURRENT_SOURCE_DIR}/test_jellyfin_motion.js)
   add_test(NAME test_server_onboarding
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_server_onboarding.js
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_server_seed.js)
