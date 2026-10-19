@@ -131,3 +131,43 @@ test('an off-screen media card is skipped as a whole subtree',async()=>{
  assert.ok(measured.includes('visible-image'),'visible card contents are captured');
  assert.deepEqual(measured.filter(n=>n.startsWith('below')),[],'contents of an off-screen card are not measured');
 });
+
+test('cancelling a build cancels its artwork requests and decodes nothing afterwards',async()=>{
+ // A scroll or click aborts a stale rebuild; its fetches must stop with it
+ // and no element decode may stand in for an aborted request.
+ const requests=[],nodes=Array.from({length:4},(_,i)=>({tagName:'IMG',complete:true,naturalWidth:480,naturalHeight:720,currentSrc:`http://fixture/Items/${i}/Images/Primary?tag=v1`,
+  closest:()=>null,matches:()=>false,getBoundingClientRect:()=>({x:0,y:0,width:120,height:180,top:0,bottom:180,left:0,right:120})}));
+ let decodes=0,rejectOnAbort=false;
+ const context={AbortController,performance,setTimeout,clearTimeout,URL,location:{href:'http://fixture/',origin:'http://fixture'},innerWidth:1000,innerHeight:700,Worker:class{},OffscreenCanvas:class{},
+  NodeFilter:{SHOW_ELEMENT:1,FILTER_ACCEPT:1,FILTER_REJECT:2},document:{createTreeWalker:()=>{let i=0;return {nextNode:()=>nodes[i++]||null};}},
+  getComputedStyle:()=>({visibility:'visible',display:'block',opacity:'1',backgroundColor:'transparent'}),
+  fetch:(url,options)=>new Promise((resolve,reject)=>{const request={url,signal:options.signal,resolve};requests.push(request);
+   if(rejectOnAbort)options.signal?.addEventListener('abort',()=>reject(Object.assign(Error('aborted'),{name:'AbortError'})));}),
+  createImageBitmap:async(source,options)=>{decodes++;return {width:options?.resizeWidth||29,height:options?.resizeHeight||44,close(){}};}};
+ const root={closest:()=>null,getBoundingClientRect:()=>({width:0,height:0})};
+ context.window=context;vm.runInNewContext(fs.readFileSync(__dirname+'/../native/homeBackdrop.js','utf8'),context);
+ for(const rejecting of [false,true]){
+  rejectOnAbort=rejecting;requests.length=0;decodes=0;
+  const builds=Array.from({length:3},()=>{const controller=new AbortController(),build=context.TigerestHomeBackdrop.build(root,controller.signal);return {controller,build};});
+  await new Promise(r=>setTimeout(r,5));
+  assert.ok(requests.length>0&&requests.every(r=>r.signal&&!r.signal.aborted),'each artwork request carries its build signal');
+  builds.forEach(b=>b.controller.abort());
+  assert.ok(requests.every(r=>r.signal.aborted),'aborting a build aborts its requests');
+  requests.forEach(r=>r.resolve({ok:true,blob:async()=>({})}));
+  assert.deepEqual(await Promise.all(builds.map(b=>b.build)),[null,null,null]);
+  await new Promise(r=>setTimeout(r,5));
+  assert.equal(decodes,0,(rejecting?'rejected':'late')+' requests of an aborted build decode nothing, not even the element');
+ }
+ context.TigerestHomeBackdrop.dispose();
+});
+
+test('a cached artwork is not requested again',async()=>{
+ const f=bitmapFixture(),requests=[];
+ f.context.location={href:'http://fixture/web/index.html',origin:'http://fixture'};
+ f.context.fetch=async url=>{requests.push(url);return {ok:true,blob:async()=>({blobSource:url})};};
+ const original=f.context.createImageBitmap;f.context.createImageBitmap=(source,options)=>original(source.blobSource?{tagName:'IMG'}:source,options);
+ const src='http://fixture/Items/9/Images/Primary?tag=v9';
+ await f.build(src);await f.build(src);
+ assert.equal(requests.length,1,'the second capture reuses the decoded artwork');
+ f.context.TigerestHomeBackdrop.dispose();
+});
