@@ -7,6 +7,9 @@ const TIGEREST_PAGE_PENDING_CLASS = 'tigerest-page-pending';
 const TIGEREST_TAB_BUTTON_SELECTOR = '.main-tab-button';
 const TIGEREST_TAB_CONTENT_SELECTOR = '.tabContent';
 const TIGEREST_ARTWORK_SELECTOR = '.detailImageContainer, .cardImageContainer, .primaryImage, img.cardImage, .backdropImage';
+// Chromium (Qt, Android): an element with a backdrop filter is a Backdrop Root.
+const TIGEREST_BACKDROP_ROOTS = /Chrome\/\d/.test(globalThis.navigator?.userAgent || '');
+const TIGEREST_FLAT_GLASS = 'data-tigerest-flat-glass';
 const tigerestMotionPreference = window.matchMedia?.('(prefers-reduced-motion: reduce)') || {matches: false};
 let tigerestAmbientImage = '';
 let tigerestAmbientPhase = 'b';
@@ -564,7 +567,15 @@ function mountTigerestAppearanceStyles() {
                     -webkit-backdrop-filter: blur(28px) saturate(1.38);
                     backdrop-filter: blur(28px) saturate(1.38);
                 }
-
+${TIGEREST_BACKDROP_ROOTS ? `
+                /* See flattenTigerestHeaderGlass(). Hovered and focused
+                   controls keep their real filter, so states stay exact. */
+                .skinHeader [${TIGEREST_FLAT_GLASS}]:not(:hover):not(:focus-visible):not(:active) {
+                    -webkit-backdrop-filter: none !important;
+                    backdrop-filter: none !important;
+                    background-color: var(--tigerest-flat-glass-bg) !important;
+                }
+` : ''}
                 .dialog,
                 .promptDialog,
                 .actionSheet,
@@ -907,9 +918,131 @@ function observeTigerestPages() {
     });
 }
 
+function tigerestColor(value) {
+    const match = /^rgba?\(([^)]*)\)$/.exec(value || '');
+    const parts = match ? match[1].split(/[\s,/]+/).filter(Boolean).map(Number) : [];
+    if (parts.length < 3 || parts.length > 4 || parts.some(Number.isNaN)) return null;
+    return [parts[0], parts[1], parts[2], parts.length > 3 ? parts[3] : 1];
+}
+
+function tigerestOver(top, bottom) {
+    const alpha = top[3] + bottom[3] * (1 - top[3]);
+    if (!alpha) return [0, 0, 0, 0];
+    return [0, 1, 2].map(i => (top[i] * top[3] + bottom[i] * bottom[3] * (1 - top[3])) / alpha).concat(alpha);
+}
+
+// A running transition reports its current frame; the page states its end.
+function tigerestSettledValue(node, style, property) {
+    const key = property.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+    for (const animation of node.getAnimations?.() || []) {
+        if (animation.transitionProperty !== property) continue;
+        const end = animation.effect?.getKeyframes?.().at(-1)?.[key];
+        if (end) return end;
+    }
+    return style[key];
+}
+
+// The backdrop filter applied to a uniform colour. Blur leaves it unchanged;
+// any function not modelled here keeps the element's real filter.
+function tigerestFilteredColor(filter, color) {
+    let [r, g, b, a] = color;
+    for (const [, name, argument] of filter.matchAll(/([a-z-]+)\(([^)]*)\)/g)) {
+        if (name === 'blur') continue;
+        const amount = argument.trim() === '' ? 1 : parseFloat(argument) / (argument.trim().endsWith('%') ? 100 : 1);
+        if (!Number.isFinite(amount)) return null;
+        if (name === 'saturate') {
+            const s = amount;
+            [r, g, b] = [
+                (.213 + .787 * s) * r + (.715 - .715 * s) * g + (.072 - .072 * s) * b,
+                (.213 - .213 * s) * r + (.715 + .285 * s) * g + (.072 - .072 * s) * b,
+                (.213 - .213 * s) * r + (.715 - .715 * s) * g + (.072 + .928 * s) * b,
+            ];
+        } else if (name === 'brightness') [r, g, b] = [r * amount, g * amount, b * amount];
+        else if (name === 'opacity') a *= Math.min(1, amount);
+        else return null;
+        [r, g, b] = [r, g, b].map(v => Math.min(255, Math.max(0, v)));
+    }
+    return [r, g, b, a];
+}
+
+// In Chromium an element with a backdrop filter is a Backdrop Root. The
+// header's own glass therefore hides the page from every backdrop filter
+// inside it (ours on .headerTop, themes' on buttons, titles and tabs): each
+// only re-filters the header's flat translucent background and lays that
+// colour under itself, yet costs a filter pass on every scrolled frame. Paint
+// that colour directly instead. Only uniform-colour cases are replaced.
+function flattenTigerestHeaderGlass() {
+    if (!TIGEREST_BACKDROP_ROOTS) return;
+    const settled = node => !node.matches(':hover,:focus-visible,:active');
+    for (const header of document.querySelectorAll('.skinHeader')) {
+        const nodes = [...header.querySelectorAll('*')];
+        const kept = new Set(nodes.filter(node => node.hasAttribute(TIGEREST_FLAT_GLASS) && !settled(node)));
+        // Read every filter and background as the page states them.
+        for (const node of nodes) if (!kept.has(node)) node.removeAttribute(TIGEREST_FLAT_GLASS);
+        const styles = new Map([header, ...nodes].map(node => [node, getComputedStyle(node)]));
+        const value = (node, property) => tigerestSettledValue(node, styles.get(node), property);
+        if (value(header, 'backdrop-filter') === 'none') continue;
+        const filtered = node => node === header || kept.has(node) || value(node, 'backdrop-filter') !== 'none';
+        const flat = [];
+        for (const node of nodes) {
+            const filter = value(node, 'backdrop-filter');
+            // A colour would also drop a native control's own appearance.
+            if (kept.has(node) || filter === 'none' || !settled(node) || !['none', ''].includes(styles.get(node).appearance)) continue;
+            // What the old Backdrop Root holds under the node: the root's own
+            // background, then those of the plain ancestors in between.
+            const chain = [];
+            for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+                chain.unshift(parent);
+                if (filtered(parent)) break;
+            }
+            let under = [0, 0, 0, 0];
+            for (const parent of chain) {
+                const color = tigerestColor(value(parent, 'background-color'));
+                if (!color) { under = null; break; }
+                under = tigerestOver(color, under);
+            }
+            const backdrop = under && tigerestFilteredColor(filter, under);
+            const own = tigerestColor(value(node, 'background-color'));
+            if (!backdrop || !own) continue;
+            // Old order: filtered backdrop, own colour, own images. One colour
+            // under the same images paints the same pixels.
+            flat.push([node, tigerestOver(own, backdrop)]);
+        }
+        for (const [node, color] of flat) {
+            const value = `rgba(${color.slice(0, 3).map(v => +v.toFixed(2)).join(', ')}, ${+color[3].toFixed(4)})`;
+            if (node.style.getPropertyValue('--tigerest-flat-glass-bg') !== value) node.style.setProperty('--tigerest-flat-glass-bg', value);
+            node.setAttribute(TIGEREST_FLAT_GLASS, '');
+        }
+    }
+}
+
+let tigerestHeaderGlassFrame = 0;
+function scheduleTigerestHeaderGlass() {
+    if (!TIGEREST_BACKDROP_ROOTS || tigerestHeaderGlassFrame) return;
+    tigerestHeaderGlassFrame = requestAnimationFrame(() => {
+        tigerestHeaderGlassFrame = 0;
+        flattenTigerestHeaderGlass();
+    });
+}
+
+function observeTigerestHeaderGlass() {
+    if (!TIGEREST_BACKDROP_ROOTS || !document.documentElement) return;
+    // Headers, their controls and the page's stylesheets change rarely; a
+    // scrolled media wall does not touch them.
+    const relevant = node => node?.nodeType === Node.ELEMENT_NODE &&
+        (node.matches('.skinHeader, style, link') || !!node.closest('.skinHeader') || !!node.querySelector?.('.skinHeader'));
+    new MutationObserver(records => {
+        if (records.some(record => record.target === document.head || record.target === document.body && record.type === 'attributes'
+            || relevant(record.target) || [...record.addedNodes].some(relevant))) scheduleTigerestHeaderGlass();
+    }).observe(document.documentElement, {subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style']});
+    window.addEventListener('resize', scheduleTigerestHeaderGlass);
+    scheduleTigerestHeaderGlass();
+}
+
 function initializeTigerestAppearance() {
     mountTigerestAppearanceStyles();
     observeTigerestPages();
+    observeTigerestHeaderGlass();
     scheduleTigerestAmbient(document);
 
     document.addEventListener('click', handleTigerestTabClick, true);

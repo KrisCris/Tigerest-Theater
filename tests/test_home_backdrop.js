@@ -102,11 +102,11 @@ test('same-origin versioned server artwork decodes from its cached bytes, off th
  // scrolls; a Blob source is decoded on a worker thread.
  const f=bitmapFixture(),requests=[],sources=[],original=f.context.createImageBitmap;let fail=false;
  f.context.location={href:'http://fixture/web/index.html',origin:'http://fixture'};
- f.context.fetch=async(url,options)=>{requests.push([url,options.cache,options.credentials]);if(fail)throw Error('offline');return {ok:true,blob:async()=>({blobSource:url})};};
+ f.context.fetch=async(url,options)=>{requests.push([url,options.cache,options.mode,options.credentials]);if(fail)throw Error('offline');return {ok:true,blob:async()=>({blobSource:url})};};
  f.context.createImageBitmap=async(source,options)=>{sources.push(source.blobSource?'blob':source.tagName||'bitmap');
   return source.blobSource?original({tagName:'IMG'},options):original(source,options);};
  await f.build('http://fixture/emby/Items/7/Images/Primary?maxHeight=540&tag=v7');
- assert.deepEqual(requests,[['http://fixture/emby/Items/7/Images/Primary?maxHeight=540&tag=v7','force-cache','same-origin']]);
+ assert.deepEqual(requests,[['http://fixture/emby/Items/7/Images/Primary?maxHeight=540&tag=v7','only-if-cached','same-origin','same-origin']]);
  assert.deepEqual(sources,['blob','bitmap'],'decoded from bytes, then copied for the worker');
  sources.length=0;await f.build('http://other.example/Items/7/Images/Primary?tag=v7');await f.build('http://fixture/avatar.png');
  assert.deepEqual(sources.filter(s=>s!=='bitmap'),['IMG','IMG'],'cross-origin and mutable images keep the element source');

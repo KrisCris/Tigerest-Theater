@@ -24,8 +24,10 @@
     // Chromium decodes an <img> source on the page thread, which stalls a
     // scrolling media wall; a Blob source is decoded on a worker thread.
     // Same-origin server artwork is immutable per tag, and the page's own
-    // request has already put its bytes in the HTTP cache. An aborted build
-    // stops its request and decodes nothing, not even the element.
+    // request has usually put its bytes in the HTTP cache. Only those cached
+    // bytes are read: artwork served uncacheable (or evicted) decodes the
+    // element instead of being downloaded again while a transition waits.
+    // An aborted build stops its request and decodes nothing, not even the element.
     function checkAborted(signal) {
         if (signal?.aborted) throw Object.assign(new Error('capture aborted'), {name: 'AbortError'});
     }
@@ -33,7 +35,7 @@
         try {
             const source = new URL(node.currentSrc || node.src, location.href);
             if (window.fetch && source.origin === location.origin && /\/Items\/[^/]+\/Images\/[^/]+(?:\/\d+)?$/i.test(source.pathname) && source.searchParams.get('tag')) {
-                const response = await fetch(source.href, {cache: 'force-cache', credentials: 'same-origin', signal});
+                const response = await fetch(source.href, {cache: 'only-if-cached', mode: 'same-origin', credentials: 'same-origin', signal});
                 checkAborted(signal);
                 if (response.ok) {
                     const blob = await response.blob();
