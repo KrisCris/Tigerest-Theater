@@ -44,6 +44,13 @@
   const bridge=global.createAndroidBridge(global.tigerestNative,global.jmpInfo);
   global.tigerestAndroidApi=bridge.api;
   global.tigerestNative.onmessage=event=>{try{bridge.receive(JSON.parse(event.data));}catch(e){console.error('客户端消息格式错误');}};
-  global.addEventListener('pagehide',()=>bridge.close(),{once:true});
+  // Jellyfin's web client dispatches its own bubbling pagehide events from view
+  // elements. Only the browser's pagehide for the document means the page is
+  // going away, and a view change must not use up the listener.
+  const leave=event=>{
+   if(!event.isTrusted||(event.target!==global.document&&event.target!==global))return;
+   global.removeEventListener('pagehide',leave);bridge.close();
+  };
+  global.addEventListener('pagehide',leave);
  }
 })(window);

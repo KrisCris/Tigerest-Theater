@@ -20,6 +20,33 @@ test('native failure rejects calls and disconnect really removes event delivery'
  assert.deepEqual(positions,[25000]);const p=bridge.api.settings.setValue('video','cache',-1);
  bridge.receive({id:sent[0].id,error:'值超出范围'});await assert.rejects(p,/值超出范围/);bridge.close();
 });
+// The installed bridge on a page whose window keeps listeners as a browser does:
+// an event reaching window removes a once listener before it runs.
+function installedPage(){
+ const sent=[],listeners=[],context={setTimeout,clearTimeout,console,URL,document:{},
+  tigerestNative:{postMessage:s=>sent.push(JSON.parse(s))},__tigerestBootstrap:{settings:{},sections:[],settingsDescriptions:{}},
+  addEventListener(type,fn,options){listeners.push({type,fn,once:!!options?.once});},
+  removeEventListener(type,fn){const i=listeners.findIndex(l=>l.type===type&&l.fn===fn);if(i>=0)listeners.splice(i,1);}};
+ context.window=context;vm.createContext(context);
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../app/src/main/assets/androidBridge.js'),'utf8'),context);
+ const deliver=event=>{for(const l of listeners.filter(l=>l.type===event.type)){if(l.once)context.removeEventListener(l.type,l.fn);l.fn(event);}};
+ const reply=message=>context.tigerestNative.onmessage({data:JSON.stringify(message)});
+ return {page:context,api:context.tigerestAndroidApi,sent,deliver,reply,pagehideListeners:()=>listeners.filter(l=>l.type==='pagehide').length};
+}
+test('a Jellyfin view change keeps the bridge, and leaving the page still closes it',async()=>{
+ const {page,api,sent,deliver,reply,pagehideListeners}=installedPage();
+ // Jellyfin's web client dispatches its own bubbling pagehide CustomEvent from a view element.
+ deliver({type:'pagehide',isTrusted:false,target:{tagName:'DIV'},bubbles:true,detail:{}});
+ const hello=api.system.hello();assert.equal(sent.at(-1).method,'hello');
+ reply({id:sent.at(-1).id,result:true});assert.equal(await hello,true);
+ const seen=[];api.player.positionUpdate.connect(value=>seen.push(value));
+ const pending=api.settings.setValue('main','fullscreen',true);
+ deliver({type:'pagehide',isTrusted:true,target:page.document,persisted:false});
+ await assert.rejects(pending,/页面已关闭/);
+ reply({component:'player',signal:'positionUpdate',args:[1]});assert.deepEqual(seen,[]);
+ await assert.rejects(api.system.hello(),/页面已关闭/);
+ assert.equal(pagehideListeners(),0,'the page lifecycle listener is released');
+});
 test('closing the page cancels pending operations and late responses cannot settle new calls',async()=>{
  const {bridge,sent}=setup();const pending=bridge.api.player.getPosition();bridge.close();await assert.rejects(pending,/页面已关闭/);
  bridge.receive({id:sent[0].id,result:999});await assert.rejects(bridge.api.player.play(),/页面已关闭/);
