@@ -1793,9 +1793,23 @@ function installServerSwitchEntry() {
     if (/find-webclient\.html/i.test(window.location.pathname)) return;
     const style = document.createElement('style');
     style.textContent = '.tigerest-switch-entry{display:block!important;position:relative!important;width:auto!important;max-width:100%;margin:8px auto 18px!important;padding:10px 18px!important;border:1px solid #a88a50!important;border-radius:8px;background:#211e19!important;color:#f0c675!important;font:500 15px/1.4 system-ui!important;cursor:pointer;z-index:1}';
+    style.textContent += '.headerRight .tigerest-switch-toolbar,.tigerest-header-actions .tigerest-switch-toolbar,.tg-home .tigerest-switch-toolbar{box-sizing:border-box;flex:0 0 auto;width:auto;min-width:56px;min-height:36px;padding:0 8px;border:1px solid #a88a5070;border-radius:10px;background:#211e19;color:#f0c675;font:600 12px/1.4 system-ui;white-space:nowrap;cursor:pointer}.tg-home .tigerest-switch-toolbar{min-height:44px}';
     document.head.appendChild(style);
     const selector = '.standalonePage,#loginPage,#selectServerPage,#connectPage,#addServerPage,#selectUserPage';
+    const toolbarSelector = '.headerRight,.tigerest-header-actions,.tg-home-nav-heading';
     const mount = root => {
+        const toolbars = [...root.querySelectorAll(toolbarSelector)];
+        if (root.matches?.(toolbarSelector)) toolbars.unshift(root);
+        for (const toolbar of toolbars) {
+            if (toolbar.querySelector('.tigerest-switch-toolbar')) continue;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'headerButton headerSectionItem tigerest-switch-toolbar';
+            button.textContent = '服务器'; button.title = '切换服务器';
+            button.setAttribute('aria-label', '切换服务器');
+            button.addEventListener('click', window.tigerestSwitchServer);
+            toolbar.insertBefore(button, [...toolbar.children].find(node => node.matches('.headerUserButton')) || null);
+        }
         const pages = [...root.querySelectorAll(selector)];
         if (root.matches?.(selector)) pages.unshift(root);
         for (const page of pages) {
@@ -1810,7 +1824,7 @@ function installServerSwitchEntry() {
     new MutationObserver(records => {
         const roots = new Set();
         for (const record of records) {
-            const page = record.target.closest?.(selector);
+            const page = record.target.closest?.(selector + ',' + toolbarSelector);
             if (page) roots.add(page);
             for (const node of record.addedNodes) {
                 if (node.nodeType === 1 && !node.closest('.tigerest-motion-layer,.tigerest-motion-cache,.tigerest-motion-poster')) roots.add(node);

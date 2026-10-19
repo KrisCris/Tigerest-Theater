@@ -106,6 +106,16 @@
     // already part of that header, so it is never added twice.
     const layoutStyleId = 'tigerest-jellyfin-layout-style';
     const layoutCss = `
+    /* Branding may give the top row 2em padding and pull the tabs over it
+       with a negative margin. Keep two normal rows inside one header; its
+       measured height, including the native safe area, clears the library. */
+    html.layout-desktop .skinHeader .headerTop { padding-block: 8px !important;
+      background: transparent !important; box-shadow: none !important; border-bottom: 0 !important; }
+    html.layout-desktop .skinHeader .headerTabs.sectionTabs,
+    html.layout-desktop body:has(#indexPage.homePage) .skinHeader .headerTabs.sectionTabs {
+      margin-top: 0 !important; padding-top: 0 !important; margin-bottom: 8px !important; }
+    html.layout-desktop .libraryPage:not(.itemDetailPage):not(.tg-jellyfin-home-page) {
+      padding-top: calc(var(--tg-jf-header-clearance, 0px) + 12px) !important; }
     @media (max-width: 62.5em) {
       html.layout-desktop #itemDetailPage {
         --tg-jf-gutter-start: max(12px, 3.3vw, calc(var(--tgs-safe-start, 0px) + 12px), calc(env(safe-area-inset-left, 0px) + 12px));
