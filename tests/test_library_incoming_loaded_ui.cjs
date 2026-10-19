@@ -28,7 +28,8 @@ body{margin:0;background:#123;color:white}.page{position:fixed;inset:0;padding:3
         }});
         return true; })()`);
     const firstCopy = async () => {
-        for (let i = 0; i < 250; i++) {
+        // A stuck spinner holds the copy for the whole bounded wait.
+        for (const until = Date.now() + 6000; Date.now() < until;) {
             const copy = await evaluate(`(() => { const incoming = document.querySelector('.tigerest-motion-layer .tigerest-motion-frozen');
                 return incoming ? {cards: incoming.shadowRoot.querySelectorAll('.card').length, spinner: !!incoming.shadowRoot.querySelector('.mdlSpinnerActive'),
                     animations: incoming.getAnimations().length} : null; })()`);

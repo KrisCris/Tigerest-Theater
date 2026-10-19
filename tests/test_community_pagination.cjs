@@ -22,7 +22,8 @@ withBrowser(routes, async ({evaluate,call}) => {
         window.fixtureFailures=[];
         window.check=(value,message)=>{if(!value)throw Error(message);};
         window.textLeft=el=>{const range=document.createRange();range.selectNodeContents(el);return range.getBoundingClientRect().left;};
-        window.tick=()=>new Promise(r=>setTimeout(r,40));
+        // Alignment runs in the next animation frame; a timer alone can win that race.
+        window.tick=()=>new Promise(r=>setTimeout(()=>requestAnimationFrame(()=>requestAnimationFrame(r)),40));
         window.author={id:'author',name:'测试用户',avatarPath:null};
         window.root=(scope,n)=>({id:scope+'-'+n,topicId:scope+'-topic',rootId:null,state:'visible',body:'第 '+n+' 条主评论',createdAt:'2026-10-01T02:00:00Z',author,
             permissions:{canReply:true,canDelete:true},replyCount:1,replies:[{id:scope+'-'+n+'-reply',rootId:scope+'-'+n,state:'visible',body:'随主评论显示的回复',author,permissions:{canReply:true}}],repliesNextCursor:null});
