@@ -1644,7 +1644,8 @@ function installHeaderControlsStyle() {
         :is(.headerRight,.tigerest-header-actions) .headerUserButton { overflow: hidden; }
         :is(.headerRight,.tigerest-header-actions) .headerUserButton img { object-fit: cover; border-radius: 8px; }
         :is(.headerRight,.tigerest-header-actions) #tigerest-message-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-watch-entry { width: auto; padding: 0 10px; white-space: nowrap; }
-        :is(.headerRight,.tigerest-header-actions) #tigerest-mpv-settings-button { width: 46px; color: #efc36e; border-color: rgba(239,195,110,.38); background: rgba(82,63,30,.28); font-weight: 800; letter-spacing: .04em; }
+        :is(.headerRight,.tigerest-header-actions) #tigerest-mpv-settings-button { width: auto; padding: 0 10px; color: #efc36e; border-color: rgba(239,195,110,.38); background: rgba(82,63,30,.28); font-weight: 700; white-space: nowrap; }
+        :is(.headerRight,.tigerest-header-actions) #tigerest-mpv-settings-button::after { content: '▾'; margin-left: 4px; font-size: 10px; opacity: .8; }
         #tigerest-window-mode-button, .tg-home .tg-home-window-mode { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
         #tigerest-window-mode-button .tigerest-window-label { display: none; }
         .tg-home .tg-home-window-mode { width: auto; padding: 0 10px; white-space: nowrap; }
@@ -1655,6 +1656,110 @@ function installHeaderControlsStyle() {
         @media(pointer:coarse) { :is(.headerRight,.tigerest-header-actions) .headerButton, :is(.headerRight,.tigerest-header-actions) #tigerest-message-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-watch-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-update-button, .tg-home .tg-home-window-mode { min-height: 44px; min-width: 44px; } }
     `;
     document.head.appendChild(style);
+}
+
+// The connected server's name for client entries: the server's own name, the
+// remembered record, or the address the user entered.
+function currentServerLabel() {
+    const main = window.jmpInfo?.settings?.main || {}, current = main.userWebClient || '';
+    const named = window.TigerestServer?.identity?.name;
+    if (named) return named;
+    const model = window.TigerestServerHistory;
+    if (model && current) {
+        const key = model.recordKey(main.serverConnectionMode || 'custom', current);
+        const record = model.parse(main.knownServers || '').find(server => server.key === key);
+        if (record?.name) return record.name;
+    }
+    if (main.serverConnectionMode === 'tigerest') return '大河专属 EMBY';
+    try { return new URL(current || window.location.href).host; } catch { return '当前服务器'; }
+}
+
+let clientMenu = null, clientMenuAnchor = null;
+function closeClientMenu(restoreFocus = true) {
+    if (!clientMenu) return false;
+    const anchor = clientMenuAnchor;
+    clientMenu.remove(); clientMenu = clientMenuAnchor = null;
+    document.removeEventListener('pointerdown', onClientMenuPointer, true);
+    document.removeEventListener('keydown', onClientMenuKey, true);
+    window.removeEventListener('resize', onClientMenuResize);
+    anchor?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && anchor?.isConnected) anchor.focus({preventScroll: true});
+    return true;
+}
+// Android Back closes the menu before navigating.
+window.tigerestClientMenuBack = () => closeClientMenu();
+function onClientMenuPointer(event) {
+    if (!clientMenu?.contains(event.target) && !clientMenuAnchor?.contains(event.target)) closeClientMenu(false);
+}
+function onClientMenuResize() { closeClientMenu(false); }
+function onClientMenuKey(event) {
+    const items = [...(clientMenu?.querySelectorAll('[role="menuitem"]') || [])];
+    const index = items.indexOf(document.activeElement);
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeClientMenu(); }
+    else if (event.key === 'Tab') closeClientMenu(false);
+    else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && items.length) {
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+            : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items[next].focus();
+    }
+}
+function installClientMenuStyle() {
+    if (document.getElementById('tigerest-client-menu-style')) return;
+    const style = document.createElement('style'); style.id = 'tigerest-client-menu-style';
+    style.textContent = `
+        #tigerest-client-menu { position: fixed; z-index: 2147483000; box-sizing: border-box; width: max-content; min-width: 220px; max-width: calc(100vw - 16px);
+            padding: 6px; border: 1px solid rgba(239,195,110,.32); border-radius: 12px; background: rgba(22,21,19,.97); color: #ece7dd;
+            box-shadow: 0 16px 40px rgba(0,0,0,.45); font: 14px/1.4 system-ui,"Microsoft YaHei",sans-serif; text-align: left; }
+        #tigerest-client-menu .tigerest-client-menu-server { padding: 8px 10px 10px; border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 4px; }
+        #tigerest-client-menu .tigerest-client-menu-label { display: block; color: #a39b8d; font-size: 12px; }
+        #tigerest-client-menu .tigerest-client-menu-name { display: block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; color: #f2d79e; }
+        #tigerest-client-menu [role="menuitem"] { display: flex; justify-content: space-between; gap: 18px; box-sizing: border-box; width: 100%; min-height: 40px; padding: 9px 10px;
+            border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+        #tigerest-client-menu [role="menuitem"]:hover, #tigerest-client-menu [role="menuitem"]:focus-visible { background: rgba(239,195,110,.14); outline: none; }
+        #tigerest-client-menu [role="menuitem"]:focus-visible { box-shadow: inset 0 0 0 2px #efc36e; }
+        #tigerest-client-menu kbd { color: #a39b8d; font: 12px/1.6 system-ui,sans-serif; }
+        @media (pointer: coarse) { #tigerest-client-menu [role="menuitem"] { min-height: 44px; } }
+    `;
+    document.head.appendChild(style);
+}
+function openClientMenu(anchor) {
+    closeClientMenu(false);
+    installClientMenuStyle();
+    const menu = document.createElement('div');
+    menu.id = 'tigerest-client-menu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', '客户端菜单');
+    const server = document.createElement('div'); server.className = 'tigerest-client-menu-server';
+    const label = document.createElement('span'); label.className = 'tigerest-client-menu-label'; label.textContent = '当前服务器';
+    const name = document.createElement('span'); name.className = 'tigerest-client-menu-name'; name.textContent = currentServerLabel();
+    server.append(label, name); menu.append(server);
+    const android = window.tigerestAndroidApi || window.api?.system?.isAndroid;
+    const item = (text, run, shortcut) => {
+        const entry = document.createElement('button');
+        entry.type = 'button'; entry.setAttribute('role', 'menuitem'); entry.tabIndex = -1;
+        entry.append(document.createTextNode(text));
+        if (shortcut) { const key = document.createElement('kbd'); key.textContent = shortcut; entry.append(key); }
+        entry.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); closeClientMenu(false); run(); });
+        menu.append(entry);
+    };
+    item('切换 / 管理服务器', () => window.tigerestSwitchServer());
+    item('播放器设置（MPV）', () => window.tigerestOpenMpvSettings('mpv'), android ? '' : 'Ctrl+,');
+    item('客户端设置', () => window.tigerestOpenMpvSettings('main'));
+    if (!android && window.tigerestOpenOfflineLibrary) item('下载与离线媒体', () => window.tigerestOpenOfflineLibrary());
+    document.body.appendChild(menu);
+    // Below the button, inside the viewport; a button moved into a compact
+    // overflow menu has no box, so use the top-right corner then.
+    const rect = anchor.getBoundingClientRect(), box = menu.getBoundingClientRect();
+    const visible = rect.width > 0 && rect.height > 0;
+    const top = visible ? rect.bottom + 6 : Math.max(8, parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tgs-safe-top')) || 0) + 56;
+    const left = visible ? Math.min(rect.right, window.innerWidth - 8) - box.width : window.innerWidth - 8 - box.width;
+    menu.style.top = Math.max(8, Math.min(top, window.innerHeight - box.height - 8)) + 'px';
+    menu.style.left = Math.max(8, left) + 'px';
+    clientMenu = menu; clientMenuAnchor = anchor;
+    anchor.setAttribute('aria-expanded', 'true');
+    document.addEventListener('pointerdown', onClientMenuPointer, true);
+    document.addEventListener('keydown', onClientMenuKey, true);
+    window.addEventListener('resize', onClientMenuResize);
+    menu.querySelector('[role="menuitem"]').focus({preventScroll: true});
 }
 
 function installMpvSettingsEntry() {
@@ -1668,22 +1773,44 @@ function installMpvSettingsEntry() {
 
     installHeaderControlsStyle();
 
+    // One client menu holds the current server, server switching, player
+    // settings and offline media. Its id predates the menu; the update entry
+    // and the Android toolbar layout anchor to it.
+    // Jellyfin's Modern layout keeps a hidden legacy header beside its app
+    // bar, which may render later; its user menu marks the visible toolbar.
+    const userMenuButton = () => {
+        const modern = window.TigerestServer?.kind !== 'emby' ? document.querySelector('[aria-controls="app-user-menu"]') : null;
+        if (modern?.parentElement) { modern.parentElement.classList.add('tigerest-header-actions'); return modern; }
+        return window.TigerestServer?.headerUserButton() || document.querySelector('.headerUserButton');
+    };
     const mount = () => {
-        if (document.getElementById('tigerest-mpv-settings-button')) return;
-        const userButton = window.TigerestServer?.headerUserButton() || document.querySelector('.headerUserButton');
+        const existing = document.getElementById('tigerest-mpv-settings-button');
+        if (existing && window.TigerestServer?.kind === 'emby') return;
+        const userButton = userMenuButton();
+        if (existing) {
+            if (userButton?.parentElement && existing.parentElement !== userButton.parentElement) {
+                closeClientMenu(false);
+                userButton.parentElement.insertBefore(existing, userButton);
+            }
+            return;
+        }
+        closeClientMenu(false);
         if (!userButton?.parentElement) return;
 
         const button = document.createElement('button');
         button.id = 'tigerest-mpv-settings-button';
         button.type = 'button';
         button.className = 'headerButton headerSectionItem paper-icon-button-light emby-button-focusscale';
-        button.textContent = 'MPV';
-        button.title = 'MPV 画质与插件设置（Ctrl+,）';
-        button.setAttribute('aria-label', 'MPV 画质与插件设置');
+        button.textContent = '客户端';
+        button.title = '客户端菜单：切换服务器、播放器设置';
+        button.setAttribute('aria-label', '客户端菜单：切换服务器、播放器设置');
+        button.setAttribute('aria-haspopup', 'menu');
+        button.setAttribute('aria-expanded', 'false');
         button.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
-            openTigerestSettings();
+            if (clientMenu?.isConnected) closeClientMenu();
+            else openClientMenu(button);
         });
         userButton.parentElement.insertBefore(button, userButton);
     };
@@ -1821,22 +1948,29 @@ function installServerSwitchEntry() {
     if (/find-webclient\.html/i.test(window.location.pathname)) return;
     const style = document.createElement('style');
     style.textContent = '.tigerest-switch-entry{display:block!important;position:relative!important;width:auto!important;max-width:100%;margin:8px auto 18px!important;padding:10px 18px!important;border:1px solid #a88a50!important;border-radius:8px;background:#211e19!important;color:#f0c675!important;font:500 15px/1.4 system-ui!important;cursor:pointer;z-index:1}';
-    style.textContent += '.headerRight .tigerest-switch-toolbar,.tigerest-header-actions .tigerest-switch-toolbar,.tg-home .tigerest-switch-toolbar{box-sizing:border-box;flex:0 0 auto;width:auto;min-width:56px;min-height:36px;padding:0 8px;border:1px solid #a88a5070;border-radius:10px;background:#211e19;color:#f0c675;font:600 12px/1.4 system-ui;white-space:nowrap;cursor:pointer}.tg-home .tigerest-switch-toolbar{min-height:44px}';
+    style.textContent += '.tg-home .tigerest-home-server{box-sizing:border-box;display:inline-flex;align-items:center;flex:0 1 auto;min-width:0;max-width:11em;min-height:36px;padding:0 10px;border:1px solid #a88a5070;border-radius:10px;background:#211e19;color:#f0c675;font:600 12px/1.4 system-ui,sans-serif;white-space:nowrap;cursor:pointer}.tg-home .tigerest-home-server span{overflow:hidden;text-overflow:ellipsis}@media(pointer:coarse){.tg-home .tigerest-home-server{min-height:44px}}';
     document.head.appendChild(style);
+    // Logged-out pages keep a lightweight in-page entry instead of a toolbar.
     const selector = '.standalonePage,#loginPage,#selectServerPage,#connectPage,#addServerPage,#selectUserPage';
-    const toolbarSelector = '.headerRight,.tigerest-header-actions,.tg-home-nav-heading';
+    // The home names the connected server; it opens the same chooser.
+    const homeSelector = '.tg-home-nav-heading';
+    const homeLabel = button => {
+        const name = currentServerLabel();
+        button.firstChild.textContent = name;
+        button.title = `当前服务器：${name}。切换服务器`;
+        button.setAttribute('aria-label', button.title);
+    };
     const mount = root => {
-        const toolbars = [...root.querySelectorAll(toolbarSelector)];
-        if (root.matches?.(toolbarSelector)) toolbars.unshift(root);
-        for (const toolbar of toolbars) {
-            if (toolbar.querySelector('.tigerest-switch-toolbar')) continue;
+        const headings = [...root.querySelectorAll(homeSelector)];
+        if (root.matches?.(homeSelector)) headings.unshift(root);
+        for (const heading of headings) {
+            if (heading.querySelector('.tigerest-home-server')) continue;
             const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'headerButton headerSectionItem tigerest-switch-toolbar';
-            button.textContent = '服务器'; button.title = '切换服务器';
-            button.setAttribute('aria-label', '切换服务器');
+            button.type = 'button'; button.className = 'tigerest-home-server';
+            button.append(document.createElement('span'));
+            homeLabel(button);
             button.addEventListener('click', window.tigerestSwitchServer);
-            toolbar.insertBefore(button, [...toolbar.children].find(node => node.matches('.headerUserButton')) || null);
+            heading.insertBefore(button, heading.querySelector('.tg-home-window-mode'));
         }
         const pages = [...root.querySelectorAll(selector)];
         if (root.matches?.(selector)) pages.unshift(root);
@@ -1849,10 +1983,13 @@ function installServerSwitchEntry() {
         }
     };
     mount(document);
+    window.TigerestServer?.ready?.then(() => document.querySelectorAll('.tigerest-home-server').forEach(homeLabel));
+    // Only inserted subtrees are searched, and media/motion layers are skipped.
     new MutationObserver(records => {
         const roots = new Set();
         for (const record of records) {
-            const page = record.target.closest?.(selector + ',' + toolbarSelector);
+            // A page that rebuilds its own content loses the in-page entry.
+            const page = record.addedNodes.length ? record.target.closest?.(selector) : null;
             if (page) roots.add(page);
             for (const node of record.addedNodes) {
                 if (node.nodeType === 1 && !node.closest('.tigerest-motion-layer,.tigerest-motion-cache,.tigerest-motion-poster')) roots.add(node);
@@ -1860,6 +1997,19 @@ function installServerSwitchEntry() {
         }
         for (const root of roots) if (root.isConnected) mount(root);
     }).observe(document.body, {childList: true, subtree: true});
+    // The servers' own server-list entries open the client's list instead:
+    // Jellyfin's login "change server" and legacy drawer (.btnSelectServer),
+    // its Modern user-menu item (storage icon), and select-server links.
+    // Their login, expiry and sign-out pages are left alone.
+    document.addEventListener('click', event => {
+        const menuItem = event.target.closest?.('.MuiMenu-list [role="menuitem"]');
+        const entry = event.target.closest?.('.btnSelectServer, a[href*="selectserver" i], [data-id="selectserver"]')
+            || (menuItem?.querySelector('svg[data-testid="StorageIcon"]') ? menuItem : null);
+        if (!entry || !/^https?:$/.test(window.location.protocol)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        window.tigerestSwitchServer();
+    }, true);
 }
 installServerSwitchEntry();
 

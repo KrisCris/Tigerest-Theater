@@ -116,7 +116,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
                 if(video.visibility == View.VISIBLE) { model.player.dispatch("stop",JSONArray()); endPlaybackSession() }
                 else if(model.player.state.active && model.player.isVideo()) { video.visibility = View.VISIBLE; setPlaybackScreenAwake(true); setFullscreen(true); controls.showControls() }
                 else if(webHost.rollbackSelection(false)) return
-                else web.evaluateJavascript("Boolean(window.tigerestServerSelectionBack?.() || (window.TigerestHomeMotion && window.TigerestHomeMotion.handleNativeBack()))") { handled ->
+                else web.evaluateJavascript("Boolean(window.tigerestServerSelectionBack?.() || window.tigerestClientMenuBack?.() || (window.TigerestHomeMotion && window.TigerestHomeMotion.handleNativeBack()))") { handled ->
                     if(handled != "true") { if(web.canGoBack()) web.goBack() else finish() }
                 }
             } })
