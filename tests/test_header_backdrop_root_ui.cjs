@@ -23,6 +23,9 @@ const shell = fs.readFileSync(path.join(root, 'native/nativeshell.js'), 'utf8');
 const controls = shell.slice(shell.indexOf('function installHeaderControlsStyle()'), shell.indexOf('function currentServerLabel()'));
 const jellyfin = fs.readFileSync(path.join(__dirname, 'fixtures/jellyfin-detail/jellyfin-10.11.css'), 'utf8');
 // A colourful wall under the header makes any real backdrop blur visible.
+// Explicit tab font/Latin labels keep this pixel fixture deterministic:
+// identical unoptimized reloads otherwise changed 464 CJK glyph pixels on
+// Windows. Chinese title/native-control coverage remains in the top row.
 const stripes = Array.from({length: 60}, (_, i) => `<div style="height:14px;background:hsl(${i * 47 % 360} 90% ${40 + i % 3 * 15}%)"></div>`).join('');
 const icon = 'headerButton paper-icon-button-light';
 const page = `<!doctype html><meta charset="utf-8"><style>${jellyfin}
@@ -30,7 +33,7 @@ body{font:16px system-ui}
 /* jellyfin-web emby-button.scss */
 .paper-icon-button-light{position:relative;display:inline-flex;align-items:center;justify-content:center;font-size:1.5em;color:inherit;margin:0 .29em;background:transparent;text-align:center;padding:.556em;vertical-align:middle;border:0;border-radius:50%;outline:none!important;overflow:hidden;z-index:0;flex-shrink:0}
 .headerTabs{display:flex;justify-content:center}.emby-tabs-slider{display:flex;border-radius:50px}
-.emby-tab-button{padding:.7em 1.2em;border:0;background:transparent;color:#fff}
+.emby-tab-button{padding:.7em 1.2em;border:0;background:transparent;color:#fff;font:14px/20px Arial}
 .headerButton,.pageTitle,.emby-tabs-slider{-webkit-backdrop-filter:blur(15px)!important;backdrop-filter:blur(15px)!important}
 .emby-tabs-slider{background-color:rgba(20,20,24,.69)!important}
 .paper-icon-button-light:hover,.paper-icon-button-light:hover:not(:disabled){background-color:rgba(0,0,0,.4)!important}
@@ -38,7 +41,7 @@ body{font:16px system-ui}
 <div class="skinHeader focuscontainer-x skinHeader-withBackground semiTransparent"><div class="flex align-items-center flex-grow headerTop"><div class="headerLeft">
 <button class="${icon} headerButtonLeft headerBackButton">‹</button><button class="${icon} headerHomeButton barsMenuButton headerButtonLeft">⌂</button><h3 class="pageTitle">电影</h3><button class="pageTitle native">原生</button></div>
 <div class="headerRight"><button class="${icon} headerButtonRight headerSearchButton" id="search">⌕</button><button class="${icon} headerButtonRight headerUserButton headerUserButtonRound">☺</button></div></div>
-<div class="headerTabs"><div class="tabs-viewmenubar"><div class="tabs-viewmenubar-slider emby-tabs-slider"><button class="emby-tab-button main-tab-button emby-tab-button-active">电影</button><button class="emby-tab-button main-tab-button">收藏</button></div></div></div></div>
+<div class="headerTabs"><div class="tabs-viewmenubar"><div class="tabs-viewmenubar-slider emby-tabs-slider"><button class="emby-tab-button main-tab-button emby-tab-button-active">Movies</button><button class="emby-tab-button main-tab-button">Favorites</button></div></div></div></div>
 <main>${stripes}</main><script src="/appearance.js"></script><script>${controls};installHeaderControlsStyle();</script>`;
 // A theme stylesheet that arrives after its <link> is inserted.
 const late = http.createServer((request, response) => setTimeout(() => {
@@ -70,8 +73,15 @@ async function run({evaluate, call}) {
     const children = ['.headerTop', '.headerBackButton', '.headerHomeButton', '.pageTitle', '#search', '.headerUserButton', '.emby-tabs-slider'];
     const filters = () => evaluate(`Object.fromEntries(['.skinHeader', ...${JSON.stringify(children)}].map(s => [s, getComputedStyle(document.querySelector(s)).backdropFilter]))`);
     // The whole header, tabs included.
-    const shot = async () => (await call('Page.captureScreenshot', {format: 'png', clip: {x: 0, y: 0, width: 600, scale: 1,
-        height: Math.ceil(await evaluate(`document.querySelector('.skinHeader').getBoundingClientRect().bottom`))}})).data;
+    const shot = async () => {
+        if (process.env.TIGEREST_HEADER_EVIDENCE) {
+            fs.mkdirSync(process.env.TIGEREST_HEADER_EVIDENCE, {recursive: true});
+            fs.appendFileSync(path.join(process.env.TIGEREST_HEADER_EVIDENCE,'geometry.jsonl'),JSON.stringify(await evaluate(`({ua:navigator.userAgent,
+                nodes:[...document.querySelectorAll('.skinHeader,.skinHeader *')].map(e=>({tag:e.tagName,cls:e.className,rect:e.getBoundingClientRect().toJSON(),font:getComputedStyle(e).font,transform:getComputedStyle(e).transform,animations:e.getAnimations().map(a=>({state:a.playState,time:a.currentTime}))}))})`))+'\n');
+        }
+        return (await call('Page.captureScreenshot', {format: 'png', clip: {x: 0, y: 0, width: 600, scale: 1,
+            height: Math.ceil(await evaluate(`document.querySelector('.skinHeader').getBoundingClientRect().bottom`))}})).data;
+    };
     const pointAt = async selector => {
         const at = await evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
         await call('Input.dispatchMouseEvent', {type: 'mouseMoved', x: at[0], y: at[1]}); await frames();
@@ -118,6 +128,12 @@ async function run({evaluate, call}) {
     assert.equal(shipped['.emby-tabs-slider'], 'blur(15px)', 'tabs under a sibling shadow keep their real filter');
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('.native')).backdropFilter`), 'blur(15px)', 'an unstyled native control keeps its own look and filter');
     const flat = {rest: await shot(), hover: await hover()};
+    if (process.env.TIGEREST_HEADER_EVIDENCE) {
+        fs.mkdirSync(process.env.TIGEREST_HEADER_EVIDENCE, {recursive: true});
+        for (const [kind, variants] of Object.entries({nested, flat}))
+            for (const [state, data] of Object.entries(variants))
+                fs.writeFileSync(path.join(process.env.TIGEREST_HEADER_EVIDENCE, `${kind}-${state}.png`), Buffer.from(data, 'base64'));
+    }
     assert.equal((await filters())['#search'], 'none', 'leaving a control restores its flat glass');
     const rest = await compare(flat.rest, nested.rest), hovered = await compare(flat.hover, nested.hover);
     for (const [name, d] of [['at rest', rest], ['on hover', hovered]])

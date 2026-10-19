@@ -21,6 +21,16 @@ withBrowser({'/': {type:'text/html',body:page}, '/appearance.js': {path:path.res
         await evaluate('document.querySelector(".sibling").style.overflow="hidden"');
         await settle();
         assert.equal(await filter(),'none','a sibling that clips its overflowing decoration cannot paint under the control');
+        await evaluate(`document.querySelector('.sibling').style.position='static';
+            const css=document.createElement('style');css.textContent='.sibling::before{left:200px;top:50px}';document.head.append(css)`);
+        await settle();
+        assert.equal(await filter(),'blur(20px)','a static overflow owner does not clip a pseudo positioned against the header');
+        await evaluate(`{const sibling=document.querySelector('.sibling');sibling.style.cssText='position:absolute;left:20px;top:50px;width:400px;height:100px;overflow:auto';
+            sibling.innerHTML='<div style="width:1000px;height:1px"></div>';
+            const css=document.createElement('style');css.textContent='.sibling::before{left:400px;top:0}';document.head.append(css);
+            sibling.scrollLeft=200}`);
+        await settle();
+        assert.equal(await filter(),'blur(20px)','scrolling the owner moves its painted pseudo beneath the control');
         await evaluate('document.querySelector(".sibling").remove();document.getElementById("control").style.cssText="background-clip:content-box;padding:25px"');
         await settle();
         assert.equal(await filter(),'blur(20px)','content-box background cannot replace the backdrop across the padding');

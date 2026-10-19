@@ -1060,14 +1060,21 @@ function flattenTigerestHeaderGlass() {
         // the header may be covered. Do not infer pseudo geometry from its
         // owner (positioned and transformed decorations commonly overflow).
         const pseudoBounds = (node, pseudo) => {
+            const style = getComputedStyle(node, pseudo), owner = styles.get(node);
             let bound = rect(header);
             for (let parent = node; parent && styles.has(parent); parent = parent.parentElement) {
-                const style = styles.get(parent);
-                if (['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX) &&
-                    ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowY) ||
-                    /\b(?:paint|strict|content)\b/.test(style.contain)) { bound = rect(parent); break; }
+                const ancestor = styles.get(parent);
+                // Out-of-flow descendants can escape overflow clips between
+                // them and their containing block. Only use an absolute
+                // pseudo's own positioned owner here; more complex containing
+                // blocks keep the conservative bound. Paint containment is
+                // independently safe for all positioning modes.
+                const overflowApplies = !['absolute', 'fixed'].includes(style.position) ||
+                    style.position === 'absolute' && parent === node && owner.position !== 'static';
+                if (overflowApplies && ['hidden', 'clip', 'auto', 'scroll'].includes(ancestor.overflowX) &&
+                    ['hidden', 'clip', 'auto', 'scroll'].includes(ancestor.overflowY) ||
+                    /\b(?:paint|strict|content)\b/.test(ancestor.contain)) { bound = rect(parent); break; }
             }
-            const style = getComputedStyle(node, pseudo), owner = styles.get(node);
             const length = value => /^-?[\d.]+px$/.test(value);
             // Common underline/decorations: a known absolute box in this
             // positioned owner. More complex transforms or automatic sizes
@@ -1077,7 +1084,9 @@ function flattenTigerestHeaderGlass() {
                 const transform = styles.get(parent).transform;
                 if (transform !== 'none' && !/^matrix\(1, 0, 0, 1, [-\d.]+, [-\d.]+\)$/.test(transform)) translatedOnly = false;
             }
-            if (translatedOnly && owner.position !== 'static' && style.position === 'absolute' && style.transform === 'none' &&
+            const mayScroll = node.scrollLeft !== 0 || node.scrollTop !== 0 ||
+                node.scrollWidth > node.clientWidth || node.scrollHeight > node.clientHeight;
+            if (!mayScroll && translatedOnly && owner.position !== 'static' && style.position === 'absolute' && style.transform === 'none' &&
                 ['left', 'top', 'width', 'height', 'marginLeft', 'marginTop'].every(key => length(style[key]))) {
                 const outer = rect(node), borderBox = style.boxSizing === 'border-box';
                 const left = outer.left + px(owner.borderLeftWidth) + px(style.left) + px(style.marginLeft);
