@@ -40,12 +40,17 @@
         // Modern keeps hidden Legacy tab buttons too. Clicking those changes the
         // tab without changing the route, so returning to /home cannot restore it.
         if (document.querySelector('#reactRoot .MuiAppBar-positionFixed:not(.skinHeader)')) {
-            return Promise.resolve(this.appRouter.show('/home?tab=1'));
+            // React changes the tab without mounting another page or emitting
+            // viewshow. appRouter.show waits for that event and would leave all
+            // later showItem calls waiting. Follow Modern's own hash links.
+            window.location.hash = '#/home?tab=1';
+            return Promise.resolve();
         }
         const page = this.tab?.closest('.page') || document;
         const button = page.querySelector?.('.emby-tab-button[data-index="1"]') || document.querySelector('.headerTabs .emby-tab-button[data-index="1"]');
         if (button) { button.click(); return Promise.resolve(); }
-        return Promise.resolve(this.appRouter.show('/home?tab=1'));
+        window.location.hash = '#/home?tab=1';
+        return Promise.resolve();
     };
     JellyfinHome.prototype.update = function () {
         if (!window.TigerestHomeGallery || !document.head) return;

@@ -128,6 +128,7 @@ function jellyfinPage() {
     const listeners = {};
     const context = {
         console: { info() {}, warn() {} }, Promise, setInterval: () => 7, clearInterval() {},
+        location: {hash: '#/home'},
         document: {
             head: element('head'),
             getElementById: id => id === 'homeTab' && page.connected ? page.tab : null,
@@ -185,7 +186,8 @@ test('Jellyfin gets the community, watch-together and home gallery with its own 
     assert.deepEqual(gallery.calls, ['start']);
     assert.equal(gallery.options.apiProvider(), apiClient);
     await gallery.options.openFavorites();
-    assert.deepEqual(shown, ['/home?tab=1']);
+    assert.equal(page.context.location.hash, '#/home?tab=1');
+    assert.deepEqual(shown, []);
 
     page.visible = false; page.listeners.viewshow();
     assert.deepEqual(gallery.calls, ['start', 'stop']);
@@ -196,7 +198,7 @@ test('Jellyfin gets the community, watch-together and home gallery with its own 
     assert.ok(!page.tab.classList.contains('tg-jellyfin-home'));
 });
 
-test('Modern favorites uses its route even when a hidden Legacy tab button remains', async () => {
+test('Modern favorites changes the hash without starting a legacy navigation promise', async () => {
     const page = jellyfinPage(), shown = [];
     let legacyClicks = 0;
     page.context.document.querySelector = selector => selector.includes('MuiAppBar') ? {}
@@ -205,8 +207,22 @@ test('Modern favorites uses its route even when a hidden Legacy tab button remai
         appRouter:{show: route => { shown.push(route); return Promise.resolve(); }},
         ServerConnections:{currentApiClient:()=>null}});
     await plugin.home.openFavorites();
-    assert.deepEqual(shown, ['/home?tab=1']);
+    assert.equal(page.context.location.hash, '#/home?tab=1');
+    assert.deepEqual(shown, [], 'same-page tab changes do not emit the viewshow appRouter waits for');
     assert.equal(legacyClicks, 0, 'a hidden tab must not desynchronize Modern route state');
+});
+
+test('Legacy favorites still uses its tab button', async () => {
+    const page = jellyfinPage();
+    let clicks = 0;
+    page.context.document.querySelector = selector => selector.includes('emby-tab-button')
+        ? {click: () => clicks++} : null;
+    const plugin = new page.context._tigerestJellyfinPlugin({events:{on(){}},
+        appRouter:{show: () => { throw Error('Legacy favorites must use its tab'); }},
+        ServerConnections:{currentApiClient:()=>null}});
+    await plugin.home.openFavorites();
+    assert.equal(clicks, 1);
+    assert.equal(page.context.location.hash, '#/home');
 });
 
 test('a first visit to Jellyfin is not recorded as an Emby server', () => {
