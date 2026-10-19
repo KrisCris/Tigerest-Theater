@@ -1652,6 +1652,10 @@ function installHeaderControlsStyle() {
         .tg-home .tg-home-window-mode[hidden] { display: none; }
         .tigerest-window-icon { flex: 0 0 auto; }
         #tigerest-window-mode-button:disabled, .tg-home .tg-home-window-mode:disabled { cursor: wait; opacity: .6; }
+        /* Emby's gear opens the "Manage Emby Server" route that its avatar
+           menu also lists for administrators (and the avatar menu itself
+           otherwise), so the avatar is the one account/server entry. */
+        .headerRight .headerSettingsButton { display: none !important; }
         @media(max-width:600px) { .headerRight, .tigerest-header-actions { flex-wrap: wrap; gap: 4px; } }
         @media(pointer:coarse) { :is(.headerRight,.tigerest-header-actions) .headerButton, :is(.headerRight,.tigerest-header-actions) #tigerest-message-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-watch-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-update-button, .tg-home .tg-home-window-mode { min-height: 44px; min-width: 44px; } }
     `;
@@ -1955,17 +1959,42 @@ function installServerSwitchEntry() {
     if (/find-webclient\.html/i.test(window.location.pathname)) return;
     const style = document.createElement('style');
     style.textContent = '.tigerest-switch-entry{display:block!important;position:relative!important;width:auto!important;max-width:100%;margin:8px auto 18px!important;padding:10px 18px!important;border:1px solid #a88a50!important;border-radius:8px;background:#211e19!important;color:#f0c675!important;font:500 15px/1.4 system-ui!important;cursor:pointer;z-index:1}';
-    style.textContent += '.tg-home .tigerest-home-server{box-sizing:border-box;display:inline-flex;align-items:center;flex:0 1 auto;min-width:0;max-width:11em;min-height:36px;padding:0 10px;border:1px solid #a88a5070;border-radius:10px;background:#211e19;color:#f0c675;font:600 12px/1.4 system-ui,sans-serif;white-space:nowrap;cursor:pointer}.tg-home .tigerest-home-server span{overflow:hidden;text-overflow:ellipsis}@media(pointer:coarse){.tg-home .tigerest-home-server{min-height:44px}}';
+    style.textContent += '.tg-home .tigerest-home-server{box-sizing:border-box;display:inline-flex;align-items:center;flex:0 1 auto;min-width:0;max-width:11em;min-height:36px;padding:0 10px;border:1px solid #a88a5070;border-radius:10px;background:#211e19;color:#f0c675;font:600 12px/1.4 system-ui,sans-serif;white-space:nowrap;cursor:pointer}.tg-home .tigerest-home-server span{overflow:hidden;text-overflow:ellipsis}.tg-home .tigerest-home-server svg{display:none;flex:0 0 auto}@media(pointer:coarse){.tg-home .tigerest-home-server{min-height:44px}}';
+    // Compact steps chosen by fitHomeHeading() from the heading's own width.
+    style.textContent += '.tg-home-nav-heading[data-tigerest-compact~=window] .tg-home-window-mode{min-width:36px;padding:0 9px}.tg-home-nav-heading[data-tigerest-compact~=window] .tg-home-window-mode .tigerest-window-label{display:none}'
+        + '.tg-home-nav-heading[data-tigerest-compact~=server] .tigerest-home-server{min-width:36px;padding:0 9px;justify-content:center}.tg-home-nav-heading[data-tigerest-compact~=server] .tigerest-home-server span{display:none}.tg-home-nav-heading[data-tigerest-compact~=server] .tigerest-home-server svg{display:block}'
+        + '.tg-home-nav-heading[data-tigerest-compact~=wrap]{flex-wrap:wrap;row-gap:6px}.tg-home-nav-heading[data-tigerest-compact~=wrap] .tg-home-eyebrow{flex:1 0 100%}.tg-home-nav-heading[data-tigerest-compact~=wrap] .tigerest-home-server{margin-left:auto}'
+        + '@media(pointer:coarse){.tg-home-nav-heading[data-tigerest-compact] :is(.tg-home-window-mode,.tigerest-home-server){min-width:44px}}';
     document.head.appendChild(style);
     // Logged-out pages keep a lightweight in-page entry instead of a toolbar.
     const selector = '.standalonePage,#loginPage,#selectServerPage,#connectPage,#addServerPage,#selectUserPage';
     // The home names the connected server; it opens the same chooser.
     const homeSelector = '.tg-home-nav-heading';
+    // The library column can be narrow: labels give way to icons, and as a
+    // last step the controls move below the title, which is never squeezed.
+    // Measured only when the heading or its controls change size.
+    const fitHomeHeading = heading => {
+        if (!heading.isConnected || !heading.clientWidth) return;
+        const eyebrow = heading.querySelector('.tg-home-eyebrow'), label = heading.querySelector('.tigerest-home-server span');
+        const fits = () => heading.scrollWidth <= heading.clientWidth + 1 && (!eyebrow || eyebrow.scrollWidth <= eyebrow.clientWidth + 1)
+            && (!label?.getClientRects().length || label.scrollWidth <= label.clientWidth + 1);
+        for (const compact of ['', 'window', 'server', 'window server', 'window server wrap']) {
+            heading.dataset.tigerestCompact = compact;
+            if (fits()) break;
+        }
+        if (!heading.dataset.tigerestCompact) delete heading.dataset.tigerestCompact;
+    };
+    const headingSizes = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
+        const headings = new Set(entries.map(entry => entry.target.closest(homeSelector)));
+        for (const heading of headings) if (heading) fitHomeHeading(heading);
+    }) : null;
     const homeLabel = button => {
         const name = currentServerLabel();
-        button.firstChild.textContent = name;
+        button.querySelector('span').textContent = name;
         button.title = `当前服务器：${name}。切换服务器`;
         button.setAttribute('aria-label', button.title);
+        const heading = button.closest(homeSelector);
+        if (heading) fitHomeHeading(heading);
     };
     const mount = root => {
         const headings = [...root.querySelectorAll(homeSelector)];
@@ -1974,10 +2003,12 @@ function installServerSwitchEntry() {
             if (heading.querySelector('.tigerest-home-server')) continue;
             const button = document.createElement('button');
             button.type = 'button'; button.className = 'tigerest-home-server';
-            button.append(document.createElement('span'));
-            homeLabel(button);
+            button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg><span></span>';
             button.addEventListener('click', window.tigerestSwitchServer);
-            heading.insertBefore(button, heading.querySelector('.tg-home-window-mode'));
+            const windowMode = heading.querySelector('.tg-home-window-mode');
+            heading.insertBefore(button, windowMode);
+            homeLabel(button);
+            for (const node of [heading, button, windowMode]) if (node) headingSizes?.observe(node);
         }
         const pages = [...root.querySelectorAll(selector)];
         if (root.matches?.(selector)) pages.unshift(root);
