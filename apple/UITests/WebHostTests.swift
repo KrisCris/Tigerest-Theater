@@ -403,6 +403,9 @@ extension WebHostTests {
                 XCTAssertTrue(app.staticTexts[marker].waitForExistence(timeout: 240), app.debugDescription)
                 let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = marker; shot.lifetime = .keepAlways; add(shot)
             }
+            // The navigation matrix changes the gallery selection. Its caller
+            // can run native playback independently with a known media target.
+            if env["TIGEREST_WEB_LAYOUT_AUDIT_ONLY"] == "1" { return }
         }
         Thread.sleep(forTimeInterval: 1) // Capture the settled entrance rather than an intermediate animation frame.
         let home = XCTAttachment(screenshot: app.screenshot()); home.name = "isolated-jellyfin-home"; home.lifetime = .keepAlways; add(home)
