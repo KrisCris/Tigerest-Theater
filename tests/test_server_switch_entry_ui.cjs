@@ -4,7 +4,7 @@ const withBrowser = require('./community_browser.cjs');
 const shell = fs.readFileSync(path.join(__dirname, '../native/nativeshell.js'), 'utf8');
 const history = fs.readFileSync(path.join(__dirname, '../native/serverHistory.js'), 'utf8');
 const entries = shell.slice(shell.indexOf('function installHorizontalShelfDragging()'), shell.indexOf('\ninstallServerSwitchEntry();'));
-const page = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+const makePage = windowControls => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{margin:0;background:#151923;color:#fff;font:16px sans-serif}.headerRight{display:flex;justify-content:flex-end;gap:4px}.headerButton{min-width:44px;height:40px}</style><body>
 <script>
 ${history}
@@ -14,16 +14,21 @@ window.tigerestOpenMpvSettings = section => opened.push(section);
 window.tigerestOpenOfflineLibrary = () => opened.push('offline');
 // The page is served from the remembered server's base path.
 const current = location.origin + '/jellyfin/';
-window.jmpInfo = {capabilities: {desktopWindowControls: false}, settings: {main: {userWebClient: current, serverConnectionMode: 'custom',
+window.errors = []; window.addEventListener('error', event => errors.push(event.message));
+window.jmpInfo = {capabilities: {desktopWindowControls: ${windowControls}}, settings: {main: {userWebClient: current, serverConnectionMode: 'custom',
   knownServers: TigerestServerHistory.remember('', {mode: 'custom', address: current, at: 1700000000000})}}};
-window.api = {settings: {value: async () => jmpInfo.settings.main.knownServers}};
+window.fullscreen = false; window.fullscreenRequests = [];
+window.api = {settings: {value: async () => jmpInfo.settings.main.knownServers}, window: {isFullScreen: async () => fullscreen,
+  setFullScreen: async value => { fullscreenRequests.push(value); fullscreen = value; }, fullScreenSwitched: {connect() {}}}};
 window.initCompleted = Promise.resolve();
 let identity = null, ready; const readyPromise = new Promise(resolve => { ready = resolve; });
 window.TigerestServer = {base: location.origin + '/jellyfin', get identity() { return identity; }, ready: readyPromise, headerUserButton: () => document.querySelector('.headerUserButton')};
 window.finishIdentity = value => { identity = value; ready('jellyfin'); };
 </script>
 <script>${entries};installServerSwitchEntry();</script>`;
-withBrowser({'/': {type: 'text/html', body: page}, '/jellyfin/web/index.html': {type: 'text/html', body: page}}, async ({evaluate, call}) => {
+const page = makePage(false);
+withBrowser({'/': {type: 'text/html', body: page}, '/jellyfin/web/index.html': {type: 'text/html', body: page},
+    '/modern/web/index.html': {type: 'text/html', body: makePage(true)}}, async ({evaluate, call}) => {
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     const settle = () => evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
     await evaluate(`location.href = '/jellyfin/web/index.html'`).catch(() => {});
@@ -120,5 +125,41 @@ withBrowser({'/': {type: 'text/html', body: page}, '/jellyfin/web/index.html': {
     for (let i = 0; i < 60 && !await evaluate(`JSON.parse(jmpInfo.settings.main.knownServers).servers[0].name === 'Living room'`); i++) await wait(50);
     assert.deepEqual(await evaluate(`JSON.parse(jmpInfo.settings.main.knownServers).servers[0]`),
         {mode: 'custom', address: await evaluate('current'), name: 'Living room', kind: 'jellyfin', serverId: 'abc', lastConnectedAt: 1_700_000_000_000});
-    console.log(JSON.stringify({passed: true, widths: 5, menu: true, home: true, stock: true, standalone: true, annotate: true}));
+    // Desktop window controls on Jellyfin Modern: the legacy header stays in the
+    // DOM but hidden, and the app bar renders after it.
+    await call('Emulation.setDeviceMetricsOverride', {width: 1280, height: 800, deviceScaleFactor: 1, mobile: false});
+    await evaluate(`location.href = '/modern/web/index.html'`).catch(() => {});
+    for (let i = 0; i < 50 && !await evaluate(`location.pathname === '/modern/web/index.html' && !!window.finishIdentity`).catch(() => false); i++) await wait(50);
+    const legacyHeader = '<div class="skinHeader" style="display:none"><div class="headerRight"><button class="headerButton headerUserButton" aria-label="账户">A</button></div></div>';
+    const appBar = '<div class="MuiAppBar-root"><div class="MuiBox-root" id="bar"><button id="search">S</button><button aria-controls="app-user-menu" aria-label="User menu">U</button></div></div>';
+    await evaluate(`document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(legacyHeader)})`);
+    await wait(80);
+    await evaluate(`document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(appBar)})`);
+    await wait(120);
+    const toolbar = () => evaluate(`({errors, ids: [...document.querySelector('[aria-controls="app-user-menu"]').parentElement.children].map(n => n.id || n.getAttribute('aria-controls')),
+      legacy: document.querySelectorAll('.skinHeader [id^=tigerest-]').length, windows: document.querySelectorAll('#tigerest-window-mode-button').length,
+      visible: ['#tigerest-window-mode-button', '#tigerest-mpv-settings-button'].every(s => document.querySelector(s)?.getBoundingClientRect().width > 0),
+      label: document.querySelector('#tigerest-window-mode-button')?.textContent})`);
+    const modernIds = ['search', 'tigerest-window-mode-button', 'tigerest-mpv-settings-button', 'app-user-menu'];
+    let modern = await toolbar();
+    assert.deepEqual(modern, {errors: [], ids: modernIds, legacy: 0, windows: 1, visible: true, label: '全屏'}, 'both controls move to the visible app bar');
+    // Window button removed while the client menu already sits in the app bar.
+    await evaluate(`document.querySelector('#tigerest-window-mode-button').remove()`);
+    await wait(80);
+    assert.deepEqual(await toolbar(), modern, 'the window button remounts beside the client menu');
+    // The app bar is rebuilt; the hidden legacy header is rebuilt too.
+    await evaluate(`document.querySelector('.MuiAppBar-root').remove(); document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(appBar)})`);
+    await wait(80);
+    await evaluate(`document.querySelector('.skinHeader').remove(); document.body.insertAdjacentHTML('afterbegin', ${JSON.stringify(legacyHeader)})`);
+    await wait(80);
+    assert.deepEqual(await toolbar(), modern, 'rebuilt headers keep one control each in the app bar');
+    // The window button keeps its state and action; the client menu still opens.
+    await evaluate(`document.querySelector('#tigerest-window-mode-button').click()`);
+    await wait(60);
+    assert.deepEqual(await evaluate(`({requests: fullscreenRequests, pressed: document.querySelector('#tigerest-window-mode-button').getAttribute('aria-pressed'),
+      label: document.querySelector('#tigerest-window-mode-button').textContent})`), {requests: [true], pressed: 'true', label: '窗口'});
+    await evaluate(`document.querySelector('#tigerest-mpv-settings-button').click()`);
+    assert.equal(await evaluate(`!!document.querySelector('#tigerest-client-menu') && errors.length`), 0);
+    await evaluate('window.tigerestClientMenuBack()');
+    console.log(JSON.stringify({passed: true, widths: 5, menu: true, home: true, stock: true, standalone: true, annotate: true, modernWindowControls: true}));
 }).catch(error => { console.error(error); process.exitCode = 1; });

@@ -84,7 +84,7 @@
             entryDot=element('span'); entryDot.dataset.updateDot=''; entryDot.setAttribute('aria-hidden','true'); entry.appendChild(entryDot);
             entry.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();open();});
         }
-        const anchor=document.querySelector('#tigerest-mpv-settings-button, .headerUserButton');
+        const anchor=document.getElementById('tigerest-mpv-settings-button')||document.querySelector('.headerUserButton');
         const header=anchor?.parentElement || document.querySelector('.skinHeader .headerRight, .headerTop .headerRight');
         if (header && entry.parentElement !== header) header.insertBefore(entry,anchor?.parentElement===header ? anchor : header.firstChild);
         if (!header && entry.parentElement !== document.body) document.body.appendChild(entry);

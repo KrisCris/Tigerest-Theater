@@ -104,6 +104,25 @@ test('the one saved address migrates as an undated current entry; nothing else i
         [['https://old.example/jellyfin/', true]]);
 });
 
+test('the first success after an upgrade keeps the migrated address, unless it was the one edited', () => {
+    const old = {mode: 'custom', address: 'https://old.example/emby/'};
+    const next = history.remember('', {mode: 'custom', address: 'https://new.example/jellyfin/', at: at(5), current: old});
+    assert.deepEqual(servers(next), [{mode: 'custom', address: 'https://new.example/jellyfin/', lastConnectedAt: at(5)},
+        {mode: 'custom', address: 'https://old.example/emby/', lastConnectedAt: 0}]);
+    // Already remembered: the record keeps its date and metadata.
+    const named = history.annotate(history.remember('', {mode: 'custom', address: old.address, at: at(1)}), {...old, name: 'Old'});
+    assert.deepEqual(servers(history.remember(named, {mode: 'custom', address: 'https://new.example/jellyfin/', at: at(5), current: old}))[1],
+        {mode: 'custom', address: 'https://old.example/emby/', name: 'Old', lastConnectedAt: at(1)});
+    // Editing the current address replaces it instead of keeping both.
+    assert.deepEqual(servers(history.remember('', {mode: 'custom', address: 'https://new.example/jellyfin/', at: at(5), current: old,
+        replacing: 'custom:https://old.example/emby/'})).map(server => server.address), ['https://new.example/jellyfin/']);
+    // The dedicated server migrates as its one logical entry; unusable current values are ignored.
+    assert.deepEqual(servers(history.remember('', {mode: 'custom', address: 'https://new.example/', at: at(5),
+        current: {mode: 'tigerest', address: 'http://nas.tigerest.top:8095/'}})).map(server => server.mode), ['custom', 'tigerest']);
+    assert.equal(history.remember('', {mode: 'custom', address: 'https://new.example/', at: at(5), current: {mode: '', address: 'nonsense'}}),
+        history.remember('', {mode: 'custom', address: 'https://new.example/', at: at(5)}));
+});
+
 test('removing a record and editing an address replace only the chosen record', () => {
     let text = history.remember('', {mode: 'custom', address: 'https://a.example/', at: at(1)});
     text = history.remember(text, {mode: 'custom', address: 'https://b.example/', at: at(2)});

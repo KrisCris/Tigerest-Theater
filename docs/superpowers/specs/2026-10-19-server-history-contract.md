@@ -64,10 +64,17 @@ Vectors (identical in every client):
 
 ### Operations
 
-- **remember(mode, address, at, replacing?)**: after a successful connection, put the
+- **remember(mode, address, at, replacing?, current?)**: after a successful connection, put the
   record first with the new `lastConnectedAt`, and keep any name/kind/serverId
   already known for the same key. With `replacing` ("edit address"), the old key
   is removed in the same write.
+  - `current` is `{mode, address}` of the server in use before this choice.
+  - If the list has no record for it (an upgrade, list empty), it is added in
+    the same write as `lastConnectedAt: 0`, so the first new connection does not
+    lose the old address.
+  - If `replacing` is that record's key (editing the current address), it is
+    replaced instead. A record that already exists keeps its date and metadata.
+  - The added record sorts last. If the list is already full, it is the first to be dropped.
 - **annotate(mode, address, name, kind, serverId)**: run by the loaded server page.
   It only updates an existing record and **never creates one**.
 - **forget(key)**: an explicit user removal, after confirmation. The record of
@@ -79,7 +86,19 @@ Vectors (identical in every client):
 ## Selection transaction (bridge)
 
 The chooser (`find-webclient.html`) computes the new history text but does not
-write it. The native side commits it only when the server page has loaded:
+write it.
+
+Each connection attempt fixes its `mode` and `replacing` record when it starts:
+`custom` for a saved card or the address form, `tigerest` for the dedicated server.
+
+- Choosing another option cancels any attempt still pending and invalidates
+  its answer through the connection generation. This covers choosing the
+  dedicated server or "add" while a saved card connects, as well as Back and cancel.
+- A late answer therefore never commits, and is never committed under another
+  attempt's mode.
+- Failed or cancelled attempts produce no record.
+
+The native side commits the history only when the server page has loaded:
 
 ```
 system.finishServerSelection(server, mode, target, history) -> bool
@@ -117,6 +136,10 @@ server base and the saved `userWebClient`.
   The window-mode and update buttons stay separate, because they show state or a badge.
 - On Jellyfin's Modern layout the button mounts beside the visible
   `[aria-controls="app-user-menu"]` button, not in the hidden legacy header.
+  The window-mode button (desktop only) and the update button use the same
+  parent as the menu button. They are inserted before it only when it is in that
+  same parent; otherwise they go before the user button. They move with it when
+  the app bar appears or is rebuilt.
 - The home heading shows a current-server chip `.tigerest-home-server`.
   Logged-out standalone pages show `.tigerest-switch-entry`.
 - Each server's own server-list entry is redirected to
@@ -151,6 +174,9 @@ The Apple client is not changed by this round. Needed for parity:
 5. In `AppModel.saveConnection`, write the remembered history only after the web
    view reports a successful load of the new server. Do not write it in the same
    step as `userWebClient`. Leave the previous value on failure or cancel.
+   Pass the previous `userWebClient`/mode as `current`, so that an upgraded
+   install keeps its old address. Give each attempt its own mode, and cancel it
+   when another choice starts.
 6. Extend the SwiftUI connection sheet (`openServerSettings`) with the list:
    - Newest first. Each card shows the name or host, the kind and address, and
      a "当前" mark.

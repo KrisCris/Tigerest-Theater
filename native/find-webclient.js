@@ -117,9 +117,15 @@ function savedMode(address) {
     return address ? (isTigerestDefaultServer(address) ? 'tigerest' : 'custom') : '';
 }
 
+// The server in use before this choice (the startup target).
+function currentServer() {
+    const main = window.jmpInfo.settings.main, address = main.userWebClient || '';
+    return {address, mode: main.serverConnectionMode || savedMode(address)};
+}
+
 function savedServers() {
-    const main = window.jmpInfo.settings.main, current = main.userWebClient || '';
-    return window.TigerestServerHistory?.list(main.knownServers || '', {current, mode: main.serverConnectionMode || savedMode(current)}) || [];
+    const main = window.jmpInfo.settings.main, current = currentServer();
+    return window.TigerestServerHistory?.list(main.knownServers || '', {current: current.address, mode: current.mode}) || [];
 }
 
 function node(tag, className, text) {
@@ -195,7 +201,7 @@ function connectSaved(server) {
     mode = 'custom';
     replacingKey = null;
     cardErrors.delete(server.key);
-    return connectServers([server.address], {card: server.key});
+    return connectServers([server.address], {card: server.key, mode: 'custom', replacing: null});
 }
 
 function editSaved(server) {
@@ -215,7 +221,9 @@ function forgetSaved(key) {
     (next || el('choose-custom')).focus();
 }
 
-async function connectServers(servers, {card = null} = {}) {
+// Each attempt keeps the mode and replaced record it started with; any later
+// choice, Back or cancel bumps the generation so this attempt's answer is ignored.
+async function connectServers(servers, {card = null, mode: attemptMode = mode, replacing = replacingKey} = {}) {
     if (isConnecting) return;
     const generation = ++connectionGeneration;
     setConnecting(true);
@@ -237,14 +245,14 @@ async function connectServers(servers, {card = null} = {}) {
                 committingSelection = true;
                 const main = window.jmpInfo.settings.main;
                 const remembered = window.TigerestServerHistory && 'knownServers' in main
-                    ? window.TigerestServerHistory.remember(main.knownServers || '', {mode, address: server, replacing: replacingKey}) : '';
-                const accepted = await window.api.system.finishServerSelection(server, mode, resolvedUrl, remembered);
+                    ? window.TigerestServerHistory.remember(main.knownServers || '', {mode: attemptMode, address: server, replacing, current: currentServer()}) : '';
+                const accepted = await window.api.system.finishServerSelection(server, attemptMode, resolvedUrl, remembered);
                 if (accepted === false) throw new Error('无法切换服务器，请重试');
                 return;
             }
             // Keep the address and external port chosen by this user.
             window.jmpInfo.settings.main.userWebClient = server;
-            window.jmpInfo.settings.main.serverConnectionMode = mode;
+            window.jmpInfo.settings.main.serverConnectionMode = attemptMode;
             window.location = resolvedUrl;
             return;
         } catch (failure) {
@@ -266,6 +274,9 @@ async function connectServers(servers, {card = null} = {}) {
 }
 
 async function chooseMode(selected) {
+    if (committingSelection) return;
+    // A new choice supersedes any connection still pending, e.g. a saved card.
+    cancelConnection();
     mode = selected;
     replacingKey = null;
     const saved = window.jmpInfo.settings.main.userWebClient || '';
@@ -274,7 +285,7 @@ async function chooseMode(selected) {
         const generation = connectionGeneration;
         const onLan = await window.api.system.isAddressOnLocalSubnet(DEFAULT_LOCAL_SERVER_IP);
         if (generation !== connectionGeneration || mode !== 'tigerest') return;
-        await connectServers(onLan ? [DEFAULT_LOCAL_SERVER, DEFAULT_REMOTE_SERVER] : [DEFAULT_REMOTE_SERVER]);
+        await connectServers(onLan ? [DEFAULT_LOCAL_SERVER, DEFAULT_REMOTE_SERVER] : [DEFAULT_REMOTE_SERVER], {mode: 'tigerest', replacing: null});
     }
 }
 

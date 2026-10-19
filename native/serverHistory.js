@@ -68,11 +68,16 @@
 
     // The history after a successful connection. Metadata already learned for
     // the same server is kept; the native transaction commits this text only
-    // once the server's web page has loaded.
-    function remember(text, {mode, address, at = Date.now(), replacing = null}) {
+    // once the server's web page has loaded. `current` is the server in use
+    // before this connection: one saved before the list existed is kept as an
+    // undated record so the user can return to it, unless it is `replacing`.
+    function remember(text, {mode, address, at = Date.now(), replacing = null, current = null}) {
         const record = sanitize({mode, address, lastConnectedAt: at});
         if (!record) throw new Error('无效的服务器地址');
-        const servers = parse(text).filter(server => server.key !== replacing || replacing === record.key);
+        let servers = parse(text);
+        const migrated = current && sanitize({mode: current.mode, address: current.address});
+        if (migrated && !servers.some(server => server.key === migrated.key)) servers.push(migrated);
+        servers = servers.filter(server => server.key !== replacing || replacing === record.key);
         const previous = servers.find(server => server.key === record.key);
         const next = {...previous, ...record};
         if (mode === DEDICATED) delete next.serverId;

@@ -156,6 +156,85 @@ test('Back during a saved-server connection cancels it and a late answer is igno
     assert.equal(p.cards()[0].status.hidden, true);
 });
 
+test('upgrading: the migrated address survives the first new connection; failure and cancel record nothing', async () => {
+    const commits = [];
+    const p = page({ saved: 'https://old.example/emby/', mode: 'custom', switching: true, known: '',
+        connect: async url => { if (url.includes('down.example')) throw new Error('HTTP 502'); return `${url}web/index.html`; },
+        finishSelection: async (...values) => { commits.push(values); return true; } });
+    await settle();
+    await p.element('choose-custom').emit('click');
+    p.element('address').value = 'https://down.example/';
+    await p.element('connect-form').emit('submit');
+    assert.equal(commits.length, 0, 'a failed connection commits nothing');
+    p.element('address').value = 'https://new.example/jellyfin/';
+    await p.element('connect-form').emit('submit');
+    assert.deepEqual(commits[0].slice(0, 2), ['https://new.example/jellyfin/', 'custom']);
+    assert.deepEqual(history.parse(commits[0][3]).map(server => [server.address, server.lastConnectedAt > 0]),
+        [['https://new.example/jellyfin/', true], ['https://old.example/emby/', false]], 'the old address can still be chosen');
+    assert.equal(p.settings.main.knownServers, '', 'only the native commit writes the list');
+});
+
+test('upgrading: editing the migrated current address replaces it', async () => {
+    let args;
+    const p = page({ saved: 'https://old.example/emby/', mode: 'custom', switching: true, known: '',
+        finishSelection: async (...values) => { args = values; return true; } });
+    await settle();
+    await p.cards()[0].button('编辑地址').emit('click');
+    p.element('address').value = 'https://old.example:8920/emby/';
+    await p.element('connect-form').emit('submit');
+    assert.deepEqual(history.parse(args[3]).map(server => server.address), ['https://old.example:8920/emby/']);
+});
+
+// A saved-card answer that arrives after the user picked something else.
+function racingPage(lan) {
+    const answers = new Map(), commits = [];
+    const p = page({ saved: 'https://a.example/', mode: 'custom', switching: true, known: known(['https://a.example/'], ['https://b.example/']), lan,
+        connect: url => url.includes('b.example') ? new Promise(resolve => answers.set(url, resolve)) : `${url}web/index.html`,
+        finishSelection: async (...values) => { commits.push(values); return true; } });
+    return { p, commits, answerB: () => answers.get('https://b.example/')('https://b.example/web/index.html') };
+}
+
+test('choosing the dedicated server while a saved card connects drops the card answer', async () => {
+    let lookup;
+    const { p, commits, answerB } = racingPage(new Promise(resolve => { lookup = resolve; }));
+    await settle();
+    const card = p.cards().find(card => card.key === 'custom:https://b.example/').open.emit('click');
+    await settle();
+    const dedicated = p.element('choose-tigerest').emit('click');
+    answerB(); await card; await settle();
+    assert.equal(commits.length, 0, 'the card answer never commits, least of all as the dedicated server');
+    lookup(false); await dedicated; await settle();
+    assert.deepEqual(commits.map(args => args.slice(0, 2)), [['http://nas.tigerest.top:8095/', 'tigerest']]);
+    assert.deepEqual(history.parse(commits[0][3]).map(server => [server.mode, server.address]),
+        [['tigerest', 'http://nas.tigerest.top:8095/'], ['custom', 'https://b.example/'], ['custom', 'https://a.example/']]);
+});
+
+test('adding a server while a saved card connects drops the card answer', async () => {
+    const { p, commits, answerB } = racingPage(false);
+    await settle();
+    const card = p.cards().find(card => card.key === 'custom:https://b.example/').open.emit('click');
+    await settle();
+    await p.element('choose-custom').emit('click');
+    assert.equal(p.element('connect-form').hidden, false);
+    answerB(); await card; await settle();
+    assert.equal(commits.length, 0);
+    p.element('address').value = 'https://c.example/';
+    await p.element('connect-form').emit('submit');
+    assert.deepEqual(commits.map(args => args.slice(0, 2)), [['https://c.example/', 'custom']]);
+});
+
+test('a late saved-card answer after returning to the list neither commits nor marks the card', async () => {
+    const { p, commits, answerB } = racingPage(false);
+    await settle();
+    const card = p.cards().find(card => card.key === 'custom:https://b.example/').open.emit('click');
+    await settle();
+    await p.element('choose-custom').emit('click');
+    await p.element('back-button').emit('click');
+    answerB(); await card; await settle();
+    assert.equal(commits.length, 0);
+    assert.ok(p.cards().every(card => card.status.hidden && !card.open.disabled));
+});
+
 test('removing a server needs confirmation and only edits the list', async () => {
     const p = page({ saved: 'https://a.example/', mode: 'custom', switching: true, known: known(['https://a.example/'], ['https://b.example/', { name: 'Beta' }]) });
     await settle();

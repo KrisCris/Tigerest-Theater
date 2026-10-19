@@ -1762,6 +1762,15 @@ function openClientMenu(anchor) {
     menu.querySelector('[role="menuitem"]').focus({preventScroll: true});
 }
 
+// The user button of the visible header; client header buttons mount beside
+// it. Jellyfin's Modern layout keeps a hidden legacy header beside its app
+// bar, which may render later; its user menu marks the visible toolbar.
+function headerUserAnchor() {
+    const modern = window.TigerestServer?.kind !== 'emby' ? document.querySelector('[aria-controls="app-user-menu"]') : null;
+    if (modern?.parentElement) { modern.parentElement.classList.add('tigerest-header-actions'); return modern; }
+    return window.TigerestServer?.headerUserButton() || document.querySelector('.headerUserButton');
+}
+
 function installMpvSettingsEntry() {
     // The native shell is injected at DocumentCreation, before <head> and
     // <html> necessarily exist. Defer mounting instead of aborting the rest
@@ -1776,17 +1785,10 @@ function installMpvSettingsEntry() {
     // One client menu holds the current server, server switching, player
     // settings and offline media. Its id predates the menu; the update entry
     // and the Android toolbar layout anchor to it.
-    // Jellyfin's Modern layout keeps a hidden legacy header beside its app
-    // bar, which may render later; its user menu marks the visible toolbar.
-    const userMenuButton = () => {
-        const modern = window.TigerestServer?.kind !== 'emby' ? document.querySelector('[aria-controls="app-user-menu"]') : null;
-        if (modern?.parentElement) { modern.parentElement.classList.add('tigerest-header-actions'); return modern; }
-        return window.TigerestServer?.headerUserButton() || document.querySelector('.headerUserButton');
-    };
     const mount = () => {
         const existing = document.getElementById('tigerest-mpv-settings-button');
         if (existing && window.TigerestServer?.kind === 'emby') return;
-        const userButton = userMenuButton();
+        const userButton = headerUserAnchor();
         if (existing) {
             if (userButton?.parentElement && existing.parentElement !== userButton.parentElement) {
                 closeClientMenu(false);
@@ -1883,15 +1885,20 @@ function installWindowModeEntry() {
     };
     const bound = new WeakSet();
     const mount = () => {
-        if (!document.getElementById('tigerest-window-mode-button')) {
-            const userButton = window.TigerestServer?.headerUserButton() || document.querySelector('.headerUserButton');
-            if (userButton?.parentElement) {
-                const button = document.createElement('button');
+        // Same host as the client menu; follows it when Jellyfin's app bar
+        // replaces the hidden legacy header.
+        const existing = document.getElementById('tigerest-window-mode-button');
+        const userButton = existing && window.TigerestServer?.kind === 'emby' ? null : headerUserAnchor();
+        const host = userButton?.parentElement;
+        if (host && existing?.parentElement !== host) {
+            let button = existing;
+            if (!button) {
+                button = document.createElement('button');
                 button.id = 'tigerest-window-mode-button'; button.type = 'button';
                 button.className = 'headerButton headerSectionItem paper-icon-button-light emby-button-focusscale';
-                const settingsButton = document.getElementById('tigerest-mpv-settings-button');
-                userButton.parentElement.insertBefore(button, settingsButton || userButton);
             }
+            const settingsButton = document.getElementById('tigerest-mpv-settings-button');
+            host.insertBefore(button, settingsButton?.parentElement === host ? settingsButton : userButton);
         }
         for (const button of buttons()) {
             if (bound.has(button)) continue;
