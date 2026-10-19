@@ -36,6 +36,8 @@
 
     const base = serverBase(window.location);
     let {kind, version} = readCache(base);
+    // The server's own name and id, for the client's remembered-server list.
+    let identity = null;
 
     // Compares the server version with major.minor; unknown counts as older.
     function atLeast(major, minor = 0) {
@@ -58,6 +60,7 @@
     function remember(info) {
         const detected = classify(info);
         if (!detected) return kind;
+        identity = {name: String(info.ServerName || ''), serverId: String(info.Id || '')};
         const detectedVersion = String(info.Version || '');
         if (detected !== kind || detectedVersion !== version) {
             const changed = detected !== kind;
@@ -92,6 +95,7 @@
         get kind() { return kind; },
         get version() { return version; },
         get base() { return base; },
+        get identity() { return identity; },
         isJellyfin() { return kind === 'jellyfin'; },
         isEmby() { return kind === 'emby'; },
         ready,

@@ -914,8 +914,17 @@ void SystemComponent::openServerSettings()
   emit serverSettingsRequested();
 }
 
-bool SystemComponent::finishServerSelection(const QString& server, const QString& mode, const QString& target)
+bool SystemComponent::finishServerSelection(const QString& server, const QString& mode, const QString& target, const QString& history)
 {
+  // The remembered-server list is committed with a successful page load only.
+  // Accept one bounded JSON document; its records are validated by the chooser.
+  if (!history.isEmpty())
+  {
+    const QJsonDocument document = QJsonDocument::fromJson(history.toUtf8());
+    if (history.size() > 32768 || !document.isObject() || !document.object().value("servers").isArray() ||
+        document.object().value("servers").toArray().size() > 20)
+      return false;
+  }
   const QUrl source(server), destination(target);
   if (!source.isValid() || !destination.isValid() || source.host().isEmpty() ||
       (source.scheme() != "http" && source.scheme() != "https") ||
@@ -923,7 +932,7 @@ bool SystemComponent::finishServerSelection(const QString& server, const QString
       source.scheme() != destination.scheme() || source.host() != destination.host() ||
       source.port(source.scheme() == "https" ? 443 : 80) != destination.port(destination.scheme() == "https" ? 443 : 80) ||
       (mode != "custom" && mode != "tigerest")) return false;
-  emit serverSelectionFinished(server, mode, target);
+  emit serverSelectionFinished(server, mode, target, history);
   return true;
 }
 
@@ -1072,6 +1081,7 @@ QString SystemComponent::getNativeShellScript()
     ":/web-client/extension/jellyfinPlugin.js",
     ":/web-client/extension/updatePlugin.js",
     ":/web-client/extension/connectivityHelper.js",
+    ":/web-client/extension/serverHistory.js",
     ":/web-client/extension/nativeshell.js",
     ":/web-client/extension/offline.js",
     ":/web-client/extension/homeData.js",

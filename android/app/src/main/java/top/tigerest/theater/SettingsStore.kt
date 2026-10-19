@@ -14,7 +14,7 @@ class SettingsStore(context: Context) {
     var changed: (String, JSONObject) -> Unit = { _, _ -> }
     private val supported = mapOf(
         "home" to setOf("displayOrder","libraryLayout"),
-        "main" to setOf("enableMPV","allowBrowserZoom","userWebClient","serverConnectionMode","checkForUpdates"),
+        "main" to setOf("enableMPV","allowBrowserZoom","userWebClient","serverConnectionMode","knownServers","checkForUpdates"),
         "audio" to setOf("channels","normalize"),
         "video" to setOf("hardwareDecoding","deinterlace","cache","aspect","sync_mode","default_playback_speed","audio_delay.normal","force_transcode_hevc","force_transcode_4k","force_transcode_av1","force_transcode_hdr","force_transcode_hi10p","force_transcode_dovi","always_force_transcode","allow_transcode_to_hevc","prefer_transcode_to_h265"),
         "mpv" to setOf("enableDanmaku","audioLanguage","subtitleLanguage","cachePause","deband","toneMapping"),

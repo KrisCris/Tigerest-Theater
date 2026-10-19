@@ -1,0 +1,76 @@
+// The shipped chooser page, stylesheet and remembered-server model in Chrome.
+// The native connectivity check and selection transaction are the doubles.
+const assert = require('node:assert/strict'), path = require('node:path'), withBrowser = require('./community_browser.cjs');
+const native = file => path.join(__dirname, '../native', file);
+const history = require('../native/serverHistory.js');
+let known = '';
+for (const [n, [address, name, kind]] of [['http://[fe80::2]:8096/', '', ''], ['https://media.example.org:8920/jellyfin/', 'Living room media server with a very long name', 'jellyfin'],
+    ['https://other.example/emby/', '<img src=x onerror="window.injected=1">', 'emby']].entries())
+    known = history.annotate(history.remember(known, {mode: 'custom', address, at: 1_700_000_000_000 + n}), {mode: 'custom', address, name, kind});
+const bootstrap = `<script>
+window.injected = 0; window.commits = []; window.checks = [];
+window.jmpInfo = {settings: {main: {userWebClient: 'https://media.example.org:8920/jellyfin/', serverConnectionMode: 'custom', knownServers: ${JSON.stringify(known)}}}};
+window.api = {system: {isAddressOnLocalSubnet: async () => false, cancelServerConnectivity() {},
+  finishServerSelection: async (...args) => { commits.push(args); return true; }}};
+window.apiPromise = Promise.resolve(window.api);
+window.jmpCheckServerConnectivity = async url => { checks.push(url); if (url.includes('other.example')) throw new Error('HTTP 502'); return url + 'web/index.html'; };
+window.jmpCheckServerConnectivity.abort = () => {};
+window.tigerestOpenOfflineLibrary = () => {};
+history.replaceState(null, '', '/find-webclient.html?choose=1');
+</script>`;
+const html = require('node:fs').readFileSync(native('find-webclient.html'), 'utf8').replace('<link rel="stylesheet"', bootstrap + '<link rel="stylesheet"');
+const routes = {'/': {type: 'text/html', body: html}, '/find-webclient.html': {type: 'text/html', body: html}, '/find-webclient.css': {type: 'text/css', path: native('find-webclient.css')},
+    '/serverHistory.js': {path: native('serverHistory.js')}, '/find-webclient.lang.js': {path: native('find-webclient.lang.js')},
+    '/find-webclient.js': {path: native('find-webclient.js')}, '/logo.png': {type: 'image/png', path: native('logo.png')}};
+withBrowser(routes, async ({evaluate, call}) => {
+    const settle = () => evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
+    for (const [width, height] of [[390, 844], [600, 900], [847, 948], [948, 847], [1280, 800]]) {
+        await call('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor: 1, mobile: width < 900});
+        await evaluate('document.documentElement.dataset.stale = 1, location.reload()');
+        const ready = () => evaluate(`!document.documentElement.dataset.stale && document.querySelectorAll('.saved-server').length === 3`).catch(() => false);
+        for (let i = 0; i < 100 && !await ready(); i++) await new Promise(resolve => setTimeout(resolve, 30));
+        const layout = await evaluate(`(() => {
+          const cards = [...document.querySelectorAll('.saved-server')], rect = node => node.getBoundingClientRect();
+          return {cards: cards.map(card => ({name: card.querySelector('.saved-server-name').textContent, current: !!card.querySelector('.saved-server-tag'),
+              inside: rect(card).left >= 0 && rect(card).right <= innerWidth + 0.5,
+              overlap: [...card.querySelectorAll('.saved-server-name,.saved-server-meta,.saved-server-tag')].some((a, i, all) => all.slice(i + 1).some(b => {
+                const x = rect(a), y = rect(b); return x.left < y.right - 1 && y.left < x.right - 1 && x.top < y.bottom - 1 && y.top < x.bottom - 1; }))})),
+            scroll: document.documentElement.scrollWidth <= innerWidth, injected: window.injected, images: document.querySelectorAll('#saved-server-list img').length,
+            options: rect(document.querySelector('.server-options')).top >= rect(document.querySelector('#saved-servers')).bottom};
+        })()`);
+        assert.deepEqual(layout.cards.map(card => [card.name, card.current]), [['<img src=x onerror="window.injected=1">', false],
+            ['Living room media server with a very long name', true], ['[fe80::2]:8096', false]], width + ': cards in recent order');
+        assert.ok(layout.cards.every(card => card.inside && !card.overlap), width + ': cards fit without overlap ' + JSON.stringify(layout.cards));
+        assert.equal(layout.scroll, true, width + ': no sideways scroll');
+        assert.equal(layout.injected + layout.images, 0, 'server names are text');
+        assert.equal(layout.options, true, width + ': add/dedicated choices stay below the list');
+        if (process.env.TIGEREST_PICKER_SCREENSHOTS) require('node:fs').writeFileSync(path.join(process.env.TIGEREST_PICKER_SCREENSHOTS, 'picker-' + width + '.png'),
+            Buffer.from((await call('Page.captureScreenshot', {format: 'png', captureBeyondViewport: true})).data, 'base64'));
+    }
+    // Keyboard: the card is a focusable button with a visible outline.
+    await evaluate(`document.querySelector('.saved-server-open').focus()`);
+    assert.notEqual(await evaluate(`getComputedStyle(document.activeElement).outlineStyle`), 'none');
+    // An offline server shows its error on its card; retry and remove stay available.
+    await evaluate(`document.querySelector('.saved-server-open').click()`);
+    for (let i = 0; i < 20 && !await evaluate(`!!document.querySelector('.saved-server-status.is-error:not([hidden])')`); i++) await settle();
+    const failed = await evaluate(`(() => { const card = document.querySelector('.saved-server');
+      return {error: card.querySelector('.saved-server-status').textContent, actions: [...card.querySelectorAll('.saved-server-actions button')].map(b => b.textContent),
+        cards: document.querySelectorAll('.saved-server').length, commits: commits.length}; })()`);
+    assert.match(failed.error, /502/);
+    assert.deepEqual(failed.actions, ['重试', '编辑地址', '移除']);
+    assert.equal(failed.cards, 3);
+    assert.equal(failed.commits, 0);
+    // Removal asks first, then removes only that record.
+    await evaluate(`[...document.querySelector('.saved-server').querySelectorAll('button')].find(b => b.textContent === '移除').click()`);
+    assert.equal(await evaluate(`document.activeElement.textContent`), '保留', 'confirmation takes focus');
+    await evaluate(`[...document.querySelector('.saved-server').querySelectorAll('button')].find(b => b.textContent === '确认移除').click()`);
+    const removed = await evaluate(`({names: [...document.querySelectorAll('.saved-server-name')].map(n => n.textContent), saved: JSON.parse(jmpInfo.settings.main.knownServers).servers.length})`);
+    assert.deepEqual(removed, {names: ['Living room media server with a very long name', '[fe80::2]:8096'], saved: 2});
+    // A reachable card hands the native transaction its updated list.
+    await evaluate(`document.querySelectorAll('.saved-server-open')[1].click()`);
+    for (let i = 0; i < 20 && !await evaluate('commits.length'); i++) await settle();
+    const commit = await evaluate('commits[0]');
+    assert.deepEqual(commit.slice(0, 3), ['http://[fe80::2]:8096/', 'custom', 'http://[fe80::2]:8096/web/index.html']);
+    assert.equal(history.parse(commit[3])[0].address, 'http://[fe80::2]:8096/');
+    console.log(JSON.stringify({passed: true, widths: 5, cards: 3}));
+}).catch(error => { console.error(error); process.exitCode = 1; });

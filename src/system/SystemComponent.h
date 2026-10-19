@@ -75,8 +75,8 @@ public:
   Q_INVOKABLE void openExternalUrl(const QString& url);
   Q_INVOKABLE void openServerSettings();
   Q_SIGNAL void serverSettingsRequested();
-  Q_INVOKABLE bool finishServerSelection(const QString& server, const QString& mode, const QString& target);
-  Q_SIGNAL void serverSelectionFinished(const QString& server, const QString& mode, const QString& target);
+  Q_INVOKABLE bool finishServerSelection(const QString& server, const QString& mode, const QString& target, const QString& history);
+  Q_SIGNAL void serverSelectionFinished(const QString& server, const QString& mode, const QString& target, const QString& history);
   Q_INVOKABLE void markServerSelectionError() { m_serverSelectionError = true; }
   Q_INVOKABLE bool takeServerSelectionError() { const bool failed = m_serverSelectionError; m_serverSelectionError = false; return failed; }
 

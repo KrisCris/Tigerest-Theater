@@ -59,7 +59,7 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
             else -> throw IllegalArgumentException("设置操作无效")
         }
         "system" -> when(method) {
-            "finishServerSelection" -> activity.webHost.finishServerSelection(args.getString(0),args.getString(1),args.getString(2))
+            "finishServerSelection" -> activity.webHost.finishServerSelection(args.getString(0),args.getString(1),args.getString(2),args.optString(3,""))
             "takeServerSelectionError" -> activity.webHost.takeServerSelectionError()
             "communityRequest" -> { community.request(args.getString(0),args.getJSONObject(1)); true }
             "communitySourceAvatar" -> { community.sourceAvatar(args.getString(0),args.getJSONObject(1)); true }

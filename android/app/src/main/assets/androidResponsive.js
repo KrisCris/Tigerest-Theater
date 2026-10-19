@@ -1,7 +1,8 @@
 (function () {
     let header, headerResize, headerChanges, frame, disposed=false, savedHeaderHeight=null;
     let actionsHost, more, menu, secondary=[];
-    const primary='#tigerest-message-entry,#tigerest-update-button,.headerUserButton';
+    // The client menu holds server switching, so it stays on the compact row.
+    const primary='#tigerest-message-entry,#tigerest-update-button,#tigerest-mpv-settings-button,.headerUserButton';
     function closeMenu() {
         if (menu?.open) menu.close();
         more?.setAttribute('aria-expanded','false');

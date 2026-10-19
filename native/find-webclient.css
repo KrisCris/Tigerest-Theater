@@ -31,6 +31,24 @@ button:disabled { opacity: .55; cursor: default; }
 #spinner { display: inline-block; flex-shrink: 0; width: 18px; height: 18px; border: 2px solid #5a4b32; border-top-color: #e4b258; border-radius: 50%; animation: spin .8s linear infinite; }
 #connection-error { color: #f0aaa0; background: #402625; border-radius: 8px; padding: 12px; line-height: 1.7; font-size: 14px; overflow-wrap: anywhere; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+#saved-servers { margin: 0 0 26px; text-align: left; }
+#saved-title { font-size: 15px; font-weight: 600; color: #e4b258; letter-spacing: .08em; margin: 0 0 4px; }
+.saved-help { color: #8f897f; font-size: 12px; line-height: 1.6; margin: 0 0 12px; }
+#saved-server-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.saved-server { border: 1px solid #4b4335; border-radius: 12px; background: #22201de6; padding: 4px 14px 10px; }
+.saved-server.is-current { border-color: #a88a50; }
+.saved-server-open { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; width: 100%; padding: 10px 0 6px; text-align: left; background: none; border: 0; color: inherit; }
+.saved-server-name { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.saved-server-meta { grid-column: 1; color: #aaa59d; font-size: 13px; overflow-wrap: anywhere; }
+.saved-server-tag, .option-badge { grid-column: 2; grid-row: 1; align-self: start; padding: 1px 8px; border-radius: 999px; background: #4a3a1e; color: #f0c675; font-size: 12px; white-space: nowrap; }
+.option-badge { position: absolute; top: 20px; right: 64px; }
+.saved-server-status { margin: 2px 0 6px; color: #c6b99f; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.saved-server-status.is-error { color: #f0aaa0; }
+.saved-server-actions, .saved-server-confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.saved-server-confirm p { flex: 1 1 100%; margin: 4px 0; color: #e7c9a0; font-size: 13px; line-height: 1.6; }
+.saved-server-action { min-height: 36px; padding: 6px 12px; border: 1px solid #5a4b32; border-radius: 8px; background: #2c2822; color: #e9dcc3; font-size: 13px; }
+.saved-server-action:hover:not(:disabled) { border-color: #e3b35c; }
+.saved-server-action.is-danger { border-color: #7a3d36; color: #f0aaa0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 580px) { #container { padding: 26px 18px; } .logo { margin-bottom: 26px; } .server-options { grid-template-columns: 1fr; gap: 12px; } .server-option { min-height: 135px; padding: 20px; gap: 12px; font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .server-option { transition: none; } }
