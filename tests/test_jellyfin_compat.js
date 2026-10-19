@@ -196,6 +196,19 @@ test('Jellyfin gets the community, watch-together and home gallery with its own 
     assert.ok(!page.tab.classList.contains('tg-jellyfin-home'));
 });
 
+test('Modern favorites uses its route even when a hidden Legacy tab button remains', async () => {
+    const page = jellyfinPage(), shown = [];
+    let legacyClicks = 0;
+    page.context.document.querySelector = selector => selector.includes('MuiAppBar') ? {}
+        : selector.includes('emby-tab-button') ? { click: () => legacyClicks++ } : null;
+    const plugin = new page.context._tigerestJellyfinPlugin({events:{on(){}},
+        appRouter:{show: route => { shown.push(route); return Promise.resolve(); }},
+        ServerConnections:{currentApiClient:()=>null}});
+    await plugin.home.openFavorites();
+    assert.deepEqual(shown, ['/home?tab=1']);
+    assert.equal(legacyClicks, 0, 'a hidden tab must not desynchronize Modern route state');
+});
+
 test('a first visit to Jellyfin is not recorded as an Emby server', () => {
     const context = {
         console: { info() {}, warn() {} }, AbortController, URL, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},

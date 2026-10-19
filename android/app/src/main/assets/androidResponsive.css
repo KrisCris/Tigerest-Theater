@@ -7,6 +7,9 @@ button,select,input,textarea { font-size:16px; }
 .tgs-action { min-height:48px; }
 /* Backgrounds cover the window; only content and controls avoid system occlusion. */
 body .skinHeader { padding-top:var(--tgs-safe-top) !important; padding-left:0 !important; padding-right:0 !important; }
+/* Jellyfin 12.2's Modern layout replaces .skinHeader with a fixed MUI app bar and
+   sizes the spacer after it from the bar's content box, which padding stays out of. */
+body #reactRoot .MuiAppBar-positionFixed:not(.skinHeader):has(+ div[aria-hidden="true"]:not([class]))::before { content:""; display:block; flex:none; height:var(--tgs-safe-top); }
 body .headerTop { padding-left:max(8px,var(--tgs-safe-left)) !important; padding-right:max(8px,var(--tgs-safe-right)) !important; }
 body .headerRight { flex-wrap:nowrap; flex-shrink:0; }
 body .headerLeft,body .headerMiddle { min-width:0; }

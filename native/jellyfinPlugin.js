@@ -9,6 +9,14 @@
     const css = `
     #homeTab.tg-jellyfin-home > .sections { display: none !important; }
     #homeTab.tg-jellyfin-home { padding: 0 !important; }
+    /* The gallery owns the shown home and pads the safe area itself, but the
+       page shell keeps the room of the navigation above it: the Legacy page
+       pads below .skinHeader, Modern 10.x pads below its fixed app bar and
+       Modern 12.2 puts a spacer under that bar. The homeGallery hides
+       .skinHeader; the Modern app bar and its spacer go with it. */
+    body.tg-home-active .page.tg-jellyfin-home-page { padding-top: 0 !important; }
+    body.tg-home-active #reactRoot .MuiAppBar-positionFixed:not(.skinHeader),
+    body.tg-home-active #reactRoot .MuiAppBar-positionFixed:not(.skinHeader) + div[aria-hidden="true"]:not([class]) { display: none !important; }
     `;
 
     // Both Jellyfin layouts keep the home tab in #homeTab and its favorites in
@@ -17,7 +25,7 @@
     function JellyfinHome({appRouter, connections}) {
         this.appRouter = appRouter;
         this.connections = connections;
-        this.tab = null; this.host = null; this.gallery = null; this.shown = false;
+        this.tab = null; this.page = null; this.host = null; this.gallery = null; this.shown = false;
         this.sync = () => this.update();
         document.addEventListener('viewshow', this.sync);
         this.timer = setInterval(this.sync, 400);
@@ -29,6 +37,11 @@
     };
     JellyfinHome.prototype.openFavorites = function () {
         // The legacy layout has emby-tabs; the Modern one reads the tab from the address.
+        // Modern keeps hidden Legacy tab buttons too. Clicking those changes the
+        // tab without changing the route, so returning to /home cannot restore it.
+        if (document.querySelector('#reactRoot .MuiAppBar-positionFixed:not(.skinHeader)')) {
+            return Promise.resolve(this.appRouter.show('/home?tab=1'));
+        }
         const page = this.tab?.closest('.page') || document;
         const button = page.querySelector?.('.emby-tab-button[data-index="1"]') || document.querySelector('.headerTabs .emby-tab-button[data-index="1"]');
         if (button) { button.click(); return Promise.resolve(); }
@@ -47,9 +60,10 @@
             if (!document.getElementById(styleId)) {
                 const style = document.createElement('style'); style.id = styleId; style.textContent = css; document.head.append(style);
             }
-            this.tab = tab;
+            this.tab = tab; this.page = tab.closest('.page');
             this.host = document.createElement('div');
             tab.classList.add('tg-jellyfin-home');
+            this.page?.classList.add('tg-jellyfin-home-page');
             tab.prepend(this.host);
             this.gallery = new window.TigerestHomeGallery(this.host, {apiProvider: () => this.connections.currentApiClient?.(),
                 router: this.appRouter, openFavorites: () => this.openFavorites()});
@@ -63,7 +77,8 @@
         this.gallery?.destroy();
         this.host?.remove();
         this.tab?.classList.remove('tg-jellyfin-home');
-        this.tab = this.host = this.gallery = null; this.shown = false;
+        this.page?.classList.remove('tg-jellyfin-home-page');
+        this.tab = this.page = this.host = this.gallery = null; this.shown = false;
     };
     JellyfinHome.prototype.destroy = function () {
         clearInterval(this.timer);
