@@ -147,6 +147,9 @@
        would otherwise move only the title, and a pinned poster clears the
        header by the measured amount. */
     @media not all and (max-width: 62.5em) {
+      /* Keep the floating artwork out of the adjacent flex ribbon's layout.
+         WebKit otherwise adds the float width to the ribbon's own gutter. */
+      html.layout-desktop #itemDetailPage .detailPagePrimaryContainer > .detailImageContainer { display: flow-root; height: 0; }
       html.layout-desktop.tg-jf-detail-aligned #itemDetailPage .detailRibbon { padding-inline-start: var(--tg-jf-content-start) !important; }
     }
     html.layout-desktop #itemDetailPage .detailImageContainer .card { translate: 0 var(--tg-jf-card-shift, 0px); }
