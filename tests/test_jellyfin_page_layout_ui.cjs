@@ -136,6 +136,24 @@ function setup() {
         return failures;
     };
 
+    window.checkToolbar = async (width, height) => {
+        const failures=[];
+        for (const android of [false,true]) for (const theme of [false,true]) for (const home of [false,true]) {
+            const safe=environment({android,theme,width,height});
+            const page=await show(shell('legacy',safe,`<div id="${home?'indexPage':'tvPage'}" class="page libraryPage pageWithAbsoluteTabs mainAnimatedPage ${home?'homePage':''}"><div id="first-poster" style="width:80px;height:120px;background:#345"></div></div>`));
+            const header=document.querySelector('.skinHeader');
+            header.insertAdjacentHTML('beforeend','<div class="headerTabs sectionTabs"><div class="emby-tabs" style="display:flex;overflow-x:auto"><button style="flex-shrink:0;height:44px">Shows</button><button style="flex-shrink:0;height:44px">Suggestions</button><button style="flex-shrink:0;height:44px">Upcoming</button></div></div>');
+            page.dispatchEvent(new CustomEvent('viewshow',{bubbles:true}));await settle();
+            const top=box(header.querySelector('.headerTop')),tabs=box(header.querySelector('.headerTabs')),first=box(page.querySelector('#first-poster')),h=box(header);
+            const label=`${width} toolbar android=${android} theme=${theme} home=${home}`;
+            if(tabs.y<top.b-.5) failures.push(label+': tabs overlap the toolbar');
+            if(first.y<h.b) failures.push(label+': first poster is covered');
+            const css=getComputedStyle(header.querySelector('.headerTop'));
+            if(parseFloat(css.paddingTop)>12 || parseFloat(css.paddingBottom)>12) failures.push(label+': excessive toolbar padding');
+        }
+        return failures;
+    };
+
     window.checkStandalone = async (width, height) => {
         const failures = [];
         const pages = {
@@ -202,6 +220,7 @@ withBrowser({
         await call('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor: 1, mobile: true});
         failures.push(...await evaluate(`checkDetail(${width},${height})`));
         failures.push(...await evaluate(`checkStandalone(${width},${height})`));
+        failures.push(...await evaluate(`checkToolbar(${width},${height})`));
     }
     assert.equal(failures.length, 0, `${failures.length} layout failures:\n${failures.slice(0, process.env.TIGEREST_LAYOUT_ALL ? Infinity : 80).join('\n')}`);
     console.log(JSON.stringify({passed: true, widths: [390, 600, 847, 948, 1280]}));

@@ -2,6 +2,9 @@
    a server's custom CSS) that move the detail poster and the header. Written
    to reproduce its selectors and values; it is not a copy of the theme. */
 .headerTop { padding: 2em 0 !important; }
+.headerTabs.sectionTabs { font-size: 110%; padding-top: 8px; margin-top: -2em; width: fit-content; max-width: 95vw; align-self: center; border-radius: 50px; }
+@media (min-width: 75em) { .headerTabs.sectionTabs { margin-top: -4.9em !important; } }
+body:has(#indexPage.homePage:not(.hide)) .headerTabs.sectionTabs { margin-top: -4.9em !important; }
 .skinHeader { background-color: transparent; }
 .pageTitle.pageTitleWithLogo.pageTitleWithDefaultLogo, #itemDetailPage .pageTitle { display: none !important; }
 .layout-tv .itemBackdrop, .layout-desktop .itemBackdrop { height: 20vh !important; }
