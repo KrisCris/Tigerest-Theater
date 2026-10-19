@@ -41,8 +41,10 @@
     window._tigerestAuthorizedStreamUrl = authorizedStreamUrl;
 
     class mpvVideoPlayer {
-        constructor({ events, loading, appRouter, globalize, appHost, appSettings, confirm, dashboard, connectionManager, ServerConnections }) {
+        constructor({ events, loading, appRouter, globalize, appHost, appSettings, confirm, dashboard, connectionManager, ServerConnections, playbackManager }) {
             this.events = events;
+            // Passed by Jellyfin's plugin manager only.
+            this.playbackManager = playbackManager;
             // Jellyfin's plugin manager passes the same API client registry as ServerConnections.
             this.connectionManager = connectionManager || ServerConnections;
             this.loading = loading;
@@ -191,6 +193,7 @@
                 // synchronous stop into the terminating native VO.
                 this._nativeStopRequested = true;
                 const canceledSessionId = this._sessionId;
+                if (this._sessionActive) this.declineNextItem();
                 if (this.onEndedInternal({playNext: false, resetPlayQueue: true})) {
                     // Native Escape/UOSC stop bypasses the web player's stop()
                     // method.  Explicit user cancellation must also opt out of
@@ -729,6 +732,16 @@
             const relIndex = index < 0 ? -1 : this.getRelativeIndexByType(streams, index, 'Audio');
             console.log('[MPV] Mapped audio index:', index, '->', relIndex);
             window.api.player.setAudioStream(relIndex != null ? relIndex : -1);
+        }
+
+        // Jellyfin's playback manager ignores the stop info's playNext: its
+        // 'stopped' handler starts the next queue item unless its own stop()
+        // cleared _playNextAfterEnded first. A native cancel (player or system
+        // Back, media-session stop) bypasses that stop(), so clear it the same
+        // way. Natural end of file keeps Jellyfin's autoplay setting.
+        declineNextItem() {
+            const manager = this.playbackManager;
+            if (manager && typeof manager._playNextAfterEnded === 'boolean') manager._playNextAfterEnded = false;
         }
 
         onEndedInternal(stopOptions = {}) {
