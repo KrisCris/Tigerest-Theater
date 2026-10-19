@@ -7,7 +7,8 @@ public struct SettingsPolicy: Sendable {
         switch (expected, value) {
         case (.bool, .bool): break
         case (.string, .string(let text)):
-            guard text.utf8.count <= 4096 else { throw CoreError.invalidSetting }
+            if section == "main", key == "knownServers" { try ServerHistory.validate(text) }
+            else { guard text.utf8.count <= 4096 else { throw CoreError.invalidSetting } }
         case (.number, .number(let number)):
             guard number.isFinite else { throw CoreError.invalidSetting }
             let ranges: [String: ClosedRange<Double>] = [

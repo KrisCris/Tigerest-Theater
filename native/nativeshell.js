@@ -1788,8 +1788,20 @@ function installMpvSettingsEntry() {
     // One client menu holds the current server, server switching, player
     // settings and offline media. Its id predates the menu; the update entry
     // and the Android toolbar layout anchor to it.
+    const bound = new WeakSet();
+    const bind = button => {
+        if (bound.has(button)) return;
+        bound.add(button);
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (clientMenu?.isConnected) closeClientMenu();
+            else openClientMenu(button);
+        });
+    };
     const mount = () => {
         const existing = document.getElementById('tigerest-mpv-settings-button');
+        if (existing) bind(existing);
         if (existing && window.TigerestServer?.kind === 'emby') return;
         const userButton = headerUserAnchor();
         if (existing) {
@@ -1811,12 +1823,7 @@ function installMpvSettingsEntry() {
         button.setAttribute('aria-label', '客户端菜单：切换服务器、播放器设置');
         button.setAttribute('aria-haspopup', 'menu');
         button.setAttribute('aria-expanded', 'false');
-        button.addEventListener('click', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            if (clientMenu?.isConnected) closeClientMenu();
-            else openClientMenu(button);
-        });
+        bind(button);
         userButton.parentElement.insertBefore(button, userButton);
     };
 

@@ -62,3 +62,32 @@ Files: private external evidence scripts, repository result document, UI regress
 - [ ] One independent whole-branch review, with privacy-safe source/tests/spec/ledger only. Resolve material findings and rerun affected tests.
 - [ ] Commit final source; regenerate resources at that HEAD. Build normal Release iPad/tvOS unsigned IPAs and ad-hoc Mac DMG; verify resource revision, font/RIFE rules, signature/dependencies, and isolated packaged playback.
 - [ ] Export incremental Git bundle from both known parent lines, Apple patch, exact source/hash manifest, redacted evidence, commands, and limitations to the shared folder. Read back hashes/ZIP CRC. Stop owned services and restore temporary preferences.
+
+## Added scope: Windows 6fe1b3d unified servers/menu (source 15f9093)
+
+User authorized new shared increments and direct fixes. Contract:
+`../specs/2026-10-19-server-history-contract.md`.
+
+5. Merge cumulative source, retain Apple transaction and clone rebinding.
+   Prove shared history/menu/chooser in Node, Chrome and native Qt. Preserve
+   native bridge publication order and React overlay routing.
+6. Add AppleCore history canonicalization, migration, metadata, edit/remove,
+   limits and validation. RED/GREEN parity tests and SettingsPolicy tests.
+7. Extend iPad native sheet and atomic load-success commit with per-profile
+   history. Current record cannot be removed; credentials remain origin-owned.
+   Freeze mode/edit key per attempt. Test real HTML failure/cancel, A/B return,
+   editing, restart and profile isolation with an isolated device identity.
+8. Extend TV native picker and secure per-server session retention. Commit
+   current session/history only after successful authenticated library load.
+   Preserve current browsing session until candidate succeeds, cancel stale
+   work, retain cached authentication when forgetting list-only metadata.
+   Test native server selection and playback on actual TV.
+9. Regenerate resources and build final Mac/iPad/TV. Revalidate new menu and
+   key actual server interactions; label retained older animation evidence by
+   SHA. Review added code, fix findings with reproductions, export sanitized
+   bundles/packages/report to NAS and verify hashes.
+
+Ruling: existing user's execute-handoff authorization covers the supplied
+contract and native adaptations; no new design approval is needed. iPad
+continues staged WK document commit; TV uses authenticated library success
+because its native application has no HTML document.
