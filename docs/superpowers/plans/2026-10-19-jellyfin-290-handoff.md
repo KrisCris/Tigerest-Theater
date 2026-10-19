@@ -166,3 +166,7 @@ Claude 日志于 17:36:01 JST 明确提示周额度耗尽。按用户授权，Co
 - 本轮产品源码写入结束，只有Codex记录文档。正式安装版未动，调试包已更新；旋转恢复free，ADB本轮forward/reverse清空，测试客户端/代理退出，五个独立服务器及证据保留。
 - Mac最新完整材料导出为 `Jellyfin-2.9.0-Mac-Codex交接包-829c5f8.zip`（前置2f5e06c），同时另给 `Jellyfin-2.9.0-Mac-JF09增量-829c5f8.zip`（前置7656de0），引用均固定refs/codex-handoff/jellyfin-290-829c5f8。旧7656/7cdb包不覆盖；接收方式见Mac补充交接。每包MANIFEST记录文件哈希，导出摘要在证据根目录 `mac-jf09-export.json`。
 - Windows端可执行的本轮修复和受影响验证完成；Apple由用户转交Mac Codex执行，不能声明五端验收或发布完成。既有heartbeat保持暂停，不启动无新工作轮询。无推送、合并或发布。
+
+## 2026-10-19 Mac接收反馈后的完整历史补包
+
+Mac报告原增量bundle缺少共同基线，尚未导入源码或运行Apple测试。Windows已复现并改为无前置完整历史bundle，固定交接HEAD6736b4b（产品829c5f8），空仓库verify/fetch/HEAD/fsck全部通过。主文档首次导入、回传、引用及清单统一，旧基准仅作历史记录；Xcode26.6是否完整兼容交由Mac直接实编，未擅自放宽脚本并宣称通过。包、哈希和回复已放到同一网络交流目录，回读哈希一致。完整状态、文件名与SHA256见[Mac接收复核与补包记录](../../verification/2026-10-19-jellyfin-mac-receipt.md)。没有新产品修改、推送、合并或发布；不要重复Windows/Android已完成矩阵。
