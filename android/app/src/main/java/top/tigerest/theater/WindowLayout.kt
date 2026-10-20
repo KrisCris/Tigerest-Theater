@@ -5,6 +5,11 @@ object WindowLayout {
  fun safeContent(pane: Pane,width: Int,height: Int,insets: EdgeInsets): Pane = Pane(
   maxOf(pane.left,insets.left).coerceAtMost(pane.right),maxOf(pane.top,insets.top).coerceAtMost(pane.bottom),
   minOf(pane.right,width-insets.right).coerceAtLeast(pane.left),minOf(pane.bottom,height-insets.bottom).coerceAtLeast(pane.top))
+ // WebView reports a phone (Mobile) or a tablet from the screen the process
+ // started on. A foldable started folded would keep the web client's phone
+ // layout after unfolding, and the other way round; both screens use the
+ // desktop layout the shell asks for.
+ fun webUserAgent(base: String,version: String): String = base.replace(Regex("""\s+Mobile(?=\s)"""),"") + " TigerestTheater/$version"
  fun pane(width: Int,height: Int,hinge: Pane?): Pane {
   val whole = Pane(0,0,width.coerceAtLeast(0),height.coerceAtLeast(0))
   if(hinge == null || width <= 0 || height <= 0) return whole
