@@ -54,6 +54,12 @@ withBrowser({
  assert.deepEqual(await evaluate('calls.at(-1)'),['deferAppUpdate']);
  await evaluate(`emit({mirrors:{quark:'https://pan.quark.cn/s/abc123def',baidu:'https://pan.baidu.com/s/1AbCdEf?pwd=ab12'}});document.querySelector("#tigerest-update-button").click()`);
  assert.deepEqual(await actionLabels(),['从GitHub获取更新','夸克网盘','百度网盘','忽略本次更新','稍后'],'netdisk buttons follow the release mirrors');
+ for(const width of [1100,360]){
+  await call('Emulation.setDeviceMetricsOverride',{width,height:740,deviceScaleFactor:1,mobile:width<500});
+  const rows=await evaluate(`(()=>{const top=action=>document.querySelector('[data-update-action='+action+']').getBoundingClientRect().top,bg=action=>getComputedStyle(document.querySelector('[data-update-action='+action+']')).backgroundColor;return {together:Math.abs(top('skip')-top('close'))<1,primary:bg('download'),skip:bg('skip')}})()`);
+  assert.ok(rows.together&&rows.primary!==rows.skip,'Ignore and Later stay on one row and only the GitHub button is primary at '+width+'px: '+JSON.stringify(rows));
+ }
+ await call('Emulation.clearDeviceMetricsOverride');
  await evaluate('document.querySelector("[data-update-action=baidu]").click()');
  assert.equal(await evaluate('externalLinks.at(-1)'),'https://pan.baidu.com/s/1AbCdEf?pwd=ab12','netdisk opens through the native external opener');
  assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("从网盘下载安装包")'));

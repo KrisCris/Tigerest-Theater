@@ -60,7 +60,8 @@
           #tigerest-update-dialog progress { width:100%; height:9px; accent-color:#ffba27; }
           #tigerest-update-dialog .tg-update-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }
           #tigerest-update-dialog button { font:inherit; min-height:44px; padding:9px 16px; border-radius:9px; border:1px solid #48505d; background:#242a35; color:#ecedf2; cursor:pointer; }
-          #tigerest-update-dialog button:first-child { background:#ffba27; border-color:#ffba27; color:#17130a; font-weight:650; }
+          #tigerest-update-dialog .tg-update-dismiss { display:flex; gap:inherit; }
+          #tigerest-update-dialog .tg-update-actions > button:first-child { background:#ffba27; border-color:#ffba27; color:#17130a; font-weight:650; }
           #tigerest-update-dialog button:focus-visible { outline:2px solid #fff; outline-offset:3px; }
           #tigerest-update-dialog button:disabled { opacity:.5; cursor:wait; }
           @media(max-width:440px) { #tigerest-update-dialog { padding:20px; } #tigerest-update-dialog .tg-update-actions { gap:8px; } }
@@ -131,7 +132,7 @@
         dialog.append(heading, details, progress, notes, actions); document.body.appendChild(dialog);
         dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     }
-    function button(label, action, work) {
+    function button(label, action, work, parent = actions) {
         const node = element('button',label); node.type='button'; node.dataset.updateAction=action;
         node.addEventListener('click',async () => {
             node.disabled = true;
@@ -139,7 +140,7 @@
             catch (error) { autoInstall=false; receive({...state,status:'error',manual:true,error:error.message || '更新操作失败，请重试'}); }
             finally { node.disabled=false; }
         });
-        actions.appendChild(node);
+        parent.appendChild(node);
     }
     function install(automatic) {
         if (installInFlight) return Promise.resolve();
@@ -182,8 +183,13 @@
         const mirrors = !state.checkOnly && state.version && (status === 'available' || status === 'error' && state.size>0) ?
             [['夸克网盘','quark'],['百度网盘','baidu']].filter(([,key]) => /^https:\/\//.test(state.mirrors?.[key] || '')) : [];
         for (const [label,key] of mirrors) button(label,key,()=>invoke('openExternalUrl',state.mirrors[key]));
-        if (status === 'available') button('忽略本次更新','skip',async()=>{autoInstall=false;await invoke('skipAppUpdate');state={...state,status:'idle',version:''};detailsOpen=false;dialog.close();mountEntry();});
-        button(status==='available'?'稍后':status==='downloading'?'后台下载':'关闭','close',close);
+        // Ignore and Later wrap together, so a narrow dialog keeps them on one row.
+        const dismiss = status === 'available' ? element('span') : actions;
+        if (status === 'available') {
+            dismiss.className = 'tg-update-dismiss'; actions.appendChild(dismiss);
+            button('忽略本次更新','skip',async()=>{autoInstall=false;await invoke('skipAppUpdate');state={...state,status:'idle',version:''};detailsOpen=false;dialog.close();mountEntry();},dismiss);
+        }
+        button(status==='available'?'稍后':status==='downloading'?'后台下载':'关闭','close',close,dismiss);
         if (!dialog.open) dialog.showModal();
     }
     function receive(next) {
