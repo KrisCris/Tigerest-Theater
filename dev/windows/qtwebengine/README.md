@@ -7,6 +7,7 @@
 | `qtwebengine-6.9.3-d3d11-producer-sync.patch` | 共享纹理交给 Qt 前等待 Chromium 的 D3D11 写入完成，修复媒体库花屏 | `TIGEREST_D3D11_PRODUCER_WAIT=0` |
 | `qtwebengine-6.9.3-begin-frame-vsync.patch` | 把窗口所在屏幕的刷新率交给网页合成器，解除 60 帧上限 | `TIGEREST_WEBENGINE_VSYNC=0` |
 | `qtwebengine-6.9.3-wheel-step.patch` | Windows 鼠标滚轮每行 50 px（默认三行即每格 150 px） | `TIGEREST_WEBENGINE_WHEEL_STEP=<每行像素>` |
+| `qtwebengine-6.9.3-d3d11-fence-sync.patch` | 用两个共享 D3D11 fence 双向排序共享纹理：Qt 采样前等 Chromium 写完，Chromium 重写前等 Qt 读完 | `TIGEREST_D3D11_FENCE_SYNC=0`（回到上面的 CPU 等待） |
 
 ## 网页合成器刷新率
 
@@ -25,6 +26,17 @@ QtWebEngine 把网页画到离屏纹理再交给 Qt Quick 合成。这条路径�
 作用域是 `NativeSkiaOutputDeviceDirect3D11::Present` 的 GL/ANGLE producer 路径，不持有基类缓冲区锁等待。使用 EVENT query 的 `End/Flush/GetData`，确认 `S_OK`、完成标志和设备状态。250 ms 轮询截止后不发布该纹理，通过 `SWAP_FAILED` 走 Chromium 原有 context-loss 恢复。此截止不能中断卡在驱动 API 内的调用。
 
 默认启用；设置 `TIGEREST_D3D11_PRODUCER_WAIT=0` 可做关闭对照。`TIGEREST_DIAG_PRODUCER_FAIL_ONCE=1` 仅用于测试：第八次提交模拟未完成，等待至截止并注入一次恢复。普通启动不设置这些变量。原先公共 `createFence()` 内的无限等待诊断不属于此补丁。
+
+### 双向 fence 同步
+
+上面的等待只保证“写完再读”。缓冲区轮换时，Qt 把旧前缓冲交还 Chromium 作为下一帧的后缓冲，此时 Qt 的 GPU 可能还在采样它，Chromium 却已开始重画，Qt 就会显示画到一半的帧（只剩背景、卡片缺失）。窗口被其他窗口遮挡时 DWM 节奏变化，更容易触发。2026-10-20 的录屏和 WGC 单窗口抓帧都复现了这一现象，而生产者等待日志正常。
+
+`qtwebengine-6.9.3-d3d11-fence-sync.patch` 在 ANGLE 设备上创建两个共享 `ID3D11Fence`，并在 Qt 设备上打开：
+
+- Chromium `Present`：`glFlush` 后在 ANGLE 上下文 `Signal` 生产者 fence，值记到该缓冲区；Qt 在 `texture()` 里对自己的上下文 `Wait` 这个值后再采样。
+- Qt `swapFrame` 交还旧前缓冲前，在 Qt 上下文 `Signal` 消费者 fence，值记到该缓冲区；Chromium 的 `BeginPaint` 在写入该缓冲区前对 ANGLE 上下文 `Wait`。
+
+两侧等待都在 GPU 队列里，CPU 不阻塞。fence 不可用（设备不支持 `ID3D11Device5`、创建或共享失败、Qt 设备更换）时记录 `Tigerest D3D11 fence sync disabled: …` 并自动回到上面的 CPU 生产者等待。正常启动日志有 `Tigerest D3D11 fence sync: producer fence ready` 和 `consumer fence ready`；`test_webengine_startup` 同时检查默认的 fence 路径和 `TIGEREST_D3D11_FENCE_SYNC=0` 的回退路径。
 
 ## 重建组件
 
@@ -45,7 +57,12 @@ d50b3b11d51dd876418cc36b4d6c96b4721e0aab773a3dd6beda606d46da8966
   -PythonExecutable C:/QtBuild/tools/Scripts/python.exe -Jobs 8
 ```
 
-脚本按 `patches.txt` 顺序应用本目录补丁，编译 Release 组件，安装到独立目录，并记录各补丁和 DLL 的 SHA256。首次完整编译 Chromium 耗时较长。
+脚本按 `patches.txt` 顺序应用本目录补丁，编译 Release 组件，安装到独立目录，并记录各补丁和 DLL 的 SHA256。首次完整编译 Chromium 耗时较长。fence 补丁与生产者等待补丁改同一段代码，无法逐个反向检查，所以脚本在源码目录写 `.tigerest-patches` 记录已应用的整组补丁；重跑时据此跳过，并用最后一个补丁确认源码未漂移。
+
+中文 Windows 上的已知构建问题：
+
+- Chromium 的 `setup_toolchain.py` 会清掉 `INCLUDE`/`LIB` 再调用 vcvarsall，生成 `<构建目录>/src/core/Release/AMD64/environment.x64`（及 `.x86`），ninja 用它整体替换编译环境。若 ATL 不在 VS 安装目录里（例如单独解压的 ATL），需在 configure 之后把 ATL 的 `include` 和 `libd` 前置到这两个文件的 `INCLUDE`/`LIB`，否则 `base/win/atl_throw.h` 找不到 `atldef.h`。
+- 链接器在中文系统输出 GBK 文本，Chromium `build/toolchain/win/tool_wrapper.py` 按 UTF-8 解码会中断链接（实际链接已成功）。本地源码副本把其中两处 `decode('utf8')` 改为 `decode('mbcs', errors='replace')` 即可；该脚本只在构建时运行，不进入 DLL。
 
 ## 客户端开发与打包
 
@@ -63,6 +80,8 @@ Windows 打包在 `windeployqt` 完成后覆盖 WebEngine DLL、辅助进程、�
 修复运行库是 Windows 构建和打包的必需依赖。`build.bat` 自动查找依赖目录下的 `qtwebengine-sync/6.9.3`，也可显式设置 `TIGEREST_WEBENGINE_RUNTIME`。配置和安装阶段均校验版本、完整文件、源码补丁及核心 DLL 的 SHA256；路径为空或验证失败时停止，不能退回原版 QtWebEngine。安装后再次校验实际部署的核心 DLL，避免旧缓存或文件时间戳使修复失效。
 
 ## 回归证据
+
+2026-10-20，双向 fence：首页轮播空闲并周期遮挡窗口，同条件各 360 s 抓帧，整页级花屏帧 fence 开 0、关 26、旧 DLL 11；转场呈现帧率与旧 DLL 相同（135.5 对 130.7 fps，波动范围内）。详见 `docs/verification/2026-10-20-d3d11-fence-sync.md`。
 
 2026-09-13，Windows 11 23H2 / RTX 4090 / 驱动 616.64：相同 DLL 关闭等待可重复捕获缺块，开启有界等待后十轮、每轮约十二秒的鼠标悬停测试未捕获加载完成后的固定内容区异常。模拟超时触发恢复后继续产生有效画面并响应鼠标。此前无限等待诊断的开关对照及用户手动反馈也支持此同步措施有效。
 

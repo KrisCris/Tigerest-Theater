@@ -27,7 +27,7 @@ class WebHost(private val activity: MainActivity, val view: WebView, private val
         require(WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) { "请更新 Android System WebView 后重试" }
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         view.setBackgroundColor(android.graphics.Color.rgb(16,16,16))
-        with(view.settings) { javaScriptEnabled = true; domStorageEnabled = true; mediaPlaybackRequiresUserGesture = false; allowFileAccess = false; allowContentAccess = true; mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE; setSupportMultipleWindows(false); userAgentString += " TigerestTheater/${BuildConfig.VERSION_NAME}" }
+        with(view.settings) { javaScriptEnabled = true; domStorageEnabled = true; mediaPlaybackRequiresUserGesture = false; allowFileAccess = false; allowContentAccess = true; mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE; setSupportMultipleWindows(false); userAgentString = WindowLayout.webUserAgent(userAgentString,BuildConfig.VERSION_NAME) }
         view.webViewClient = object: WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? = loader.shouldInterceptRequest(request.url)
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {

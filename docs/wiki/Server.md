@@ -1,6 +1,6 @@
 # 服务器与登录
 
-**Jellyfin 开发版：** 2.9.0 正在加入 Jellyfin 兼容，尚未发布或完成验收。地址格式、账号边界与待验证版本见仓库的 [Jellyfin 连接说明](../jellyfin-compatibility.md)。以下 Emby 正式版说明继续适用。
+**Jellyfin：** Windows 与 Android 2.9.0 起可以连接 Jellyfin 服务器：选择「自建服务器」，填写完整地址（反向代理子路径如 `/jellyfin` 要保留），再用该 Jellyfin 服务器的账号登录。已实测 10.9.11、10.10.7、10.11.0、10.11.11 与 12.2；Mac、iPad、Apple TV 的 Jellyfin 支持随苹果端 2.9.0 补充。详见仓库的 [Jellyfin 连接说明](../jellyfin-compatibility.md)。下面的 Emby 说明同样适用。
 
 客户端负责浏览和播放，服务器提供内容与权限。安装客户端后，需要使用你有权访问的 Emby 服务器。
 

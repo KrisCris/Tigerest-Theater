@@ -9,10 +9,14 @@ for (const [n, [address, name, kind]] of [['http://[fe80::2]:8096/', '', ''], ['
     known = history.annotate(history.remember(known, {mode: 'custom', address, at: 1_700_000_000_000 + n}), {mode: 'custom', address, name, kind});
 const bootstrap = `<script>
 window.injected = 0; window.commits = []; window.checks = [];
-window.jmpInfo = {settings: {main: {userWebClient: 'https://media.example.org:8920/jellyfin/', serverConnectionMode: 'custom', knownServers: ${JSON.stringify(known)}}}};
-window.api = {system: {isAddressOnLocalSubnet: async () => false, cancelServerConnectivity() {},
+const fixtureInfo = {settings: {main: {userWebClient: 'https://media.example.org:8920/jellyfin/', serverConnectionMode: 'custom', knownServers: ${JSON.stringify(known)}}}};
+const fixtureApi = {system: {isAddressOnLocalSubnet: async () => false, cancelServerConnectivity() {},
   finishServerSelection: async (...args) => { commits.push(args); return true; }}};
-window.apiPromise = Promise.resolve(window.api);
+// In the client, nativeshell binds window.api and jmpInfo.settings to the real
+// (isolated) profile once its channel connects. Install the fixture after that,
+// so neither the saved list nor the server commit can reach the real profile.
+window.apiPromise = Promise.resolve(window.initCompleted).catch(() => {}).then(() => {
+  window.jmpInfo = fixtureInfo; window.api = fixtureApi; return fixtureApi; });
 window.jmpCheckServerConnectivity = async url => { checks.push(url); if (url.includes('other.example')) throw new Error('HTTP 502'); return url + 'web/index.html'; };
 window.jmpCheckServerConnectivity.abort = () => {};
 window.tigerestOpenOfflineLibrary = () => {};
@@ -47,6 +51,27 @@ withBrowser(routes, async ({evaluate, call}) => {
         if (process.env.TIGEREST_PICKER_SCREENSHOTS) require('node:fs').writeFileSync(path.join(process.env.TIGEREST_PICKER_SCREENSHOTS, 'picker-' + width + '.png'),
             Buffer.from((await call('Page.captureScreenshot', {format: 'png', captureBeyondViewport: true})).data, 'base64'));
     }
+    // Pointer: anywhere on a saved server's card highlights and opens it, like the
+    // server options, including the empty space beside its buttons; hovering its
+    // edit/remove buttons does not.
+    const point = (selector, corner) => evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+      return ${corner ? '{x: r.right - 12, y: r.bottom - 12}' : '{x: r.left + r.width / 2, y: r.top + r.height / 2}'}; })()`);
+    const hover = async (selector, corner) => {
+        const box = await point(selector, corner);
+        await call('Input.dispatchMouseEvent', {type: 'mouseMoved', ...box});
+        await new Promise(resolve => setTimeout(resolve, 300));
+        return evaluate(`(() => { const card = document.querySelectorAll('.saved-server')[1], style = getComputedStyle(card);
+          return {border: style.borderTopColor, background: style.backgroundColor, lifted: style.transform !== 'none', name: getComputedStyle(card.querySelector('.saved-server-name')).color}; })()`);
+    };
+    const rest = await hover('#saved-title'), highlighted = await hover('.saved-server:nth-child(2) .saved-server-open');
+    assert.deepEqual(highlighted, {border: 'rgb(227, 179, 92)', background: 'rgb(59, 46, 28)', lifted: true, name: 'rgb(240, 198, 117)'}, 'hovered saved server is highlighted');
+    assert.notDeepEqual(rest, highlighted, 'saved server is plain without hover');
+    assert.deepEqual(await hover('.saved-server:nth-child(2) .saved-server-action'), rest, 'hovering an action button does not highlight the card');
+    assert.deepEqual(await hover('.saved-server:nth-child(2)', true), highlighted, 'the empty corner beside the buttons belongs to the card');
+    assert.equal(await evaluate(`(() => { const card = document.querySelectorAll('.saved-server')[1], r = card.getBoundingClientRect();
+      return [[r.left + 4, r.top + 4], [r.right - 12, r.bottom - 12], [r.left + r.width / 2, r.bottom - 4]].every(([x, y]) => document.elementFromPoint(x, y) === card.querySelector('.saved-server-open')); })()`), true,
+      'every edge of the card reaches its open button');
+    await call('Input.dispatchMouseEvent', {type: 'mouseMoved', x: 1, y: 1});
     // Keyboard: the card is a focusable button with a visible outline.
     await evaluate(`document.querySelector('.saved-server-open').focus()`);
     assert.notEqual(await evaluate(`getComputedStyle(document.activeElement).outlineStyle`), 'none');
@@ -66,8 +91,11 @@ withBrowser(routes, async ({evaluate, call}) => {
     await evaluate(`[...document.querySelector('.saved-server').querySelectorAll('button')].find(b => b.textContent === '确认移除').click()`);
     const removed = await evaluate(`({names: [...document.querySelectorAll('.saved-server-name')].map(n => n.textContent), saved: JSON.parse(jmpInfo.settings.main.knownServers).servers.length})`);
     assert.deepEqual(removed, {names: ['Living room media server with a very long name', '[fe80::2]:8096'], saved: 2});
-    // A reachable card hands the native transaction its updated list.
-    await evaluate(`document.querySelectorAll('.saved-server-open')[1].click()`);
+    // A reachable card hands the native transaction its updated list; a real
+    // click in the card's empty corner beside its buttons connects.
+    const corner = await point('.saved-server:nth-child(2)', true);
+    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
+        await call('Input.dispatchMouseEvent', {type, ...corner, button: 'left', clickCount: 1});
     for (let i = 0; i < 20 && !await evaluate('commits.length'); i++) await settle();
     const commit = await evaluate('commits[0]');
     assert.deepEqual(commit.slice(0, 3), ['http://[fe80::2]:8096/', 'custom', 'http://[fe80::2]:8096/web/index.html']);

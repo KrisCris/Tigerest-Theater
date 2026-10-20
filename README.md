@@ -6,11 +6,9 @@
 
 [下载正式版](https://github.com/Tigerest/Tigerest-Theater/releases/latest) · [使用教程](https://github.com/Tigerest/Tigerest-Theater/wiki) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/Tigerest/Tigerest-Theater/issues) · [作者 B站](https://space.bilibili.com/12562485)
 
-**当前版本：Windows、Android 2.8.1；Mac、iPad 与 Apple TV 2.8.0。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
+**当前版本：Windows、Android 2.9.0；Mac、iPad 与 Apple TV 2.8.0。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
 
-**2.9.0 开发中：** 正在适配五端 Jellyfin，尚未发布或完成兼容验收。连接方式、平台边界见 [Jellyfin 说明](docs/jellyfin-compatibility.md)，更新范围见 [2.9.0 草案](docs/releases/2026-10-19-v2.9.0.md)。现有正式版信息不变。
-
-**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.8.1 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
+**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.9.0 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
 客户端不包含影视资源。你需要已有的 Emby 服务器地址和账号；媒体库、播放与下载权限由所连接的服务器提供。本项目是非官方 Emby 客户端，与 Emby LLC 无隶属关系。
 
@@ -79,9 +77,16 @@
   </tr>
 </table>
 
-## 2.8.1 更新（Windows、Android）
+## 2.9.0 更新重点（Windows、Android）
 
-- **首页重复作品：** 服务器上同一部作品有两个条目时，首页按 Emby 的作品身份合并为一张卡，保留最近一次播放的继续观看进度；同名的不同作品不合并。Mac、iPad 与 Apple TV 在 2.8.0 已修复，本次不更新。见 [2.8.1 发布说明](docs/releases/2026-10-17-v2.8.1.md)。
+- **Jellyfin 服务器：** 在「自建服务器」里填写 Jellyfin 地址（反向代理的 `/jellyfin` 等子路径要保留），用该服务器的账号登录。已在 Windows 和 Android 上用 Jellyfin 10.9.11、10.10.7、10.11.0、10.11.11 与 12.2 实际登录和播放。说明见 [Jellyfin 连接与兼容范围](docs/jellyfin-compatibility.md)。
+- **服务器列表与「客户端」菜单：** 连接过的自建 Emby／Jellyfin 服务器会记在切换服务器页面，点卡片即可切换，也可以编辑地址或移除。顶栏的 MPV 设置和切换服务器合并为一个「客户端」菜单。
+- **Windows 花屏修复：** 首页轮播空闲、窗口被其他窗口挡住时偶尔出现的整页花屏和闪屏，改为 GPU 双向同步后，同条件测试中不再出现。
+- **首页与媒体库：** 首页轮播换作品时新旧海报交叉淡化，不再闪暗；进入媒体库时整页飞入，不再先显示加载圈。
+- **Android 折叠屏：** 在外屏启动应用后，Jellyfin 不再切到手机布局；媒体库首行不再被标签栏盖住，展开后详情页海报不再压住标题，媒体库滚动恢复到接近 120 fps。
+- **首页重复作品：** 服务器上同一部作品有两个条目时，首页按作品身份合并为一张卡（原定于 2.8.1，未单独发布，并入本版）。
+
+Mac、iPad 与 Apple TV 的 2.9.0 稍后补充到同一发行页，在此之前继续使用 2.8.0。完整范围与验证见 [2.9.0 发布说明](docs/releases/2026-10-19-v2.9.0.md)。
 
 ## 2.8.0 更新重点
 
@@ -103,16 +108,16 @@ iPad 与 Apple TV 的 IPA 均未签名，需使用自己的 Apple 身份签名�
 
 | 平台 | 安装包 | 系统要求 |
 | --- | --- | --- |
-| Windows 安装版 | [2.8.1 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.1/TigerestTheater-2.8.1-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
-| Windows 便携版 | [2.8.1 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.1/TigerestTheater-2.8.1-x64.zip) | 同上；完整解压后运行 |
-| Android | [2.8.1 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.1/TigerestTheater-2.8.1-android.apk) | Android 15+，arm64-v8a / x86_64 |
+| Windows 安装版 | [2.9.0 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.0/TigerestTheater-2.9.0-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
+| Windows 便携版 | [2.9.0 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.0/TigerestTheater-2.9.0-x64.zip) | 同上；完整解压后运行 |
+| Android | [2.9.0 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.0/TigerestTheater-2.9.0-android.apk) | Android 15+，arm64-v8a / x86_64 |
 | Apple Silicon Mac | [2.8.0 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-arm64.dmg) | macOS 26+，M 系列芯片 |
 | iPad | [2.8.0 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-ipad.ipa) | iPadOS 26+，须自行签名安装 |
 | Apple TV | [2.8.0 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-tvos.ipa) | tvOS 26+，须为 Apple TV 签名安装 |
 
 包内已包含 MPV 和基础运行库，无需另装播放器。Windows RIFE 大型组件是可选扩展；已有 NVIDIA 1.0.0 扩展可以继续使用。正式 Mac 下载仅提供 Apple Silicon 版本。
 
-Windows／Android 使用 [2.8.1 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.1/TigerestTheater-2.8.1-SHA256SUMS.txt)；Mac／iPad／Apple TV 使用 [2.8.0 Apple 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-APPLE-SHA256SUMS.txt)。来源与验证记录见各自发行页的 `RELEASE-MANIFEST.json` 和 `APPLE-RELEASE-MANIFEST.json` 附件。
+Windows／Android 使用 [2.9.0 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.0/TigerestTheater-2.9.0-SHA256SUMS.txt)；Mac／iPad／Apple TV 使用 [2.8.0 Apple 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-APPLE-SHA256SUMS.txt)。来源与验证记录见各自发行页的 `RELEASE-MANIFEST.json` 和 `APPLE-RELEASE-MANIFEST.json` 附件。
 
 ### 第一次使用
 
@@ -249,7 +254,7 @@ Apple TV 的轻量增强会在高帧率视频或持续渲染掉帧时暂时降�
 - [iPad 安装与构建](docs/apple/INSTALL.md)
 - [Apple TV 安装与构建](apple/TV/README.md)
 - [Windows 测试环境要求](dev/windows/TESTING.md)
-- [版本变化](CHANGELOG.md)与本次发布说明（[2.8.1](docs/releases/2026-10-17-v2.8.1.md)、[2.8.0](docs/releases/2026-10-16-v2.8.0.md)）
+- [版本变化](CHANGELOG.md)与本次发布说明（[2.9.0](docs/releases/2026-10-19-v2.9.0.md)、[2.8.0](docs/releases/2026-10-16-v2.8.0.md)）
 
 Windows 每次运行原生测试前，都必须在同一个 PowerShell 调用中加载测试环境脚本并完成运行库预检。测试、包启动检查、生产 API 联调和真实媒体播放的覆盖范围分别记录，不能互相替代。
 

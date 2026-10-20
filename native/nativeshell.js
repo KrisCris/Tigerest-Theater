@@ -1646,6 +1646,13 @@ function installHeaderControlsStyle() {
         :is(.headerRight,.tigerest-header-actions) #tigerest-update-button svg { width: 20px; height: 20px; }
         :is(.headerRight,.tigerest-header-actions) .headerUserButton { overflow: hidden; }
         :is(.headerRight,.tigerest-header-actions) .headerUserButton img { object-fit: cover; border-radius: 8px; }
+        /* Jellyfin draws the avatar as an inline background on an inner
+           .headerButton div; keep the button look on the outer button only. */
+        :is(.headerRight,.tigerest-header-actions) .headerUserButton > .headerUserButtonRound {
+            width: 100%; min-width: 0; height: 100%; min-height: 0; border: 0; border-radius: inherit;
+            background-color: transparent; background-size: cover; background-position: center; background-repeat: no-repeat;
+            box-shadow: none; backdrop-filter: none; transform: none;
+        }
         :is(.headerRight,.tigerest-header-actions) #tigerest-message-entry, :is(.headerRight,.tigerest-header-actions) #tigerest-watch-entry { width: auto; padding: 0 10px; white-space: nowrap; }
         :is(.headerRight,.tigerest-header-actions) #tigerest-mpv-settings-button { width: auto; padding: 0 10px; color: #efc36e; border-color: rgba(239,195,110,.38); background: rgba(82,63,30,.28); font-weight: 700; white-space: nowrap; }
         :is(.headerRight,.tigerest-header-actions) #tigerest-mpv-settings-button::after { content: '▾'; margin-left: 4px; font-size: 10px; opacity: .8; }

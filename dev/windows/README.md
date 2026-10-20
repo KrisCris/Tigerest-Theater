@@ -21,7 +21,7 @@ Windows 默认的原生 GPU-Next 模式使用 D3D11 绘制媒体库，MPV 在独
 
 自建 QtWebEngine 的补丁（媒体库花屏的共享纹理同步、网页合成器刷新率、滚轮距离）及重建步骤见 [qtwebengine/README.md](qtwebengine/README.md)。使用修复组件开发时设置 `TIGEREST_WEBENGINE_RUNTIME`；已有构建目录通过同名 CMake 路径参数指定组件，打包会自动部署补丁版 WebEngine。
 
-Windows 发布工作流会从 `v2.6.1` 下载 `TigerestWebEngine-6.9.3-d3d11.zip`，校验固定 SHA256，再由打包脚本核验补丁及 DLL 清单。构建该版本的草稿时，工作流使用仓库令牌读取同一草稿中的运行库附件。后续版本继续使用这一固定组件，更新组件时应同时更新归档校验值、源码补丁与构建清单。2.6.0 及更早版本使用 `v2.0.17-dev` 中只含花屏补丁的组件。归档只包含自建 WebEngine 组件、资源和重建说明，基础 Qt 仍为 6.9.3。
+Windows 发布工作流会从 `v2.9.0` 下载 `TigerestWebEngine-6.9.3-d3d11.zip`，校验固定 SHA256，再由打包脚本核验补丁及 DLL 清单。2.9.0 的组件在原有三个补丁上增加双向 D3D11 fence 同步补丁（共四个，见 `qtwebengine/patches.txt`）；2.6.1–2.8.x 使用 `v2.6.1` 中的三补丁组件，2.6.0 及更早版本使用 `v2.0.17-dev` 中只含花屏补丁的组件。构建某版本的草稿时，工作流使用仓库令牌读取同一草稿中的运行库附件。更新组件时应同时更新归档校验值、源码补丁与构建清单。归档只包含自建 WebEngine 组件、资源和重建说明，基础 Qt 仍为 6.9.3。
 
 配置与日志按 profile 保存在 `%LOCALAPPDATA%\Tigerest Theater\profiles\<profile-id>\`。媒体库界面花屏时可尝试 `dev\windows\run.bat --disable-gpu`；这只关闭 QtWebEngine 网页的硬件加速，不更改 MPV 视频硬解或 Shader 设置。须完全退出应用后重新启动，已运行的实例不会应用新的启动参数。视频播放的图形兼容问题则可在设置中把渲染后端切换为 libmpv Render API 兼容模式。
 

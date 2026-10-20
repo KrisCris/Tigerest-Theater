@@ -131,6 +131,7 @@
         background: linear-gradient(90deg,#0b0d12eb, #0b0d1200 45%); }
     .tg-home-scenery { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .16; z-index: -2; pointer-events: none;
         mask-image: linear-gradient(0deg,transparent,#000 35%,#000 80%,transparent); transition: opacity .8s; }
+    .tg-home-scenery.tg-pending { opacity: 0; }
     .tg-home::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 80% 5%,#87705512,transparent 55%); }
     .tg-home-nav { gap: 16px; transform-origin: 50% 40px; }
     .tg-library-list { gap: 14px; scrollbar-width: none; }
@@ -409,7 +410,7 @@
         ++this.selection; this.root.classList.remove('tg-ready'); this.hero.disabled = true;
         this.cards = []; this.index = 0; this.heroImages.replaceChildren(); this.title.textContent = ''; this.subtitle.textContent = '';
         this.overview.textContent = ''; this.overview.hidden = true; this.heroCopy.classList.add('tg-no-overview');
-        this.scenery.removeAttribute('src'); this.ordinal.textContent = '';
+        clearTimeout(this.artworkStall); this.dropScenery(); this.scenery.removeAttribute('src'); this.ordinal.textContent = '';
         this.coverList.replaceChildren(); this.counter.textContent = '';
     };
     Gallery.prototype.showStatus = function (message, retry = false) { this.message.textContent = message; this.retry.hidden = !retry; this.status.hidden = false; };
@@ -465,7 +466,6 @@
     Gallery.prototype.select = function (index, scroll) {
         const card = this.cards?.[index]; if (!card || !this.valid()) return;
         this.cancelText();
-        this.heroImages.querySelectorAll('img').forEach(image => image.classList.remove('is-visible'));
         this.index = index; const selection = ++this.selection;
         this.title.textContent = card.item.Name || '未命名作品';
         // Decode HTML entities after removing markup; the detached textarea
@@ -484,18 +484,33 @@
         if (scroll && covers[index]) this.coverList.scrollTo({ left: covers[index].offsetLeft - this.coverList.offsetLeft - 3, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
         this.animateText(selection);
         const url = this.data.artwork(card.item, 'hero');
-        const scenery = element('img', 'tg-home-scenery'); scenery.alt = '';
-        this.scenery.replaceWith(scenery); this.scenery = scenery;
-        if (!url) { this.heroImages.replaceChildren(); return; }
-        this.scenery.src = url;
+        clearTimeout(this.artworkStall);
+        if (!url) { this.dropScenery(); this.scenery.removeAttribute('src'); this.heroImages.replaceChildren(); return; }
+        // Crossfade: the previous work's artwork stays under the new layers
+        // until they have loaded and faded in, so a change never shows a dark
+        // gap. Artwork that stalls lets the previous work fade out shortly.
+        const scenery = element('img', 'tg-home-scenery tg-pending'); scenery.alt = '';
+        this.scenery.after(scenery); this.scenery = scenery;
         const image = element('img', 'tg-poster-image'); image.alt = ''; image.draggable = false;
+        const current = () => this.valid() && selection === this.selection;
+        const dropPosters = () => this.heroImages.querySelectorAll('img').forEach(prior => { if (prior !== image) prior.remove(); });
+        const reveal = (show, drop) => requestAnimationFrame(() => { if (current()) { show(); setTimeout(() => { if (current()) drop(); }, 900); } });
+        scenery.onload = () => reveal(() => scenery.classList.remove('tg-pending'), () => this.dropScenery());
         image.onload = () => {
-            if (!this.valid() || selection !== this.selection) { image.remove(); return; }
-            this.heroImages.querySelectorAll('img').forEach(prior => { if (prior !== image) prior.remove(); });
-            requestAnimationFrame(() => { if (this.valid() && selection === this.selection) image.classList.add('is-visible'); });
+            if (!current()) { image.remove(); return; }
+            reveal(() => image.classList.add('is-visible'), dropPosters);
         };
-        image.onerror = () => { image.remove(); if (this.valid() && selection === this.selection) this.heroImages.replaceChildren(); };
-        image.src = url; this.heroImages.append(image);
+        image.onerror = () => { image.remove(); if (current()) this.heroImages.replaceChildren(); };
+        this.artworkStall = setTimeout(() => {
+            if (!current()) return;
+            if (!image.classList.contains('is-visible')) this.heroImages.querySelectorAll('img').forEach(prior => { if (prior !== image) prior.classList.remove('is-visible'); });
+            if (scenery.classList.contains('tg-pending')) this.dropScenery();
+        }, 450);
+        scenery.src = url; image.src = url; this.heroImages.append(image);
+    };
+    // Removes backdrop layers left from earlier selections.
+    Gallery.prototype.dropScenery = function () {
+        this.root.querySelectorAll('.tg-home-scenery').forEach(node => { if (node !== this.scenery) node.remove(); });
     };
     Gallery.prototype.open = function (card, source) {
         if (!card || !this.valid() || window.TigerestHomeMotion?.busy) return;

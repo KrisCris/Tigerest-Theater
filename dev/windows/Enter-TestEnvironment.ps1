@@ -19,10 +19,14 @@ foreach ($taskPlugin in @('qwindows.dll', 'qoffscreen.dll')) {
         throw "Qt platform plugin missing: $taskPlatforms\$taskPlugin. Restore the configured Qt runtime before testing."
     }
 }
+# The staged client (patched WebEngine, RIFE bridge) is wherever this build
+# installs; a fixed build\output could be another build's runtime.
+$taskStage = Get-TestCacheValue 'CMAKE_INSTALL_PREFIX'
+if (-not $taskStage) { $taskStage = Join-Path $taskBuild 'output' }
 $taskRuntimePaths = @(
     (Join-Path $taskBuild 'src\player\interpolation'),
     (Get-TestCacheValue 'TIGEREST_MPV_RUNTIME_DIR'),
-    (Join-Path $taskBuild 'output'),
+    $taskStage,
     (Join-Path $taskQt 'bin'),
     (Split-Path -Parent (Get-TestCacheValue 'MPV_LIBRARY')),
     (Split-Path -Parent (Get-TestCacheValue 'CMAKE_MAKE_PROGRAM'))

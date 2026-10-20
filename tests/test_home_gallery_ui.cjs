@@ -77,6 +77,7 @@ withBrowser(routes,async({evaluate,call})=>{
   document.createElement=function(tag,...args){const node=create(tag,...args);if(tag==='img')Object.defineProperty(node,'src',{set(){},configurable:true});return node;};
   const previousScenery=gallery.scenery;
   gallery.select(0,false);
+  check(gallery.heroImages.querySelector('.is-visible')&&previousScenery.isConnected,'a carousel change keeps the previous artwork until the new artwork loads, without a dark gap');
   await wait(()=>Number(getComputedStyle(gallery.title).opacity)>.95);
   check(gallery.title.textContent==='最近入库作品'&&!gallery.overview.hidden,'stalled artwork never blocks work metadata or synopsis');
   check(!gallery.heroImages.querySelector('.is-visible'),'stalled artwork cannot retain a previous work behind new metadata');

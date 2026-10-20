@@ -44,7 +44,7 @@ async function systemInfo(url) {
     }
 }
 
-async function run(executable, allowBrowserZoom, accelerated = false) {
+async function run(executable, allowBrowserZoom, accelerated = false, fenceSync = true) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tigerest-webengine-test-'));
     const id = randomUUID().replaceAll('-', '');
     const profile = path.join(root, 'profiles', id);
@@ -62,6 +62,8 @@ async function run(executable, allowBrowserZoom, accelerated = false) {
     // Exercise the shipped default, independent of earlier diagnostic runs.
     delete environment.TIGEREST_D3D11_PRODUCER_WAIT;
     delete environment.TIGEREST_DIAG_PRODUCER_FAIL_ONCE;
+    delete environment.TIGEREST_D3D11_FENCE_SYNC;
+    if (!fenceSync) environment.TIGEREST_D3D11_FENCE_SYNC = '0';
     const child = spawn(executable, [
         '--config-dir', root, '--profile', `GpuTest-${id}`, ...(accelerated ? [] : ['--disable-gpu']),
         '--remote-debugging-port', `127.0.0.1:${port}`,
@@ -90,16 +92,23 @@ async function run(executable, allowBrowserZoom, accelerated = false) {
             assert.match(info.gpu.featureStatus.gpu_compositing, /^enabled/);
             assert.match(info.gpu.auxAttributes.glRenderer, /Direct3D11/);
             const logFile = path.join(profile, 'logs', 'Tigerest Theater.log');
+            // The default orders both directions with shared GPU fences; the
+            // diagnostic switch falls back to the CPU producer wait alone.
+            const expected = fenceSync
+                ? [/D3D11 fence sync: producer fence ready/, /D3D11 fence sync: consumer fence ready/]
+                : [/D3D11 producer wait: completed=1, reset=0/];
+            // The consumer side starts with Qt's first rendered frame of the view.
             let runtimeLog = '';
-            for (let attempt = 0; attempt < 60; attempt++) {
+            for (let attempt = 0; attempt < 150; attempt++) {
                 runtimeLog = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : '';
-                if (/D3D11 producer wait: completed=1, reset=0/.test(runtimeLog)) break;
+                if (expected.every(pattern => pattern.test(runtimeLog))) break;
                 await delay(100);
             }
-            assert.match(runtimeLog, /D3D11 producer wait: completed=1, reset=0/,
-                'normal hardware-accelerated startup must execute the compositor synchronization fix');
+            for (const pattern of expected)
+                assert.match(runtimeLog, pattern, 'normal hardware-accelerated startup must execute the compositor synchronization fix');
+            assert.doesNotMatch(runtimeLog, /D3D11 fence sync disabled/);
             assert.doesNotMatch(runtimeLog, /D3D11 producer wait failed/);
-            console.log(`PASS: hardware compositor=${info.gpu.featureStatus.gpu_compositing}; D3D11 producer sync executed`);
+            console.log(`PASS: hardware compositor=${info.gpu.featureStatus.gpu_compositing}; D3D11 ${fenceSync ? 'fence' : 'producer'} sync executed`);
             return;
         }
         assert.match(info.commandLine, /(?:^|\s)--disable-gpu(?:\s|$)/,
@@ -126,4 +135,5 @@ async function run(executable, allowBrowserZoom, accelerated = false) {
     await run(path.resolve(process.argv[2]), true);
     await run(path.resolve(process.argv[2]), false);
     await run(path.resolve(process.argv[2]), true, true);
+    await run(path.resolve(process.argv[2]), true, true, false);
 })().catch(error => { console.error(error); process.exitCode = 1; });
