@@ -19,7 +19,10 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
         self.handle = handle
         do {
             // The pinned iOS MPVKit disables Lua; ytdl/osc script options do not exist.
-            let options = ["profile":"high-quality", "config":"no", "vo":"gpu-next", "gpu-api":"vulkan", "gpu-context":"moltenvk", "hwdec":"videotoolbox", "idle":"yes", "keep-open":"yes", "input-default-bindings":"no", "tls-verify":"yes", "save-position-on-quit":"no", "tls-ca-file":Bundle.main.resourceURL!.appending(path:"Web/cacert.pem").path, "sub-fonts-dir":Bundle.main.resourceURL!.appending(path:"SubtitleFonts").path, "sub-font":"Source Han Sans SC"]
+            // avfoundation (AVSampleBufferAudioRenderer) keeps 5.1/7.1 with its layout, so
+            // the system can spatialize it for AirPods; RemoteIO only gets two channels
+            // on those routes. audiounit remains the fallback.
+            let options = ["profile":"high-quality", "config":"no", "vo":"gpu-next", "gpu-api":"vulkan", "gpu-context":"moltenvk", "hwdec":"videotoolbox", "ao":"avfoundation,audiounit", "idle":"yes", "keep-open":"yes", "input-default-bindings":"no", "tls-verify":"yes", "save-position-on-quit":"no", "tls-ca-file":Bundle.main.resourceURL!.appending(path:"Web/cacert.pem").path, "sub-fonts-dir":Bundle.main.resourceURL!.appending(path:"SubtitleFonts").path, "sub-font":"Source Han Sans SC"]
             for (name, value) in options { try check(mpv_set_option_string(handle, name, value), operation: name) }
             var pointer = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
             try check(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &pointer))
