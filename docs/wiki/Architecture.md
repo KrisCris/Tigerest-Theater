@@ -339,13 +339,26 @@ flowchart TD
 flowchart TD
   check["启动时后台检查或手动检查"] --> api["GitHub Releases 接口<br/>最近 30 个发行"]
   api --> pick["选出比当前版本高、<br/>且带本平台安装包的正式版"]
-  pick --> dot["更新图标显示红点"]
+  pick --> dot["更新图标显示红点；<br/>用户操作前完成则弹窗一次"]
+  pick --> remember["记住这个发行；<br/>下次启动先弹窗，再后台刷新"]
   dot --> dl["下载：可暂停、续传、断线重连"]
   dl --> verify["核对大小和 SHA-256"]
   verify --> install["Windows 安装器或便携 ZIP<br/>Mac DMG · Android 系统安装器"]
 ```
 
 发行页没有本平台安装包时，更新器直接跳过这个版本。iPad 只检查和提示，不下载安装；Apple TV 没有应用内更新检查。
+
+找到的发行连同它的说明保存在本机偏好设置里（Windows/Mac：配置目录的 `app-update-preferences.json`；Android：`app-updates` 偏好）。下次启动先用完整的发行规则重新核对这份记录，已安装或已忽略的版本不会显示；后台刷新失败时保留记录和弹窗，刷新结果变化时替换或删除记录。
+
+客户端内置夸克和百度网盘的固定分享文件夹，每个版本一个以版本号命名的子文件夹（如 `2.9.3`）。点网盘按钮时，客户端先匿名读取分享的文件列表（只读，不登录），在分享根目录及其下一层中找到这个版本的文件夹，再用浏览器打开它的网页（Windows/Mac：夸克 `#/list/share/<fid>`，百度 `/s/<分享码>#list/path=<路径>`；Android：百度手机页 `/wap/link?surl=<分享码>#/home/%2F/<路径>`。夸克手机页没有子文件夹地址，Android 上直接打开分享首页）；找不到、超时（10 秒）或网盘拒绝时打开整个分享。下载在网盘网页或应用里登录后进行，客户端不经手网盘账号。
+
+需要换分享时，在 GitHub 发行说明里写一行隐藏注释，不在页面上显示：
+
+```html
+<!-- tigerest-mirrors {"quark":"https://pan.quark.cn/s/分享码","baidu":"https://pan.baidu.com/s/分享码?pwd=提取码"} -->
+```
+
+只接受 `https://pan.quark.cn/s/…` 和 `https://pan.baidu.com/s/…`（可带四位 `pwd`），其他地址被忽略并使用内置分享。带提取码的百度分享直接打开分享页，由网页要求输入提取码。每次发布时把发行文件上传到固定分享文件夹中以版本号命名的子文件夹。
 
 ## 隐私与安全边界
 

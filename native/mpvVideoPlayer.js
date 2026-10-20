@@ -378,6 +378,9 @@
             if (options.fullscreen) {
                 this.loading.show();
             }
+            window.TigerestFaultReports?.setPlayback({
+                itemId: options.item?.Id, serverId: options.item?.ServerId, mediaSourceId: options.mediaSource?.Id
+            });
             this.startStartupTimer();
             try {
                 const elem = await this.createMediaElement(options);
@@ -402,10 +405,16 @@
             const startupCheckId = this._startupCheckId;
             const startedAt = Date.now();
             let preparing = false;
+            let nativeDelayMs = 0;
+            let graceUsed = false;
             const isCurrent = () => this._sessionId === startupSessionId &&
                 this._startupCheckId === startupCheckId && this._sessionActive && !this._started;
             const fail = () => {
-                if (isCurrent()) this.onError(preparing ? 'RIFE 准备超时，请重试播放' : '播放器启动超时（30 秒）');
+                if (!isCurrent()) return;
+                const message = preparing ? 'RIFE 准备超时，请重试播放' : '播放器启动超时（30 秒）';
+                window.TigerestFaultReports?.record({kind: 'startup-timeout', message, nativeDelayMs,
+                    elapsedMs: Date.now() - startedAt});
+                this.onError(message);
             };
             const check = async () => {
                 if (!isCurrent()) return;
@@ -418,7 +427,12 @@
                     fail();
                     return;
                 }
-                this._startupTimer = setTimeout(fail, 1500);
+                // The native side answers at once unless its main thread is
+                // frozen. Playback queued behind such a freeze usually starts
+                // right after it, so wait for the answer (bounded) instead of
+                // stopping a load that is about to succeed.
+                const asked = Date.now();
+                this._startupTimer = setTimeout(fail, 90000);
                 let status;
                 try {
                     status = await player.rifeExtensionStatus();
@@ -429,12 +443,17 @@
                 if (!isCurrent()) return;
                 clearTimeout(this._startupTimer);
                 this._startupTimer = null;
+                nativeDelayMs = Math.max(nativeDelayMs, Date.now() - asked);
                 const runtime = status?.runtime;
                 if (runtime?.startupWaiting === true &&
                     Number.isFinite(runtime.preparationElapsedMs) &&
                     runtime.preparationElapsedMs >= 0 && runtime.preparationElapsedMs < 980000) {
                     preparing = true;
                     this._startupTimer = setTimeout(check, 5000);
+                } else if (Date.now() - asked > 1500 && !graceUsed) {
+                    // The answer was late: the native side has just resumed.
+                    graceUsed = true;
+                    this._startupTimer = setTimeout(check, 10000);
                 } else {
                     fail();
                 }
@@ -520,6 +539,31 @@
         }
 
         /**
+         * 'hdr', 'sdr', 'dovi' (Dolby Vision without an HDR10 or HLG base
+         * layer, such as profile 5) or '' when a transcode may change it.
+         * Emby reports VideoRange/ExtendedVideoType, Jellyfin VideoRangeType
+         * and the DV fields; both report the transfer function.
+         * @private
+         */
+        tryGetDynamicRange(options) {
+            const source = options.mediaSource;
+            if (!source || source.TranscodingUrl || options.url?.includes('/master.m3u8')) return '';
+            const video = (source.MediaStreams || []).find(stream => stream.Type === 'Video');
+            if (!video) return '';
+            const transfer = String(video.ColorTransfer || '').toLowerCase();
+            const type = String(video.VideoRangeType || video.ExtendedVideoType || '').toLowerCase();
+            const subType = String(video.ExtendedVideoSubType || '').toLowerCase();
+            const profile = Number(video.DvProfile) || Number(/doviprofile(\d)/.exec(subType)?.[1]) || 0;
+            const dovi = type.startsWith('dovi') || type === 'dolbyvision' || profile > 0;
+            if (dovi && (type === 'dovi' || type === 'doviwithsdr' || profile === 5 ||
+                (profile > 0 && video.DvBlSignalCompatibilityId === 0))) return 'dovi';
+            const hdr = transfer === 'smpte2084' || transfer === 'arib-std-b67' ||
+                String(video.VideoRange || '').toUpperCase() === 'HDR' ||
+                /hdr|hlg|hyperloggamma|dovi|dolbyvision/.test(type);
+            return hdr ? 'hdr' : 'sdr';
+        }
+
+        /**
          * @private
          */
         getStreamByIndex(mediaStreams, jellyIndex) {
@@ -590,6 +634,7 @@
                 if (fps) {
                     streamdata.frameRate = fps;
                 }
+                streamdata.dynamicRange = this.tryGetDynamicRange(options);
 
                 const player = window.api.player;
 

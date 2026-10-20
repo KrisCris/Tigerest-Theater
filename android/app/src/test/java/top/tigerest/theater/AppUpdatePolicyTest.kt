@@ -40,6 +40,28 @@ class AppUpdatePolicyTest {
         )) assertNull(bad.toString(), AppUpdatePolicy.select(JSONArray().put(bad), "2.4.1"))
     }
 
+    @Test fun readsNetdiskMirrorsFromReleaseNotes() {
+        val marked = release("2.5.0").put("body", "Fixed\n<!-- tigerest-mirrors {\"quark\":\"https://pan.quark.cn/s/abc123def\",\"baidu\":\"https://pan.baidu.com/s/1AbC-d_E?pwd=x7k2\"} -->")
+        val releases = JSONArray().put(release("2.4.5")).put(marked)
+        val selected = AppUpdatePolicy.select(releases, "2.4.1")!!
+        assertEquals("Fixed", selected.notes)
+        assertEquals("https://pan.quark.cn/s/abc123def", selected.quarkUrl)
+        assertEquals("https://pan.baidu.com/s/1AbC-d_E?pwd=x7k2", selected.baiduUrl)
+        // The remembered form selects the same package again, and nothing once it is installed.
+        val cached = AppUpdatePolicy.cachedRelease(releases, selected)!!
+        assertEquals(selected, AppUpdatePolicy.select(JSONArray().put(cached), "2.4.1"))
+        assertNull(AppUpdatePolicy.select(JSONArray().put(cached), "2.5.0"))
+        val untrusted = release("2.5.0").put("body", "<!-- tigerest-mirrors {\"quark\":\"https://evil.example/s/abc123def\",\"baidu\":\"http://pan.baidu.com/s/1AbCdEf\"} -->")
+        val plain = AppUpdatePolicy.select(JSONArray().put(untrusted), "2.4.1")!!
+        assertEquals(AppUpdatePolicy.DEFAULT_QUARK_SHARE, plain.quarkUrl); assertEquals(AppUpdatePolicy.DEFAULT_BAIDU_SHARE, plain.baiduUrl); assertEquals("", plain.notes)
+    }
+
+    @Test fun usesBuiltInNetdiskSharesWithoutAMarker() {
+        val selected = AppUpdatePolicy.select(JSONArray().put(release("2.5.0")), "2.4.1")!!
+        assertEquals("https://pan.quark.cn/s/88e6f7a795b4", selected.quarkUrl)
+        assertEquals("https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig", selected.baiduUrl)
+    }
+
     @Test fun checksActualBytesAndExactLength() {
         val selected = AppUpdatePolicy.select(JSONArray().put(release("2.5.0")), "2.4.1")!!
         val file = File.createTempFile("update", ".apk")

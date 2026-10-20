@@ -7,7 +7,7 @@ target_include_directories(test_appupdate_policy PRIVATE ${CMAKE_SOURCE_DIR}/src
 target_link_libraries(test_appupdate_policy PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_appupdate_policy COMMAND test_appupdate_policy)
 
-add_executable(test_appupdater test_appupdater.cpp ../src/system/AppUpdater.cpp ../src/system/AppUpdatePolicy.cpp)
+add_executable(test_appupdater test_appupdater.cpp ../src/system/AppUpdater.cpp ../src/system/AppUpdatePolicy.cpp ../src/system/NetdiskFolder.cpp)
 target_include_directories(test_appupdater PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_appupdater PRIVATE Qt6::Core Qt6::Network Qt6::Test)
 add_test(NAME test_appupdater COMMAND test_appupdater)
@@ -58,6 +58,20 @@ target_link_libraries(test_log jmp_core Qt6::Test)
 target_include_directories(test_log PRIVATE ${TEST_INCLUDE_DIRS})
 target_compile_definitions(test_log PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_log COMMAND test_log)
+
+add_executable(test_main_thread_watchdog test_main_thread_watchdog.cpp)
+target_link_libraries(test_main_thread_watchdog jmp_core Qt6::Test)
+target_include_directories(test_main_thread_watchdog PRIVATE ${TEST_INCLUDE_DIRS})
+target_compile_definitions(test_main_thread_watchdog PRIVATE ${TEST_COMPILE_DEFS})
+add_test(NAME test_main_thread_watchdog COMMAND test_main_thread_watchdog)
+
+if(WIN32)
+  add_executable(test_windows_hdr_switch test_windows_hdr_switch.cpp)
+  target_link_libraries(test_windows_hdr_switch jmp_core Qt6::Test)
+  target_include_directories(test_windows_hdr_switch PRIVATE ${TEST_INCLUDE_DIRS})
+  target_compile_definitions(test_windows_hdr_switch PRIVATE ${TEST_COMPILE_DEFS})
+  add_test(NAME test_windows_hdr_switch COMMAND test_windows_hdr_switch)
+endif()
 
 add_executable(test_report_diagnostics test_report_diagnostics.cpp ../src/utils/ReportDiagnostics.cpp)
 target_include_directories(test_report_diagnostics PRIVATE ${CMAKE_SOURCE_DIR}/src)
@@ -204,7 +218,7 @@ if(WIN32)
   endif()
 endif()
 if(WIN32 AND Python3_Interpreter_FOUND)
-  add_executable(app_update_transfer_host app_update_transfer_host.cpp ../src/system/AppUpdater.cpp ../src/system/AppUpdatePolicy.cpp)
+  add_executable(app_update_transfer_host app_update_transfer_host.cpp ../src/system/AppUpdater.cpp ../src/system/AppUpdatePolicy.cpp ../src/system/NetdiskFolder.cpp)
   target_include_directories(app_update_transfer_host PRIVATE ${CMAKE_SOURCE_DIR}/src)
   target_link_libraries(app_update_transfer_host PRIVATE Qt6::Core Qt6::Network)
   add_test(NAME test_app_update_transfer COMMAND "${Python3_EXECUTABLE}" -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_app_update_transfer.py")
@@ -611,6 +625,10 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_report_diagnostics_bridge.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_report_diagnostics_bridge PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+  add_test(NAME test_fault_reports_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_fault_reports_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_fault_reports_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_rife_windows_settings
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_rife_windows_settings.js)
   add_test(NAME test_native_settings_registration

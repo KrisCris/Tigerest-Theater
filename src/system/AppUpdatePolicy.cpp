@@ -2,6 +2,7 @@
 #include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QVersionNumber>
@@ -9,6 +10,15 @@
 
 namespace AppUpdatePolicy
 {
+namespace {
+const QRegularExpression MirrorMarker("<!--\\s*tigerest-mirrors\\s+(\\{[^<>]*\\})\\s*-->");
+QUrl mirror(const QJsonObject& links, const QString& key, const QString& pattern, const char* fallback)
+{
+  const QString url = links.value(key).toString();
+  return QUrl(QRegularExpression(pattern).match(url).hasMatch() ? url : QString::fromLatin1(fallback));
+}
+}
+
 Candidate select(const QJsonArray& releases, const QString& currentVersion, Package package)
 {
   const QRegularExpression currentPattern("^v?(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})(-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$");
@@ -42,14 +52,35 @@ Candidate select(const QJsonArray& releases, const QString& currentVersion, Pack
       if (asset.value("name").toString() != name || asset.value("browser_download_url").toString() != download ||
           size <= 0 || size > MaximumPackageBytes || std::floor(size) != size ||
           !QRegularExpression("^sha256:[0-9a-fA-F]{64}$").match(digest).hasMatch()) continue;
-      best = {tag.mid(1), name, release.value("body").toString().left(20000),
+      QString body = release.value("body").toString();
+      const auto marker = MirrorMarker.match(body);
+      const auto links = QJsonDocument::fromJson(marker.captured(1).toUtf8()).object();
+      body.remove(MirrorMarker);
+      best = {tag.mid(1), name, body.trimmed().left(20000),
         QUrl("https://github.com/Tigerest/Tigerest-Theater/releases/tag/" + tag),
-        QUrl(download), QByteArray::fromHex(digest.mid(7).toLatin1()), static_cast<qint64>(size)};
+        QUrl(download), QByteArray::fromHex(digest.mid(7).toLatin1()), static_cast<qint64>(size),
+        mirror(links, "quark", "^https://pan\\.quark\\.cn/s/[0-9A-Za-z]{6,64}(\\?pwd=[0-9A-Za-z]{4})?$", DefaultQuarkShare),
+        mirror(links, "baidu", "^https://pan\\.baidu\\.com/s/[0-9A-Za-z_-]{6,64}(\\?pwd=[0-9A-Za-z]{4})?$", DefaultBaiduShare)};
       bestVersion = version;
       break;
     }
   }
   return best;
+}
+
+QJsonObject cachedRelease(const QJsonArray& releases, const Candidate& candidate)
+{
+  for (const auto& value : releases)
+  {
+    auto release = value.toObject();
+    if (!candidate.valid() || release.value("tag_name").toString() != "v" + candidate.version) continue;
+    QJsonArray assets;
+    for (const auto& asset : release.value("assets").toArray())
+      if (asset.toObject().value("name").toString() == candidate.fileName) assets.append(asset);
+    return {{"draft", release.value("draft")}, {"prerelease", release.value("prerelease")},
+      {"tag_name", release.value("tag_name")}, {"body", release.value("body").toString().left(40000)}, {"assets", assets}};
+  }
+  return {};
 }
 
 bool verifyFile(const QString& path, const Candidate& candidate)

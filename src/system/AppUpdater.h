@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AppUpdatePolicy.h"
+#include "NetdiskFolder.h"
 #include <QObject>
 #include <QVariantMap>
 #include <QPointer>
@@ -31,8 +32,11 @@ public:
   void cancel();
   void skip();
   void defer();
+  // Opens the release's netdisk folder page ("quark" or "baidu"), or the share when it is not found.
+  void openMirror(const QString& kind);
 signals:
   void changed(const QVariantMap& state);
+  void openUrl(const QUrl& url);
 private:
   void publish(const QString& status, const QString& error = {});
   void request(const QUrl& url, bool metadata, int redirects = 0);
@@ -48,13 +52,17 @@ private:
   void completeDownload();
   void retryDownload(const QString& message);
   void restartDownload();
-  QString skippedVersion() const;
+  QJsonObject preferences() const;
+  bool savePreferences(const QJsonObject& preferences);
+  void rememberCandidate(const QJsonArray& releases);
+  bool restoreCandidate();
   const QString m_currentVersion;
   const AppUpdatePolicy::Package m_package;
   const QString m_cacheDirectory;
   const QString m_preferencePath;
   QNetworkAccessManager* m_network;
   Launcher m_launcher;
+  NetdiskFolder* m_folders = nullptr;
   QPointer<QNetworkReply> m_reply;
   QFile m_file;
   QByteArray m_metadata;
@@ -74,5 +82,7 @@ private:
   bool m_headersAccepted = false;
   bool m_restartedFresh = false;
   bool m_automaticAttempted = false;
+  // A remembered release is on screen while its metadata is refreshed in the background.
+  bool m_silentRefresh = false;
   bool m_packageOpened = false;
 };

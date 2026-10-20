@@ -3,6 +3,10 @@
     if (global.TigerestUpdate || (global.jmpInfo?.capabilities?.selfUpdate === false && global.jmpInfo?.capabilities?.updateCheck !== true)) return;
     let api, started, state = {}, dialog, style, title, details, notes, progress, actions, entry, entryDot, observer;
     let disposed = false, autoInstall = false, installInFlight = false, detailsOpen = false, revision = 0;
+    // The startup prompt shows once per document, and only before the user starts doing something.
+    let prompted = false, interacted = false;
+    const touched = event => { if (event.isTrusted) interacted = true; };
+    const touchEvents = ['pointerdown','keydown','touchstart'];
     function invoke(name, ...args) {
         return new Promise((resolve, reject) => {
             if (!api?.system?.[name]) { reject(new Error('此版本暂不支持更新操作')); return; }
@@ -56,7 +60,8 @@
           #tigerest-update-dialog progress { width:100%; height:9px; accent-color:#ffba27; }
           #tigerest-update-dialog .tg-update-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }
           #tigerest-update-dialog button { font:inherit; min-height:44px; padding:9px 16px; border-radius:9px; border:1px solid #48505d; background:#242a35; color:#ecedf2; cursor:pointer; }
-          #tigerest-update-dialog button:first-child { background:#ffba27; border-color:#ffba27; color:#17130a; font-weight:650; }
+          #tigerest-update-dialog .tg-update-dismiss { display:flex; gap:inherit; }
+          #tigerest-update-dialog .tg-update-actions > button:first-child { background:#ffba27; border-color:#ffba27; color:#17130a; font-weight:650; }
           #tigerest-update-dialog button:focus-visible { outline:2px solid #fff; outline-offset:3px; }
           #tigerest-update-dialog button:disabled { opacity:.5; cursor:wait; }
           @media(max-width:440px) { #tigerest-update-dialog { padding:20px; } #tigerest-update-dialog .tg-update-actions { gap:8px; } }
@@ -127,7 +132,7 @@
         dialog.append(heading, details, progress, notes, actions); document.body.appendChild(dialog);
         dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     }
-    function button(label, action, work) {
+    function button(label, action, work, parent = actions) {
         const node = element('button',label); node.type='button'; node.dataset.updateAction=action;
         node.addEventListener('click',async () => {
             node.disabled = true;
@@ -135,7 +140,7 @@
             catch (error) { autoInstall=false; receive({...state,status:'error',manual:true,error:error.message || '更新操作失败，请重试'}); }
             finally { node.disabled=false; }
         });
-        actions.appendChild(node);
+        parent.appendChild(node);
     }
     function install(automatic) {
         if (installInFlight) return Promise.resolve();
@@ -158,7 +163,7 @@
             status === 'downloading' ? state.retrying ? `${transfer}。${state.retryDelay || 1} 秒后第 ${state.retryAttempt || 1}/${state.retryLimit || 5} 次自动重试。${state.resumable?'已保留进度，将继续下载。':''}` :
                 `已下载 ${percent}%（${transfer}）${percent===100?'，正在校验…':state.speed>0?` · ${bytes(state.speed)}/s`:''}` :
             status === 'installing' ? '请按系统提示完成更新。取消后可再次安装。' :
-            status === 'available' ? `${state.resumable?`已保留 ${transfer}，可继续下载。`:`大小约 ${(Number(state.size||0)/1048576).toFixed(1)} MB。`}下载校验完成后将${state.installLabel || '打开安装程序'}。` :
+            status === 'available' ? `${state.resumable?`已保留 ${transfer}，可继续下载。`:`大小约 ${(Number(state.size||0)/1048576).toFixed(1)} MB。`}下载校验完成后将${state.installLabel || '打开安装程序'}。${state.mirrors?.quark || state.mirrors?.baidu ? '\n无法访问 GitHub 时，可从网盘下载安装包手动安装。' : ''}` :
             status === 'error' && state.resumable ? `已保留 ${transfer}，重试会继续下载。` : '';
         details.textContent = [version,message,state.error].filter(Boolean).join('\n');
         notes.textContent = String(state.notes || '').slice(0,20000);
@@ -168,21 +173,37 @@
         if (state.checkOnly && ['available','current','unpublished'].includes(status)) {
             button('查看发布说明','release',()=>invoke('openExternalUrl',state.releaseUrl));
         } else if (!state.checkOnly && (status === 'available' || status === 'error' && state.version && state.size>0)) {
-            button(state.resumable?'继续下载':status==='error'?'重试下载':'立即更新','download',async()=>{autoInstall=true;await invoke('downloadAppUpdate');});
+            button(state.resumable?'继续下载':status==='error'?'重试下载':'从GitHub获取更新','download',async()=>{autoInstall=true;await invoke('downloadAppUpdate');});
         } else if (status === 'ready' && !state.checkOnly) {
             button(state.installLabel || '安装更新','install',()=>install(false));
         } else if (status === 'error') {
             button('重新检查','check',()=>check());
         }
         if (status === 'downloading') button('暂停下载','cancel',()=>{autoInstall=false;return invoke('cancelAppUpdate');});
-        if (status === 'available') button('跳过此版本','skip',async()=>{autoInstall=false;await invoke('skipAppUpdate');state={...state,status:'idle',version:''};detailsOpen=false;dialog.close();mountEntry();});
-        button(status==='available'?'稍后':status==='downloading'?'后台下载':'关闭','close',close);
+        const mirrors = !state.checkOnly && state.version && (status === 'available' || status === 'error' && state.size>0) ?
+            [['夸克网盘','quark'],['百度网盘','baidu']].filter(([,key]) => /^https:\/\//.test(state.mirrors?.[key] || '')) : [];
+        // Native code opens this version's folder in the share; older bridges open the share itself.
+        for (const [label,key] of mirrors) button(label,key,()=>api.system.openAppUpdateMirror ? invoke('openAppUpdateMirror',key) : invoke('openExternalUrl',state.mirrors[key]));
+        // Ignore and Later wrap together, so a narrow dialog keeps them on one row.
+        const dismiss = status === 'available' ? element('span') : actions;
+        if (status === 'available') {
+            dismiss.className = 'tg-update-dismiss'; actions.appendChild(dismiss);
+            button('忽略本次更新','skip',async()=>{autoInstall=false;await invoke('skipAppUpdate');state={...state,status:'idle',version:''};detailsOpen=false;dialog.close();mountEntry();},dismiss);
+        }
+        button(status==='available'?'稍后':status==='downloading'?'后台下载':'关闭','close',close,dismiss);
         if (!dialog.open) dialog.showModal();
     }
     function receive(next) {
         if (disposed || !next || typeof next !== 'object') return;
         revision++; state=next;
         if (state.status==='error') autoInstall=false;
+        if (!prompted && !state.checkOnly && !state.manual && !state.deferred && state.status==='available' && actionable()) {
+            prompted=true;
+            // A release remembered from last launch is ready before the user acts; a
+            // check finishing later waits silently for the next launch instead.
+            if (state.cached || !interacted) detailsOpen=true;
+            else { state={...state,deferred:true}; invoke('deferAppUpdate').catch(()=>{}); }
+        }
         render();
         if (!state.checkOnly && state.status==='ready' && !installInFlight && (autoInstall || state.installAfterDownload)) {
             autoInstall=false;
@@ -216,11 +237,13 @@
     }
     function destroy() {
         disposed=true;autoInstall=false;api?.system?.appUpdateChanged?.disconnect(receive);
+        for (const type of touchEvents) document.removeEventListener(type,touched,true);
         observer?.disconnect();entry?.remove();dialog?.remove();style?.remove();document.removeEventListener('DOMContentLoaded',render);
     }
     global.TigerestUpdate={start,check,open,close,destroy};
     global._updatePlugin=class { constructor() { this.name='Update Plugin';this.type='input';this.id='updatePlugin';start(); } };
     document.addEventListener('DOMContentLoaded',render,{once:true});
+    for (const type of touchEvents) document.addEventListener(type,touched,{capture:true,passive:true});
     // Jellyfin's web client dispatches its own pagehide from view elements;
     // only the browser's pagehide for the document ends this page.
     const leave=event=>{if(!event.isTrusted||(event.target!==document&&event.target!==global))return;global.removeEventListener('pagehide',leave);destroy();};

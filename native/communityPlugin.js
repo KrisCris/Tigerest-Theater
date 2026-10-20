@@ -61,6 +61,7 @@
             this.appRouter=appRouter;
             this.messages=window.TigerestCommunityMessages?new window.TigerestCommunityMessages({
                 connectionManager,account:this.account,openDiscussion:message=>this.openDiscussion(message)}):null;
+            if(this.messages)window.TigerestFaultReports?.attach(this.messages);
             this.unsubscribeAccount=this.account?.subscribe(()=>this.commentIdentityChanged());
             // A renamed author reloads the list under the new name; drafts stay.
             this.unsubscribeProfile=this.account?.subscribeProfile?.(()=>{const state=this.state;if(state?.channel==='public'&&this.valid(state))this.load(state,true);});

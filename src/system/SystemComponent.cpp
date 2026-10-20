@@ -26,6 +26,7 @@
 #include <QDateTime>
 #include <algorithm>
 #include <functional>
+#include <utility>
 
 #include <QtWebEngineCore/qtwebenginecoreglobal.h>
 
@@ -33,6 +34,7 @@
 #include "SystemComponent.h"
 #include "AppUpdater.h"
 #include "CommunityBridge.h"
+#include "MainThreadWatchdog.h"
 #include "player/PlayerComponent.h"
 #include "Version.h"
 #include "settings/SettingsComponent.h"
@@ -79,6 +81,8 @@ SystemComponent::SystemComponent(QObject* parent) : ComponentBase(parent), m_pla
   m_networkManager = new QNetworkAccessManager(this);
   m_communityBridge = new CommunityBridge(this);
   connect(m_communityBridge, &CommunityBridge::response, this, &SystemComponent::communityResponse);
+  m_watchdog = new MainThreadWatchdog(this);
+  connect(m_watchdog, &MainThreadWatchdog::stallRecovered, this, &SystemComponent::mainThreadStallRecovered);
   connect(m_communityBridge, &CommunityBridge::mappingAuthChanged, this, [](const QString& path, const QString& generation) {
     PlayerComponent::Get().updateDanmakuAuthorization(path, generation);
   });
@@ -161,6 +165,7 @@ bool SystemComponent::componentInitialize()
         return QDesktopServices::openUrl(QUrl::fromLocalFile(path));
       }, this);
     connect(m_appUpdater, &AppUpdater::changed, this, &SystemComponent::appUpdateChanged);
+    connect(m_appUpdater, &AppUpdater::openUrl, this, [](const QUrl& url) { QDesktopServices::openUrl(url); });
   }
 
   return true;
@@ -487,8 +492,20 @@ void SystemComponent::crashApp()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
+static QString stallFaultFile()
+{
+  return QDir(ProfileManager::activeProfile().logDir()).filePath(QStringLiteral("main-thread-stall.json"));
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 void SystemComponent::componentPostInitialize()
 {
+  // Read before the watchdog can write a new stall for this process.
+  m_unfinishedFault = MainThreadWatchdog::takeUnfinishedFault(stallFaultFile());
+  if (!m_unfinishedFault.isEmpty())
+    qWarning() << "Previous run ended during a main-thread stall of at least"
+               << m_unfinishedFault.value("durationMs").toLongLong() << "ms";
+  connect(qApp, &QCoreApplication::aboutToQuit, m_watchdog, &MainThreadWatchdog::stop);
   InputComponent::Get().registerHostCommand("crash!", this, "crashApp");
   InputComponent::Get().registerHostCommand("script", this, "runUserScript");
 }
@@ -854,6 +871,12 @@ QVariantMap SystemComponent::collectReportDiagnostics() const
   return Log::CollectReportDiagnostics();
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+QVariantMap SystemComponent::takeUnfinishedFault()
+{
+  return std::exchange(m_unfinishedFault, QVariantMap());
+}
+
 QString SystemComponent::debugInformation()
 {
   QString debugInfo;
@@ -975,6 +998,9 @@ void SystemComponent::hello(const QString& version)
 {
   qDebug() << QString("Web-client (%1) fully inited.").arg(version);
   m_webClientVersion = version;
+  // Start after the first page load: startup work is not a stall to report.
+  if (!m_watchdog->running() && m_watchdog->start(stallFaultFile()))
+    qInfo() << "Main-thread watchdog started";
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -1074,6 +1100,7 @@ QString SystemComponent::getNativeShellScript()
     ":/web-client/extension/communityPublicClient.js",
     ":/web-client/extension/communityAccount.js",
     ":/web-client/extension/communityMessages.js",
+    ":/web-client/extension/faultReports.js",
     ":/web-client/extension/communityPlugin.js",
     ":/web-client/extension/watchTogetherClient.js",
     ":/web-client/extension/watchTogetherSync.js",
@@ -1190,6 +1217,7 @@ void SystemComponent::installAppUpdate(bool automatic) { if (m_appUpdater) m_app
 void SystemComponent::cancelAppUpdate() { if (m_appUpdater) m_appUpdater->cancel(); }
 void SystemComponent::skipAppUpdate() { if (m_appUpdater) m_appUpdater->skip(); }
 void SystemComponent::deferAppUpdate() { if (m_appUpdater) m_appUpdater->defer(); }
+void SystemComponent::openAppUpdateMirror(const QString& kind) { if (m_appUpdater) m_appUpdater->openMirror(kind); }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 #define BASESTR "protocols=shoutcast,http-video;videoDecoders=h264{profile:high&resolution:2160&level:52};audioDecoders=mp3,aac,dts{bitrate:800000&channels:%1},ac3{bitrate:800000&channels:%2}"

@@ -21,7 +21,14 @@ withBrowser({
  await evaluate(`emit({status:'current',manual:false});`);assert.equal(await evaluate('!!document.querySelector("#tigerest-update-dialog[open]")'),false,'silent when current');
  await evaluate(`emit({status:'error',error:'网络不可用',manual:false});`);assert.equal(await evaluate('!!document.querySelector("#tigerest-update-dialog[open]")'),false,'automatic network errors do not interrupt startup');
  await evaluate(`emit({status:'available',version:'2.5.0',size:1024,notes:'<img src=x onerror="window.unsafe=true">',error:'',manual:false,installLabel:'安装更新'});`);
- assert.equal(await evaluate('!!document.querySelector("#tigerest-update-dialog[open]")'),false,'startup update never interrupts browsing');
+ const dialogOpen=()=>evaluate('!!document.querySelector("#tigerest-update-dialog[open]")');
+ const actionLabels=()=>evaluate('[...document.querySelectorAll("#tigerest-update-dialog [data-update-action]")].map(node=>node.textContent)');
+ assert.equal(await dialogOpen(),true,'a release found before the user acts prompts at startup');
+ assert.deepEqual(await actionLabels(),['从GitHub获取更新','忽略本次更新','稍后']);
+ await evaluate('document.querySelector("[data-update-action=close]").click()');
+ assert.deepEqual(await evaluate('calls.at(-1)'),['deferAppUpdate']);
+ await evaluate(`emit({deferred:true});emit({deferred:false});`);
+ assert.equal(await dialogOpen(),false,'the startup prompt shows once per document');
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-update-button").length'),1,'one pre-login update entry');
  assert.equal(await evaluate('document.querySelector("[data-update-dot]").hidden'),false,'actionable update has a red dot');
  assert.ok(await evaluate('document.querySelector("#tigerest-update-button").getAttribute("aria-label").includes("2.5.0")'));
@@ -45,6 +52,25 @@ withBrowser({
  assert.equal(await evaluate('document.querySelector("#tigerest-update-button").getAttribute("aria-expanded")'),'false','closed details are announced correctly');
  assert.equal(await evaluate('document.querySelector("[data-update-dot]").hidden'),false,'Later keeps the available update reachable');
  assert.deepEqual(await evaluate('calls.at(-1)'),['deferAppUpdate']);
+ await evaluate(`emit({mirrors:{quark:'https://pan.quark.cn/s/abc123def',baidu:'https://pan.baidu.com/s/1AbCdEf?pwd=ab12'}});document.querySelector("#tigerest-update-button").click()`);
+ assert.deepEqual(await actionLabels(),['从GitHub获取更新','夸克网盘','百度网盘','忽略本次更新','稍后'],'netdisk buttons follow the release mirrors');
+ for(const width of [1100,360]){
+  await call('Emulation.setDeviceMetricsOverride',{width,height:740,deviceScaleFactor:1,mobile:width<500});
+  const rows=await evaluate(`(()=>{const top=action=>document.querySelector('[data-update-action='+action+']').getBoundingClientRect().top,bg=action=>getComputedStyle(document.querySelector('[data-update-action='+action+']')).backgroundColor;return {together:Math.abs(top('skip')-top('close'))<1,primary:bg('download'),skip:bg('skip')}})()`);
+  assert.ok(rows.together&&rows.primary!==rows.skip,'Ignore and Later stay on one row and only the GitHub button is primary at '+width+'px: '+JSON.stringify(rows));
+ }
+ await call('Emulation.clearDeviceMetricsOverride');
+ await evaluate('document.querySelector("[data-update-action=baidu]").click()');
+ assert.equal(await evaluate('externalLinks.at(-1)'),'https://pan.baidu.com/s/1AbCdEf?pwd=ab12','without native folder lookup the share opens through the external opener');
+ await evaluate(`apiPromise.then(api=>{api.system.openAppUpdateMirror=(...args)=>{const cb=args.pop();calls.push(['openAppUpdateMirror',...args]);cb?.()}})`);
+ const links=await evaluate('externalLinks.length');
+ await evaluate('document.querySelector("[data-update-action=quark]").click()');
+ assert.deepEqual(await evaluate('calls.at(-1)'),['openAppUpdateMirror','quark'],'native code opens the version folder');
+ assert.equal(await evaluate('externalLinks.length'),links,'the share itself is not opened as well');
+ assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("从网盘下载安装包")'));
+ await evaluate(`emit({mirrors:{quark:'javascript:alert(1)'}})`);
+ assert.deepEqual(await actionLabels(),['从GitHub获取更新','忽略本次更新','稍后'],'only https mirrors are offered');
+ await evaluate(`emit({mirrors:{}});document.querySelector("[data-update-action=close]").click()`);
  await evaluate(`emit({status:'available',deferred:true});`);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog").open'),false,'Later survives state replay without persisting skip');
  await evaluate(`emit({status:'available',deferred:false});`);
@@ -131,8 +157,23 @@ withBrowser({
  assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("桥接请求失败")'),'Android Promise rejection must reach the visible error instead of callback(false) hiding it');
  await evaluate(`emit({status:'available',currentVersion:'2.5.0',version:'2.5.0'})`);
  assert.equal(await evaluate('document.querySelector("[data-update-dot]").hidden'),true,'same version is not actionable');
+ // New documents: a check finishing after the user acts waits for the next launch,
+ // where the remembered (cached) release prompts even after an early keypress.
+ const relaunch=async()=>{
+  await evaluate(`TigerestUpdate.destroy();delete window.TigerestUpdate;window.listeners=[];window.calls=[];window.state={status:'idle',currentVersion:'2.4.1'};
+   new Promise(resolve=>{const js=document.createElement('script');js.src='/update.js?'+calls.length+Math.random();js.onload=resolve;document.head.appendChild(js)})`);
+  await evaluate('TigerestUpdate.start()');
+  for(const type of ['rawKeyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:'Shift',code:'ShiftLeft',windowsVirtualKeyCode:16});
+ };
+ await relaunch();
+ await evaluate(`emit({status:'available',version:'2.5.0',size:1024,manual:false,deferred:false,error:''})`);
+ assert.equal(await dialogOpen(),false,'a check finishing after the user acts does not interrupt');
+ assert.deepEqual(await evaluate('calls.at(-1)'),['deferAppUpdate'],'and stays quiet for the rest of this launch');
+ await relaunch();
+ await evaluate(`emit({status:'available',version:'2.5.0',size:1024,manual:false,deferred:false,cached:true,error:''})`);
+ assert.equal(await dialogOpen(),true,'the remembered release prompts at the next launch');
  await evaluate('TigerestUpdate.destroy()');assert.equal(await evaluate('listeners.length'),0);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-button")'),null);
- console.log('update UI: nonblocking startup, red dot, header replacement, skip/manual, text safety, progress, install-once, retry/cancel and narrow layout passed');
+ console.log('update UI: startup prompt once (cached or before interaction), netdisk mirrors, red dot, header replacement, skip/manual, text safety, progress, install-once, retry/cancel and narrow layout passed');
 // Qt does not tick animation frames when launched with windowsHide, even while document.hidden is false.
 },{visible:true}).catch(e=>{console.error(e);process.exitCode=1});

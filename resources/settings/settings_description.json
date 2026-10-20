@@ -56,6 +56,13 @@
         "default": false
       },
       {
+        "value": "autoFaultReports",
+        "display_name": "自动发送故障诊断",
+        "help": "播放器卡住或启动超时时，自动向服务器管理员发送故障报告，附带脱敏的诊断日志、卡住时的线程调用栈和正在播放的作品，用于定位问题。",
+        "default": true,
+        "platforms": [ "windows" ]
+      },
+      {
         "value": "hdmi_poweron",
         "default": false,
         "hidden": true,
@@ -321,6 +328,13 @@
         "display_name": "自动匹配显示刷新率",
         "help": "按媒体帧率切换显示器刷新率；默认关闭。",
         "default": false
+      },
+      {
+        "value": "hdr.auto_switch",
+        "display_name": "播放 HDR 时自动开启系统 HDR",
+        "help": "播放 HDR 片源时，如果显示器支持 HDR 但 Windows 未开启，自动开启，播放结束后恢复；切换时屏幕会黑一两秒。",
+        "default": true,
+        "platforms": [ "windows" ]
       },
       {
         "value": "refreshrate.delay",

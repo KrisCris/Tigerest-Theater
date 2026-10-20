@@ -45,6 +45,33 @@ class AppUpdateEngineTest {
         engine.check(true); queue.run(); assertEquals("available", engine.snapshot().getString("status"))
     }
 
+    @Test fun rememberedReleaseShowsAtOnceAndRefreshesSilently() {
+        val source = Source(); val queue = Queue(); val directory = Files.createTempDirectory("app-updater").toFile()
+        val saved = arrayOf(""); val skipped = arrayOf("")
+        fun launch(version: String = "2.4.1") = AppUpdateEngine(version, directory, source, { true }, { skipped[0] }, { skipped[0] = it }, queue,
+            remembered = { saved[0] }, remember = { saved[0] = it })
+        try {
+            launch().apply {
+                check(false); assertEquals("checking", snapshot().getString("status"))
+                queue.run(); assertEquals("available", snapshot().getString("status")); assertFalse(snapshot().getBoolean("cached")); close()
+            }
+            assertTrue(saved[0].contains("\"v2.5.0\""))
+            // Next launch: shown before the network answers; a failed refresh keeps it.
+            source.error = true
+            launch().apply {
+                check(false); val shown = snapshot()
+                assertEquals("available", shown.getString("status")); assertTrue(shown.getBoolean("cached")); assertEquals("2.5.0", shown.getString("version"))
+                queue.run(); assertEquals("available", snapshot().getString("status")); assertEquals("", snapshot().getString("error")); close()
+            }
+            launch("2.5.0").apply { check(false); assertEquals("checking", snapshot().getString("status")); close() }
+            queue.tasks.clear(); source.error = false
+            launch().apply { check(false); assertTrue(skip()); close() }
+            assertEquals("", saved[0]); assertEquals("2.5.0", skipped[0])
+            queue.tasks.clear()
+            launch().apply { check(false); assertEquals("checking", snapshot().getString("status")); close() }
+        } finally { directory.deleteRecursively() }
+    }
+
     @Test fun automaticSkipsPersistedVersionAndManualRetriesNetworkFailure() = scenario { engine, source, queue, _, skipped, _ ->
         skipped[0] = "2.5.0"
         engine.check(false); queue.run(); assertEquals("current", engine.snapshot().getString("status"))

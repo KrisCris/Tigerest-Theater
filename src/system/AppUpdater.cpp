@@ -37,11 +37,13 @@ AppUpdater::AppUpdater(const QString& version, Package package, const QString& c
   m_state = {{"status", "idle"}, {"currentVersion", version}, {"version", ""},
     {"releaseUrl", "https://github.com/Tigerest/Tigerest-Theater/releases"}, {"notes", ""},
     {"size", qint64(0)}, {"received", qint64(0)}, {"error", ""}, {"manual", false}, {"deferred", false}, {"installAfterDownload", false},
+    {"cached", false}, {"mirrors", QVariantMap()},
     {"resumable", false}, {"retrying", false}, {"retryAttempt", 0}, {"retryLimit", RetryLimit}, {"retryDelay", 0}, {"speed", qint64(0)},
     {"platform", package == Package::MacArm64 ? "macos" : package == Package::Unsupported ? "unsupported" : "windows"},
     {"installLabel", package == Package::WindowsInstaller ? "安装更新" : package == Package::WindowsPortable ? "打开 ZIP 更新包" : "打开 DMG 更新包"}};
   m_retryTimer.setSingleShot(true);
   connect(&m_retryTimer, &QTimer::timeout, this, &AppUpdater::beginDownloadRequest);
+  m_folders = new NetdiskFolder(network, this);
 }
 
 AppUpdater::~AppUpdater()
@@ -61,12 +63,17 @@ void AppUpdater::publish(const QString& status, const QString& error)
   m_state["size"] = m_candidate.size;
   m_state["releaseUrl"] = m_candidate.valid() ? m_candidate.releaseUrl.toString() :
     QString("https://github.com/Tigerest/Tigerest-Theater/releases");
+  QVariantMap mirrors;
+  if (m_candidate.quarkUrl.isValid()) mirrors["quark"] = m_candidate.quarkUrl.toString();
+  if (m_candidate.baiduUrl.isValid()) mirrors["baidu"] = m_candidate.baiduUrl.toString();
+  m_state["mirrors"] = mirrors;
   emit changed(m_state);
 }
 
 void AppUpdater::clearTransfer(bool discard)
 {
   m_retryTimer.stop();
+  m_silentRefresh = false;
   if (m_reply)
   {
     auto* reply = m_reply.data();
@@ -124,14 +131,28 @@ void AppUpdater::check(bool manual, bool enabled)
   m_state["received"] = qint64(0);
   m_state["resumable"] = false;
   m_candidate = {};
+  m_state["cached"] = false;
   if (m_package == Package::Unsupported)
   {
     publish("error", "此平台暂不支持应用内更新，请在发行页面查看可用版本。");
     return;
   }
+  const QUrl releases("https://api.github.com/repos/Tigerest/Tigerest-Theater/releases?per_page=30");
+  // A release found too late to show last time is shown at once; startup
+  // never waits for the network, which then refreshes it in the background.
+  if (!manual && restoreCandidate())
+  {
+    refreshCachedProgress();
+    m_state["cached"] = true;
+    publish("available");
+    if (m_state.value("status") != "available" || m_reply) return;
+    m_silentRefresh = true;
+    request(releases, true);
+    return;
+  }
   publish("checking");
   if (m_state.value("status") != "checking") return;
-  request(QUrl("https://api.github.com/repos/Tigerest/Tigerest-Theater/releases?per_page=30"), true);
+  request(releases, true);
 }
 
 void AppUpdater::request(const QUrl& url, bool metadata, int redirects)
@@ -396,10 +417,15 @@ void AppUpdater::finish(QNetworkReply* reply, bool metadata, int redirects)
       fail("更新服务器返回了无效的版本信息。");
       return;
     }
+    m_silentRefresh = false;
+    m_state["cached"] = false;
     m_candidate = AppUpdatePolicy::select(document.array(), m_currentVersion, m_package);
-    if (m_candidate.valid() && !m_state.value("manual").toBool() && m_candidate.version == skippedVersion())
+    const bool skipped = m_candidate.valid() && !m_state.value("manual").toBool() &&
+      m_candidate.version == preferences().value("skippedVersion").toString();
+    if (skipped) m_candidate = {};
+    rememberCandidate(document.array());
+    if (skipped)
     {
-      m_candidate = {};
       publish("idle");
       return;
     }
@@ -413,6 +439,18 @@ void AppUpdater::finish(QNetworkReply* reply, bool metadata, int redirects)
 
 void AppUpdater::fail(const QString& message, bool discard)
 {
+  // A failed background refresh leaves the remembered release on screen.
+  if (m_silentRefresh)
+  {
+    m_silentRefresh = false;
+    if (m_reply)
+    {
+      auto* reply = m_reply.data(); m_reply.clear();
+      disconnect(reply, nullptr, this, nullptr); reply->abort(); reply->deleteLater();
+    }
+    m_metadata.clear();
+    return;
+  }
   clearTransfer(discard);
   publish("error", message);
 }
@@ -493,22 +531,52 @@ void AppUpdater::cancel()
   publish(m_candidate.valid() ? "available" : "idle");
 }
 
-QString AppUpdater::skippedVersion() const
+QJsonObject AppUpdater::preferences() const
 {
   QFile file(m_preferencePath);
-  if (!file.open(QIODevice::ReadOnly) || file.size() > 4096) return {};
-  return QJsonDocument::fromJson(file.readAll()).object().value("skippedVersion").toString();
+  if (!plainPath(m_preferencePath) || !file.open(QIODevice::ReadOnly) || file.size() > 256 * 1024) return {};
+  return QJsonDocument::fromJson(file.readAll()).object();
+}
+
+bool AppUpdater::savePreferences(const QJsonObject& preferences)
+{
+  QDir().mkpath(QFileInfo(m_preferencePath).absolutePath());
+  QSaveFile file(m_preferencePath);
+  const auto json = QJsonDocument(preferences).toJson(QJsonDocument::Compact);
+  return file.open(QIODevice::WriteOnly) && file.write(json) == json.size() && file.commit();
+}
+
+void AppUpdater::rememberCandidate(const QJsonArray& releases)
+{
+  auto saved = preferences();
+  const auto release = AppUpdatePolicy::cachedRelease(releases, m_candidate);
+  if (release.isEmpty() && !saved.contains("release")) return;
+  if (release.isEmpty()) saved.remove("release");
+  else saved["release"] = release;
+  savePreferences(saved);
+}
+
+bool AppUpdater::restoreCandidate()
+{
+  const auto saved = preferences();
+  const auto release = saved.value("release").toObject();
+  if (release.isEmpty()) return false;
+  // The full release policy runs again: an installed or skipped version is never shown.
+  m_candidate = AppUpdatePolicy::select(QJsonArray{release}, m_currentVersion, m_package);
+  if (m_candidate.valid() && m_candidate.version != saved.value("skippedVersion").toString()) return true;
+  m_candidate = {};
+  return false;
 }
 
 void AppUpdater::skip()
 {
   if (!m_candidate.valid() || m_state.value("status") == "installing") return;
-  QDir().mkpath(QFileInfo(m_preferencePath).absolutePath());
-  QSaveFile file(m_preferencePath);
-  const auto json = QJsonDocument(QJsonObject{{"skippedVersion", m_candidate.version}}).toJson();
-  if (!file.open(QIODevice::WriteOnly) || file.write(json) != json.size() || !file.commit())
+  auto saved = preferences();
+  saved["skippedVersion"] = m_candidate.version;
+  saved.remove("release");
+  if (!savePreferences(saved))
   {
-    publish(m_state.value("status").toString(), "无法保存跳过版本设置。");
+    publish(m_state.value("status").toString(), "无法保存忽略更新设置。");
     return;
   }
   clearTransfer(true);
@@ -522,4 +590,11 @@ void AppUpdater::defer()
   m_state["deferred"] = true;
   m_state["installAfterDownload"] = false;
   emit changed(m_state);
+}
+
+void AppUpdater::openMirror(const QString& kind)
+{
+  const QUrl share = kind == "quark" ? m_candidate.quarkUrl : kind == "baidu" ? m_candidate.baiduUrl : QUrl();
+  if (!m_candidate.valid() || share.isEmpty() || m_folders->busy()) return;
+  m_folders->resolve(share, m_candidate.version, [this](const QUrl& page) { emit openUrl(page); });
 }
