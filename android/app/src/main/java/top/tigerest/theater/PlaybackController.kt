@@ -39,9 +39,16 @@ class PlaybackController(private val context: Context, private val settings: Set
             // Recreate EGL after the Android buffer queue settles. A size property update alone
             // can leave the old buffer geometry visible on a paused, resized SurfaceView.
             MPVLib.setPropertyString("vo","null")
-            MPVLib.setPropertyString("vo","gpu")
+            MPVLib.setPropertyString("vo",videoOutput())
         }
     }
+    // HDR media decodes straight into the SurfaceView, so Android composes it as
+    // HDR or Dolby Vision at the panel's brightness. mpv's OpenGL ES output can
+    // only tone map to SDR; on this path mpv draws no subtitles or OSD.
+    private var hdrOutput = false
+    private fun videoOutput() = if (hdrOutput) "mediacodec_embed" else "gpu"
+    private fun hardwareDecoding() = if (hdrOutput) "mediacodec"
+        else when(settings.string("video","hardwareDecoding")){"disabled"->"no";"copy"->"mediacodec-copy";else->"mediacodec,mediacodec-copy"}
     private var video = true
     private var durationMs = 0L
     private var metadata = JSONObject()
@@ -54,6 +61,10 @@ class PlaybackController(private val context: Context, private val settings: Set
     var visible: (Boolean) -> Unit = {}
     var itemChanged: (JSONObject) -> Unit = {}
     var message: (String) -> Unit = {}
+    var subtitleText: (String) -> Unit = {}
+    /** Video aspect for native layers; embedded is true while MediaCodec draws to the whole surface. */
+    var videoLayout: (aspect: Double, embedded: Boolean) -> Unit = { _, _ -> }
+    private var videoAspect = 0.0
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val mediaSession = MediaSession(context,"Tigerest MPV")
     private var pausedByFocus = false
@@ -83,9 +94,10 @@ class PlaybackController(private val context: Context, private val settings: Set
         val options = mapOf("config" to "no","ytdl" to "no","profile" to "fast","vo" to "gpu","gpu-context" to "android","opengl-es" to "yes","hwdec" to "mediacodec,mediacodec-copy","ao" to "audiotrack,opensles","idle" to "yes","keep-open" to "yes","force-window" to "no","osc" to "no","input-default-bindings" to "no","tls-verify" to "yes","tls-ca-file" to certificate.path,"save-position-on-quit" to "no","gpu-shader-cache-dir" to context.cacheDir.path,"sub-fonts-dir" to "/system/fonts")
         for ((name,value) in options) require(MPVLib.setOptionString(name,value) >= 0) { "mpv 初始化选项失败：$name" }
         MPVLib.init(); MPVLib.addObserver(this); MPVLib.addLogObserver(this)
-        for (property in listOf("time-pos","duration","speed","volume","cache-buffering-state")) MPVLib.observeProperty(property,MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
+        for (property in listOf("time-pos","duration","speed","volume","cache-buffering-state","video-params/aspect")) MPVLib.observeProperty(property,MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
         for (property in listOf("pause","paused-for-cache","eof-reached")) MPVLib.observeProperty(property,MPVLib.MpvFormat.MPV_FORMAT_FLAG)
         MPVLib.observeProperty("track-list",MPVLib.MpvFormat.MPV_FORMAT_NONE)
+        for (property in listOf("sub-text","current-tracks/sub/codec")) MPVLib.observeProperty(property,MPVLib.MpvFormat.MPV_FORMAT_STRING)
         applySettings()
         context.registerReceiver(noisyReceiver,IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),Context.RECEIVER_NOT_EXPORTED)
         mediaSession.setCallback(object: MediaSession.Callback() {
@@ -96,7 +108,7 @@ class PlaybackController(private val context: Context, private val settings: Set
         },main)
     }
     // The video output opens on the surface first; then a video load held for it starts.
-    @Synchronized fun attach(surface: Surface) { if (!destroyed) { MPVLib.attachSurface(surface); MPVLib.setPropertyString("vo","gpu"); MPVLib.setPropertyString("force-window","yes"); surfaceGate.attached() } }
+    @Synchronized fun attach(surface: Surface) { if (!destroyed) { MPVLib.attachSurface(surface); MPVLib.setPropertyString("vo",videoOutput()); MPVLib.setPropertyString("force-window","yes"); surfaceGate.attached() } }
     @Synchronized fun detach() { surfaceGate.detached(); main.removeCallbacks(resizeOutput); if (!destroyed) { MPVLib.setPropertyString("vo","null"); MPVLib.setPropertyString("force-window","no"); MPVLib.detachSurface() } }
     fun surfaceSize(width: Int,height: Int) {
         if(destroyed || width<=0 || height<=0) return
@@ -142,6 +154,10 @@ class PlaybackController(private val context: Context, private val settings: Set
                 val url = args.getString(0); require(url.startsWith("http://") || url.startsWith("https://") || url.startsWith("content://")) { "不支持的媒体地址" }
                 val options = args.optJSONObject(1) ?: JSONObject(); metadata = args.optJSONObject(2) ?: JSONObject()
                 video = PlaybackContract.isVideo(metadata.optString("type","video"))
+                val hdr = video && metadata.optString("dynamicRange") == "hdr" && settings.string("video","hardwareDecoding") != "disabled"
+                if (hdr != hdrOutput) setOutput(hdr)
+                main.post { subtitleText("") }
+                DiagnosticsLog.app.record("info","Player output ${videoOutput()}")
                 DiagnosticsLog.app.record("info","Player load requested video=$video")
                 audio = args.opt(3) ?: 1; subtitle = args.opt(4) ?: -1; startMs = options.optDouble("startMilliseconds",0.0)
                 endTemporarySpeed()
@@ -197,8 +213,7 @@ class PlaybackController(private val context: Context, private val settings: Set
         return true
     }
     fun applySettings() {
-        val hardware = when(settings.string("video","hardwareDecoding")){"disabled"->"no";"copy"->"mediacodec-copy";else->"mediacodec,mediacodec-copy"}
-        MPVLib.setPropertyString("hwdec",hardware)
+        MPVLib.setPropertyString("hwdec",hardwareDecoding())
         MPVLib.setPropertyString("demuxer-max-bytes",(settings.number("video","cache")*1024*1024).toLong().toString())
         MPVLib.setPropertyBoolean("deinterlace",settings.bool("video","deinterlace"))
         MPVLib.setPropertyString("video-sync",settings.string("video","sync_mode"))
@@ -260,6 +275,7 @@ class PlaybackController(private val context: Context, private val settings: Set
             "duration" -> { durationMs = (value*1000).toLong(); emit("updateDuration",durationMs) }
             "cache-buffering-state" -> emit("buffering",value.toInt())
             "speed" -> { state.update(state.generation,positionSeconds(),isPaused(),value); emit("playbackRateChanged",value) }
+            "video-params/aspect" -> { videoAspect = value; videoLayout(value,hdrOutput) }
         }
     } }
     override fun eventProperty(property: String, value: Boolean) { val generation = eventGeneration; main.post {
@@ -269,8 +285,28 @@ class PlaybackController(private val context: Context, private val settings: Set
         if(property == "paused-for-cache") { state.buffering(generation,value); emit("buffering",if(value) 0 else 100) }
     } }
     override fun eventProperty(property: String, value: Long) {}
-    override fun eventProperty(property: String, value: String) {}
-    override fun eventProperty(property: String) { if(property == "track-list") emit("onVideoRecangleChanged") }
+    override fun eventProperty(property: String, value: String) { val generation = eventGeneration; main.post {
+        if(destroyed || !state.active || generation != state.generation) return@post
+        when(property) {
+            "sub-text" -> subtitleText(if(hdrOutput) value else "")
+            "current-tracks/sub/codec" -> if(hdrOutput && PlaybackContract.isImageSubtitle(value)) {
+                // Picture subtitles exist only as mpv overlays: show them, tone mapped.
+                setOutput(false); subtitleText("")
+                message("图形字幕需要关闭 HDR 直出，已改为色调映射")
+            }
+        }
+    } }
+    override fun eventProperty(property: String) {
+        if(property == "track-list") emit("onVideoRecangleChanged")
+        if(property == "sub-text") main.post { subtitleText("") }
+    }
+    @Synchronized private fun setOutput(hdr: Boolean) {
+        if(destroyed) return
+        hdrOutput = hdr
+        MPVLib.setPropertyString("hwdec",hardwareDecoding())
+        if (surfaceGate.hasSurface) MPVLib.setPropertyString("vo",videoOutput())
+        main.post { videoLayout(videoAspect,hdr) }
+    }
     // Watch-together reads this before the pause so it reports away instead of pausing the room.
     fun background() { endTemporarySpeed(); if(state.active && !state.paused) { emit("backgrounded"); dispatch("pause",JSONArray()) } }
     fun destroy() { if(destroyed) return; endTemporarySpeed(); surfaceGate.cancel(); state.end(state.generation); destroyed = true; main.removeCallbacks(resizeOutput); context.unregisterReceiver(noisyReceiver); MPVLib.removeObserver(this); MPVLib.removeLogObserver(this); MPVLib.destroy(); mediaSession.release(); audioManager.abandonAudioFocusRequest(focus) }

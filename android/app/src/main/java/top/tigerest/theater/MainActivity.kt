@@ -77,8 +77,11 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
             root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }; setContentView(root)
             val web = WebView(this); root.addView(web,FrameLayout.LayoutParams(-1,-1))
             video = FrameLayout(this).apply { setBackgroundColor(Color.BLACK); visibility = View.GONE }
-            video.addView(MpvSurface(this,model.player),FrameLayout.LayoutParams(-1,-1))
+            val surface = MpvSurface(this,model.player); video.addView(surface,FrameLayout.LayoutParams(-1,-1,Gravity.CENTER))
             overlay = DanmakuOverlay(this,model.settings,model.player,danmaku); video.addView(overlay,FrameLayout.LayoutParams(-1,-1))
+            val subtitles = SubtitleOverlay(this,model.settings); video.addView(subtitles,FrameLayout.LayoutParams(-1,-1))
+            model.player.subtitleText = { text -> subtitles.text = text }
+            model.player.videoLayout = { aspect,embedded -> surface.aspect = if(embedded) aspect else 0.0; subtitles.aspect = aspect }
             controls = VideoControls(this,model.player,danmaku); video.addView(controls,FrameLayout.LayoutParams(-1,-1)); root.addView(video,FrameLayout.LayoutParams(-1,-1))
             progress = ProgressBar(this).apply { visibility = View.GONE }; root.addView(progress,FrameLayout.LayoutParams(64,64,Gravity.CENTER))
             bridge = BridgeDispatcher(this,model.settings,model.player); webHost = WebHost(this,web,model.settings,bridge); webHost.applySettings()
