@@ -9,10 +9,14 @@ for (const [n, [address, name, kind]] of [['http://[fe80::2]:8096/', '', ''], ['
     known = history.annotate(history.remember(known, {mode: 'custom', address, at: 1_700_000_000_000 + n}), {mode: 'custom', address, name, kind});
 const bootstrap = `<script>
 window.injected = 0; window.commits = []; window.checks = [];
-window.jmpInfo = {settings: {main: {userWebClient: 'https://media.example.org:8920/jellyfin/', serverConnectionMode: 'custom', knownServers: ${JSON.stringify(known)}}}};
-window.api = {system: {isAddressOnLocalSubnet: async () => false, cancelServerConnectivity() {},
+const fixtureInfo = {settings: {main: {userWebClient: 'https://media.example.org:8920/jellyfin/', serverConnectionMode: 'custom', knownServers: ${JSON.stringify(known)}}}};
+const fixtureApi = {system: {isAddressOnLocalSubnet: async () => false, cancelServerConnectivity() {},
   finishServerSelection: async (...args) => { commits.push(args); return true; }}};
-window.apiPromise = Promise.resolve(window.api);
+// In the client, nativeshell binds window.api and jmpInfo.settings to the real
+// (isolated) profile once its channel connects. Install the fixture after that,
+// so neither the saved list nor the server commit can reach the real profile.
+window.apiPromise = Promise.resolve(window.initCompleted).catch(() => {}).then(() => {
+  window.jmpInfo = fixtureInfo; window.api = fixtureApi; return fixtureApi; });
 window.jmpCheckServerConnectivity = async url => { checks.push(url); if (url.includes('other.example')) throw new Error('HTTP 502'); return url + 'web/index.html'; };
 window.jmpCheckServerConnectivity.abort = () => {};
 window.tigerestOpenOfflineLibrary = () => {};

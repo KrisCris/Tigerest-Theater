@@ -550,6 +550,10 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_server_switch_entry_ui.cjs
                      $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_server_switch_entry_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+  add_test(NAME test_server_picker_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_server_picker_ui.cjs
+                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_server_picker_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
   add_test(NAME test_home_gallery_entrance_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_gallery_entrance_ui.cjs
                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
