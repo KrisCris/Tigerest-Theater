@@ -491,6 +491,10 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_home_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_library_incoming_settled_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_library_incoming_settled_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_library_incoming_settled_webengine PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
   add_test(NAME test_episode_motion_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_episode_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
@@ -503,6 +507,10 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_web_appearance_worlds_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_web_appearance_worlds_webengine PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+  add_test(NAME test_header_backdrop_root_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_header_backdrop_root_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_header_backdrop_root_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
   add_test(NAME test_docked_forms_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_docked_forms_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)

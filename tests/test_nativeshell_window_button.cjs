@@ -37,7 +37,9 @@ withBrowser({...iconFont?{'/emby-icons.woff2':{type:'font/woff2',path:path.resol
  await evaluate('failRead=true;signal();await settle()');assert.equal((await states()).every(b=>!b.disabled),true,'a native read failure does not strand disabled controls');
  await evaluate(`home.destroy();home=new fixture.TigerestHomeGallery(q('#home'),{apiProvider:()=>null});await settle()`);assert.equal((await states()).every(b=>b.pressed==='true'),true,'a remounted home reflects the current state');
  const stable=await evaluate('reads');await evaluate('await settle();await settle()');assert.equal(await evaluate('reads'),stable,'DOM observer settles without read or text feedback loop');
- const toolbar=await evaluate(`[...doc.querySelectorAll('.headerRight button')].map(b=>({id:b.id,height:b.getBoundingClientRect().height,radius:frame.contentWindow.getComputedStyle(b).borderRadius,text:b.textContent,scroll:b.scrollWidth,client:b.clientWidth}))`);
+ // Emby's admin gear opens the same Manage Server route its avatar menu lists; one entry stays.
+ assert.deepEqual(await evaluate(`['.headerUserButton','.headerSettingsButton'].map(s=>q(s).getClientRects().length>0)`),[true,false],'avatar menu stays, duplicate gear is hidden');
+ const toolbar=await evaluate(`[...doc.querySelectorAll('.headerRight button')].filter(b=>b.getClientRects().length).map(b=>({id:b.id,height:b.getBoundingClientRect().height,radius:frame.contentWindow.getComputedStyle(b).borderRadius,text:b.textContent,scroll:b.scrollWidth,client:b.clientWidth}))`);
  assert.equal(await evaluate(`[...doc.querySelectorAll('.headerButton.md-icon')].every(b=>frame.contentWindow.getComputedStyle(b).fontSize==='20px')`),true,'Emby buttons that directly own md-icon retain readable icon size');
  assert.equal(toolbar.every(b=>b.height===36&&b.radius==='10px'),true,'toolbar controls share a compact rectangular shape');
  assert.equal(await evaluate(`q('[data-update-dot]').getBoundingClientRect().width`),7,'update notification dot remains visible');

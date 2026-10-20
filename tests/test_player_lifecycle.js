@@ -125,8 +125,17 @@ async function main() {
 
     const Player = context.window._mpvVideoPlayer;
     const savedSettings = new Map([['volume', 0.28]]);
+    // Jellyfin's playback manager (10.11 and 12.2 bundles) ignores the stop
+    // info: its 'stopped' handler queues the next item whenever its own
+    // _playNextAfterEnded flag is set and the stop is not an error string.
+    // Only its stop()/onAppClose() clear the flag; each playback start sets it.
+    const jellyfin = {_playNextAfterEnded: true, nextItems: 0};
     const instance = new Player({
-        events: {trigger(target, name, args) { triggered.push({target, name, args}); }},
+        events: {trigger(target, name, args) {
+            triggered.push({target, name, args});
+            if (name === 'stopped' && jellyfin._playNextAfterEnded && typeof args?.[0] !== 'string') jellyfin.nextItems++;
+        }},
+        playbackManager: jellyfin,
         loading,
         appRouter: {showVideoOsd() {}},
         globalize: {translate(value) { return value; }},
@@ -190,6 +199,7 @@ async function main() {
 
     player.canceled.emit();
     assert.strictEqual(triggered.filter(event => event.name === 'stopped').length, 1);
+    assert.strictEqual(jellyfin.nextItems, 0, 'native Back/cancel let Jellyfin start the next episode');
     const canceledStop = triggered.filter(event => event.name === 'stopped').at(-1).args[0];
     assert.strictEqual(canceledStop.playNext, false, 'native cancel would auto-play the next queue item');
     assert.strictEqual(canceledStop.resetPlayQueue, true, 'native cancel did not clear the stale play queue');
@@ -199,6 +209,7 @@ async function main() {
     player.canceled.emit();
     assert.strictEqual(triggered.filter(event => event.name === 'stopped').length, 1, 'cancel cleanup was not idempotent');
 
+    jellyfin._playNextAfterEnded = true; // Jellyfin's playback start
     await instance.play(options);
     assert.strictEqual(volumesAtLoad[1], 23.5, 'switching episodes restored an older louder volume');
     assert.strictEqual(loads, 2);
@@ -210,6 +221,7 @@ async function main() {
     assert.strictEqual(triggered.filter(event => event.name === 'stopped').length, 2);
     const naturalStop = triggered.filter(event => event.name === 'stopped').at(-1).args[0];
     assert.strictEqual(naturalStop.playNext, undefined, 'natural completion no longer advances the queue');
+    assert.strictEqual(jellyfin.nextItems, 1, 'natural completion must still let Jellyfin play the next episode');
     assert.strictEqual(nativeStops, 0, 'natural completion issued a duplicate stop during signal cleanup');
     assert.strictEqual(windowEnds, 2, 'natural completion did not end the window session');
     assert.strictEqual(videoDialog, null, 'natural completion left the media container mounted');

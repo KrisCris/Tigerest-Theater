@@ -21,14 +21,42 @@
             return JSON.stringify([source.href, node.naturalWidth, node.naturalHeight]);
         } catch { return null; }
     }
-    async function resizedImage(node, options) {
+    // Chromium decodes an <img> source on the page thread, which stalls a
+    // scrolling media wall; a Blob source is decoded on a worker thread.
+    // Same-origin server artwork is immutable per tag, and the page's own
+    // request has usually put its bytes in the HTTP cache. Only those cached
+    // bytes are read: artwork served uncacheable (or evicted) decodes the
+    // element instead of being downloaded again while a transition waits.
+    // An aborted build stops its request and decodes nothing, not even the element.
+    function checkAborted(signal) {
+        if (signal?.aborted) throw Object.assign(new Error('capture aborted'), {name: 'AbortError'});
+    }
+    async function decodeSource(node, options, signal) {
+        try {
+            const source = new URL(node.currentSrc || node.src, location.href);
+            if (window.fetch && source.origin === location.origin && /\/Items\/[^/]+\/Images\/[^/]+(?:\/\d+)?$/i.test(source.pathname) && source.searchParams.get('tag')) {
+                const response = await fetch(source.href, {cache: 'only-if-cached', mode: 'same-origin', credentials: 'same-origin', signal});
+                checkAborted(signal);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    checkAborted(signal);
+                    return await createImageBitmap(blob, options);
+                }
+            }
+        } catch (error) { checkAborted(signal); }
+        checkAborted(signal);
+        return createImageBitmap(node, options);
+    }
+    async function resizedImage(node, options, signal) {
+        checkAborted(signal);
         const key = imageKey(node), entry = key && decoded.get(key);
         if (entry && entry.bitmap.width >= options.resizeWidth && entry.bitmap.height >= options.resizeHeight) {
             decoded.delete(key); decoded.set(key, entry);
             try { return await createImageBitmap(entry.bitmap, options); }
             catch { if (decoded.get(key) === entry) forget(key); }
         }
-        const bitmap = await createImageBitmap(node, options), size = bitmap.width * bitmap.height;
+        const bitmap = await decodeSource(node, options, signal), size = bitmap.width * bitmap.height;
+        if (signal?.aborted) { bitmap.close(); checkAborted(signal); }
         if (!key || disposed || size > maxPixels) return bitmap;
         let copy;
         try { copy = await createImageBitmap(bitmap); }
@@ -95,7 +123,13 @@
         // Skip motion layers, the held poster and Emby's hidden cached views as
         // whole subtrees instead of measuring each of their nodes.
         const skipped='.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache,[data-tigerest-poster-held],.mainAnimatedPage.hide,.page.hide,.page.page-hidden';
-        const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT,{acceptNode:node=>node.matches(skipped)?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
+        // A media card is a self-contained box: well off screen, none of its
+        // contents can be, so long walls are measured only near the view. The
+        // margin covers hover/focus lifts (webAppearance moves a card box up
+        // 12px and scales it), as the page copy's 64px margin does.
+        const outside=r=>r.bottom<-64||r.top>innerHeight+64||r.right<-64||r.left>innerWidth+64;
+        const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT,{acceptNode:node=>node.matches(skipped)||
+            (node.matches('.card,.listItem')&&outside(node.getBoundingClientRect()))?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
         for (let node=root.closest(skipped)?null:root; node; node=walker.nextNode()) {
             if (signal.aborted) return null;
             const r=node.getBoundingClientRect();
@@ -116,7 +150,7 @@
                     const {node,record}=images[index++];
                     const w=Math.max(1,Math.min(240,Math.ceil(Math.max(record.w*scale,record.h*scale*node.naturalWidth/node.naturalHeight))));
                     let bitmap;
-                    try{bitmap=await resizedImage(node,{resizeWidth:w,resizeHeight:Math.max(1,Math.round(w*node.naturalHeight/node.naturalWidth)),resizeQuality:'low'});}
+                    try{bitmap=await resizedImage(node,{resizeWidth:w,resizeHeight:Math.max(1,Math.round(w*node.naturalHeight/node.naturalWidth)),resizeQuality:'low'},signal);}
                     catch(error){decodeFailed=true;throw error;}
                     owned.push(bitmap);record.bitmap=bitmap;
                 }

@@ -18,12 +18,19 @@
         clearTimeout(warmTimer);warmTimer=null;
         if(schedule&&!active&&!reduced())warmTimer=setTimeout(()=>prewarm(),180);
     }
+    // Scrolling, lazy loading and animations mutate the page every frame, so
+    // relevance is decided from selectors alone: backgroundRoot() reads layout.
+    // Any shown page counts, which can only invalidate more often, not less.
+    const shownRoots='.mainAnimatedPage:not(.hide):not(.page-hidden),.page:not(.hide):not(.page-hidden)';
     function changes(records){
         if(active)return;
-        const root=backgroundRoot();
-        if(records.some(m=>!(m.type==='attributes'&&m.oldValue===m.target.getAttribute(m.attributeName))&&
-            !m.target.closest?.('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache')&&
-            (root?.contains(m.target)||m.target.matches?.('.mainAnimatedPage,.page,.skinHeader,.backdropContainer,.backgroundContainer'))))invalidate();
+        const roots=homeActive()?'.tg-home-host':shownRoots;
+        if(records.some(m=>{
+            const node=m.target.nodeType===Node.ELEMENT_NODE?m.target:m.target.parentElement;
+            return node&&!(m.type==='attributes'&&m.oldValue===m.target.getAttribute(m.attributeName))&&
+                !node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache')&&
+                (!!node.closest(roots)||node.matches('.mainAnimatedPage,.page,.skinHeader,.backdropContainer,.backgroundContainer'));
+        }))invalidate();
     }
     function settled(root,signal){
         // The ambient layers live outside the page/home root. Freeze their
@@ -495,7 +502,13 @@
             cover.style.background='#0b0d12';const previous=page(),result=await navigate();
             const target=await wait(job,()=>{const n=page();return n && (n!==previous || (samePage && !gallery.active)) ? n : null;});
             if (target && !job.signal.aborted) {
-                await sleep(job,100);const incoming=frozen(job,false);cover.replaceChildren(incoming);sync(job);
+                await sleep(job,100);
+                // The opaque cover hides the page's own entrance. Snapshot its
+                // final pixels, not an early low-opacity/blurred frame that
+                // would suddenly become sharp when the cover is removed.
+                // The central incoming animation below still runs in full.
+                for (const a of target.getAnimations?.()||[]) if (Number.isFinite(a.effect?.getComputedTiming().endTime)) {try{a.finish();}catch{}}
+                const incoming=frozen(job,false);cover.replaceChildren(incoming);sync(job);
                 await animate(job,incoming,[{opacity:0,transform:'scale(.82)',offset:0},{opacity:1,transform:'scale(1.008)',offset:.82},{opacity:1,transform:'none',offset:1}],{duration:460,easing:'cubic-bezier(.16,.8,.22,1)'});
             }
             return result;
