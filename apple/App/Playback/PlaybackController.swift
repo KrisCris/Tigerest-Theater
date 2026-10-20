@@ -208,7 +208,11 @@ import AppleCore
         do { try engine?.set("speed", String(speed)); return true }
         catch { _ = temporary.end(); return false }
     }
-    func endTemporarySpeed() { if let rate = temporary.end() { try? engine?.set("speed", String(rate)) } }
+    func endTemporarySpeed() { endTemporarySpeedIfActive() }
+    @discardableResult func endTemporarySpeedIfActive() -> Bool {
+        guard let rate = temporary.end() else { return false }
+        try? engine?.set("speed", String(rate)); return true
+    }
     var brightness: Double { Double(surface.window?.screen.brightness ?? 0.5) }
     func setBrightness(_ value: Double) {
         guard let screen = surface.window?.screen, value.isFinite else { return }

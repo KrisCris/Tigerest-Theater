@@ -50,9 +50,11 @@ struct PlayerView: View {
     var body: some View {
         ZStack {
             Color.black
-            PlayerKeyboardInput(enabled:!showTutorial && !showDanmaku && !showQueue && !importSubtitle) {
+            PlayerKeyboardInput(enabled:!showTutorial && !showDanmaku && !showQueue && !importSubtitle) { key in
+                // A temporary speed always ends, even if the player was locked meanwhile.
+                if case .holdEnded = key { if player.endTemporarySpeedIfActive() { gestureFeedback("", false) }; return }
                 guard !player.locked else { revealUnlock(); return }
-                act((player.engine?.flag("pause") ?? player.paused) ? "play" : "pause")
+                keyboard(key)
             }.frame(width:0,height:0).allowsHitTesting(false)
             GestureVideoView(player: player, tapped: { if player.locked { revealUnlock() } else { controls.toggle(); scheduleHide() } }, feedback: gestureFeedback)
                 .accessibilityIdentifier("playerVideo").accessibilityLabel("视频画面")
@@ -168,6 +170,26 @@ struct PlayerView: View {
         }
     }
     private func unlock() { player.setTouchLocked(false); controls = true; scheduleHide() }
+    /// Hardware keyboard: the same feedback and limits as the matching gestures.
+    private func keyboard(_ key: PlayerKeyAction) {
+        func flash(_ text: String) { gestureFeedback(text, true); gestureFeedback("", false) }
+        switch key {
+        case .togglePlayback:
+            act((player.engine?.flag("pause") ?? player.paused) ? "play" : "pause")
+        case .volume(let step):
+            // One step matches an iPad volume button press (1/16).
+            let next = min(1, max(0, player.systemVolume.value + Double(step) / 16))
+            flash(player.systemVolume.set(next) ? "音量 \(Int((next * 100).rounded()))%" : "请使用 iPad 音量键调整当前输出")
+        case .seek(let seconds):
+            guard player.duration > 0 else { flash("此视频暂不支持跳转"); return }
+            let target = min(player.duration, max(0, player.position + Double(seconds)))
+            act("seekTo", [.number(target * 1000)])
+            flash("\(seconds >= 0 ? "快进" : "快退") \(abs(seconds)) 秒\n\(time(target)) / \(time(player.duration))")
+        case .holdBegan:
+            if player.beginTemporarySpeed() { gestureFeedback(String(format: "临时 %.2g×", max(2, player.rate)), true) }
+        case .holdEnded: break
+        }
+    }
     private func gestureFeedback(_ text: String, _ touching: Bool) {
         feedbackTask?.cancel(); interacting = touching
         if !text.isEmpty { gestureMessage = text }
@@ -239,27 +261,37 @@ private struct DanmakuPlaybackStatus: View {
     }
 }
 
+enum PlayerKeyAction { case togglePlayback, volume(Int), seek(Int), holdBegan, holdEnded }
+
 /// Keep the player in the responder chain when its visible OSD is removed.
 /// Suspend during sheets so spaces in search fields remain ordinary text input.
 private struct PlayerKeyboardInput: UIViewRepresentable {
     let enabled:Bool
-    let toggle:()->Void
+    let action:(PlayerKeyAction)->Void
     func makeUIView(context:Context) -> PlayerKeyboardResponder { PlayerKeyboardResponder() }
     func updateUIView(_ view:PlayerKeyboardResponder,context:Context) {
-        view.toggle=toggle;view.acceptsKeyboard=enabled
+        view.action=action;view.acceptsKeyboard=enabled
     }
-    static func dismantleUIView(_ view:PlayerKeyboardResponder,coordinator:()) {view.acceptsKeyboard=false;view.toggle=nil}
+    static func dismantleUIView(_ view:PlayerKeyboardResponder,coordinator:()) {view.acceptsKeyboard=false;view.action=nil}
 }
-private final class PlayerKeyboardResponder: UIView {
-    var toggle:(()->Void)?
+/// Space toggles playback. Up/Down change the volume (repeating while held).
+/// Left/Right seek 15 s; holding Right plays at the temporary long-press speed
+/// until released, holding Left keeps stepping back.
+final class PlayerKeyboardResponder: UIView {
+    static let seekSeconds = 15, holdDelay = 0.35, repeatInterval = 0.4, volumeRepeatInterval = 0.12
+    var action:((PlayerKeyAction)->Void)?
     var acceptsKeyboard=false {
         didSet {
             guard acceptsKeyboard != oldValue else {return}
-            if acceptsKeyboard {becomeFirstResponder()} else {resignFirstResponder()}
+            if acceptsKeyboard {becomeFirstResponder()} else {endHeldKey(seek:false);resignFirstResponder()}
         }
     }
+    private var held:UIKeyboardHIDUsage?, holding=false, timer:Timer?
     override var canBecomeFirstResponder:Bool {acceptsKeyboard}
-    override func didMoveToWindow() {super.didMoveToWindow();if window != nil && acceptsKeyboard {becomeFirstResponder()}}
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil && acceptsKeyboard {becomeFirstResponder()} else if window == nil {endHeldKey(seek:false)}
+    }
     override var keyCommands:[UIKeyCommand]? {
         guard acceptsKeyboard else {return nil}
         let command=UIKeyCommand(input:" ",modifierFlags:[],action:#selector(togglePlayback))
@@ -267,5 +299,72 @@ private final class PlayerKeyboardResponder: UIView {
         command.discoverabilityTitle="播放 / 暂停"
         return [command]
     }
-    @objc private func togglePlayback() {toggle?()}
+    @objc private func togglePlayback() {action?(.togglePlayback)}
+
+    private static let arrows:Set<UIKeyboardHIDUsage> = [.keyboardUpArrow,.keyboardDownArrow,.keyboardLeftArrow,.keyboardRightArrow]
+    /// Only plain arrows; modified arrows keep their system meaning.
+    private func arrow(_ press:UIPress) -> UIKeyboardHIDUsage? {
+        guard acceptsKeyboard, let key=press.key, Self.arrows.contains(key.keyCode),
+              key.modifierFlags.intersection([.command,.control,.alternate,.shift]).isEmpty else {return nil}
+        return key.keyCode
+    }
+    override func pressesBegan(_ presses:Set<UIPress>,with event:UIPressesEvent?) {
+        var unhandled=Set<UIPress>()
+        for press in presses {
+            guard let code=arrow(press) else {unhandled.insert(press);continue}
+            pressed(code)
+        }
+        if !unhandled.isEmpty {super.pressesBegan(unhandled,with:event)}
+    }
+    override func pressesEnded(_ presses:Set<UIPress>,with event:UIPressesEvent?) {
+        released(presses,seek:true,event:event) {super.pressesEnded($0,with:$1)}
+    }
+    override func pressesCancelled(_ presses:Set<UIPress>,with event:UIPressesEvent?) {
+        released(presses,seek:false,event:event) {super.pressesCancelled($0,with:$1)}
+    }
+    private func released(_ presses:Set<UIPress>,seek:Bool,event:UIPressesEvent?,forward:(Set<UIPress>,UIPressesEvent?)->Void) {
+        var unhandled=Set<UIPress>()
+        for press in presses {
+            guard let code=press.key?.keyCode, Self.arrows.contains(code) else {unhandled.insert(press);continue}
+            if code == held {endHeldKey(seek:seek)}
+        }
+        if !unhandled.isEmpty {forward(unhandled,event)}
+    }
+    private func pressed(_ code:UIKeyboardHIDUsage) {
+        endHeldKey(seek:false); held=code
+        switch code {
+        case .keyboardUpArrow, .keyboardDownArrow:
+            let step = code == .keyboardUpArrow ? 1 : -1
+            action?(.volume(step))
+            schedule(after:Self.holdDelay) {[weak self] in self?.repeating(Self.volumeRepeatInterval) {$0.action?(.volume(step))}}
+        case .keyboardRightArrow:
+            schedule(after:Self.holdDelay) {[weak self] in guard let self else {return}; self.holding=true; self.action?(.holdBegan)}
+        default:
+            schedule(after:Self.holdDelay) {[weak self] in
+                guard let self else {return}
+                self.holding=true; self.action?(.seek(-Self.seekSeconds))
+                self.repeating(Self.repeatInterval) {$0.action?(.seek(-Self.seekSeconds))}
+            }
+        }
+    }
+    /// A short press seeks once; a press that became a hold does not seek again.
+    private func endHeldKey(seek:Bool) {
+        timer?.invalidate(); timer=nil
+        guard let code=held else {return}
+        held=nil
+        let wasHolding=holding; holding=false
+        switch code {
+        case .keyboardRightArrow:
+            if wasHolding {action?(.holdEnded)} else if seek {action?(.seek(Self.seekSeconds))}
+        case .keyboardLeftArrow:
+            if !wasHolding && seek {action?(.seek(-Self.seekSeconds))}
+        default: break
+        }
+    }
+    private func schedule(after delay:TimeInterval,_ fire:@escaping @MainActor ()->Void) {
+        timer=Timer.scheduledTimer(withTimeInterval:delay,repeats:false) {_ in MainActor.assumeIsolated {fire()}}
+    }
+    private func repeating(_ interval:TimeInterval,_ fire:@escaping @MainActor (PlayerKeyboardResponder)->Void) {
+        timer=Timer.scheduledTimer(withTimeInterval:interval,repeats:true) {[weak self] _ in MainActor.assumeIsolated {if let self {fire(self)}}}
+    }
 }
