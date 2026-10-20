@@ -59,6 +59,12 @@ target_include_directories(test_log PRIVATE ${TEST_INCLUDE_DIRS})
 target_compile_definitions(test_log PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_log COMMAND test_log)
 
+add_executable(test_main_thread_watchdog test_main_thread_watchdog.cpp)
+target_link_libraries(test_main_thread_watchdog jmp_core Qt6::Test)
+target_include_directories(test_main_thread_watchdog PRIVATE ${TEST_INCLUDE_DIRS})
+target_compile_definitions(test_main_thread_watchdog PRIVATE ${TEST_COMPILE_DEFS})
+add_test(NAME test_main_thread_watchdog COMMAND test_main_thread_watchdog)
+
 add_executable(test_report_diagnostics test_report_diagnostics.cpp ../src/utils/ReportDiagnostics.cpp)
 target_include_directories(test_report_diagnostics PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_report_diagnostics PRIVATE Qt6::Core Qt6::Test)
@@ -611,6 +617,10 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_report_diagnostics_bridge.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_report_diagnostics_bridge PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+  add_test(NAME test_fault_reports_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_fault_reports_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_fault_reports_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_rife_windows_settings
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_rife_windows_settings.js)
   add_test(NAME test_native_settings_registration

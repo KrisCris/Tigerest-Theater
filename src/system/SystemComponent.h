@@ -23,6 +23,7 @@ constexpr int CONNECTIVITY_REQUEST_TIMEOUT_MS = 5000;
 
 class AppUpdater;
 class CommunityBridge;
+class MainThreadWatchdog;
 
 class SystemComponent : public ComponentBase
 {
@@ -69,6 +70,10 @@ public:
   QString communityAuthGeneration() const;
   Q_INVOKABLE bool setReportDiagnosticsScope(const QString& key);
   Q_INVOKABLE QVariantMap collectReportDiagnostics() const;
+  // Main-thread stalls for automatic fault reports. The unfinished fault is the
+  // one a previous process never recovered from; it is returned once.
+  Q_INVOKABLE QVariantMap takeUnfinishedFault();
+  Q_SIGNAL void mainThreadStallRecovered(const QVariantMap& fault);
 
   Q_INVOKABLE QStringList networkAddresses() const;
 
@@ -187,6 +192,8 @@ private:
   QNetworkAccessManager* m_networkManager;
   AppUpdater* m_appUpdater = nullptr;
   CommunityBridge* m_communityBridge = nullptr;
+  MainThreadWatchdog* m_watchdog = nullptr;
+  QVariantMap m_unfinishedFault;
   PlatformType m_platformType;
   PlatformArch m_platformArch;
   bool m_doLogMessages;

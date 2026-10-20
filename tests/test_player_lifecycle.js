@@ -381,6 +381,38 @@ async function main() {
     await flush();
     assert.strictEqual(timers.size, 0, 'late native status resurrected failed playback');
 
+    // A frozen native main thread answers late; its queued load starts right
+    // after. Wait for it instead of stopping it, then report a real timeout.
+    const faults = [];
+    context.window.TigerestFaultReports = {record: fault => faults.push(fault), setPlayback() {}};
+    player.rifeExtensionStatus = () => new Promise(resolve => { finishStatus = resolve; });
+    await preparationInstance.play(options);
+    const stopsBeforeFrozen = nativeStops;
+    await fireNextTimer();
+    now += 29000;
+    finishStatus({runtime: {startupWaiting: false, preparationElapsedMs: 0}});
+    await flush();
+    assert.strictEqual(nativeStops, stopsBeforeFrozen, 'a late native answer stopped a load that had just resumed');
+    assert.strictEqual(timers.size, 1, 'the resumed load has no bounded grace period');
+    assert.strictEqual(faults.length, 0, 'a recovered startup was reported as a timeout');
+    player.rifeExtensionStatus = async () => ({runtime: {startupWaiting: false, preparationElapsedMs: 0}});
+    await fireNextTimer();
+    assert.strictEqual(nativeStops, stopsBeforeFrozen + 1, 'the grace period never ends');
+    assert.strictEqual(faults.length, 1, 'a startup timeout was not reported');
+    assert.strictEqual(faults[0].kind, 'startup-timeout');
+    assert.ok(faults[0].nativeDelayMs >= 29000, 'the report omits how long the native side was silent');
+    player.rifeExtensionStatus = () => new Promise(resolve => { finishStatus = resolve; });
+    await preparationInstance.play(options);
+    await fireNextTimer();
+    now += 5000;
+    finishStatus({runtime: {startupWaiting: false, preparationElapsedMs: 0}});
+    await flush();
+    preparationInstance.onPlaying();
+    assert.strictEqual(timers.size, 0, 'playback after a late answer left a watchdog armed');
+    assert.strictEqual(faults.length, 1, 'a load that started after the freeze was reported');
+    await preparationInstance.stop(false);
+    delete context.window.TigerestFaultReports;
+
     await preparationInstance.play(options);
     await fireNextTimer();
     const oldStatus = finishStatus;

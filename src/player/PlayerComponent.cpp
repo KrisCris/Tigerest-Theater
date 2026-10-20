@@ -348,10 +348,12 @@ void PlayerComponent::initializeMpv()
   // than 0, and web-client expects that we return these times unchanged.
   m_mpv->setProperty( "demuxer-mkv-probe-start-time", false);
 
-  // Upstream mpv sets this to "auto", which disables probing for HLS (at least),
-  // in order to speed up playback start. The situation is more complex in PMP
-  // due to us wanting to use system codecs, so always enable this.
-  m_mpv->setProperty( "demuxer-lavf-probe-info", true);
+  // "auto" (upstream default) skips avformat_find_stream_info() only for MP4 and
+  // Matroska, whose headers already describe every stream; HLS and MPEG-TS are
+  // still probed. Forcing it for a network MP4 (2.4.1 report) cost about 120
+  // HTTP range requests between audio and video samples, and startup hit the
+  // 30 s timeout before the first frame.
+  m_mpv->setProperty( "demuxer-lavf-probe-info", "auto");
 
   // Just discard audio output if no audio device could be opened. This gives
   // us better flexibility how to react to such errors (instead of just

@@ -56,6 +56,13 @@
         "default": false
       },
       {
+        "value": "autoFaultReports",
+        "display_name": "自动发送故障诊断",
+        "help": "播放器卡住或启动超时时，自动向服务器管理员发送故障报告，附带脱敏的诊断日志、卡住时的线程调用栈和正在播放的作品，用于定位问题。",
+        "default": true,
+        "platforms": [ "windows" ]
+      },
+      {
         "value": "hdmi_poweron",
         "default": false,
         "hidden": true,

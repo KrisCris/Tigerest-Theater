@@ -442,6 +442,32 @@
             });
             panel.addEventListener('cancel',event=>{event.preventDefault();this.closeReportForm();});document.body.appendChild(panel);panel.showModal();description.focus();
         }
+        // Silent report for faults the client detected itself. A separate client
+        // keeps its request state and cooldowns apart from the report form.
+        // Returns 'unavailable' while no private account session exists yet.
+        async autoReport({itemId,description,context={},snapshot=null,collect=false}){
+            this.sync();
+            const session=this.session();
+            if(this.client.public||!this.client.context||!Client.supported(session))return 'unavailable';
+            const client=new Client();
+            if(!client.setSession(session))return 'unavailable';
+            let diagnostics=null;
+            try{
+                let data=snapshot;
+                if(collect){
+                    const scopeReady=await this.diagnosticsReady;
+                    data=scopeReady===unavailableDiagnostics||scopeReady===false?null:await systemCall(this.diagnosticsSystem,'collectReportDiagnostics');
+                }
+                if(data&&data!==unavailableDiagnostics)diagnostics=client.createReportDiagnostics(data);
+            }catch(_){diagnostics=null;}
+            const result=await client.sendReport(itemId,'playback_error',description,{platform:reportPlatform(),clientVersion:window.jmpInfo?.version,...context});
+            const reportId=result?.report?.id;
+            if(diagnostics&&reportId){
+                try{await client.uploadReportDiagnostics(reportId,diagnostics);}
+                catch(error){console.warn('[Fault] Diagnostics attachment failed:',error?.status||'',error?.message||error);}
+            }
+            return 'sent';
+        }
         closeReportForm(){
             const state=this.reportForm;this.reportForm=null;
             if(state){
