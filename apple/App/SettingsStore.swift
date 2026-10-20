@@ -19,7 +19,7 @@ import AppleCore
         "main": ["checkForUpdates", "enableMPV", "allowBrowserZoom", "userWebClient", "serverConnectionMode", "knownServers"],
         "audio": ["channels", "normalize"],
         "video": ["aiRife", "hardwareDecoding", "deinterlace", "cache", "aspect", "sync_mode", "default_playback_speed", "audio_delay.normal", "force_transcode_hevc", "force_transcode_4k", "force_transcode_av1", "force_transcode_hdr", "force_transcode_hi10p", "force_transcode_dovi", "always_force_transcode", "allow_transcode_to_hevc", "prefer_transcode_to_h265"],
-        "mpv": ["shaderPreset", "enableDanmaku", "audioLanguage", "subtitleLanguage", "cachePause", "deband", "toneMapping"],
+        "mpv": ["shaderPreset", "enableDanmaku", "audioLanguage", "subtitleLanguage", "cachePause", "deband", "toneMapping", "targetColorspaceHint"],
         "subtitles": ["ass_scale_border_and_shadow", "ass_style_override", "placement", "color", "border_color", "border_size", "background_color", "background_transparency", "size", "font"],
         "danmaku": ["bold", "fontsize", "outline", "shadow", "scrolltime", "opacity", "displayarea", "apiServer"]
     ]

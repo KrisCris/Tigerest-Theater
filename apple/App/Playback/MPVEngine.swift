@@ -11,6 +11,10 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
     let layer: CAMetalLayer
     init(layer: CAMetalLayer) throws {
         self.layer = layer
+        // libplacebo picks an HDR10 swapchain for HDR/Dolby Vision content when
+        // target-colorspace-hint is on. On iOS mpv does not configure the layer
+        // (unlike its macOS context), so allow EDR here; SDR swapchains are unaffected.
+        layer.wantsExtendedDynamicRangeContent = true
         guard let handle = mpv_create() else { throw CoreError.invalidRequest }
         self.handle = handle
         do {
