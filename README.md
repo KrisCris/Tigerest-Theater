@@ -131,6 +131,8 @@ iPad 与 Apple TV 的 IPA 均未签名，需使用自己的 Apple 身份签名�
 
 包内已包含 MPV 和基础运行库，无需另装播放器。Windows RIFE 大型组件是可选扩展；已有 NVIDIA 1.0.0 扩展可以继续使用。正式 Mac 下载仅提供 Apple Silicon 版本。
 
+无法访问 GitHub 时，可从[夸克网盘](https://pan.quark.cn/s/88e6f7a795b4)或[百度网盘](https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig)下载 Windows／Android 安装包，每个版本一个文件夹，内容与发行页附件相同。
+
 Windows／Android 使用 [2.9.3 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-SHA256SUMS.txt)；Mac／iPad／Apple TV 使用 [2.8.0 Apple 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-APPLE-SHA256SUMS.txt)。来源与验证记录见各自发行页的 `RELEASE-MANIFEST.json` 和 `APPLE-RELEASE-MANIFEST.json` 附件。
 
 ### 第一次使用
