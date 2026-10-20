@@ -1,0 +1,315 @@
+diff --git a/src/core/compositor/native_skia_output_device.cpp b/src/core/compositor/native_skia_output_device.cpp
+index 7d0c763..5e1a773 100644
+--- a/src/core/compositor/native_skia_output_device.cpp
++++ b/src/core/compositor/native_skia_output_device.cpp
+@@ -94,6 +94,7 @@ void NativeSkiaOutputDevice::Present(const std::optional<gfx::Rect> &update_rect
+     m_frame = std::move(frame);
+     {
+         QMutexLocker locker(&m_mutex);
++        willPresentBuffer(m_backBuffer.get());
+         m_backBuffer->createFence();
+         m_gpuTaskRunner = base::SingleThreadTaskRunner::GetCurrentDefault();
+         std::swap(m_middleBuffer, m_backBuffer);
+@@ -119,6 +120,7 @@ SkSurface *NativeSkiaOutputDevice::BeginPaint(std::vector<GrBackendSemaphore> *e
+             if (!m_backBuffer->initialize())
+                 return nullptr;
+         }
++        willWriteBuffer(m_backBuffer.get());
+     }
+     auto surface = m_backBuffer->beginWriteSkia();
+     if (!surface)
+@@ -137,6 +139,8 @@ void NativeSkiaOutputDevice::swapFrame()
+ {
+     QMutexLocker locker(&m_mutex);
+     if (m_readyToUpdate) {
++        if (m_frontBuffer)
++            willReleaseFrontBuffer(m_frontBuffer.get());
+         std::swap(m_frontBuffer, m_middleBuffer);
+         m_gpuTaskRunner->PostTask(FROM_HERE,
+                                   base::BindOnce(&NativeSkiaOutputDevice::SwapBuffersFinished,
+diff --git a/src/core/compositor/native_skia_output_device.h b/src/core/compositor/native_skia_output_device.h
+index a405f66..30a6558 100644
+--- a/src/core/compositor/native_skia_output_device.h
++++ b/src/core/compositor/native_skia_output_device.h
+@@ -128,6 +128,10 @@ protected:
+         viz::SharedImageFormat sharedImageFormat() const { return m_skiaRepresentation->format(); }
+ 
+         std::function<void()> textureCleanupCallback;
++        // Cross-device fence values: the producer finished writing, and the
++        // consumer finished every read of this buffer as a front buffer.
++        uint64_t producedFenceValue = 0;
++        uint64_t releasedFenceValue = 0;
+ 
+     private:
+         void createSkImageOnGPUThread();
+@@ -152,6 +156,13 @@ protected:
+     };
+ 
+ protected:
++    // Called with the buffer mutex held. Present: the back buffer is about to be
++    // published. BeginPaint: the back buffer is about to be written. swapFrame:
++    // the previous front buffer is about to be handed back to the producer.
++    virtual void willPresentBuffer(Buffer *) { }
++    virtual void willWriteBuffer(Buffer *) { }
++    virtual void willReleaseFrontBuffer(Buffer *) { }
++
+     scoped_refptr<gpu::SharedContextState> m_contextState;
+     std::unique_ptr<Buffer> m_frontBuffer;
+     bool m_readyWithTexture = false;
+diff --git a/src/core/compositor/native_skia_output_device_direct3d11.cpp b/src/core/compositor/native_skia_output_device_direct3d11.cpp
+index 649ccd4..40105d2 100644
+--- a/src/core/compositor/native_skia_output_device_direct3d11.cpp
++++ b/src/core/compositor/native_skia_output_device_direct3d11.cpp
+@@ -15,6 +15,7 @@
+ #include "ui/gl/gl_context.h"
+ 
+ #include <d3d11_1.h>
++#include <utility>
+ 
+ namespace QtWebEngineCore {
+ 
+@@ -37,12 +38,30 @@ NativeSkiaOutputDeviceDirect3D11::NativeSkiaOutputDeviceDirect3D11(
+     capabilities_.sk_color_type_map[viz::SinglePlaneFormat::kBGRX_8888] = skColorType;
+ }
+ 
+-NativeSkiaOutputDeviceDirect3D11::~NativeSkiaOutputDeviceDirect3D11() { }
++NativeSkiaOutputDeviceDirect3D11::~NativeSkiaOutputDeviceDirect3D11()
++{
++    if (m_producerFenceHandle)
++        ::CloseHandle(m_producerFenceHandle);
++    if (m_consumerFenceHandle)
++        ::CloseHandle(m_consumerFenceHandle);
++}
+ 
+ void NativeSkiaOutputDeviceDirect3D11::Present(const std::optional<gfx::Rect> &update_rect,
+                                              BufferPresentedCallback feedback,
+                                              viz::OutputSurfaceFrame frame)
+ {
++    static const bool fenceSync =
++            qEnvironmentVariable("TIGEREST_D3D11_FENCE_SYNC") != QStringLiteral("0");
++    if (fenceSync && !m_fenceFailed && m_contextState->gr_context_type() == gpu::GrContextType::kGL
++        && ensureProducerFence()) {
++        // willPresentBuffer() signals the producer fence for this buffer; Qt's
++        // queue waits for it, so the CPU does not wait for the GPU here.
++        m_fenceSync = true;
++        NativeSkiaOutputDevice::Present(update_rect, std::move(feedback), std::move(frame));
++        return;
++    }
++    m_fenceSync = false;
++
+     static const bool waitForProducer =
+             qEnvironmentVariable("TIGEREST_D3D11_PRODUCER_WAIT") != QStringLiteral("0");
+     if (waitForProducer && m_contextState->gr_context_type() == gpu::GrContextType::kGL) {
+@@ -112,6 +131,101 @@ void NativeSkiaOutputDeviceDirect3D11::Present(const std::optional<gfx::Rect> &u
+     NativeSkiaOutputDevice::Present(update_rect, std::move(feedback), std::move(frame));
+ }
+ 
++void NativeSkiaOutputDeviceDirect3D11::disableFenceSync(const char *reason, HRESULT hr)
++{
++    m_fenceSync = false;
++    if (!m_fenceFailed.exchange(true))
++        qWarning("Tigerest D3D11 fence sync disabled: %s (0x%08lx); using the CPU producer wait",
++                 reason, static_cast<unsigned long>(hr));
++}
++
++bool NativeSkiaOutputDeviceDirect3D11::ensureProducerFence()
++{
++    if (m_producerFence)
++        return true;
++    auto device = gl::QueryD3D11DeviceObjectFromANGLE();
++    HRESULT hr = device ? device.As(&m_producerDevice) : E_NOINTERFACE;
++    Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
++    if (SUCCEEDED(hr)) {
++        m_producerDevice->GetImmediateContext(&context);
++        hr = context.As(&m_producerContext);
++    }
++    Microsoft::WRL::ComPtr<ID3D11Fence> fence;
++    if (SUCCEEDED(hr))
++        hr = m_producerDevice->CreateFence(0, D3D11_FENCE_FLAG_SHARED, IID_PPV_ARGS(&fence));
++    HANDLE handle = nullptr;
++    if (SUCCEEDED(hr))
++        hr = fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &handle);
++    if (FAILED(hr)) {
++        m_producerContext.Reset();
++        m_producerDevice.Reset();
++        disableFenceSync("producer fence unavailable", hr);
++        return false;
++    }
++    {
++        QMutexLocker locker(&m_fenceMutex);
++        m_producerFenceHandle = handle;
++    }
++    m_producerFence = fence;
++    qInfo("Tigerest D3D11 fence sync: producer fence ready");
++    return true;
++}
++
++void NativeSkiaOutputDeviceDirect3D11::willPresentBuffer(Buffer *buffer)
++{
++    buffer->producedFenceValue = 0;
++    if (!m_fenceSync)
++        return;
++    // Submit ANGLE's commands for this frame, then mark their completion.
++    glFlush();
++    HRESULT hr = m_producerContext->Signal(m_producerFence.Get(), m_producerValue + 1);
++    if (FAILED(hr)) {
++        disableFenceSync("producer signal failed", hr);
++        glFinish(); // This frame is published without a fence.
++        return;
++    }
++    m_producerContext->Flush();
++    buffer->producedFenceValue = ++m_producerValue;
++}
++
++void NativeSkiaOutputDeviceDirect3D11::willWriteBuffer(Buffer *buffer)
++{
++    const uint64_t value = std::exchange(buffer->releasedFenceValue, 0);
++    if (!value || !m_fenceSync || m_fenceFailed)
++        return;
++    HRESULT hr = S_OK;
++    if (!m_consumerFenceOnProducer) {
++        HANDLE handle = nullptr;
++        {
++            QMutexLocker locker(&m_fenceMutex);
++            handle = m_consumerFenceHandle;
++        }
++        hr = handle ? m_producerDevice->OpenSharedFence(handle, IID_PPV_ARGS(&m_consumerFenceOnProducer))
++                    : E_HANDLE;
++    }
++    // Qt's last read of this buffer precedes this write on the GPU.
++    if (SUCCEEDED(hr))
++        hr = m_producerContext->Wait(m_consumerFenceOnProducer.Get(), value);
++    if (FAILED(hr))
++        disableFenceSync("consumer fence wait failed", hr);
++}
++
++void NativeSkiaOutputDeviceDirect3D11::willReleaseFrontBuffer(Buffer *buffer)
++{
++    buffer->releasedFenceValue = 0;
++    if (!m_consumerFence || !m_fenceSync || m_fenceFailed)
++        return;
++    // Qt's frames that sampled this buffer were submitted to its immediate
++    // context at their frame ends, so this signal follows all of their reads.
++    HRESULT hr = m_consumerContext->Signal(m_consumerFence.Get(), m_consumerValue + 1);
++    if (FAILED(hr)) {
++        disableFenceSync("consumer signal failed", hr);
++        return;
++    }
++    m_consumerContext->Flush();
++    buffer->releasedFenceValue = ++m_consumerValue;
++}
++
+ QSGTexture *NativeSkiaOutputDeviceDirect3D11::texture(QQuickWindow *win, uint32_t textureOptions)
+ {
+     if (!m_frontBuffer || !m_readyWithTexture)
+@@ -169,6 +283,52 @@ QSGTexture *NativeSkiaOutputDeviceDirect3D11::texture(QQuickWindow *win, uint32_
+     }
+     Q_ASSERT(qtTexture);
+ 
++    if (m_fenceSync && !m_fenceFailed) {
++        if (m_consumerDevice && device != m_consumerDeviceKey) {
++            // Fence values of a recreated Qt device cannot be ordered with the old ones.
++            disableFenceSync("Qt device changed", E_FAIL);
++        } else if (!m_consumerDevice) {
++            Microsoft::WRL::ComPtr<ID3D11Device5> device5;
++            Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
++            Microsoft::WRL::ComPtr<ID3D11Fence> fence;
++            HANDLE handle = nullptr;
++            hr = device->QueryInterface(IID_PPV_ARGS(&device5));
++            if (SUCCEEDED(hr)) {
++                device5->GetImmediateContext(&context);
++                hr = context.As(&m_consumerContext);
++            }
++            if (SUCCEEDED(hr))
++                hr = device5->CreateFence(0, D3D11_FENCE_FLAG_SHARED, IID_PPV_ARGS(&fence));
++            if (SUCCEEDED(hr))
++                hr = fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &handle);
++            HANDLE producerHandle = nullptr;
++            if (SUCCEEDED(hr)) {
++                QMutexLocker locker(&m_fenceMutex);
++                m_consumerFenceHandle = handle;
++                producerHandle = m_producerFenceHandle;
++            }
++            if (SUCCEEDED(hr))
++                hr = producerHandle ? device5->OpenSharedFence(producerHandle, IID_PPV_ARGS(&m_producerFenceOnConsumer))
++                                    : E_HANDLE;
++            if (SUCCEEDED(hr)) {
++                m_consumerDevice = device5;
++                m_consumerDeviceKey = device;
++                m_consumerFence = fence;
++                qInfo("Tigerest D3D11 fence sync: consumer fence ready");
++            } else {
++                m_consumerContext.Reset();
++                disableFenceSync("consumer fence unavailable", hr);
++            }
++        }
++        // Chromium's writes to this buffer precede Qt's reads on the GPU.
++        const uint64_t produced = m_frontBuffer->producedFenceValue;
++        if (m_consumerDevice && produced && !m_fenceFailed) {
++            hr = m_consumerContext->Wait(m_producerFenceOnConsumer.Get(), produced);
++            if (FAILED(hr))
++                disableFenceSync("producer fence wait failed", hr);
++        }
++    }
++
+     QQuickWindow::CreateTextureOptions texOpts(textureOptions);
+     QSGTexture *texture =
+             QNativeInterface::QSGD3D11Texture::fromNative(qtTexture, win, size(), texOpts);
+diff --git a/src/core/compositor/native_skia_output_device_direct3d11.h b/src/core/compositor/native_skia_output_device_direct3d11.h
+index 6671ad2..db2a4bb 100644
+--- a/src/core/compositor/native_skia_output_device_direct3d11.h
++++ b/src/core/compositor/native_skia_output_device_direct3d11.h
+@@ -7,6 +7,12 @@
+ 
+ #include "native_skia_output_device.h"
+ 
++#include <QtCore/qmutex.h>
++
++#include <atomic>
++#include <d3d11_4.h>
++#include <wrl/client.h>
++
+ namespace QtWebEngineCore {
+ 
+ class NativeSkiaOutputDeviceDirect3D11 final : public NativeSkiaOutputDevice
+@@ -25,6 +31,40 @@ public:
+ 
+     // Overridden from Compositor:
+     QSGTexture *texture(QQuickWindow *win, uint32_t textureOptions) override;
++
++protected:
++    void willPresentBuffer(Buffer *buffer) override;
++    void willWriteBuffer(Buffer *buffer) override;
++    void willReleaseFrontBuffer(Buffer *buffer) override;
++
++private:
++    // Two shared D3D11 fences order the shared buffers between Chromium's
++    // (ANGLE) device and Qt's device, without CPU waits: Qt's queue waits for
++    // the producer fence before sampling a new front buffer, and Chromium's
++    // queue waits for the consumer fence before writing a buffer Qt read.
++    bool ensureProducerFence();
++    void disableFenceSync(const char *reason, HRESULT hr);
++
++    std::atomic<bool> m_fenceSync{ false };
++    std::atomic<bool> m_fenceFailed{ false };
++    QMutex m_fenceMutex; // guards the shared handles below
++    HANDLE m_producerFenceHandle = nullptr;
++    HANDLE m_consumerFenceHandle = nullptr;
++
++    // Chromium GPU thread (ANGLE device).
++    Microsoft::WRL::ComPtr<ID3D11Device5> m_producerDevice;
++    Microsoft::WRL::ComPtr<ID3D11DeviceContext4> m_producerContext;
++    Microsoft::WRL::ComPtr<ID3D11Fence> m_producerFence;
++    Microsoft::WRL::ComPtr<ID3D11Fence> m_consumerFenceOnProducer;
++    uint64_t m_producerValue = 0;
++
++    // Qt render thread (Qt's device).
++    Microsoft::WRL::ComPtr<ID3D11Device5> m_consumerDevice;
++    ID3D11Device *m_consumerDeviceKey = nullptr; // Qt's device, as its renderer reports it
++    Microsoft::WRL::ComPtr<ID3D11DeviceContext4> m_consumerContext;
++    Microsoft::WRL::ComPtr<ID3D11Fence> m_consumerFence;
++    Microsoft::WRL::ComPtr<ID3D11Fence> m_producerFenceOnConsumer;
++    uint64_t m_consumerValue = 0;
+ };
+ 
+ } // namespace QtWebEngineCore

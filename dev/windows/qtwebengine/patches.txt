@@ -1,3 +1,4 @@
 qtwebengine-6.9.3-d3d11-producer-sync.patch
 qtwebengine-6.9.3-begin-frame-vsync.patch
 qtwebengine-6.9.3-wheel-step.patch
+qtwebengine-6.9.3-d3d11-fence-sync.patch

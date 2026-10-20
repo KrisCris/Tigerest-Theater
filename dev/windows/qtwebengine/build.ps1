@@ -31,7 +31,20 @@ foreach ($command in @('git','cmake','node','bison','flex','gperf','perl')) {
 }
 if (-not (Test-Path -LiteralPath $PythonExecutable)) { throw 'Python executable not found.' }
 # Accept an already applied patch; do not duplicate it or silently ignore drift.
-foreach ($patch in $patches) {
+# Stacked patches that edit the same hunk cannot be reverse-checked one by one,
+# so a completed series is recorded and rechecked through its last patch.
+$seriesMarker = Join-Path $SourceDirectory '.tigerest-patches'
+$series = @($patches | ForEach-Object { '{0} {1}' -f (Get-FileHash -Algorithm SHA256 -LiteralPath $_).Hash.ToLowerInvariant(), (Split-Path -Leaf $_) }) -join "`n"
+$seriesApplied = $false
+if ((Test-Path -LiteralPath $seriesMarker) -and ([IO.File]::ReadAllText($seriesMarker) -eq $series)) {
+  $previousErrorPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    git -C $SourceDirectory apply --reverse --check $patches[-1] 2>$null
+    $seriesApplied = $LASTEXITCODE -eq 0
+  } finally { $ErrorActionPreference = $previousErrorPreference }
+}
+foreach ($patch in $(if ($seriesApplied) { @() } else { $patches })) {
   $previousErrorPreference = $ErrorActionPreference
   try {
     $ErrorActionPreference = 'Continue'
@@ -45,6 +58,7 @@ foreach ($patch in $patches) {
     if ($LASTEXITCODE -ne 0) { throw "Could not apply $(Split-Path -Leaf $patch)." }
   }
 }
+[IO.File]::WriteAllText($seriesMarker, $series, [Text.UTF8Encoding]::new($false))
 New-Item -ItemType Directory -Path $BuildDirectory -Force | Out-Null
 $env:NINJAFLAGS = "-j$Jobs"
 Push-Location $BuildDirectory

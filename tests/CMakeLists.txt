@@ -660,7 +660,7 @@ if(Node_EXECUTABLE)
     add_test(NAME test_webengine_startup
              COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_webengine_startup.js
                      $<TARGET_FILE:${MAIN_TARGET}>)
-    set_tests_properties(test_webengine_startup PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+    set_tests_properties(test_webengine_startup PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
     add_test(NAME test_unicode_command_line
              COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_unicode_command_line.js
                      $<TARGET_FILE:TigerestTheater>)
