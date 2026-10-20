@@ -1,6 +1,6 @@
 # Tigerest Theater 使用教程
 
-这里是 EMBY 大河版的中文使用说明，对应 Windows、Android 2.9.1 与 Mac、iPad、Apple TV 2.8.0。客户端支持 Windows、Apple Silicon Mac、Android、iPad 和 Apple TV；播放内容和访问权限来自你连接的 Emby 或 Jellyfin 服务器（Jellyfin 目前限 Windows、Android 2.9.0 及之后）。
+这里是 EMBY 大河版的中文使用说明，对应 Windows、Android 2.9.3 与 Mac、iPad、Apple TV 2.8.0。客户端支持 Windows、Apple Silicon Mac、Android、iPad 和 Apple TV；播放内容和访问权限来自你连接的 Emby 或 Jellyfin 服务器（Jellyfin 目前限 Windows、Android 2.9.0 及之后）。
 
 ## 第一次使用
 
@@ -28,6 +28,12 @@
 | [故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting) | 按现象定位问题、日志目录、提交有效反馈 |
 | [常见问题](https://github.com/Tigerest/Tigerest-Theater/wiki/FAQ) | 平台区别、账号范围、补帧与共享功能的常见疑问 |
 | [技术原理](https://github.com/Tigerest/Tigerest-Theater/wiki/Architecture) | 各客户端的实现与架构、播放链路、一起看同步、评论和弹幕的数据流 |
+
+## 2.9.3 更新了什么（Windows、Android）
+
+- **HDR：** Windows 播放 HDR 片源时自动开启系统 HDR 并以 HDR10 输出；Android 在 HDR 屏幕上直接输出 HDR，开始播放时提示 HDR／SDR 输出方式。见[播放与画质](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback#hdr-播放)。
+- **更新提醒：** 有新版本时每次打开软件弹窗一次，可从 GitHub、夸克网盘或百度网盘获取，或忽略本次更新。见[安装](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation#应用内更新)。
+- **Windows 卡死报告：** 播放器卡住或启动超时时自动发送故障报告给服务器管理员，可在客户端设置中关闭。
 
 ## 2.9.1 更新了什么（Windows、Android）
 
