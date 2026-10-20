@@ -66,6 +66,10 @@ function mountTigerestAppearanceStyles() {
                 scrollbar-width: auto;
             }
 
+            /* Touch screens keep their own overlay scrollbar: a styled bar is a
+               9px lane, which narrowed Emby's scrolling item view on a phone and
+               left a strip beside its full-width backdrop. */
+            @media not all and (pointer: coarse) {
             body.tigerest-appearance-ready::-webkit-scrollbar,
             body.tigerest-appearance-ready ::-webkit-scrollbar { width: 9px; height: 9px; }
             body.tigerest-appearance-ready::-webkit-scrollbar-track,
@@ -86,11 +90,21 @@ function mountTigerestAppearanceStyles() {
             body.tigerest-appearance-ready ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
             body.tigerest-appearance-ready::-webkit-scrollbar-corner,
             body.tigerest-appearance-ready ::-webkit-scrollbar-corner { background: transparent; }
-            /* The styled bar above replaces a touch screen's overlay scrollbar
-               with a 9px lane. Tab strips are swiped there, so leave no lane. */
+            }
+            /* Tab strips are swiped on a touch screen; they show no bar at all. */
             @media (pointer: coarse) {
                 body.tigerest-appearance-ready .emby-tabs { scrollbar-width: none; }
                 body.tigerest-appearance-ready .emby-tabs::-webkit-scrollbar { display: none; width: 0; height: 0; }
+            }
+            /* Below 50em Emby crops the item's artwork into a 40vh band whose top
+               lies under the opaque header; an episode's 16:9 image lost its upper
+               third. Show the whole 16:9 image below the header instead. The poster
+               flight lands on it, since this layout hides the episode's own image. */
+            @media (max-width: 49.99em) {
+                body.tigerest-appearance-ready .itemBackdropContainer:not(.itemBackdropContainer-small) {
+                    height: min(calc(var(--header-height, 0px) + 56.25vw), 62vh);
+                }
+                body.tigerest-appearance-ready .itemBackdropContainer > .itemBackdrop { top: var(--header-height, 0px); }
             }
 
             .cardOverlayFab-primary:is([data-action="play"], [data-action="resume"], [data-action="playallfromhere"]) {

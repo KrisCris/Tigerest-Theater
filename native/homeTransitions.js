@@ -179,6 +179,30 @@
         node.style.opacity = '';
         job.metric.incomingPrimeMs = performance.now() - begin;
     }
+    // A shown page keeps adding sections, artwork and plugin panels for a
+    // while. On a phone each batch's style, layout and raster work stalled
+    // the compositor for 30-50 ms frames in the middle of the flight, and a
+    // late section could move the landing poster. Keep the lifted poster
+    // waiting until the page has stopped changing and frames are smooth.
+    async function quiet(job, timeout = 700) {
+        const begin = performance.now();
+        const ours = node => node?.nodeType === Node.ELEMENT_NODE && !!node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-input,.tigerest-motion-cache');
+        let changed = begin;
+        const observer = new MutationObserver(records => {
+            if (records.some(m => m.type === 'childList' && m.target === document.body
+                ? [...m.addedNodes, ...m.removedNodes].some(node => !ours(node))
+                : !ours(m.target.nodeType === Node.ELEMENT_NODE ? m.target : m.target.parentElement))) changed = performance.now();
+        });
+        observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true});
+        let previous = begin, smooth = 0;
+        while (!job.signal.aborted && performance.now() - begin < timeout) {
+            const now = await new Promise(resolve => requestAnimationFrame(resolve));
+            smooth = now - previous < 20 ? smooth + 1 : 0; previous = now;
+            if (smooth >= 4 && now - changed >= 120) break;
+        }
+        observer.disconnect();
+        job.metric.quietWaitMs = performance.now() - begin;
+    }
     function hold(job, node) {
         if (!node || job.held.some(h => h.node === node)) return;
         job.held.push({node, value: node.style.visibility});
@@ -237,8 +261,10 @@
             clean(job);
             invalidate();
             const intervals = job.frames.slice(1).map((t,i) => t - job.frames[i]), sorted = [...intervals].sort((a,b) => a-b);
+            const flight = job.metric.posterFlightStartsMs, flying = flight === undefined ? [] : intervals.filter((d,i) => job.frames[i]-start >= flight).sort((a,b) => a-b);
             last = {...job.metric, totalMs: performance.now()-start, interrupted,
-                medianIntervalMs: sorted[Math.floor(sorted.length/2)] || 0, p95IntervalMs: sorted[Math.floor(sorted.length*.95)] || 0};
+                medianIntervalMs: sorted[Math.floor(sorted.length/2)] || 0, p95IntervalMs: sorted[Math.floor(sorted.length*.95)] || 0,
+                flightP95IntervalMs: flying[Math.floor(flying.length*.95)] || 0, flightMaxIntervalMs: flying.at(-1) || 0};
         }
     }
     function url(node) {
@@ -488,10 +514,17 @@
                 steady=Math.max(...['x','y','width','height'].map(k=>Math.abs(current[k]-prior[k])))<.5 ? steady+1 : 0;prior=current;
             }
             if(job.signal.aborted)return result;
-            const to=box(target);hold(job,target);
             // The destination is already rendered under the opaque veil. Blur it
             // live instead of copying and restyling the new page before the flight.
-            glass||=lens(job,cover);
+            // Composite the lens and hide the landing poster while the veil still
+            // covers them: done as the flight starts, they cost its first frame.
+            glass||=lens(job,cover);hold(job,target);
+            await quiet(job);
+            if(job.signal.aborted)return result;
+            // A late section can re-render the poster itself.
+            if(!usable(target)){target=options.findTarget();hold(job,target);}
+            if(!usable(target)){job.metric.fallback='missing-target';await Promise.all([cover,glass].map(n=>animate(job,n,[{opacity:1},{opacity:0}],{duration:220,easing:soft})));return result;}
+            const to=box(target);
             const duration=720;
             const transform = rect => `translate3d(${rect.x-from.x}px,${rect.y-from.y}px,0) scale(${rect.width/from.width},${rect.height/from.height})`;
             const fly = async () => {

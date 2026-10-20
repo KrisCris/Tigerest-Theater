@@ -13,6 +13,7 @@ class ClassList {
     add(...names) { names.forEach(name => this.names.add(name)); }
     remove(...names) { names.forEach(name => this.names.delete(name)); }
     contains(name) { return this.names.has(name); }
+    toggle(name, force = !this.names.has(name)) { if (force) this.add(name); else this.remove(name); return force; }
 }
 
 function storage(initial = {}) {
@@ -370,5 +371,63 @@ test("a server's custom CSS starts disabled for each user, and the user's own ch
     assert.equal(storage.get('u1-disableCustomCss'), 'false');
     assert.equal(branding.media, 'not all');
     assert.equal(brandingRequests, 1, 'branding is read once per server');
+    plugin.home.destroy();
+});
+
+test('the compact detail page fills its empty banner with landscape artwork, as Jellyfin mobile does', async () => {
+    const page = jellyfinPage(), context = page.context, settings = storage();
+    Object.assign(context, { localStorage: settings, URLSearchParams, innerWidth: 400, devicePixelRatio: 2,
+        getComputedStyle: () => ({ position: 'static', paddingInlineStart: '0' }) });
+    const images = [];
+    context.Image = class { set src(value) { this.url = value; images.push(this); } };
+    const backdrop = { attributes: new Map(), classList: new ClassList(), style: { image: null, removeProperty(name) { if (name === 'background-image') this.image = null; },
+        set backgroundImage(value) { this.image = value; } },
+        getAttribute(name) { return this.attributes.has(name) ? this.attributes.get(name) : null; }, setAttribute(name, value) { this.attributes.set(name, String(value)); } };
+    const detail = { id: 'itemDetailPage', classList: new ClassList(), getClientRects: () => [{}], querySelector: selector => selector === '#itemBackdrop' ? backdrop : null };
+    context.document.documentElement = { classList: new ClassList(), style: { setProperty() {}, removeProperty() {} } };
+    context.document.querySelectorAll = selector => selector === '.page' ? [detail] : [];
+    const items = {
+        series: { Id: 'series', BackdropImageTags: ['b1', 'b2'] },
+        episode: { Id: 'episode', ParentBackdropItemId: 'series', ParentBackdropImageTags: ['b1'] },
+        thumb: { Id: 'thumb', ImageTags: { Primary: 'p', Thumb: 't' } },
+        poster: { Id: 'poster', ImageTags: { Primary: 'p' } }
+    };
+    const api = { serverId: () => 's', getCurrentUserId: () => 'u', getItem: async (user, id) => items[id],
+        getScaledImageUrl: (id, options) => `img/${id}/${options.type}/${options.tag}/${options.index}?w=${options.maxWidth}` };
+    const open = async id => {
+        context.location.hash = `#/details?id=${id}&serverId=s`;
+        images.length = 0; plugin.layout.update();
+        await new Promise(resolve => setImmediate(resolve));
+        images.forEach(image => image.onload());
+    };
+    context.location.hash = '#/home';
+    const plugin = new context._tigerestJellyfinPlugin({ events: { on() {} }, appRouter: { show: () => Promise.resolve() }, ServerConnections: { currentApiClient: () => api } });
+
+    await open('series');
+    assert.equal(backdrop.style.image, 'url("img/series/Backdrop/b1/0?w=400")', "the item's first backdrop, decoded before it is shown");
+    assert.ok(backdrop.classList.contains('tg-jf-banner'));
+    await open('episode');
+    assert.equal(backdrop.style.image, 'url("img/series/Backdrop/b1/0?w=400")', "an episode shows its series' backdrop");
+    await open('thumb');
+    assert.equal(backdrop.style.image, 'url("img/thumb/Thumb/t/0?w=400")');
+    await open('poster');
+    assert.equal(backdrop.style.image, null, 'a portrait poster is never cropped into the banner');
+    assert.ok(!backdrop.classList.contains('tg-jf-banner'));
+
+    // An image that arrives after the user moved on is dropped.
+    context.location.hash = '#/details?id=series&serverId=s'; images.length = 0; plugin.layout.update();
+    await new Promise(resolve => setImmediate(resolve));
+    const late = images[0];
+    await open('poster');
+    late.onload();
+    assert.equal(backdrop.style.image, null);
+
+    settings.setItem('u-detailsBanner', 'false');
+    await open('series');
+    assert.equal(images.length, 0, '"Details banner" turned off in Display settings is respected');
+    settings.setItem('u-detailsBanner', 'true');
+    context.document.documentElement.classList.add('layout-mobile');
+    await open('episode');
+    assert.equal(images.length, 0, "Jellyfin's mobile layout fills the banner itself");
     plugin.home.destroy();
 });
