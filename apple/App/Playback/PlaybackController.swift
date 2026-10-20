@@ -26,6 +26,9 @@ import AppleCore
     @Published var rate = 1.0
     @Published var title = ""
     @Published var notice = ""
+    /// Shown once per media when the VO reports its target colorspace.
+    @Published var dynamicRangeNotice = ""
+    private var dynamicRangeReported = false
     @Published var tracks: [JSONValue] = []
     @Published var queue: [JSONValue] = []
     var currentID = "", metadata: JSONValue = .null
@@ -98,7 +101,7 @@ import AppleCore
                 if !headers.isEmpty { try next.set("http-header-fields", headers.joined(separator: ",")) }
                 try next.command(["loadfile", url, "replace"])
             } catch { next.close(); engine = nil; throw error }
-            model.diagnostics.record("info", "Player load requested"); state.begin(); active = true; locked = false; loaded = false; position = 0; duration = 0; watchdog = PlaybackWatchdog()
+            model.diagnostics.record("info", "Player load requested"); state.begin(); active = true; locked = false; loaded = false; dynamicRangeReported = false; dynamicRangeNotice = ""; position = 0; duration = 0; watchdog = PlaybackWatchdog()
             UIApplication.shared.isIdleTimerDisabled = true
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
             model.danmaku.autoMatch(metadata["metadata"],mediaURL:URL(string:url)); emit("windowVisible", [.bool(true)]); emit("onMetaData", [metadata, .string(url)])
@@ -183,6 +186,15 @@ import AppleCore
         if nextBuffering != buffering { buffering = nextBuffering }
         if nextTracks != tracks { tracks = nextTracks }
         emit("positionUpdate", [.number(position * 1000)]); emit("buffering", [.number(buffering ? 0 : 100)])
+        if loaded, !dynamicRangeReported {
+            let video = nextTracks.first { $0["type"].string == "video" && $0["selected"].bool == true }
+            if let text = DynamicRangeSummary.text(source: engine.json("video-params"), target: engine.json("video-target-params"),
+                                                   dolbyVisionProfile: video?["dolby-vision-profile"].number.map { Int($0) },
+                                                   toneMapping: engine.string("tone-mapping")) {
+                dynamicRangeReported = true; dynamicRangeNotice = text
+                model.diagnostics.record("info", "Dynamic range: " + text.replacingOccurrences(of: "\n", with: " | "))
+            }
+        }
         if watchdog.stalled(position: position, now: ProcessInfo.processInfo.systemUptime, paused: paused) { fail("播放超过 30 秒没有进展，请检查网络后重试"); return }
         updateNowPlaying()
     }
@@ -279,7 +291,11 @@ import AppleCore
         // Previous iPad and desktop defaults are unavailable to libass/CoreText fallback.
         let subtitleFont = text("subtitles", "font")
         let nativeSubtitleFont = ["PingFang SC", "Segoe UI"].contains(subtitleFont) ? "Source Han Sans SC" : subtitleFont
-        let mapping = ["hwdec": hardware == "disabled" ? "no" : hardware == "copy" ? "videotoolbox-copy" : "videotoolbox", "demuxer-max-bytes": String(Int((settings.get("video", "cache").number ?? 100) * 1048576)), "video-sync": text("video", "sync_mode"), "alang": text("mpv", "audioLanguage"), "slang": text("mpv", "subtitleLanguage"), "cache-pause": text("mpv", "cachePause"), "deband": text("mpv", "deband"), "tone-mapping": text("mpv", "toneMapping"), "target-colorspace-hint": text("mpv", "targetColorspaceHint"), "audio-channels": text("audio", "channels"), "deinterlace": text("video", "deinterlace"), "audio-delay": String((settings.get("video", "audio_delay.normal").number ?? 0) / 1000), "sub-font": nativeSubtitleFont, "sub-ass-override": text("subtitles", "ass_style_override")]
+        // Request an HDR swapchain only where the screen can show EDR. Other
+        // iPads keep libplacebo's tone mapping to SDR, as before 2.9.1.
+        let screen = surface.window?.screen ?? UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
+        let hdrDisplay = (screen?.potentialEDRHeadroom ?? 1) > 1
+        let mapping = ["hwdec": hardware == "disabled" ? "no" : hardware == "copy" ? "videotoolbox-copy" : "videotoolbox", "demuxer-max-bytes": String(Int((settings.get("video", "cache").number ?? 100) * 1048576)), "video-sync": text("video", "sync_mode"), "alang": text("mpv", "audioLanguage"), "slang": text("mpv", "subtitleLanguage"), "cache-pause": text("mpv", "cachePause"), "deband": text("mpv", "deband"), "tone-mapping": text("mpv", "toneMapping"), "target-colorspace-hint": hdrDisplay ? text("mpv", "targetColorspaceHint") : "no", "audio-channels": text("audio", "channels"), "deinterlace": text("video", "deinterlace"), "audio-delay": String((settings.get("video", "audio_delay.normal").number ?? 0) / 1000), "sub-font": nativeSubtitleFont, "sub-ass-override": text("subtitles", "ass_style_override")]
         for (key, value) in mapping { try engine.setting(key, value.isEmpty ? nil : value) }
         try applySubtitles()
         try applyAspect()

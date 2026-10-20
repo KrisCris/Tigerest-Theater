@@ -15,6 +15,9 @@
 #include "system/SystemComponent.h"
 #include "utils/Utils.h"
 #include "utils/Log.h"
+#ifdef Q_OS_MAC
+#include "utils/osx/OSXUtils.h"
+#endif
 #include "ComponentManager.h"
 #include "settings/SettingsSection.h"
 #include "core/ProfileManager.h"
@@ -432,6 +435,9 @@ void PlayerComponent::initializeMpv()
   mpv_observe_property(m_mpv->mpv(), 0, "vf", MPV_FORMAT_NODE);
   mpv_observe_property(m_mpv->mpv(), 0, "hwdec", MPV_FORMAT_STRING);
   mpv_observe_property(m_mpv->mpv(), 0, "video-params", MPV_FORMAT_NODE);
+  mpv_observe_property(m_mpv->mpv(), 0, "video-target-params", MPV_FORMAT_NODE);
+  mpv_observe_property(m_mpv->mpv(), 0, "current-tracks/video/dolby-vision-profile", MPV_FORMAT_INT64);
+  mpv_observe_property(m_mpv->mpv(), 0, "tone-mapping", MPV_FORMAT_STRING);
   mpv_observe_property(m_mpv->mpv(), 0, "video-frame-info", MPV_FORMAT_NODE);
   mpv_observe_property(m_mpv->mpv(), 0, "container-fps", MPV_FORMAT_DOUBLE);
   mpv_observe_property(m_mpv->mpv(), 0, "seeking", MPV_FORMAT_FLAG);
@@ -641,6 +647,65 @@ void PlayerComponent::queueMedia(const QString& url, const QVariantMap& options,
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
+static QString rangePrimaries(const QString& name)
+{
+  static const QHash<QString, QString> names{{"bt.709", "BT.709"}, {"bt.2020", "BT.2020"}, {"display-p3", "Display P3"},
+      {"dci-p3", "DCI-P3"}, {"bt.601-525", "BT.601"}, {"bt.601-625", "BT.601"}, {"apple", "Apple RGB"}, {"adobe", "Adobe RGB"}};
+  return names.value(name, name.isEmpty() ? QStringLiteral("未知") : name.toUpper());
+}
+
+static QString rangeTransfer(const QString& name)
+{
+  static const QHash<QString, QString> names{{"pq", "PQ"}, {"hlg", "HLG"}, {"srgb", "sRGB"}, {"bt.1886", "BT.1886"},
+      {"gamma2.2", "Gamma 2.2"}, {"gamma2.4", "Gamma 2.4"}, {"linear", QStringLiteral("线性")}};
+  return names.value(name, name.isEmpty() ? QStringLiteral("未知") : name);
+}
+
+static QString rangeColorspace(const QVariantMap& params)
+{
+  return rangePrimaries(params.value("primaries").toString()) + " / " + rangeTransfer(params.value("gamma").toString());
+}
+
+static int rangeNits(const QVariant& value)
+{
+  // Mastering peaks are coded with small offsets (1000.6); report 10-nit steps.
+  const double nits = value.toDouble();
+  return std::isfinite(nits) && nits > 0 ? qRound(nits / 10) * 10 : 0;
+}
+
+// Once per file, after the VO reports its target: is the display receiving
+// HDR or SDR, and from what source.
+void PlayerComponent::reportDynamicRange()
+{
+  const QString sourceGamma = m_rangeSource.value("gamma").toString(), targetGamma = m_rangeTarget.value("gamma").toString();
+  if (m_rangeReported || sourceGamma.isEmpty() || targetGamma.isEmpty())
+    return;
+  m_rangeReported = true;
+  const QStringList hdr{"pq", "hlg"};
+  const bool sourceHdr = hdr.contains(sourceGamma), targetHdr = hdr.contains(targetGamma);
+  const QString format = m_rangeDolbyVisionProfile > 0 ? QStringLiteral("杜比视界 Profile %1").arg(m_rangeDolbyVisionProfile)
+      : sourceGamma == "hlg" ? QStringLiteral("HLG") : QStringLiteral("HDR10");
+  const QString mode = targetHdr ? QStringLiteral("HDR 输出 · ") + format
+      : sourceHdr ? QStringLiteral("SDR 输出 · %1 已色调映射（%2）").arg(format, m_rangeToneMapping.isEmpty() ? QStringLiteral("自动") : m_rangeToneMapping)
+      : QStringLiteral("SDR 播放");
+  QStringList input;
+  const int width = m_rangeSource.value("w").toInt(), height = m_rangeSource.value("h").toInt();
+  if (width > 0 && height > 0)
+    input << QStringLiteral("%1×%2").arg(width).arg(height);
+  input << rangeColorspace(m_rangeSource);
+  if (sourceHdr && rangeNits(m_rangeSource.value("max-luma")))
+    input << QStringLiteral("母版 %1 nits").arg(rangeNits(m_rangeSource.value("max-luma")));
+  // A PQ target's max-luma is the signal's 10000-nit ceiling, not the screen;
+  // macOS maps HDR to the display's current EDR headroom.
+  QStringList output{rangeColorspace(m_rangeTarget)};
+  if (targetHdr)
+    output << QStringLiteral("由系统按屏幕能力映射亮度");
+  const QString text = mode + QStringLiteral("\n片源 ") + input.join(QStringLiteral(" · ")) + QStringLiteral("\n输出 ") + output.join(QStringLiteral(" · "));
+  qInfo() << "Dynamic range:" << QString(text).replace('\n', QStringLiteral(" | "));
+  m_mpv->commandAsync(QStringList() << QStringLiteral("show-text") << text << QStringLiteral("4000"));
+}
+
 bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
                                 const QVariantMap& metadata, const QVariant& audioStream,
                                 const QVariant& subtitleStream, const QString& loadMode)
@@ -675,6 +740,13 @@ bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
     // without briefly flashing a normal-sized window.
     m_mpv->setProperty("fullscreen", true);
     m_mpv->setProperty("force-window", false);
+    // The profile's automatic ICC profile describes an SDR display. On an EDR
+    // display it became the colorspace hint target, so HDR and Dolby Vision
+    // got an SDR P3 swapchain without highlights; there macOS ColorSync maps
+    // the hinted layer colorspace itself. SDR displays keep libplacebo's
+    // ICC-managed tone mapping. Explicit advanced overrides are respected.
+    if (!SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "advancedProfileOverrides").toBool())
+      m_mpv->setProperty("icc-profile-auto", !OSXUtils::ScreenSupportsEDR(m_window ? m_window->screen() : nullptr));
   }
 #endif
 
@@ -1104,6 +1176,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
 #endif
     case MPV_EVENT_START_FILE:
     {
+      m_rangeReported = false; m_rangeSource.clear(); m_rangeTarget.clear(); m_rangeDolbyVisionProfile = 0;
 #ifdef Q_OS_WIN
       ++m_windowsPlaybackGeneration;
       m_windowsCurrentEntryId=static_cast<mpv_event_start_file*>(event->data)->playlist_entry_id;
@@ -1210,6 +1283,19 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
     case MPV_EVENT_PROPERTY_CHANGE:
     {
       auto *prop = static_cast<mpv_event_property*>(event->data);
+      {
+        const bool source = strcmp(prop->name, "video-params") == 0, target = strcmp(prop->name, "video-target-params") == 0;
+        if (source || target)
+        {
+          (source ? m_rangeSource : m_rangeTarget) = prop->format == MPV_FORMAT_NODE
+            ? mpv::qt::node_to_variant(static_cast<mpv_node*>(prop->data)).toMap() : QVariantMap();
+          reportDynamicRange();
+        }
+        else if (strcmp(prop->name, "current-tracks/video/dolby-vision-profile") == 0)
+          m_rangeDolbyVisionProfile = prop->format == MPV_FORMAT_INT64 ? *static_cast<int64_t*>(prop->data) : 0;
+        else if (strcmp(prop->name, "tone-mapping") == 0 && prop->format == MPV_FORMAT_STRING)
+          m_rangeToneMapping = QString::fromUtf8(*static_cast<char**>(prop->data));
+      }
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
       if(m_rifeAccess) {
         static const QSet<QByteArray> watched={"vf","hwdec","video-params",

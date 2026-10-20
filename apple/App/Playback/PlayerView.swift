@@ -33,6 +33,8 @@ struct PlayerView: View {
     @State private var scrub = 0.0
     @State private var seeking = false
     @State private var importSubtitle = false
+    @State private var dynamicRangeNotice = ""
+    @State private var dynamicRangeTask: Task<Void, Never>?
     @State private var showDanmaku = false
     @State private var showQueue = false
     @State private var unlockVisible = false
@@ -60,6 +62,14 @@ struct PlayerView: View {
                 .accessibilityIdentifier("playerVideo").accessibilityLabel("视频画面")
             DanmakuOverlay(repository:player.model.danmaku,player:player).allowsHitTesting(false)
             if player.buffering { ProgressView().controlSize(.large) }
+            if !dynamicRangeNotice.isEmpty {
+                Text(dynamicRangeNotice).font(.footnote.monospacedDigit()).multilineTextAlignment(.leading)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 12))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.top, 72).padding(.leading, 24).allowsHitTesting(false)
+                    .transition(.opacity).accessibilityIdentifier("dynamicRangeNotice")
+            }
             if !gestureMessage.isEmpty {
                 Text(gestureMessage).font(.title3.monospacedDigit()).multilineTextAlignment(.center)
                     .padding(20).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 14))
@@ -134,7 +144,16 @@ struct PlayerView: View {
             }
         }.ignoresSafeArea().foregroundStyle(.white)
             .onAppear { if !tutorialSeen { presentTutorial() }; scheduleHide() }
-            .onDisappear { unlockTask?.cancel(); hideTask?.cancel(); feedbackTask?.cancel(); player.endTemporarySpeed() }
+            .onChange(of: player.dynamicRangeNotice) { _, text in
+                dynamicRangeTask?.cancel()
+                withAnimation(.easeOut(duration: 0.2)) { dynamicRangeNotice = text }
+                guard !text.isEmpty else { return }
+                dynamicRangeTask = Task { @MainActor in
+                    do { try await Task.sleep(for: .seconds(4)) } catch { return }
+                    withAnimation(.easeOut(duration: 0.4)) { dynamicRangeNotice = "" }
+                }
+            }
+            .onDisappear { unlockTask?.cancel(); hideTask?.cancel(); feedbackTask?.cancel(); dynamicRangeTask?.cancel(); player.endTemporarySpeed() }
             .onChange(of: [seeking, showTutorial, showDanmaku, showQueue, importSubtitle]) { _, _ in scheduleHide() }
             .onChange(of: player.locked) { _, locked in
                 feedbackTask?.cancel(); gestureMessage = ""

@@ -395,6 +395,13 @@ private:
   bool m_inPlayback;
   bool m_nativeVideoReady = false;
   QVariantMap m_decodedVideoParams;
+  // Playback-start notice of HDR/SDR output; the same rules and wording as
+  // apple/Core/Sources/AppleCore/DynamicRangeSummary.swift.
+  QVariantMap m_rangeSource, m_rangeTarget;
+  qint64 m_rangeDolbyVisionProfile = 0;
+  QString m_rangeToneMapping;
+  bool m_rangeReported = false;
+  void reportDynamicRange();
   bool m_playbackCanceled;
   bool m_replacementPending = false;
   QString m_playbackError;
