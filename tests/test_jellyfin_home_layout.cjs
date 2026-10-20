@@ -68,6 +68,18 @@ withBrowser({
             document.dispatchEvent(new Event('viewshow'));
             await settle();
             check(Math.abs(document.querySelector('.tg-home').getBoundingClientRect().top) < 1, layout + ': return to home removes gap again');
+            // Jellyfin caches the old page after visiting user settings. A new
+            // visible home can therefore share its ID with the hidden one.
+            page.classList.add('hide');
+            const freshPage = document.createElement('div');
+            freshPage.className = 'page withTabs pageWithAbsoluteTabs';
+            freshPage.innerHTML = '<div id="homeTab"><div class="sections">New home</div></div>';
+            page.after(freshPage);
+            document.dispatchEvent(new Event('viewshow'));
+            await settle();
+            check(!!freshPage.querySelector('.tg-home'), layout + ': returning from settings mounts the visible cached-page replacement');
+            check(!page.querySelector('.tg-home'), layout + ': old hidden gallery is destroyed');
+            check(Math.abs(freshPage.querySelector('.tg-home').getBoundingClientRect().top) < 1, layout + ': replacement home has no navigation gap');
             plugin.home.destroy();
             await settle();
             check(!document.body.classList.contains('tg-home-active'), layout + ': teardown releases chrome');

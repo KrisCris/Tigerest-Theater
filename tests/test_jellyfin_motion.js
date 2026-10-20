@@ -5,9 +5,9 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const source = name => fs.readFileSync(__dirname + '/../native/' + name, 'utf8');
 
-function jellyfin({modern = true} = {}) {
-    const entries = ['/home'], calls = [], effects = [], listeners = {}, routeListeners = new Set();
-    let index = 0, legacyTab = 0;
+function jellyfin({modern = true, ipad = false} = {}) {
+    const entries = ['/home'], calls = [], effects = [], sources = [], routeEvents = [], listeners = {}, routeListeners = new Set();
+    let index = 0, legacyTab = 0, documentLoads = 0;
     const account = {user: 'one', server: 's'};
     const address = () => entries[index];
     const changed = () => { for (const fn of [...routeListeners]) fn(); };
@@ -16,9 +16,9 @@ function jellyfin({modern = true} = {}) {
         get hash() { return '#' + address(); },
         set hash(value) { calls.push(['push', value.replace(/^#/, '')]); push(value.replace(/^#/, '')); },
         get href() { return 'http://jf.test/web/index.html#' + address(); },
-        replace(url) { const next = url.split('#')[1]; calls.push(['replace', next]); entries[index] = next; changed(); }
+        replace(url) { if(ipad)documentLoads++; const next = url.split('#')[1]; calls.push(['replace', next]); entries[index] = next; changed(); }
     };
-    const history = {back() { calls.push(['back']); if (index > 0) { index--; changed(); } }};
+    const history = {state:{idx:0},replaceState(state,unused,url){assert.equal(state,this.state);const next=url.split('#')[1];calls.push(['replace',next]);entries[index]=next;},back() { calls.push(['back']); if (index > 0) { index--; changed(); } }};
     const tabButton = tab => ({click() { calls.push(['tab', tab]); legacyTab = tab; }, classList: {contains: name => name === 'emby-tab-button-active' && legacyTab === tab}});
     const page = () => {
         const current = address(), detail = current.startsWith('/details'), home = current.startsWith('/home');
@@ -70,8 +70,12 @@ function jellyfin({modern = true} = {}) {
         console: {info() {}, warn() {}}, Promise, Date, URL, URLSearchParams, AbortController,
         setTimeout: (...args) => setTimeout(...args), clearTimeout: (...args) => clearTimeout(...args), setInterval: () => 1, clearInterval() {},
         location, history, document, addEventListener() {}, removeEventListener() {},
+        tigerestIPadApi: ipad ? {} : undefined,
+        HashChangeEvent: class { constructor(type, detail) { this.type=type;Object.assign(this,detail); } },
+        PopStateEvent: class { constructor(type, detail) { this.type=type;Object.assign(this,detail); } },
+        dispatchEvent(event) { routeEvents.push(event.type);changed(); },
         TigerestHomeTransitions: {
-            poster: async options => { effects.push(['poster', options.direction, options.itemId]); return options.navigate(); },
+            poster: async options => { sources.push(options.source); effects.push(['poster', options.direction, options.itemId]); return options.navigate(); },
             library: async options => { effects.push(['library']); return options.navigate(); },
             homeReturn: async options => { effects.push(['home']); return options.navigate(); },
             cancel() {}
@@ -85,13 +89,19 @@ function jellyfin({modern = true} = {}) {
     // A pointer press on a card's artwork, as Jellyfin renders library and detail cards.
     const press = id => { const image = {isConnected: true}, card = {dataset: {id}, querySelector: () => image, closest: selector => selector === '.itemsContainer' ? null : card};
         listeners.pointerdown({target: {closest: () => card}}); return image; };
+    const pressEpisodeRow = id => {
+        const row={dataset:{id},closest:selector=>selector==='.itemsContainer'?null:row,querySelector:selector=>selector.includes('.listItemImage')?image:null};
+        const image={isConnected:true,closest:selector=>selector.includes('.listItem')?row:null};
+        listeners.pointerdown({target:{closest:selector=>selector.includes('.listItemImage')?image:null}});
+        return image;
+    };
     const motion = context.TigerestHomeMotion;
     // What the home gallery does for a library and for a poster.
     const openLibrary = library => motion.openLibrary({gallery: {}, library, navigate: () => library.kind === 'favorites'
         ? plugin.home.openFavorites() : router.showItem({...library, ServerId: 's'}, 's')});
     const openItem = (item, library) => motion.openItem({card: {item}, library, source: {}, navigate: () => router.showItem({...item, ServerId: 's'}, 's')});
     return {router, original, plugin, motion, calls, effects, account, press, openLibrary, openItem,
-        get address() { return address(); }, get entries() { return entries.slice(0, index + 1); }, get legacyTab() { return legacyTab; }};
+        sources, routeEvents, pressEpisodeRow, get documentLoads() { return documentLoads; }, get address() { return address(); }, get entries() { return entries.slice(0, index + 1); }, get legacyTab() { return legacyTab; }};
 }
 const movies = {Id: 'L', Type: 'CollectionFolder', CollectionType: 'movies'}, favorites = {Id: 'tigerest-favorites', kind: 'favorites'};
 const libraryAddress = '/movies?topParentId=L&collectionType=movies';
@@ -215,4 +225,26 @@ test('a Jellyfin navigation promise left pending cannot hold the transition', as
     assert.equal(settled, true, 'the home return finishes and releases its cover');
     t.mock.timers.reset();
     await back;
+});
+
+test('WK hash replacement preserves the document and router history state', async () => {
+    const s=jellyfin({ipad:true});
+    await s.openItem(work,movies);await s.router.back();
+    assert.equal(s.address,libraryAddress);assert.equal(s.documentLoads,0);
+    await s.router.back();await s.openLibrary(favorites);await s.router.back();
+    assert.equal(s.address,'/home');assert.equal(s.documentLoads,0);
+});
+test('Jellyfin episode list rows keep their artwork as the flight source', async () => {
+    const s=jellyfin();await s.openItem({Id:'season',Type:'Season'},movies);
+    const image=s.pressEpisodeRow('episode');
+    s.router.showItem({Id:'episode',Type:'Episode',ServerId:'s'});
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(s.sources.at(-1),image);
+    assert.equal(s.motion.entry.parent.itemId,'season');
+});
+
+test('WK Modern favorites notify both React and the legacy hash router', async () => {
+    const s=jellyfin({ipad:true});await s.openLibrary(favorites);
+    assert.equal(s.address,'/home?tab=1');
+    assert.deepEqual(s.routeEvents,['popstate','hashchange']);
 });

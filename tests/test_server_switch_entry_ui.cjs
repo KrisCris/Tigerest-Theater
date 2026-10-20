@@ -92,7 +92,8 @@ withBrowser({'/': {type: 'text/html', body: host}, '/jellyfin/web/index.html': {
     await wait(80);
     assert.equal(await evaluate(`document.querySelectorAll('#tigerest-mpv-settings-button').length`), 1);
     await evaluate(`document.querySelector('#tigerest-mpv-settings-button').click()`);
-    assert.equal(await evaluate(`!!document.querySelector('#tigerest-client-menu')`), false, 'a cloned button has no handler; remount waits for removal');
+    assert.equal(await evaluate(`!!document.querySelector('#tigerest-client-menu')`), true, 'a cloned client button is rebound exactly once');
+    await evaluate('window.tigerestClientMenuBack()');
     await evaluate(`document.querySelector('#tigerest-mpv-settings-button').remove()`);
     await wait(80);
     await evaluate(`document.querySelector('#tigerest-mpv-settings-button').click()`);
@@ -117,6 +118,12 @@ withBrowser({'/': {type: 'text/html', body: host}, '/jellyfin/web/index.html': {
     assert.equal(await evaluate(`document.querySelector('.tigerest-home-server').getAttribute('aria-label')`), '当前服务器：Living room。切换服务器');
     await evaluate(`document.querySelector('.tigerest-home-server').click()`);
     assert.equal(await evaluate('switches'), 2);
+    await evaluate(`{const heading=document.querySelector('.tg-home-nav-heading');heading.replaceWith(heading.cloneNode(true));}`);
+    await wait(80);
+    const beforeClone = await evaluate('switches');
+    await evaluate(`document.querySelector('.tigerest-home-server').click()`);
+    assert.equal(await evaluate('switches'), beforeClone + 1, 'cloned home chip remains active');
+    await evaluate('switches--');
     // Media mutations elsewhere do not add entries or rescan the home.
     await evaluate(`for (let i = 0; i < 50; i++) document.body.append(document.createElement('div'))`);
     await wait(80);

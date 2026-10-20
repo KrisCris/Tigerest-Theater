@@ -86,6 +86,12 @@ function mountTigerestAppearanceStyles() {
             body.tigerest-appearance-ready ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
             body.tigerest-appearance-ready::-webkit-scrollbar-corner,
             body.tigerest-appearance-ready ::-webkit-scrollbar-corner { background: transparent; }
+            /* The styled bar above replaces a touch screen's overlay scrollbar
+               with a 9px lane. Tab strips are swiped there, so leave no lane. */
+            @media (pointer: coarse) {
+                body.tigerest-appearance-ready .emby-tabs { scrollbar-width: none; }
+                body.tigerest-appearance-ready .emby-tabs::-webkit-scrollbar { display: none; width: 0; height: 0; }
+            }
 
             .cardOverlayFab-primary:is([data-action="play"], [data-action="resume"], [data-action="playallfromhere"]) {
                 display: none !important;
@@ -338,6 +344,14 @@ function mountTigerestAppearanceStyles() {
             .cardImageContainer,
             .cardContent-button,
             .cardOverlayContainer {
+                border-radius: 16px !important;
+            }
+
+            /* Jellyfin's default theme paints the placeholder and blurred preview
+               under the artwork with small corners; matching them keeps the dark
+               corners from showing outside the rounded poster. */
+            .cardPadder,
+            .blurhash-canvas {
                 border-radius: 16px !important;
             }
 

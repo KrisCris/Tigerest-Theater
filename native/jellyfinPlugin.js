@@ -28,6 +28,18 @@
     // page.js replace is a hash replace, and favorites is the home's second
     // tab, named in the address by Modern and a same-page tab in Legacy, where
     // the address stays #/home. It is reported as Emby's favorites address.
+    function replaceHash(address) {
+        const oldURL = location.href, newURL = oldURL.split('#')[0] + '#' + address;
+        if (!window.tigerestIPadApi) { location.replace(newURL); return; }
+        // WKWebView can reload the document on absolute location.replace(),
+        // discarding the native bridge and the motion return chain. Retain the
+        // router's history state, and announce the actual hash replacement.
+        history.replaceState(history.state, '', newURL);
+        if (oldURL !== newURL) {
+            window.dispatchEvent(new PopStateEvent('popstate', {state: history.state}));
+            window.dispatchEvent(new HashChangeEvent('hashchange', {oldURL, newURL}));
+        }
+    }
     const favoritesPath = '/home?tab=favorites';
     function legacyFavorites() {
         return !modernLayout() && !!visiblePage()?.querySelector('#favoritesTab.is-active');
@@ -51,10 +63,12 @@
         if (button) { if (!button.classList.contains('emby-tab-button-active')) button.click(); return; }
         if (Date.now() < until) setTimeout(() => selectLegacyTab(index, until), 50);
     }
+    let removeCardNavigation = null;
     function attachMotion({appRouter, connections}) {
         const motion = window.TigerestHomeMotion;
         if (!motion) return null;
-        const go = address => location.replace(location.href.split('#')[0] + '#' + address);
+        removeCardNavigation?.();
+        const go = replaceHash;
         const pageJs = {
             replace(target) {
                 const address = String(target).replace(/^#!?/, ''), home = jellyfinRoute().path.startsWith('/home');
@@ -80,7 +94,34 @@
         };
         // back() and show() wait on any earlier show() that never saw its view.
         const settle = result => Promise.race([result, new Promise(resolve => setTimeout(resolve, 2500))]);
-        return motion.attach({router: appRouter, pageJs, manager: connections, viewManager: {currentViewInfo: jellyfinRoute}, libraryUrl, settle});
+        const dispose = motion.attach({router: appRouter, pageJs, manager: connections, viewManager: {currentViewInfo: jellyfinRoute}, libraryUrl, settle});
+        // Modern React cards use a plain overlay link instead of the legacy
+        // itemAction handler. Send that link through the same router hook as
+        // the gallery so WKWebView retains the document and return context.
+        const openCard = event => {
+            if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            const anchor = event.target.closest?.('.card .cardScalable > a[href]');
+            if (!anchor || anchor.matches('.itemAction,.cardImageContainer') || anchor.hasAttribute('download')
+                || (anchor.target && anchor.target !== '_self')
+                || event.target.closest('button,input,select,textarea,[data-action]')) return;
+            const card = anchor.closest('.card[data-id]'), item = card?.dataset;
+            if (!item || !['Movie', 'Series', 'Season', 'Episode', 'Video'].includes(item.type)) return;
+            const url = new URL(anchor.href, location.href), current = new URL(location.href);
+            const [path, query] = url.hash.replace(/^#!?/, '').split('?'), params = new URLSearchParams(query);
+            if (url.origin !== current.origin || url.pathname !== current.pathname || url.search !== current.search
+                || path !== '/details' || params.get('id') !== item.id) return;
+            const serverId = item.serverid || connections.currentApiClient().serverId();
+            if (params.has('serverId') && params.get('serverId') !== serverId) return;
+            event.preventDefault(); event.stopPropagation();
+            appRouter.showItem({Id: item.id, Type: item.type, ServerId: serverId}, serverId);
+        };
+        document.addEventListener('click', openCard, true);
+        const remove = () => {
+            document.removeEventListener('click', openCard, true);
+            if (removeCardNavigation === remove) removeCardNavigation = null;
+        };
+        removeCardNavigation = remove;
+        return () => { remove(); dispose?.(); };
     }
 
     // Jellyfin's desktop detail page floats a 25vw poster over the backdrop and
@@ -135,6 +176,9 @@
        would otherwise move only the title, and a pinned poster clears the
        header by the measured amount. */
     @media not all and (max-width: 62.5em) {
+      /* Keep the floating artwork out of the adjacent flex ribbon's layout.
+         WebKit otherwise adds the float width to the ribbon's own gutter. */
+      html.layout-desktop #itemDetailPage .detailPagePrimaryContainer > .detailImageContainer { display: flow-root; height: 0; }
       html.layout-desktop.tg-jf-detail-aligned #itemDetailPage .detailRibbon { padding-inline-start: var(--tg-jf-content-start) !important; }
     }
     html.layout-desktop #itemDetailPage .detailImageContainer .card { translate: 0 var(--tg-jf-card-shift, 0px); }
@@ -268,7 +312,7 @@
             // viewshow. appRouter.show waits for that event and would leave all
             // later showItem calls waiting. Follow Modern's own hash links, in
             // place like the Legacy tab: returning home then leaves one entry.
-            window.location.replace(window.location.href.split('#')[0] + '#/home?tab=1');
+            replaceHash('/home?tab=1');
             return Promise.resolve();
         }
         const page = this.tab?.closest('.page') || document;
@@ -292,6 +336,11 @@
             }
             this.tab = tab; this.page = tab.closest('.page');
             this.host = document.createElement('div');
+            // Jellyfin switches home tabs on a horizontal touch swipe unless the
+            // swipe starts inside a scroller it marks animatedScrollX. The poster
+            // rail and library row scroll sideways, and Emby's home has no swipe
+            // tabs, so the whole gallery opts out like Jellyfin's own rows.
+            this.host.classList.add('animatedScrollX');
             tab.classList.add('tg-jellyfin-home');
             this.page?.classList.add('tg-jellyfin-home-page');
             tab.prepend(this.host);
@@ -320,6 +369,52 @@
         this.unmount();
     };
 
+    // Tigerest Theater styles Jellyfin's own theme, so a server's custom CSS
+    // (Dashboard > Branding) starts off for each user as if "Disable server
+    // provided custom CSS" were checked in Display settings. Unchecking it
+    // there is respected. Jellyfin reads the setting only when a user loads,
+    // so the first session also switches off the style it already added.
+    function ServerCssDefault(connections, events) {
+        this.connections = connections; this.css = null; this.server = undefined;
+        this.update = this.update.bind(this);
+        if (typeof MutationObserver === 'function') {
+            this.observer = new MutationObserver(records => {
+                if (records.some(record => record.target.nodeName === 'STYLE' || record.target.parentNode?.nodeName === 'STYLE'
+                    || Array.prototype.some.call(record.addedNodes, node => node.nodeName === 'STYLE'))) this.update();
+            });
+            this.observer.observe(document.documentElement, {childList: true, subtree: true, characterData: true});
+        }
+        events.on(connections, 'localusersignedin', this.update);
+        this.update();
+    }
+    ServerCssDefault.prototype.disabled = function () {
+        const user = this.connections.currentApiClient?.()?.getCurrentUserId?.();
+        // Jellyfin's appSettings key; signed-out pages use the unprefixed one.
+        const key = user ? user + '-disableCustomCss' : 'disableCustomCss';
+        try {
+            if (localStorage.getItem(key) === null) localStorage.setItem(key, 'true');
+            return localStorage.getItem(key) !== 'false';
+        } catch { return true; }
+    };
+    ServerCssDefault.prototype.update = function () {
+        const off = this.disabled(), api = this.connections.currentApiClient?.();
+        const server = api?.serverId?.();
+        if (api && server !== this.server) {
+            this.server = server; this.css = null;
+            Promise.resolve(api.getJSON?.(api.getUrl('Branding/Configuration'))).then(config => {
+                if (server !== this.server) return;
+                this.css = String(config?.CustomCss || '').trim() || null;
+                if (this.css) this.update();
+            }).catch(() => {});
+        }
+        if (!this.css) return;
+        for (const style of document.querySelectorAll('style')) {
+            if (style.textContent.trim() !== this.css) continue;
+            if (off) style.media = 'not all';
+            else if (style.media === 'not all') style.removeAttribute('media');
+        }
+    };
+
     class TigerestJellyfinPlugin {
         constructor({events, appRouter, playbackManager, ServerConnections} = {}) {
             this.name = 'Tigerest Theater';
@@ -334,6 +429,7 @@
             // Logout starts a network operation: clear community drafts before it finishes.
             this.signedOut = () => { window.TigerestCommunityReset?.(); window.TigerestHomeMotion?.reset(); };
             events.on(connectionManager, 'localusersignedout', this.signedOut);
+            this.serverCss = new ServerCssDefault(connectionManager, events);
             this.layout = new JellyfinLayout();
             this.disposeMotion = attachMotion({appRouter, connections: connectionManager});
             this.home = new JellyfinHome({appRouter, connections: connectionManager});

@@ -231,6 +231,33 @@ withBrowser(routes,async({evaluate,call,url})=>{
   })()`);
   assert.equal(cancelledWarm,true,kind+' must abort unused in-flight background decoding before animating');
  }
+ // Legacy Custom Elements v0 shims walk open shadow roots and upgrade nodes
+ // by their `is` attribute. A static clone must not carry an upgrade-triggering attribute.
+ const legacySnapshot = await evaluate(`(async()=>{
+  const previous=window.CustomElements,previousInfo=window.jmpInfo,attachShadow=Element.prototype.attachShadow,roots=new WeakMap();
+  window.CustomElements={useNative:false};window.jmpInfo={...previousInfo,platform:'ipad'};
+  Element.prototype.attachShadow=function(options){const root=attachShadow.call(this,options);roots.set(this,root);return root;};
+  const field=document.createElement('input');field.setAttribute('is','fixture-v0-input');field.id='v0-snapshot-input';libraryRoot.append(field);
+  const scroller=document.createElement('div');scroller.id='v0-snapshot-scroll';scroller.style='width:200px;height:100px;overflow:auto';
+  const content=document.createElement('div');content.style='width:600px;height:800px';scroller.append(content);libraryRoot.append(scroller);scroller.scrollLeft=60;scroller.scrollTop=180;
+  let upgradedCopies=0;const seen=new WeakSet();
+  const walk=root=>{for(const node of root.querySelectorAll('*')){if(node.shadowRoot)walk(node.shadowRoot);if(node.getAttribute('is')==='fixture-v0-input'&&node!==field&&!seen.has(node)){seen.add(node);upgradedCopies++;}}};
+  const observer=new MutationObserver(()=>walk(document));observer.observe(document,{childList:true,subtree:true});
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  TigerestHomeTransitions.invalidate(false);await TigerestHomeTransitions.prewarm();
+  await new Promise(r=>setTimeout(r,100));walk(document);
+  const snapshot=document.querySelector('.tigerest-motion-cache').firstElementChild;
+  const copy=roots.get(snapshot).querySelector('#v0-snapshot-scroll');copy.scrollLeft=copy.scrollTop=0;
+  const transition=TigerestHomeTransitions.poster({source:libraryRoot.querySelector('img'),findTarget:()=>document.querySelector('#detail .detailImageContainer'),navigate:()=>show('detail')});
+  const result={upgradedCopies,width:snapshot.getBoundingClientRect().width,scroll:[copy.scrollLeft,copy.scrollTop],promoted:!!snapshot.closest('.tigerest-motion-scene')};
+  await transition;result.cacheHit=TigerestHomeTransitions.last.cacheHit;show('library');
+  observer.disconnect();field.remove();scroller.remove();Element.prototype.attachShadow=attachShadow;window.CustomElements=previous;window.jmpInfo=previousInfo;TigerestHomeTransitions.invalidate(false);return result;
+ })()`);
+ assert.equal(legacySnapshot.upgradedCopies,0,'legacy component shims must not activate frozen controls');
+ assert.ok(legacySnapshot.width>0,'isolated snapshots still participate in rendering');
+ assert.equal(legacySnapshot.promoted,true,'iPad promotes the same snapshot into its scene');
+ assert.equal(legacySnapshot.cacheHit,true);
+ assert.deepEqual(legacySnapshot.scroll,[60,180],'cached iPad scenes restore scroll offsets in the sanitized snapshot');
  await evaluate('TigerestHomeMotion.reset()');assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'account reset releases the cached background');
  await evaluate('TigerestHomeTransitions.prewarm()');await call('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});assert.equal(await evaluate('TigerestHomeTransitions.cacheState.ready'),false,'viewport changes cannot use the old background');
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});assert.equal(await evaluate('TigerestHomeTransitions.prewarm()'),false);assert.equal(await evaluate('TigerestHomeTransitions.cacheState.bytes'),0);

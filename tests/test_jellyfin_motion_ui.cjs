@@ -111,5 +111,46 @@ withBrowser(routes, async ({evaluate, call}) => {
     assert.equal(rebuilt.leaks, 0);
     assert.ok(rebuilt.metric.kind === 'poster' && !rebuilt.metric.fallback && rebuilt.metric.landingErrorPx < 2, 'a rebuilt page still receives the poster: ' + JSON.stringify(rebuilt.metric));
     assert.ok(near(rebuilt.flight.last, rebuilt.card) < 2, 'the return lands on the visible card');
+    // Modern 10.x uses a React overlay anchor, separate from its artwork.
+    // Its default navigation bypasses appRouter.showItem and loses the flight.
+    await evaluate(`(() => {
+      window.rebuild = false;
+      const card = document.querySelector('#shown [data-id="work"]');
+      card.dataset.type = 'Movie'; card.dataset.serverid = 's';
+      const link = document.createElement('a'); link.href = '#/details?id=work&serverId=s';
+      link.className = 'react-detail-overlay'; link.innerHTML = '<button data-action="play">Play</button>';
+      card.querySelector('.cardScalable').append(link);
+      window.reactPress = () => {
+        link.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
+        link.click();
+      };
+      window.documentMarker = {};
+    })()`);
+    await evaluate('reactPress()'); await settle();
+    const reactOpened = await report();
+    assert.equal(reactOpened.entry, 'work', 'React overlay navigation retains the return context');
+    assert.equal(reactOpened.flights, rebuilt.flights + 1, 'React overlay starts one flight');
+    assert.ok(reactOpened.metric.kind === 'poster' && !reactOpened.metric.fallback, 'React overlay uses the artwork');
+    await evaluate('appRouter.back()'); await settle();
+    const reactReturned = await report();
+    assert.equal(reactReturned.hash, library); assert.equal(reactReturned.leaks, 0);
+    assert.ok(near(reactReturned.flight.last, reactReturned.card) < 2, 'React return lands on its card');
+    // Native link behavior and nested playback controls must remain untouched.
+    const ignored = await evaluate(`(() => {
+      const link = document.querySelector('.react-detail-overlay'), outcomes = [];
+      const run = (target, init) => {
+        let prevented;
+        const stop = event => { prevented = event.defaultPrevented; event.preventDefault(); };
+        document.addEventListener('click', stop);
+        target.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, ...init}));
+        document.removeEventListener('click', stop); outcomes.push(prevented);
+      };
+      run(link, {ctrlKey: true}); run(link, {button: 1}); run(link.querySelector('button'), {});
+      const href = link.href; link.href = 'https://elsewhere.test/#/details?id=work'; run(link, {});
+      link.href = '#/details?id=another&serverId=s'; run(link, {}); link.href = href;
+      plugin.disposeMotion(); run(link, {});
+      return outcomes;
+    })()`);
+    assert.deepEqual(ignored, [false, false, false, false, false, false], 'unrelated actions and disposed listeners leave link behavior intact');
     console.log('jellyfin motion fixture:', JSON.stringify({opened: opened.metric.landingErrorPx, returned: returned.metric.landingErrorPx, rebuilt: rebuilt.metric.landingErrorPx}));
 }, {gpu: true, visible: true}).catch(error => { console.error(error); process.exitCode = 1; });

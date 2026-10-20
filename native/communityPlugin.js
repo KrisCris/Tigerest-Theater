@@ -295,7 +295,11 @@
         }
         alignPanel(state) {
             const section=state.alignmentSection;
-            if(!section?.isConnected){state.content.style.paddingInline='clamp(16px,4vw,48px)';return;}
+            if(!section?.isConnected || !section.getClientRects().length){
+                // Jellyfin keeps empty cast sections in the DOM with display:none.
+                // Their zero rectangle is not a usable content alignment anchor.
+                state.content.style.paddingInline='clamp(16px,4vw,48px)';return;
+            }
             const heading=section.querySelector('h2,h3,.sectionTitle') || section;
             if(heading.closest('.padded-left-page')){
                 // Emby owns responsive spacing (including safe areas and docked drawers).

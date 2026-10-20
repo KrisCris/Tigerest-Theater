@@ -136,6 +136,7 @@ function jellyfinPage() {
         document: {
             head: element('head'),
             getElementById: id => id === 'homeTab' && page.connected ? page.tab : null,
+            querySelectorAll: selector => selector === '[id="homeTab"]' && page.connected ? [page.tab] : [],
             querySelector: () => null,
             createElement: element,
             addEventListener: (type, fn) => { listeners[type] = fn; },
@@ -187,6 +188,7 @@ test('Jellyfin gets the community, watch-together and home gallery with its own 
     const gallery = page.galleries[0];
     assert.equal(page.tab.children[0], gallery.host, 'the gallery takes the place of the home sections');
     assert.ok(page.tab.classList.contains('tg-jellyfin-home'));
+    assert.ok(gallery.host.classList.contains('animatedScrollX'), 'a sideways swipe on the gallery does not switch home tabs');
     assert.deepEqual(gallery.calls, ['start']);
     assert.equal(gallery.options.apiProvider(), apiClient);
     await gallery.options.openFavorites();
@@ -200,6 +202,26 @@ test('Jellyfin gets the community, watch-together and home gallery with its own 
     page.connected = false; page.listeners.viewshow();
     assert.deepEqual(gallery.calls.at(-1), 'destroy');
     assert.ok(!page.tab.classList.contains('tg-jellyfin-home'));
+});
+
+test('returning home mounts the visible page when Jellyfin retains an older hidden homeTab', () => {
+    const old = jellyfinPage(), fresh = jellyfinPage();
+    const plugin = new old.context._tigerestJellyfinPlugin({events:{on(){}}, appRouter:{},
+        ServerConnections:{currentApiClient:()=>null}});
+    const firstGallery = plugin.home.gallery;
+    old.visible = false;
+    old.context.document.querySelectorAll = () => [old.tab, fresh.tab];
+    old.listeners.viewshow();
+    assert.equal(plugin.home.tab, fresh.tab);
+    assert.equal(firstGallery.calls.at(-1), 'destroy');
+    assert.ok(!old.tab.classList.contains('tg-jellyfin-home'));
+    assert.ok(fresh.tab.classList.contains('tg-jellyfin-home'));
+    assert.deepEqual(plugin.home.gallery.calls, ['start']);
+    fresh.visible = false; old.visible = true;
+    old.listeners.viewshow();
+    assert.equal(plugin.home.tab, old.tab, 'cached pages can become visible again');
+    assert.ok(!fresh.tab.classList.contains('tg-jellyfin-home'));
+    plugin.home.destroy();
 });
 
 test('hash-only tab changes stop and resume the gallery without a polling tick', () => {
@@ -314,4 +336,39 @@ test('no page script takes a Jellyfin view change for leaving the page', () => {
     }
     assert.deepEqual(listeners.sort(), ['android/app/src/main/assets/androidBridge.js', 'android/app/src/main/assets/androidResponsive.js',
         'apple/Resources/ipadBridge.js', 'apple/Resources/ipadResponsive.js', 'native/communityAccount.js', 'native/updatePlugin.js']);
+});
+
+test("a server's custom CSS starts disabled for each user, and the user's own choice is kept", async () => {
+    const page = jellyfinPage(), storage = new Map(), signedIn = [];
+    page.context.localStorage = { getItem: key => storage.has(key) ? storage.get(key) : null, setItem: (key, value) => storage.set(key, String(value)) };
+    let observe;
+    page.context.MutationObserver = class { constructor(fn) { observe = fn; } observe() {} disconnect() {} };
+    const style = text => ({ nodeName: 'STYLE', textContent: text, media: '', removeAttribute(name) { if (name === 'media') this.media = ''; } });
+    const branding = style('\n.server-theme { color: red; }\n'), own = style('.user-css { color: blue; }');
+    const styles = [branding, own];
+    page.context.document.documentElement = {};
+    page.context.document.querySelectorAll = selector => selector === 'style' ? styles : [];
+    let user = 'u1', brandingRequests = 0;
+    const apiClient = { serverId: () => 's', getCurrentUserId: () => user, getUrl: path => 'http://jf.test/' + path,
+        getJSON: url => { brandingRequests++; assert.equal(url, 'http://jf.test/Branding/Configuration'); return Promise.resolve({ CustomCss: '.server-theme { color: red; }' }); } };
+    const events = { on: (target, name, fn) => { if (name === 'localusersignedin') signedIn.push(fn); } };
+    const plugin = new page.context._tigerestJellyfinPlugin({ events, appRouter: { show: () => Promise.resolve() }, ServerConnections: { currentApiClient: () => apiClient } });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(storage.get('u1-disableCustomCss'), 'true', 'Display settings show the server CSS as disabled');
+    assert.equal(branding.media, 'not all', 'the server style Jellyfin already rendered is switched off');
+    assert.equal(own.media, '', "the user's own custom CSS is untouched");
+
+    // The user turns the server CSS back on; Jellyfin renders its style again.
+    storage.set('u1-disableCustomCss', 'false');
+    observe([{ target: {}, addedNodes: [branding] }]);
+    assert.equal(branding.media, '', 'an explicit choice in Display settings is respected');
+
+    // Another user signs in on the same server.
+    user = 'u2'; signedIn.forEach(fn => fn());
+    assert.equal(storage.get('u2-disableCustomCss'), 'true');
+    assert.equal(storage.get('u1-disableCustomCss'), 'false');
+    assert.equal(branding.media, 'not all');
+    assert.equal(brandingRequests, 1, 'branding is read once per server');
+    plugin.home.destroy();
 });

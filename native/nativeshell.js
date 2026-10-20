@@ -277,6 +277,9 @@ if (settingsDescriptionsFromStorage) {
 jmpInfo.settingsDescriptionsUpdate = [];
 jmpInfo.settingsUpdate = [];
 window.apiPromise = createApi().then(async api => {
+    // Jellyfin constructs its plugins synchronously while these native reads
+    // are in flight. Publish the ready bridge before refreshing saved settings.
+    window.api = api;
     // Native selection can commit/roll back while this origin is unloaded.
     // Both the injected bootstrap and this origin's cache may be stale.
     if (api.settings.value) {
@@ -1796,8 +1799,20 @@ function installMpvSettingsEntry() {
     // One client menu holds the current server, server switching, player
     // settings and offline media. Its id predates the menu; the update entry
     // and the Android toolbar layout anchor to it.
+    const bound = new WeakSet();
+    const bind = button => {
+        if (bound.has(button)) return;
+        bound.add(button);
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (clientMenu?.isConnected) closeClientMenu();
+            else openClientMenu(button);
+        });
+    };
     const mount = () => {
         const existing = document.getElementById('tigerest-mpv-settings-button');
+        if (existing) bind(existing);
         if (existing && window.TigerestServer?.kind === 'emby') return;
         const userButton = headerUserAnchor();
         if (existing) {
@@ -1819,12 +1834,7 @@ function installMpvSettingsEntry() {
         button.setAttribute('aria-label', '客户端菜单：切换服务器、播放器设置');
         button.setAttribute('aria-haspopup', 'menu');
         button.setAttribute('aria-expanded', 'false');
-        button.addEventListener('click', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            if (clientMenu?.isConnected) closeClientMenu();
-            else openClientMenu(button);
-        });
+        bind(button);
         userButton.parentElement.insertBefore(button, userButton);
     };
 
@@ -1975,6 +1985,12 @@ function installServerSwitchEntry() {
     document.head.appendChild(style);
     // Logged-out pages keep a lightweight in-page entry instead of a toolbar.
     const selector = '.standalonePage,#loginPage,#selectServerPage,#connectPage,#addServerPage,#selectUserPage';
+    const bound = new WeakSet();
+    const bind = button => {
+        if (bound.has(button)) return;
+        bound.add(button);
+        button.addEventListener('click', window.tigerestSwitchServer);
+    };
     // The home names the connected server; it opens the same chooser.
     const homeSelector = '.tg-home-nav-heading';
     // The library column can be narrow: labels give way to icons, and as a
@@ -2007,12 +2023,17 @@ function installServerSwitchEntry() {
         const headings = [...root.querySelectorAll(homeSelector)];
         if (root.matches?.(homeSelector)) headings.unshift(root);
         for (const heading of headings) {
-            if (heading.querySelector('.tigerest-home-server')) continue;
+            const windowMode = heading.querySelector('.tg-home-window-mode');
+            const existing = heading.querySelector('.tigerest-home-server');
+            if (existing) {
+                bind(existing); homeLabel(existing);
+                for (const node of [heading, existing, windowMode]) if (node) headingSizes?.observe(node);
+                continue;
+            }
             const button = document.createElement('button');
             button.type = 'button'; button.className = 'tigerest-home-server';
             button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg><span></span>';
-            button.addEventListener('click', window.tigerestSwitchServer);
-            const windowMode = heading.querySelector('.tg-home-window-mode');
+            bind(button);
             heading.insertBefore(button, windowMode);
             homeLabel(button);
             for (const node of [heading, button, windowMode]) if (node) headingSizes?.observe(node);
@@ -2020,10 +2041,11 @@ function installServerSwitchEntry() {
         const pages = [...root.querySelectorAll(selector)];
         if (root.matches?.(selector)) pages.unshift(root);
         for (const page of pages) {
-            if (page.querySelector('.tigerest-switch-entry')) continue;
+            const existing = page.querySelector('.tigerest-switch-entry');
+            if (existing) { bind(existing); continue; }
             const button = document.createElement('button');
             button.type = 'button'; button.className = 'tigerest-switch-entry'; button.textContent = '切换服务器';
-            button.addEventListener('click', window.tigerestSwitchServer);
+            bind(button);
             page.insertBefore(button, page.firstChild);
         }
     };
