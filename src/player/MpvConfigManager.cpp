@@ -85,6 +85,18 @@ bool copyResourceTree(const QString& sourceRoot, const QString& targetRoot)
   return ok;
 }
 
+// macOS tags the Metal layer with the hinted colorspace and ColorSync maps it
+// to the display, for SDR and HDR alike. An automatic ICC profile (the built-in
+// SDR Display P3) would instead become the hint target, so HDR and Dolby Vision
+// got an SDR P3 swapchain and lost their highlights. Other platforms keep it.
+static QString withPlatformColorManagement(QString config)
+{
+#if defined(Q_OS_MAC)
+  config.replace(QStringLiteral("\nicc-profile-auto=yes\n"), QStringLiteral("\nicc-profile-auto=no\n"));
+#endif
+  return config;
+}
+
 bool writeEmbeddedConfig(const QString& configDir)
 {
   QFile input(":/mpv/mpv.conf.in");
@@ -94,7 +106,7 @@ bool writeEmbeddedConfig(const QString& configDir)
     return false;
   }
 
-  QString config = QString::fromUtf8(input.readAll());
+  QString config = withPlatformColorManagement(QString::fromUtf8(input.readAll()));
   const QString preset = SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "shaderPreset").toString();
   config.replace("@TIGEREST_PROFILE@", MpvConfigManager::profileName(preset));
 #if defined(Q_OS_WIN) || defined(Q_OS_MAC)
@@ -197,7 +209,7 @@ bool writeSystemCompanionConfig(const QString& bundleDir, QString& companionPath
     return false;
   }
 
-  const QString templateText = QString::fromUtf8(input.readAll());
+  const QString templateText = withPlatformColorManagement(QString::fromUtf8(input.readAll()));
   const qsizetype profileStart = templateText.indexOf(QStringLiteral("[tigerest-quality-base]"));
   if (profileStart < 0)
   {
