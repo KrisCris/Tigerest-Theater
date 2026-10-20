@@ -20,6 +20,16 @@ ninja install
 
 APP_BUNDLE="${BUILD_DIR}/output/${APP_NAME}"
 
+# The Qt SDK's stock WebEngine limits the web UI to 60 Hz on macOS. Releases
+# carry the display-link engine from a verified bundle (dev/macos/qt/README.md).
+if [ -n "${TIGEREST_PATCHED_WEBENGINE_SOURCE:-}" ]; then
+    python3 "${PROJECT_ROOT}/dev/macos/use_patched_webengine.py" \
+        --source "${TIGEREST_PATCHED_WEBENGINE_SOURCE}" --bundle "${APP_BUNDLE}"
+else
+    echo "warning: stock Qt WebEngine bundled; the web UI is limited to 60 Hz." >&2
+    echo "         Set TIGEREST_PATCHED_WEBENGINE_SOURCE to a verified patched bundle for releases." >&2
+fi
+
 echo "Signing app bundle..."
 python3 "${PROJECT_ROOT}/dev/macos/sign_bundle.py" "${APP_BUNDLE}"
 python3 "${PROJECT_ROOT}/tests/test_macos_bundle.py" "${APP_BUNDLE}"
