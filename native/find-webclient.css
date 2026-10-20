@@ -35,12 +35,17 @@ button:disabled { opacity: .55; cursor: default; }
 #saved-title { font-size: 15px; font-weight: 600; color: #e4b258; letter-spacing: .08em; margin: 0 0 4px; }
 .saved-help { color: #8f897f; font-size: 12px; line-height: 1.6; margin: 0 0 12px; }
 #saved-server-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.saved-server { border: 1px solid #4b4335; border-radius: 12px; background: #22201de6; padding: 4px 14px 10px; transition: background .16s, border-color .16s, transform .16s; }
+.saved-server { position: relative; border: 1px solid #4b4335; border-radius: 12px; background: #22201de6; padding: 4px 14px 10px; transition: background .16s, border-color .16s, transform .16s; }
 .saved-server.is-current { border-color: #a88a50; }
-/* The name and address open the server; highlight the card like the server options below. */
+/* The card opens the server; highlight it like the server options below. */
 .saved-server:has(.saved-server-open:hover:not(:disabled)), .saved-server:has(.saved-server-open:focus-visible) { border-color: #e3b35c; background: #3b2e1c; transform: translateY(-2px); }
 .saved-server-open:hover:not(:disabled) .saved-server-name, .saved-server-open:focus-visible .saved-server-name { color: #f0c675; }
 .saved-server-open { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; width: 100%; padding: 10px 0 6px; text-align: left; background: none; border: 0; color: inherit; }
+/* The whole card connects: the open button's hit area covers it, and only the
+   edit/remove/retry buttons sit above it. */
+.saved-server-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.saved-server-actions, .saved-server-confirm { position: relative; pointer-events: none; }
+.saved-server-actions > *, .saved-server-confirm > * { pointer-events: auto; }
 .saved-server-name { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; transition: color .16s; }
 .saved-server-meta { grid-column: 1; color: #aaa59d; font-size: 13px; overflow-wrap: anywhere; }
 .saved-server-tag, .option-badge { grid-column: 2; grid-row: 1; align-self: start; padding: 1px 8px; border-radius: 999px; background: #4a3a1e; color: #f0c675; font-size: 12px; white-space: nowrap; }
