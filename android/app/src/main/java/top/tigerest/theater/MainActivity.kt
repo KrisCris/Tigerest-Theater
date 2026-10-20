@@ -5,6 +5,7 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.database.ContentObserver
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Bundle
@@ -81,7 +82,25 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
             overlay = DanmakuOverlay(this,model.settings,model.player,danmaku); video.addView(overlay,FrameLayout.LayoutParams(-1,-1))
             val subtitles = SubtitleOverlay(this,model.settings); video.addView(subtitles,FrameLayout.LayoutParams(-1,-1))
             model.player.subtitleText = { text -> subtitles.text = text }
-            model.player.videoLayout = { aspect,embedded -> surface.aspect = if(embedded) aspect else 0.0; subtitles.aspect = aspect }
+            val range = TextView(this).apply {
+                setTextColor(Color.WHITE); textSize = 13f; fontFeatureSettings = "tnum"; visibility = View.GONE
+                val density = resources.displayMetrics.density; setPadding((14*density).toInt(),(10*density).toInt(),(14*density).toInt(),(10*density).toInt())
+                background = GradientDrawable().apply { setColor(Color.argb(158,0,0,0)); cornerRadius = 12*density }
+            }
+            video.addView(range,FrameLayout.LayoutParams(-2,-2,Gravity.TOP or Gravity.START))
+            var videoAspect = 0.0
+            val hideRange = Runnable { range.animate().alpha(0f).setDuration(400).withEndAction { range.visibility = View.GONE } }
+            model.player.dynamicRange = { text ->
+                // Like the iPad: top left, clear of the top bar, inside the picture when it is letterboxed.
+                val density = resources.displayMetrics.density; val box = PlaybackContract.fit(video.width,video.height,videoAspect)
+                range.layoutParams = (range.layoutParams as FrameLayout.LayoutParams).apply {
+                    leftMargin = ((video.width - box.width)/2 + 24*density).toInt(); topMargin = maxOf(124*density,(video.height - box.height)/2 + 16*density).toInt()
+                }
+                range.text = text; range.removeCallbacks(hideRange); range.animate().cancel(); range.alpha = 1f; range.visibility = View.VISIBLE
+                range.postDelayed(hideRange,4000)
+            }
+            model.player.displayHdr = { display?.isHdr == true }
+            model.player.videoLayout = { aspect,embedded -> surface.aspect = if(embedded) aspect else 0.0; subtitles.aspect = aspect; videoAspect = aspect }
             controls = VideoControls(this,model.player,danmaku); video.addView(controls,FrameLayout.LayoutParams(-1,-1)); root.addView(video,FrameLayout.LayoutParams(-1,-1))
             progress = ProgressBar(this).apply { visibility = View.GONE }; root.addView(progress,FrameLayout.LayoutParams(64,64,Gravity.CENTER))
             bridge = BridgeDispatcher(this,model.settings,model.player); webHost = WebHost(this,web,model.settings,bridge); webHost.applySettings()
@@ -94,7 +113,7 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
                 video.visibility = if(shown) View.VISIBLE else View.GONE
                 setPlaybackScreenAwake(shown); setFullscreen(shown)
                 if(shown) controls.showControls()
-                if(!shown) controls.playbackHidden()
+                if(!shown) { controls.playbackHidden(); range.removeCallbacks(hideRange); range.visibility = View.GONE }
                 if(!shown && !model.player.state.active) { danmaku.clear(); beforePlaybackFullscreen = null; controls.unlockTouch() }
             }
             model.player.itemChanged = { item ->
@@ -205,6 +224,8 @@ class MainActivity: ComponentActivity(),DisplayManager.DisplayListener {
     }
     fun setFullscreen(enabled: Boolean) {
         fullscreen = enabled
+        // The default rotation animation shows an SDR screenshot, which drops the panel out of HDR for a moment.
+        window.attributes = window.attributes.apply { rotationAnimation = if(enabled) WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS else WindowManager.LayoutParams.ROTATION_ANIMATION_ROTATE }
         window.insetsController?.let { controller -> controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE; if(enabled) controller.hide(WindowInsets.Type.systemBars()) else controller.show(WindowInsets.Type.systemBars()) }
         if(::bridge.isInitialized) bridge.emit("window","fullScreenSwitched",JSONArray().put(enabled))
     }

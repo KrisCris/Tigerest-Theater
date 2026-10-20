@@ -35,7 +35,8 @@ class PlaybackController(private val context: Context, private val settings: Set
     @Volatile private var clockEpoch = 0L
     @Volatile var pauseIntent = 0L; private set
     private val resizeOutput = Runnable {
-        if(!destroyed && surfaceGate.hasSurface && state.active && video) {
+        // MediaCodec output is scaled by the compositor; reopening it would restart the decoder.
+        if(!destroyed && surfaceGate.hasSurface && state.active && video && !hdrOutput) {
             // Recreate EGL after the Android buffer queue settles. A size property update alone
             // can leave the old buffer geometry visible on a paused, resized SurfaceView.
             MPVLib.setPropertyString("vo","null")
@@ -62,6 +63,11 @@ class PlaybackController(private val context: Context, private val settings: Set
     var itemChanged: (JSONObject) -> Unit = {}
     var message: (String) -> Unit = {}
     var subtitleText: (String) -> Unit = {}
+    /** The playback-start HDR/SDR notice. */
+    var dynamicRange: (String) -> Unit = {}
+    /** HDR output only helps a panel that can show it; elsewhere mpv's tone mapping looks better and keeps subtitles. */
+    var displayHdr: () -> Boolean = { false }
+    private var rangeReported = false
     /** Video aspect for native layers; embedded is true while MediaCodec draws to the whole surface. */
     var videoLayout: (aspect: Double, embedded: Boolean) -> Unit = { _, _ -> }
     private var videoAspect = 0.0
@@ -154,8 +160,9 @@ class PlaybackController(private val context: Context, private val settings: Set
                 val url = args.getString(0); require(url.startsWith("http://") || url.startsWith("https://") || url.startsWith("content://")) { "不支持的媒体地址" }
                 val options = args.optJSONObject(1) ?: JSONObject(); metadata = args.optJSONObject(2) ?: JSONObject()
                 video = PlaybackContract.isVideo(metadata.optString("type","video"))
-                val hdr = video && metadata.optString("dynamicRange") == "hdr" && settings.string("video","hardwareDecoding") != "disabled"
+                val hdr = video && metadata.optString("dynamicRange") == "hdr" && settings.string("video","hardwareDecoding") != "disabled" && displayHdr()
                 if (hdr != hdrOutput) setOutput(hdr)
+                rangeReported = false
                 main.post { subtitleText("") }
                 DiagnosticsLog.app.record("info","Player output ${videoOutput()}")
                 DiagnosticsLog.app.record("info","Player load requested video=$video")
@@ -271,7 +278,7 @@ class PlaybackController(private val context: Context, private val settings: Set
     override fun eventProperty(property: String, value: Double) { val generation = eventGeneration; main.post {
         if(destroyed || !state.active || generation != state.generation) return@post
         when(property) {
-            "time-pos" -> { state.update(state.generation,value,MPVLib.getPropertyBoolean("pause") == true,MPVLib.getPropertyDouble("speed") ?: 1.0); emit("positionUpdate",state.positionMs); updateMediaSession() }
+            "time-pos" -> { state.update(state.generation,value,MPVLib.getPropertyBoolean("pause") == true,MPVLib.getPropertyDouble("speed") ?: 1.0); emit("positionUpdate",state.positionMs); updateMediaSession(); if(video && !rangeReported) reportDynamicRange() }
             "duration" -> { durationMs = (value*1000).toLong(); emit("updateDuration",durationMs) }
             "cache-buffering-state" -> emit("buffering",value.toInt())
             "speed" -> { state.update(state.generation,positionSeconds(),isPaused(),value); emit("playbackRateChanged",value) }
@@ -300,9 +307,21 @@ class PlaybackController(private val context: Context, private val settings: Set
         if(property == "track-list") emit("onVideoRecangleChanged")
         if(property == "sub-text") main.post { subtitleText("") }
     }
+    private fun colorParams(prefix: String) = PlaybackContract.ColorParams(MPVLib.getPropertyInt("$prefix/w") ?: 0,MPVLib.getPropertyInt("$prefix/h") ?: 0,
+        MPVLib.getPropertyString("$prefix/primaries").orEmpty(),MPVLib.getPropertyString("$prefix/gamma").orEmpty(),MPVLib.getPropertyDouble("$prefix/max-luma") ?: 0.0)
+    private fun reportDynamicRange() {
+        val source = colorParams("video-params")
+        // MediaCodec hands the frames to the compositor in their own colorspace; mpv has no target.
+        val target = if(hdrOutput) source else colorParams("video-target-params")
+        val text = PlaybackContract.dynamicRangeText(source,target,MPVLib.getPropertyInt("current-tracks/video/dolby-vision-profile") ?: 0,
+            MPVLib.getPropertyString("tone-mapping").orEmpty()) ?: return
+        rangeReported = true
+        DiagnosticsLog.app.record("info","Dynamic range: " + text.replace("\n"," | "))
+        dynamicRange(text)
+    }
     @Synchronized private fun setOutput(hdr: Boolean) {
         if(destroyed) return
-        hdrOutput = hdr
+        hdrOutput = hdr; rangeReported = false
         MPVLib.setPropertyString("hwdec",hardwareDecoding())
         if (surfaceGate.hasSurface) MPVLib.setPropertyString("vo",videoOutput())
         main.post { videoLayout(videoAspect,hdr) }
