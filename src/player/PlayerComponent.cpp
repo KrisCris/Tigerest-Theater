@@ -679,6 +679,10 @@ static int rangeNits(const QVariant& value)
 // HDR or SDR, and from what source.
 void PlayerComponent::reportDynamicRange()
 {
+#ifndef Q_OS_MAC
+  // Introduced for the Apple clients; Windows/Linux behaviour is the PC side's call.
+  return;
+#endif
   const QString sourceGamma = m_rangeSource.value("gamma").toString(), targetGamma = m_rangeTarget.value("gamma").toString();
   if (m_rangeReported || sourceGamma.isEmpty() || targetGamma.isEmpty())
     return;
