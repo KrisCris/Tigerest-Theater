@@ -48,6 +48,15 @@ withBrowser({'/': {type: 'text/html', body: host}, '/jellyfin/web/index.html': {
     assert.equal(header.text, '客户端');
     assert.equal(header.popup, 'menu');
     assert.match(header.label, /切换服务器/);
+    // Jellyfin's avatar is an inline background on an inner .headerButton div:
+    // the whole picture fills the round button, without a second button look.
+    await evaluate(`document.body.insertAdjacentHTML('beforeend', '<div class="headerRight" id="jf-avatar-row"><button class="headerButton headerButtonRight headerUserButton paper-icon-button-light headerUserButtonRound" title="Tigerest"><div class="headerButton headerButtonRight paper-icon-button-light headerUserButtonRound" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27400%27 height=%27400%27/%3E&quot;)"></div></button></div>')`);
+    await wait(80);
+    const avatar = await evaluate(`(() => { const button = document.querySelector('#jf-avatar-row .headerUserButton'), inner = button.firstElementChild, s = getComputedStyle(inner), a = button.getBoundingClientRect(), b = inner.getBoundingClientRect();
+      return {size: s.backgroundSize, position: s.backgroundPosition, repeat: s.backgroundRepeat, color: s.backgroundColor, border: s.borderTopWidth, blur: s.backdropFilter, image: s.backgroundImage.startsWith('url('),
+        fills: Math.abs(a.width - b.width) < 3 && Math.abs(a.height - b.height) < 3 && Math.abs(a.left - b.left) < 2 && Math.abs(a.top - b.top) < 2}; })()`);
+    assert.deepEqual(avatar, {size: 'cover', position: '50% 50%', repeat: 'no-repeat', color: 'rgba(0, 0, 0, 0)', border: '0px', blur: 'none', image: true, fills: true}, 'Jellyfin avatar fills its button');
+    await evaluate(`document.getElementById('jf-avatar-row').remove()`);
     for (const width of [390, 600, 847, 948, 1280]) {
         await call('Emulation.setDeviceMetricsOverride', {width, height: 800, deviceScaleFactor: 1, mobile: width < 900});
         await settle();
