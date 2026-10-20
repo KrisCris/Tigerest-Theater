@@ -1,6 +1,6 @@
 # Tigerest Theater 使用教程
 
-这里是 EMBY 大河版的中文使用说明，对应 Windows、Android 2.9.0 与 Mac、iPad、Apple TV 2.8.0。客户端支持 Windows、Apple Silicon Mac、Android、iPad 和 Apple TV；播放内容和访问权限来自你连接的 Emby 或 Jellyfin 服务器（Jellyfin 目前限 Windows、Android 2.9.0）。
+这里是 EMBY 大河版的中文使用说明，对应 Windows、Android 2.9.1 与 Mac、iPad、Apple TV 2.8.0。客户端支持 Windows、Apple Silicon Mac、Android、iPad 和 Apple TV；播放内容和访问权限来自你连接的 Emby 或 Jellyfin 服务器（Jellyfin 目前限 Windows、Android 2.9.0 及之后）。
 
 ## 第一次使用
 
@@ -29,6 +29,12 @@
 | [常见问题](https://github.com/Tigerest/Tigerest-Theater/wiki/FAQ) | 平台区别、账号范围、补帧与共享功能的常见疑问 |
 | [技术原理](https://github.com/Tigerest/Tigerest-Theater/wiki/Architecture) | 各客户端的实现与架构、播放链路、一起看同步、评论和弹幕的数据流 |
 
+## 2.9.1 更新了什么（Windows、Android）
+
+- **Jellyfin 默认主题：** 服务器提供的自定义 CSS 默认禁用，按 Jellyfin 默认主题显示；在 Jellyfin「显示」设置里取消勾选「禁用服务器提供的自定义 CSS」即可恢复。
+- **详情页与动画：** Jellyfin 手机详情页顶部显示横向背景图；Android 上海报飞行动画不再卡顿；Emby 手机竖屏单集页的顶部图片完整显示，从作品进单集的动画正常落地。
+- **细节修复：** 海报圆角外不再露出深色直角，触屏设备上标签栏下方不再出现滚动条；在首页横滑海报不再误切到「我的最爱」标签。
+
 ## 2.9.0 更新了什么（Windows、Android）
 
 - **Jellyfin 服务器：** 在「自建服务器」里填写 Jellyfin 地址，用该服务器账号登录。已实测 Jellyfin 10.9.11、10.10.7、10.11.0、10.11.11 与 12.2。见[服务器与登录](https://github.com/Tigerest/Tigerest-Theater/wiki/Server)。
@@ -51,7 +57,7 @@ Mac、iPad 与 Apple TV 的 2.9.0 稍后补充，在此之前继续使用 2.8.0�
 
 2.6.1 起 Windows 网页界面按屏幕刷新率运行，并新增 iPad 客户端；2.7.0 起首页「继续观看」按观看记录排序，兼容 Emby 4.8–4.10 和 .strm 媒体库，并补充了 Apple TV 首版。完整记录见[更新记录](https://github.com/Tigerest/Tigerest-Theater/blob/main/CHANGELOG.md)。
 
-**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.9.0 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
+**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.9.1 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
 ## 各平台功能范围
 

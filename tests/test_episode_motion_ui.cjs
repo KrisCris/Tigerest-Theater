@@ -47,5 +47,20 @@ withBrowser(routes,async({evaluate,call})=>{
  assert.ok(returned.metric.kind==='poster'&&!returned.metric.fallback&&returned.metric.landingErrorPx<2,'the still flies back: '+JSON.stringify(returned.metric));
  assert.ok(near(returned.flight.last,returned.pressed)<2&&near(returned.flight.last,returned.first)>20,'the return lands on the pressed season card, not the earlier next-up card');
  assert.equal(returned.entry,null,'no return flight is invented for a series page opened elsewhere');
- console.log('episode motion fixture:',JSON.stringify({opened:opened.metric.landingErrorPx,returned:returned.metric.landingErrorPx}));
+ // Below 50em Emby hides the episode's own image and shows the still only as
+ // the page's top backdrop. The thumbnail lands there and flies back from it.
+ await evaluate(`(()=>{const episode=document.querySelector('#episode');episode.querySelector('.detailImageContainer').style.display='none';
+  episode.insertAdjacentHTML('afterbegin','<div class="itemBackdropContainer" style="position:relative;height:300px"><div class="itemBackdrop" style="position:absolute;inset:60px 0 0;background:url(/thumb.svg) center/cover"></div></div>');
+  const image=document.querySelector('#season [data-id="ep1"] img');image.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));window.opening=router.showItem({Id:'ep1',Type:'Episode'});return true;})()`);
+ await evaluate('opening');
+ const compact=await evaluate(`({metric:TigerestHomeTransitions.last,flight:flights.at(-1),target:document.querySelector('#episode .itemBackdrop').getBoundingClientRect().toJSON(),id:fixture.state.params.id})`);
+ assert.equal(compact.id,'ep1');
+ assert.ok(compact.metric.kind==='poster'&&!compact.metric.fallback&&compact.metric.landingErrorPx<2,'the thumbnail lands on the compact backdrop: '+JSON.stringify(compact.metric));
+ assert.ok(near(compact.flight.last,compact.target)<2,'last poster frame covers the backdrop still');
+ await evaluate('router.back()');
+ const back=await evaluate(`({metric:TigerestHomeTransitions.last,flight:flights.at(-1),pressed:document.querySelector('#season [data-id="ep1"] img').getBoundingClientRect().toJSON(),
+  leaks:document.querySelectorAll('.tigerest-motion-layer,.tigerest-motion-poster,[data-tigerest-poster-held]').length,id:fixture.state.params.id})`);
+ assert.equal(back.id,'series');assert.equal(back.leaks,0);
+ assert.ok(back.metric.kind==='poster'&&!back.metric.fallback&&near(back.flight.last,back.pressed)<2,'the backdrop still flies back to its card: '+JSON.stringify(back.metric));
+ console.log('episode motion fixture:',JSON.stringify({opened:opened.metric.landingErrorPx,returned:returned.metric.landingErrorPx,compact:compact.metric.landingErrorPx,compactReturn:back.metric.landingErrorPx}));
 },{gpu:true,visible:true}).catch(error=>{console.error(error);process.exitCode=1;});

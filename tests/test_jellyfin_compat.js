@@ -13,6 +13,7 @@ class ClassList {
     add(...names) { names.forEach(name => this.names.add(name)); }
     remove(...names) { names.forEach(name => this.names.delete(name)); }
     contains(name) { return this.names.has(name); }
+    toggle(name, force = !this.names.has(name)) { if (force) this.add(name); else this.remove(name); return force; }
 }
 
 function storage(initial = {}) {
@@ -188,6 +189,7 @@ test('Jellyfin gets the community, watch-together and home gallery with its own 
     const gallery = page.galleries[0];
     assert.equal(page.tab.children[0], gallery.host, 'the gallery takes the place of the home sections');
     assert.ok(page.tab.classList.contains('tg-jellyfin-home'));
+    assert.ok(gallery.host.classList.contains('animatedScrollX'), 'a sideways swipe on the gallery does not switch home tabs');
     assert.deepEqual(gallery.calls, ['start']);
     assert.equal(gallery.options.apiProvider(), apiClient);
     await gallery.options.openFavorites();
@@ -335,4 +337,97 @@ test('no page script takes a Jellyfin view change for leaving the page', () => {
     }
     assert.deepEqual(listeners.sort(), ['android/app/src/main/assets/androidBridge.js', 'android/app/src/main/assets/androidResponsive.js',
         'apple/Resources/ipadBridge.js', 'apple/Resources/ipadResponsive.js', 'native/communityAccount.js', 'native/updatePlugin.js']);
+});
+
+test("a server's custom CSS starts disabled for each user, and the user's own choice is kept", async () => {
+    const page = jellyfinPage(), storage = new Map(), signedIn = [];
+    page.context.localStorage = { getItem: key => storage.has(key) ? storage.get(key) : null, setItem: (key, value) => storage.set(key, String(value)) };
+    let observe;
+    page.context.MutationObserver = class { constructor(fn) { observe = fn; } observe() {} disconnect() {} };
+    const style = text => ({ nodeName: 'STYLE', textContent: text, media: '', removeAttribute(name) { if (name === 'media') this.media = ''; } });
+    const branding = style('\n.server-theme { color: red; }\n'), own = style('.user-css { color: blue; }');
+    const styles = [branding, own];
+    page.context.document.documentElement = {};
+    page.context.document.querySelectorAll = selector => selector === 'style' ? styles : [];
+    let user = 'u1', brandingRequests = 0;
+    const apiClient = { serverId: () => 's', getCurrentUserId: () => user, getUrl: path => 'http://jf.test/' + path,
+        getJSON: url => { brandingRequests++; assert.equal(url, 'http://jf.test/Branding/Configuration'); return Promise.resolve({ CustomCss: '.server-theme { color: red; }' }); } };
+    const events = { on: (target, name, fn) => { if (name === 'localusersignedin') signedIn.push(fn); } };
+    const plugin = new page.context._tigerestJellyfinPlugin({ events, appRouter: { show: () => Promise.resolve() }, ServerConnections: { currentApiClient: () => apiClient } });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(storage.get('u1-disableCustomCss'), 'true', 'Display settings show the server CSS as disabled');
+    assert.equal(branding.media, 'not all', 'the server style Jellyfin already rendered is switched off');
+    assert.equal(own.media, '', "the user's own custom CSS is untouched");
+
+    // The user turns the server CSS back on; Jellyfin renders its style again.
+    storage.set('u1-disableCustomCss', 'false');
+    observe([{ target: {}, addedNodes: [branding] }]);
+    assert.equal(branding.media, '', 'an explicit choice in Display settings is respected');
+
+    // Another user signs in on the same server.
+    user = 'u2'; signedIn.forEach(fn => fn());
+    assert.equal(storage.get('u2-disableCustomCss'), 'true');
+    assert.equal(storage.get('u1-disableCustomCss'), 'false');
+    assert.equal(branding.media, 'not all');
+    assert.equal(brandingRequests, 1, 'branding is read once per server');
+    plugin.home.destroy();
+});
+
+test('the compact detail page fills its empty banner with landscape artwork, as Jellyfin mobile does', async () => {
+    const page = jellyfinPage(), context = page.context, settings = storage();
+    Object.assign(context, { localStorage: settings, URLSearchParams, innerWidth: 400, devicePixelRatio: 2,
+        getComputedStyle: () => ({ position: 'static', paddingInlineStart: '0' }) });
+    const images = [];
+    context.Image = class { set src(value) { this.url = value; images.push(this); } };
+    const backdrop = { attributes: new Map(), classList: new ClassList(), style: { image: null, removeProperty(name) { if (name === 'background-image') this.image = null; },
+        set backgroundImage(value) { this.image = value; } },
+        getAttribute(name) { return this.attributes.has(name) ? this.attributes.get(name) : null; }, setAttribute(name, value) { this.attributes.set(name, String(value)); } };
+    const detail = { id: 'itemDetailPage', classList: new ClassList(), getClientRects: () => [{}], querySelector: selector => selector === '#itemBackdrop' ? backdrop : null };
+    context.document.documentElement = { classList: new ClassList(), style: { setProperty() {}, removeProperty() {} } };
+    context.document.querySelectorAll = selector => selector === '.page' ? [detail] : [];
+    const items = {
+        series: { Id: 'series', BackdropImageTags: ['b1', 'b2'] },
+        episode: { Id: 'episode', ParentBackdropItemId: 'series', ParentBackdropImageTags: ['b1'] },
+        thumb: { Id: 'thumb', ImageTags: { Primary: 'p', Thumb: 't' } },
+        poster: { Id: 'poster', ImageTags: { Primary: 'p' } }
+    };
+    const api = { serverId: () => 's', getCurrentUserId: () => 'u', getItem: async (user, id) => items[id],
+        getScaledImageUrl: (id, options) => `img/${id}/${options.type}/${options.tag}/${options.index}?w=${options.maxWidth}` };
+    const open = async id => {
+        context.location.hash = `#/details?id=${id}&serverId=s`;
+        images.length = 0; plugin.layout.update();
+        await new Promise(resolve => setImmediate(resolve));
+        images.forEach(image => image.onload());
+    };
+    context.location.hash = '#/home';
+    const plugin = new context._tigerestJellyfinPlugin({ events: { on() {} }, appRouter: { show: () => Promise.resolve() }, ServerConnections: { currentApiClient: () => api } });
+
+    await open('series');
+    assert.equal(backdrop.style.image, 'url("img/series/Backdrop/b1/0?w=400")', "the item's first backdrop, decoded before it is shown");
+    assert.ok(backdrop.classList.contains('tg-jf-banner'));
+    await open('episode');
+    assert.equal(backdrop.style.image, 'url("img/series/Backdrop/b1/0?w=400")', "an episode shows its series' backdrop");
+    await open('thumb');
+    assert.equal(backdrop.style.image, 'url("img/thumb/Thumb/t/0?w=400")');
+    await open('poster');
+    assert.equal(backdrop.style.image, null, 'a portrait poster is never cropped into the banner');
+    assert.ok(!backdrop.classList.contains('tg-jf-banner'));
+
+    // An image that arrives after the user moved on is dropped.
+    context.location.hash = '#/details?id=series&serverId=s'; images.length = 0; plugin.layout.update();
+    await new Promise(resolve => setImmediate(resolve));
+    const late = images[0];
+    await open('poster');
+    late.onload();
+    assert.equal(backdrop.style.image, null);
+
+    settings.setItem('u-detailsBanner', 'false');
+    await open('series');
+    assert.equal(images.length, 0, '"Details banner" turned off in Display settings is respected');
+    settings.setItem('u-detailsBanner', 'true');
+    context.document.documentElement.classList.add('layout-mobile');
+    await open('episode');
+    assert.equal(images.length, 0, "Jellyfin's mobile layout fills the banner itself");
+    plugin.home.destroy();
 });

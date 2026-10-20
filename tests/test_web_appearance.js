@@ -871,6 +871,16 @@ function testCardsFloatWithoutAThickBase() {
         'the full card box still casts the thick framed shadow');
     assert.ok(/translateY\(-12px\)[\s\S]*?scale\(1\.04\)/.test(css),
         'poster hover does not use the approved large lift and scale');
+    assert.ok(/\.cardPadder,\s*\.blurhash-canvas\s*\{\s*border-radius:\s*16px\s*!important/.test(css),
+        "Jellyfin's default-theme placeholder shows dark corners outside the rounded poster");
+    assert.ok(/@media \(pointer: coarse\)\s*\{[^}]*\.emby-tabs\s*\{\s*scrollbar-width:\s*none/.test(css),
+        'touch tab strips keep a 9px scrollbar lane under the tabs');
+    assert.ok(/@media not all and \(pointer: coarse\)\s*\{\s*body\.tigerest-appearance-ready::-webkit-scrollbar,\s*body\.tigerest-appearance-ready ::-webkit-scrollbar\s*\{\s*width:\s*9px/.test(css)
+        && !/::-webkit-scrollbar\s*\{\s*width:\s*9px[\s\S]*@media not all and \(pointer: coarse\)/.test(css),
+        'a touch screen still gets the 9px scrollbar lane instead of its overlay scrollbar');
+    assert.ok(/@media \(max-width: 49\.99em\)\s*\{[^}]*\.itemBackdropContainer:not\(\.itemBackdropContainer-small\)\s*\{\s*height:\s*min\(calc\(var\(--header-height, 0px\) \+ 56\.25vw\), 62vh\)/.test(css)
+        && /\.itemBackdropContainer > \.itemBackdrop\s*\{\s*top:\s*var\(--header-height, 0px\)/.test(css),
+        "Emby's compact item backdrop still starts under the header and crops its 16:9 artwork");
 }
 
 function testDrawerUsesGlassAndSubtleSelection() {

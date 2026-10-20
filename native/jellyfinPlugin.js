@@ -154,6 +154,8 @@
       html.layout-desktop #itemDetailPage:has(.detailImageContainer .portraitCard) { --tg-jf-poster: clamp(90px, 18vw, 130px); }
       html.layout-desktop #itemDetailPage:has(.detailImageContainer .squareCard) { --tg-jf-poster: clamp(110px, 24vw, 170px); }
       html.layout-desktop #itemDetailPage #itemBackdrop { min-height: calc(var(--tg-jf-header-clearance, 0px) + 12px) !important; }
+      html.layout-desktop #itemDetailPage #itemBackdrop.tg-jf-banner { background-attachment: scroll; background-position: center top;
+        -webkit-mask-image: linear-gradient(#000 62%, transparent); mask-image: linear-gradient(#000 62%, transparent); animation: backdrop-fadein .5s ease-in both; }
       html.layout-desktop #itemDetailPage .detailLogo { display: none !important; }
       html.layout-desktop #itemDetailPage .detailPagePrimaryContainer { display: grid !important; grid-template-columns: minmax(0, 1fr); gap: 12px 16px; align-items: center;
         padding-block: 12px 0 !important; padding-inline: var(--tg-jf-gutter-start) var(--tg-jf-gutter-end) !important; }
@@ -180,6 +182,7 @@
          WebKit otherwise adds the float width to the ribbon's own gutter. */
       html.layout-desktop #itemDetailPage .detailPagePrimaryContainer > .detailImageContainer { display: flow-root; height: 0; }
       html.layout-desktop.tg-jf-detail-aligned #itemDetailPage .detailRibbon { padding-inline-start: var(--tg-jf-content-start) !important; }
+      html.layout-desktop #itemDetailPage #itemBackdrop.tg-jf-banner { background-image: none !important; }
     }
     html.layout-desktop #itemDetailPage .detailImageContainer .card { translate: 0 var(--tg-jf-card-shift, 0px); }
     html.tg-jf-standalone .standalonePage:not(.hide) { padding-top: max(4.5em, calc(var(--tg-jf-header-clearance, 0px) + 1em),
@@ -204,16 +207,66 @@
         for (let element = node; element; element = element.offsetParent) top += element.offsetTop;
         return top;
     }
+    // Jellyfin fills the detail page's banner only in its mobile layout, as
+    // "Details banner" in Display settings (on by default). The client keeps
+    // phones in the desktop layout, whose compact page reserves the same
+    // 40vh above the poster and left it empty. Fill it the way the mobile
+    // layout does, with landscape artwork only: a cropped poster would repeat
+    // the one beside the title.
+    function DetailBanner(connections) {
+        this.connections = connections;
+    }
+    DetailBanner.prototype.enabled = function (api) {
+        try { return localStorage.getItem(api.getCurrentUserId() + '-detailsBanner') !== 'false'; } catch { return true; }
+    };
+    DetailBanner.prototype.url = function (api, item) {
+        // In CSS pixels: the apiclient scales maxWidth by devicePixelRatio itself.
+        const options = {maxWidth: Math.round(innerWidth)};
+        const image = (id, type, tag) => api.getScaledImageUrl(id, {...options, type, tag, index: 0});
+        if (item.BackdropImageTags?.length) return image(item.Id, 'Backdrop', item.BackdropImageTags[0]);
+        if (item.ParentBackdropItemId && item.ParentBackdropImageTags?.length) return image(item.ParentBackdropItemId, 'Backdrop', item.ParentBackdropImageTags[0]);
+        if (item.ImageTags?.Thumb) return image(item.Id, 'Thumb', item.ImageTags.Thumb);
+        if (item.ParentThumbItemId && item.ParentThumbImageTag) return image(item.ParentThumbItemId, 'Thumb', item.ParentThumbImageTag);
+        return null;
+    };
+    DetailBanner.prototype.update = function (page) {
+        const node = page?.id === 'itemDetailPage' ? page.querySelector('#itemBackdrop') : null;
+        if (!node || document.documentElement.classList.contains('layout-mobile')) return;
+        const api = this.connections?.currentApiClient?.();
+        const id = new URLSearchParams(location.hash.split('?')[1] || '').get('id');
+        const key = api && id ? api.serverId() + '|' + id : '';
+        // Jellyfin reuses a cached detail page for the next item.
+        if (node.getAttribute('data-tg-banner') === key) return;
+        node.setAttribute('data-tg-banner', key);
+        node.classList.remove('tg-jf-banner'); node.style.removeProperty('background-image');
+        if (!key || !this.enabled(api)) return;
+        Promise.resolve(api.getItem(api.getCurrentUserId(), id)).then(item => {
+            const url = node.getAttribute('data-tg-banner') === key && item && this.url(api, item);
+            if (!url) return;
+            // Show it decoded, without a blank band while it downloads.
+            const image = new Image();
+            image.onload = () => {
+                if (node.getAttribute('data-tg-banner') !== key) return;
+                node.style.backgroundImage = 'url(' + JSON.stringify(url) + ')';
+                node.classList.add('tg-jf-banner');
+            };
+            image.src = url;
+        }).catch(() => {});
+    };
+
     // Modern pages emit no viewshow, so a timer follows route and header changes.
-    function JellyfinLayout() {
+    function JellyfinLayout(connections) {
         this.values = {};
+        this.banner = new DetailBanner(connections);
         this.sync = () => this.update();
         this.headers = [];
         this.headerResize = window.ResizeObserver ? new ResizeObserver(this.sync) : null;
         document.addEventListener('viewshow', this.sync);
         window.addEventListener?.('hashchange', this.sync);
         window.addEventListener?.('resize', this.sync);
-        this.timer = setInterval(this.sync, 400);
+        // A poster flight is timed to a page that has stopped changing; its
+        // forced layouts would cost frames in the middle of the flight.
+        this.timer = setInterval(() => { if (!document.body?.classList.contains('tigerest-motion-busy')) this.update(); }, 400);
         this.update();
     }
     JellyfinLayout.prototype.update = function () {
@@ -223,6 +276,7 @@
             const style = document.createElement('style'); style.id = layoutStyleId; style.textContent = layoutCss; document.head.append(style);
         }
         const page = visiblePage();
+        this.banner.update(page);
         const standalone = !!page?.classList.contains('standalonePage');
         const skin = document.querySelector('.skinHeader');
         const headers = Array.from(document.querySelectorAll('.skinHeader, #reactRoot .MuiAppBar-positionFixed'));
@@ -336,6 +390,11 @@
             }
             this.tab = tab; this.page = tab.closest('.page');
             this.host = document.createElement('div');
+            // Jellyfin switches home tabs on a horizontal touch swipe unless the
+            // swipe starts inside a scroller it marks animatedScrollX. The poster
+            // rail and library row scroll sideways, and Emby's home has no swipe
+            // tabs, so the whole gallery opts out like Jellyfin's own rows.
+            this.host.classList.add('animatedScrollX');
             tab.classList.add('tg-jellyfin-home');
             this.page?.classList.add('tg-jellyfin-home-page');
             tab.prepend(this.host);
@@ -364,6 +423,52 @@
         this.unmount();
     };
 
+    // Tigerest Theater styles Jellyfin's own theme, so a server's custom CSS
+    // (Dashboard > Branding) starts off for each user as if "Disable server
+    // provided custom CSS" were checked in Display settings. Unchecking it
+    // there is respected. Jellyfin reads the setting only when a user loads,
+    // so the first session also switches off the style it already added.
+    function ServerCssDefault(connections, events) {
+        this.connections = connections; this.css = null; this.server = undefined;
+        this.update = this.update.bind(this);
+        if (typeof MutationObserver === 'function') {
+            this.observer = new MutationObserver(records => {
+                if (records.some(record => record.target.nodeName === 'STYLE' || record.target.parentNode?.nodeName === 'STYLE'
+                    || Array.prototype.some.call(record.addedNodes, node => node.nodeName === 'STYLE'))) this.update();
+            });
+            this.observer.observe(document.documentElement, {childList: true, subtree: true, characterData: true});
+        }
+        events.on(connections, 'localusersignedin', this.update);
+        this.update();
+    }
+    ServerCssDefault.prototype.disabled = function () {
+        const user = this.connections.currentApiClient?.()?.getCurrentUserId?.();
+        // Jellyfin's appSettings key; signed-out pages use the unprefixed one.
+        const key = user ? user + '-disableCustomCss' : 'disableCustomCss';
+        try {
+            if (localStorage.getItem(key) === null) localStorage.setItem(key, 'true');
+            return localStorage.getItem(key) !== 'false';
+        } catch { return true; }
+    };
+    ServerCssDefault.prototype.update = function () {
+        const off = this.disabled(), api = this.connections.currentApiClient?.();
+        const server = api?.serverId?.();
+        if (api && server !== this.server) {
+            this.server = server; this.css = null;
+            Promise.resolve(api.getJSON?.(api.getUrl('Branding/Configuration'))).then(config => {
+                if (server !== this.server) return;
+                this.css = String(config?.CustomCss || '').trim() || null;
+                if (this.css) this.update();
+            }).catch(() => {});
+        }
+        if (!this.css) return;
+        for (const style of document.querySelectorAll('style')) {
+            if (style.textContent.trim() !== this.css) continue;
+            if (off) style.media = 'not all';
+            else if (style.media === 'not all') style.removeAttribute('media');
+        }
+    };
+
     class TigerestJellyfinPlugin {
         constructor({events, appRouter, playbackManager, ServerConnections} = {}) {
             this.name = 'Tigerest Theater';
@@ -378,7 +483,8 @@
             // Logout starts a network operation: clear community drafts before it finishes.
             this.signedOut = () => { window.TigerestCommunityReset?.(); window.TigerestHomeMotion?.reset(); };
             events.on(connectionManager, 'localusersignedout', this.signedOut);
-            this.layout = new JellyfinLayout();
+            this.serverCss = new ServerCssDefault(connectionManager, events);
+            this.layout = new JellyfinLayout(connectionManager);
             this.disposeMotion = attachMotion({appRouter, connections: connectionManager});
             this.home = new JellyfinHome({appRouter, connections: connectionManager});
             console.info('Tigerest Theater: Jellyfin plugins registered');

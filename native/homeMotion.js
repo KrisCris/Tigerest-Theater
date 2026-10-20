@@ -91,9 +91,10 @@
         const root = roots.at(-1) || document;
         if (detail) {
             // Emby keeps a hidden side-poster before the visible main poster in DOM order.
-            // Jellyfin draws its detail poster as a card background.
+            // Jellyfin draws its detail poster as a card background. Below 50em Emby
+            // hides an episode's 16:9 image and shows it only as the top backdrop.
             for (const selector of ['.detailImageContainer-main img.cardImage','.detailImageContainer img','.detailImageContainer .primaryImage',
-                '.detailImageContainer .cardImageContainer','.detailImageContainer','.itemDetailImage']) {
+                '.detailImageContainer .cardImageContainer','.detailImageContainer','.itemDetailImage','.itemBackdropContainer > .itemBackdrop']) {
                 const visible = Array.from(root.querySelectorAll(selector)).find(node => {
                     const rect = node.getBoundingClientRect();
                     return rect.width > 1 && rect.height > 1 && getComputedStyle(node).visibility !== 'hidden';

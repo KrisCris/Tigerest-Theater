@@ -120,6 +120,9 @@ async function devtools(url) {
             } catch { return null; }
         }, 'app devtools');
         cdp = await devtools(target.webSocketDebuggerUrl);
+        // The window is hidden or behind other windows; focus events must not
+        // depend on which window the desktop has active.
+        await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     }
     try {
         await launch();
@@ -193,18 +196,24 @@ async function devtools(url) {
         await cdp.evaluate("document.querySelector('#choose-custom').click()");
         await submit(`${origin}/jellyfin`);
         await until(() => cdp.evaluate("location.pathname === '/jellyfin/web/index.html' && !!document.querySelector('#fixture')"), 'second server loaded');
-        assert.deepEqual(remembered().map(x => x.address), [`${origin}/jellyfin/`, `${origin}/emby/`], 'same hostname and server ID retain different base paths');
+        // Qt writes the profile settings shortly after the page has loaded.
+        const rememberedAs = (addresses, label) => until(() => remembered().map(x => x.address).join() === addresses.join(), label);
+        await rememberedAs([`${origin}/jellyfin/`, `${origin}/emby/`], 'same hostname and server ID retain different base paths');
         await cdp.evaluate("window.tigerestSwitchServer()");
         await until(() => cdp.evaluate("document.querySelectorAll('.saved-server-open').length === 2"), 'saved cards');
         await cdp.evaluate(`document.querySelector('[data-key="custom:${origin}/emby/"] .saved-server-open').click()`);
         await until(() => cdp.evaluate("location.pathname === '/emby/web/index.html' && !!document.querySelector('#fixture')"), 'saved card returns to first server');
-        assert.deepEqual(remembered().map(x => x.address), [`${origin}/emby/`, `${origin}/jellyfin/`]);
+        await rememberedAs([`${origin}/emby/`, `${origin}/jellyfin/`], 'saved card moves the first server to the front');
         assert.equal(await cdp.evaluate("JSON.parse(localStorage.getItem('servercredentials3')).Servers[0].Id"), 'onboarding-test-server');
         const beforeRestart = remembered();
         await stop();
         await launch();
         await until(() => cdp.evaluate("Boolean(document.querySelector('#fixture'))"), 'saved server reconnection');
-        assert.deepEqual(remembered(), beforeRestart, 'restart retains both records and last connection order');
+        // Reconnecting at launch is itself a connection and may refresh the time.
+        const withoutTime = list => list.map(({ lastConnectedAt, ...record }) => record);
+        const afterRestart = remembered();
+        assert.deepEqual(withoutTime(afterRestart), withoutTime(beforeRestart), 'restart retains both records and last connection order');
+        afterRestart.forEach((record, i) => assert.ok(record.lastConnectedAt >= beforeRestart[i].lastConnectedAt));
         assert.ok(!requests.some(value => value.startsWith('HEAD ')), 'unnecessary HEAD redirect check');
         console.log('PASS: real Qt startup, errors, exact port/path, explicit switch without reconnect, saved address and credentials after cancel, persistent reconnection, native history rollback and base-path card return');
     } catch(error) {
