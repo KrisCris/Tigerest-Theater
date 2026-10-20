@@ -30,7 +30,7 @@ class AppUpdateController(private val context: Context, settings: SettingsStore)
     private val mirrorWork = Executors.newSingleThreadExecutor()
     private val openingMirror = AtomicBoolean()
 
-    /** Opens the release's netdisk folder page; a Baidu link is taken over by the Baidu Netdisk app when installed. */
+    /** Opens the release's netdisk folder page, or the share; the Baidu Netdisk app may take over a Baidu page. */
     fun openMirror(kind: String): Boolean {
         val (share, version) = engine.mirror(kind) ?: return false
         if (!openingMirror.compareAndSet(false, true)) return true
