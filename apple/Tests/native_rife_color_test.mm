@@ -7,18 +7,27 @@ extern "C" {
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
-static void compare(int w, int h, bool full, bool centered, bool random, bool padded) {
-    const int input_stride = w + (padded ? 16 : 0);
+static void compare(int w, int h, bool full, bool centered, bool random, bool padded, bool p010 = false) {
+    // Strides are in bytes; P010 stores each 10-bit sample in the high bits of 16.
+    const int bytes = p010 ? 2 : 1;
+    const int input_stride = (w + (padded ? 16 : 0)) * bytes;
     const int output_stride = w + (padded ? 8 : 0);
     std::vector<uint8_t> y(input_stride * h + 64), uv(input_stride * h / 2 + 64);
     unsigned rng = 781;
-    auto next = [&] { rng = 1664525 * rng + 1013904223; return uint8_t(rng >> 24); };
+    auto next = [&] { rng = 1664525 * rng + 1013904223; return rng >> (p010 ? 22 : 24); };
+    const unsigned top = p010 ? 1023 : 255;
+    auto store = [&](std::vector<uint8_t> &plane, int offset, unsigned value) {
+        if (!p010) { plane[offset] = uint8_t(value); return; }
+        const uint16_t sample = uint16_t(value << 6);
+        memcpy(&plane[offset * 2], &sample, 2);
+    };
     for (int row = 0; row < h; row++) for (int x = 0; x < w; x++)
-        y[row * input_stride + x] = random ? next() : (x * 255 / (w - 1));
+        store(y, row * input_stride / bytes + x, random ? next() : (x * top / (w - 1)));
     for (int row = 0; row < h / 2; row++) for (int x = 0; x < w; x++)
-        uv[row * input_stride + x] = random ? next() : (row * 255 / std::max(1, h / 2 - 1));
+        store(uv, row * input_stride / bytes + x, random ? next() : (row * top / std::max(1, h / 2 - 1)));
     std::vector<float> expected[3], actual[3];
     uint8_t *dst[4] = {}; float *out[3];
     int strides[4] = {output_stride * 4, output_stride * 4, output_stride * 4, 0};
@@ -30,7 +39,7 @@ static void compare(int w, int h, bool full, bool centered, bool random, bool pa
     auto s = sws_alloc_context(); assert(s);
     av_opt_set_int(s, "srcw", w, 0); av_opt_set_int(s, "srch", h, 0);
     av_opt_set_int(s, "dstw", w, 0); av_opt_set_int(s, "dsth", h, 0);
-    av_opt_set_int(s, "src_format", AV_PIX_FMT_NV12, 0);
+    av_opt_set_int(s, "src_format", p010 ? AV_PIX_FMT_P010LE : AV_PIX_FMT_NV12, 0);
     av_opt_set_int(s, "dst_format", AV_PIX_FMT_GBRPF32, 0);
     av_opt_set_int(s, "sws_flags", SWS_BILINEAR, 0);
     av_opt_set_int(s, "src_h_chr_pos", centered ? 128 : 0, 0);
@@ -43,7 +52,7 @@ static void compare(int w, int h, bool full, bool centered, bool random, bool pa
     assert(sws_scale(s, src, src_strides, 0, h, dst, strides) == h);
     void *converter = tgrife_color_create(w, h); assert(converter);
     assert(tgrife_color_convert(converter, y.data(), input_stride, uv.data(), input_stride,
-                               out, strides, full, centered));
+                               out, strides, full, centered, p010));
     double peak = 0, sum = 0;
     for (int p = 0; p < 3; p++) for (int row = 0; row < h; row++) {
         for (int x = 0; x < w; x++) {
@@ -56,25 +65,30 @@ static void compare(int w, int h, bool full, bool centered, bool random, bool pa
     }
     for (int p = 0; p < 3; p++) for (int x = output_stride * h; x < output_stride * h + 16; x++)
         assert(actual[p][x] == -3);
-    printf("%dx%d range=%d centered=%d random=%d padded=%d: max=%.8f mean=%.8f\n",
-           w, h, full, centered, random, padded, peak, sum / (3 * w * h)); fflush(stdout);
+    printf("%s %dx%d range=%d centered=%d random=%d padded=%d: max=%.8f mean=%.8f\n",
+           p010 ? "P010" : "NV12", w, h, full, centered, random, padded, peak, sum / (3 * w * h));
+    fflush(stdout);
     // Keep the pinned swscale normalization, allowing only fixed-point rounding.
     assert(peak < 1.0 / 4096);
-    assert(!tgrife_color_convert(converter, y.data(), w - 1, uv.data(), input_stride,
-                                out, strides, full, centered));
+    assert(!tgrife_color_convert(converter, y.data(), w * bytes - 1, uv.data(), input_stride,
+                                out, strides, full, centered, p010));
     assert(!tgrife_color_convert(converter, y.data(), input_stride, nullptr, input_stride,
-                                out, strides, full, centered));
+                                out, strides, full, centered, p010));
     assert(!tgrife_color_convert(converter, y.data(), input_stride, uv.data(), input_stride,
-                                out, strides, 2, centered));
+                                out, strides, 2, centered, p010));
+    assert(!tgrife_color_convert(converter, y.data(), input_stride, uv.data(), input_stride,
+                                out, strides, full, centered, 2));
     tgrife_color_destroy(converter); sws_freeContext(s);
 }
 int main() {
     assert(!tgrife_color_create(0, 1080)); assert(!tgrife_color_create(17, 8));
     assert(!tgrife_color_create(3840, 2160)); tgrife_color_destroy(nullptr);
-    assert(!tgrife_color_convert(nullptr, nullptr, 0, nullptr, 0, nullptr, nullptr, 0, 0));
-    for (int full = 0; full < 2; full++) for (int centered = 0; centered < 2; centered++)
-        for (int random = 0; random < 2; random++) for (int padded = 0; padded < 2; padded++)
-            compare(32, 16, full, centered, random, padded);
+    assert(!tgrife_color_convert(nullptr, nullptr, 0, nullptr, 0, nullptr, nullptr, 0, 0, 0));
+    for (int p010 = 0; p010 < 2; p010++)
+        for (int full = 0; full < 2; full++) for (int centered = 0; centered < 2; centered++)
+            for (int random = 0; random < 2; random++) for (int padded = 0; padded < 2; padded++)
+                compare(32, 16, full, centered, random, padded, p010);
     compare(1920, 1080, false, false, true, true);
+    compare(1920, 1080, false, false, true, true, true);
     puts("Metal/swscale pixel comparison and invalid-input checks passed.");
 }

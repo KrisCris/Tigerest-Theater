@@ -18,7 +18,7 @@ enum { PL_COLOR_PRIM_BT_709 = 1, PL_COLOR_TRC_BT_1886 = 2,
        PL_COLOR_SYSTEM_BT_709 = 7, PL_COLOR_LEVELS_LIMITED = 8 };
 enum { PL_CHROMA_UNKNOWN, PL_CHROMA_LEFT, PL_CHROMA_CENTER, PL_CHROMA_TOP_LEFT };
 enum { AV_PIX_FMT_GBRPF32 = 10, FX_SOFTWARE = 11, FX_HARDWARE = 12,
-       AV_PIX_FMT_NV12 = 13, MP_IMGFIELD_INTERLACED = 1 };
+       AV_PIX_FMT_NV12 = 13, AV_PIX_FMT_P010 = 14, MP_IMGFIELD_INTERLACED = 1 };
 #define MP_NOPTS_VALUE (-1e20)
 #define IMGFMT_IS_HWACCEL(format) ((format) == FX_HARDWARE)
 
@@ -108,7 +108,7 @@ struct fx_metrics {
     bool fail_next_inference;
     bool fail_color_create, fail_color_convert;
     int color_creates, color_destroys, color_conversions;
-    int color_full_range, color_centered;
+    int color_full_range, color_centered, color_p010;
     uint64_t last_generation;
     int64_t last_index;
     float last_a, last_b;
