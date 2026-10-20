@@ -438,6 +438,7 @@ void PlayerComponent::initializeMpv()
   mpv_observe_property(m_mpv->mpv(), 0, "video-target-params", MPV_FORMAT_NODE);
   mpv_observe_property(m_mpv->mpv(), 0, "current-tracks/video/dolby-vision-profile", MPV_FORMAT_INT64);
   mpv_observe_property(m_mpv->mpv(), 0, "tone-mapping", MPV_FORMAT_STRING);
+  mpv_observe_property(m_mpv->mpv(), 0, "osd-dimensions", MPV_FORMAT_NODE);
   mpv_observe_property(m_mpv->mpv(), 0, "video-frame-info", MPV_FORMAT_NODE);
   mpv_observe_property(m_mpv->mpv(), 0, "container-fps", MPV_FORMAT_DOUBLE);
   mpv_observe_property(m_mpv->mpv(), 0, "seeking", MPV_FORMAT_FLAG);
@@ -703,7 +704,23 @@ void PlayerComponent::reportDynamicRange()
     output << QStringLiteral("由系统按屏幕能力映射亮度");
   const QString text = mode + QStringLiteral("\n片源 ") + input.join(QStringLiteral(" · ")) + QStringLiteral("\n输出 ") + output.join(QStringLiteral(" · "));
   qInfo() << "Dynamic range:" << QString(text).replace('\n', QStringLiteral(" | "));
-  m_mpv->commandAsync(QStringList() << QStringLiteral("show-text") << text << QStringLiteral("4000"));
+  // A separate overlay at the top right: show-text shares mpv's one message
+  // slot, and the danmaku script's notices use their own top-left overlay.
+  const int osdHeight = m_osdHeight > 0 ? m_osdHeight : 1080, osdWidth = m_osdWidth > 0 ? m_osdWidth : osdHeight * 16 / 9;
+  const int margin = qMax(16, osdHeight / 30), size = qMax(14, osdHeight / 40);
+  // Fixed wording and mpv enum names only: no ASS braces or backslashes.
+  QString ass = text;
+  ass.replace('\n', QStringLiteral("\\N"));
+  const QString data = QStringLiteral("{\\an9\\pos(%1,%2)\\fs%3\\bord%4\\shad0\\1c&HFFFFFF&\\3c&H000000&\\3a&H40&}%5")
+      .arg(osdWidth - margin).arg(margin).arg(size).arg(qMax(2, size / 12)).arg(ass);
+  static const QString id = QStringLiteral("47");
+  m_mpv->commandAsync(QStringList() << QStringLiteral("osd-overlay") << id << QStringLiteral("ass-events") << data
+      << QString::number(osdWidth) << QString::number(osdHeight) << QStringLiteral("10"));
+  const quint64 generation = ++m_rangeNoticeGeneration;
+  QTimer::singleShot(4000, this, [this, generation]() {
+    if (generation == m_rangeNoticeGeneration && m_mpv)
+      m_mpv->commandAsync(QStringList() << QStringLiteral("osd-overlay") << id << QStringLiteral("none") << QString());
+  });
 }
 
 bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
@@ -1295,6 +1312,11 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
           m_rangeDolbyVisionProfile = prop->format == MPV_FORMAT_INT64 ? *static_cast<int64_t*>(prop->data) : 0;
         else if (strcmp(prop->name, "tone-mapping") == 0 && prop->format == MPV_FORMAT_STRING)
           m_rangeToneMapping = QString::fromUtf8(*static_cast<char**>(prop->data));
+        else if (strcmp(prop->name, "osd-dimensions") == 0 && prop->format == MPV_FORMAT_NODE)
+        {
+          const QVariantMap size = mpv::qt::node_to_variant(static_cast<mpv_node*>(prop->data)).toMap();
+          m_osdWidth = size.value("w").toInt(); m_osdHeight = size.value("h").toInt();
+        }
       }
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
       if(m_rifeAccess) {

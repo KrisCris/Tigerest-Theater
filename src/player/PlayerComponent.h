@@ -401,6 +401,8 @@ private:
   qint64 m_rangeDolbyVisionProfile = 0;
   QString m_rangeToneMapping;
   bool m_rangeReported = false;
+  int m_osdWidth = 0, m_osdHeight = 0;
+  quint64 m_rangeNoticeGeneration = 0;
   void reportDynamicRange();
   bool m_playbackCanceled;
   bool m_replacementPending = false;
