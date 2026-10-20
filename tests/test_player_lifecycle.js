@@ -552,6 +552,24 @@ async function main() {
     assert.strictEqual(timers.size, 0, 'SDK-destroyed timeout retained its timer');
     preparationInstance.events = originalEvents;
 
+    // Dynamic range for automatic Windows HDR: Emby and Jellyfin fields, and
+    // no guess when the server transcodes.
+    const range = (video, extra = {}) => instance.tryGetDynamicRange({url: 'http://s/Videos/1/stream.mkv',
+        mediaSource: {MediaStreams: [{Type: 'Audio'}, {Type: 'Video', ...video}], ...extra}});
+    assert.strictEqual(range({VideoRange: 'HDR', ExtendedVideoType: 'Hdr10'}), 'hdr');
+    assert.strictEqual(range({VideoRange: 'SDR', ExtendedVideoType: 'None'}), 'sdr');
+    assert.strictEqual(range({ColorTransfer: 'arib-std-b67'}), 'hdr');
+    assert.strictEqual(range({VideoRangeType: 'DOVIWithHDR10', DvProfile: 8, DvBlSignalCompatibilityId: 1}), 'hdr');
+    assert.strictEqual(range({VideoRangeType: 'DOVIWithHLG'}), 'hdr');
+    assert.strictEqual(range({VideoRange: 'HDR', ExtendedVideoType: 'DolbyVision', ExtendedVideoSubType: 'DoviProfile81'}), 'hdr');
+    // Without an HDR10/HLG base layer Android must not hand the stream to MediaCodec.
+    assert.strictEqual(range({VideoRangeType: 'DOVI', DvProfile: 5, DvBlSignalCompatibilityId: 0}), 'dovi');
+    assert.strictEqual(range({VideoRange: 'HDR', ExtendedVideoType: 'DolbyVision', ExtendedVideoSubType: 'DoviProfile50'}), 'dovi');
+    assert.strictEqual(range({VideoRangeType: 'DOVIWithSDR'}), 'dovi');
+    assert.strictEqual(range({VideoRangeType: 'SDR', ColorTransfer: 'bt709'}), 'sdr');
+    assert.strictEqual(range({VideoRange: 'HDR'}, {TranscodingUrl: '/videos/1/master.m3u8'}), '');
+    assert.strictEqual(instance.tryGetDynamicRange({mediaSource: {MediaStreams: [{Type: 'Audio'}]}}), '');
+
     console.log('player lifecycle: all checks passed');
 }
 

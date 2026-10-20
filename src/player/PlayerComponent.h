@@ -23,6 +23,7 @@ namespace rife {class FrameInterpolationController;class MpvPollAccess;}
 #ifdef Q_OS_WIN
 namespace rife {class RifeRuntimeManager;class RifePlaybackCoordinator;class RifeExtensionManager;}
 class QFileDialog;
+class WindowsHdrSwitch;
 #endif
 
 #include "ComponentManager.h"
@@ -350,6 +351,14 @@ private:
   // Potentially switch the display refresh rate, and return true if the refresh rate
   // was actually changed.
   bool switchDisplayFrameRate();
+  // Windows HDR on for HDR media, off for SDR; true if the display changed
+  // mode. Also keeps the SDR ICC profile away from an HDR display.
+  bool switchDisplayDynamicRange();
+#ifdef Q_OS_WIN
+  std::unique_ptr<WindowsHdrSwitch> m_hdrSwitch;
+  QTimer m_restoreHdrTimer;
+  bool m_mediaHdr = false;
+#endif
   void checkCurrentAudioDevice(const QSet<QString>& old_devs, const QSet<QString>& new_devs);
   void appendAudioFormat(QTextStream& info, const QString& property) const;
   void updateVideoAspectSettings();

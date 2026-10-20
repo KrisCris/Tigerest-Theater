@@ -35,6 +35,8 @@
 #include "interpolation/windows/RifeExtensionManager.h"
 #include <QFileDialog>
 #include "Version.h"
+#include "display/win/WindowsHdr.h"
+#include "shared/Paths.h"
 #endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
 #include "interpolation/FrameInterpolationController.h"
@@ -70,6 +72,9 @@ static void wakeup_cb(void *context)
   emit player->onMpvEvents();
 }
 
+// Settle time after Windows switches HDR mode, before the video output opens.
+static constexpr int HdrSwitchDelayMs = 1000;
+
 #ifdef Q_OS_WIN
 namespace {
 constexpr uint64_t ApplicationQuitStop = 0x54000001;
@@ -98,6 +103,20 @@ PlayerComponent::PlayerComponent(QObject* parent)
 #ifdef Q_OS_WIN
   m_applicationQuitTimer.setInterval(100);
   connect(&m_applicationQuitTimer, &QTimer::timeout, this, &PlayerComponent::checkApplicationQuit);
+  m_hdrSwitch = std::make_unique<WindowsHdrSwitch>(Paths::globalDataDir("windows-hdr-restore.txt"));
+  m_hdrSwitch->recover();
+  // Next-episode autoplay loads within seconds; turning HDR off and on again
+  // in between would blank the screen twice.
+  m_restoreHdrTimer.setSingleShot(true);
+  m_restoreHdrTimer.setInterval(8000);
+  connect(&m_restoreHdrTimer, &QTimer::timeout, this, [this]() {
+    if (!m_shuttingDown && !m_inPlayback && m_mpv && m_mpv->getProperty("idle-active").toBool())
+      m_hdrSwitch->restore();
+  });
+  connect(qApp, &QCoreApplication::aboutToQuit, this, [this]() {
+    m_restoreHdrTimer.stop();
+    m_hdrSwitch->restore();
+  });
 #endif
   connect(&m_restoreDisplayTimer, &QTimer::timeout, this, &PlayerComponent::onRestoreDisplay);
 
@@ -775,6 +794,11 @@ bool PlayerComponent::loadMedia(const QString& url, const QVariantMap& options,
 
   m_mediaFrameRate = metadata["frameRate"].toFloat(); // returns 0 on failure
   m_serverMediaInfo = metadata["media"].toMap();
+#ifdef Q_OS_WIN
+  // Dolby Vision without an HDR10 base layer is still HDR once libplacebo applies it.
+  const QString dynamicRange = metadata["dynamicRange"].toString();
+  m_mediaHdr = dynamicRange == QLatin1String("hdr") || dynamicRange == QLatin1String("dovi");
+#endif
 
   updateVideoConfiguration();
 
@@ -996,6 +1020,36 @@ bool PlayerComponent::switchDisplayFrameRate()
   // Make sure settings dependent on the display refresh rate are updated properly.
   updateVideoConfiguration();
   return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+bool PlayerComponent::switchDisplayDynamicRange()
+{
+#ifdef Q_OS_WIN
+  m_restoreHdrTimer.stop();
+  // The libmpv Render API draws into Qt's SDR OpenGL scene, which cannot carry HDR.
+  const bool allowed = m_nativeVideoOutput &&
+      SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "hdr.auto_switch").toBool();
+  const auto result = m_hdrSwitch->prepare(m_window ? m_window->winId() : 0, m_mediaHdr, allowed);
+  // In HDR mode Windows reports the HDR calibration (MHC2) profile, which the
+  // compositor already applies. As mpv's ICC target it turned HDR into a
+  // 416-nit SDR image on an SDR swapchain; without it mpv hints HDR10 and
+  // tone maps to the display's own peak. Explicit advanced overrides win.
+  if (!SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "advancedProfileOverrides").toBool())
+    m_mpv->setProperty("icc-profile-auto", !result.hdrActive);
+  // The D3D11 context reads the output's colour space once, when it opens. A
+  // replacement keeps the previous item's video output, so reopen it.
+  const QString vo = m_mpv->getProperty("current-vo").toString();
+  if (result.switched && m_nativeVideoOutput && !vo.isEmpty())
+  {
+    qInfo() << "Reopening video output" << vo << "for the new display mode";
+    m_mpv->setProperty("vo", "null");
+    m_mpv->setProperty("vo", vo);
+  }
+  return result.switched;
+#else
+  return false;
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1577,14 +1631,17 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
           qInfo() << "resuming loading";
           m_mpv->commandAsync(QStringList() << "hook-ack" << resumeId);
         };
-        if (switchDisplayFrameRate())
+        const bool rangeSwitched = switchDisplayDynamicRange();
+        const bool rateSwitched = switchDisplayFrameRate();
+        if (rateSwitched || rangeSwitched)
         {
           // Now wait for some time for mode change - this is needed because mode changing can take some
           // time, during which the screen is black, and initializing hardware decoding could fail due
           // to various strange OS-related reasons.
           // (Better hope the user doesn't try to exit Konvergo during mode change.)
-          int pause = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "refreshrate.delay").toInt() * 1000;
-          qInfo() << "waiting" << pause << "msec after rate switch before loading";
+          int pause = rateSwitched ? SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "refreshrate.delay").toInt() * 1000
+                                   : HdrSwitchDelayMs;
+          qInfo() << "waiting" << pause << "msec after display mode switch before loading";
           QTimer::singleShot(pause, resume);
         }
         else
@@ -1626,14 +1683,17 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
           qInfo() << "resuming loading";
           mpv_hook_continue(m_mpv->mpv(), id);
         };
-        if (switchDisplayFrameRate())
+        const bool rangeSwitched = switchDisplayDynamicRange();
+        const bool rateSwitched = switchDisplayFrameRate();
+        if (rateSwitched || rangeSwitched)
         {
           // Now wait for some time for mode change - this is needed because mode changing can take some
           // time, during which the screen is black, and initializing hardware decoding could fail due
           // to various strange OS-related reasons.
           // (Better hope the user doesn't try to exit Konvergo during mode change.)
-          int pause = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "refreshrate.delay").toInt() * 1000;
-          qInfo() << "waiting" << pause << "msec after rate switch before loading";
+          int pause = rateSwitched ? SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "refreshrate.delay").toInt() * 1000
+                                   : HdrSwitchDelayMs;
+          qInfo() << "waiting" << pause << "msec after display mode switch before loading";
           QTimer::singleShot(pause, resume);
         }
         else
@@ -1669,6 +1729,18 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
 #ifdef Q_OS_MAC
     case MPV_EVENT_IDLE:
       completeNativeVoTransition();
+      break;
+#endif
+#ifdef Q_OS_WIN
+    case MPV_EVENT_IDLE:
+      // Counted from idle, not END_FILE: Windows replaces items internally,
+      // and an earlier END_FILE would cut the grace short. An idle event
+      // queued behind the next START_FILE is stale.
+      if (!m_inPlayback)
+      {
+        qDebug() << "Idle; Windows HDR restore in" << m_restoreHdrTimer.interval() << "ms if still idle";
+        m_restoreHdrTimer.start();
+      }
       break;
 #endif
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
@@ -2049,6 +2121,7 @@ void PlayerComponent::requestApplicationQuit()
   m_applicationQuitElapsed.start();
   m_rifeTimer.stop();
   m_restoreDisplayTimer.stop();
+  m_restoreHdrTimer.stop();
   m_reloadAudioTimer.stop();
   m_audioOutputWarningTimer.stop();
   InputComponent::Get().cancelAutoRepeat();

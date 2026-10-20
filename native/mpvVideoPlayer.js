@@ -539,6 +539,31 @@
         }
 
         /**
+         * 'hdr', 'sdr', 'dovi' (Dolby Vision without an HDR10 or HLG base
+         * layer, such as profile 5) or '' when a transcode may change it.
+         * Emby reports VideoRange/ExtendedVideoType, Jellyfin VideoRangeType
+         * and the DV fields; both report the transfer function.
+         * @private
+         */
+        tryGetDynamicRange(options) {
+            const source = options.mediaSource;
+            if (!source || source.TranscodingUrl || options.url?.includes('/master.m3u8')) return '';
+            const video = (source.MediaStreams || []).find(stream => stream.Type === 'Video');
+            if (!video) return '';
+            const transfer = String(video.ColorTransfer || '').toLowerCase();
+            const type = String(video.VideoRangeType || video.ExtendedVideoType || '').toLowerCase();
+            const subType = String(video.ExtendedVideoSubType || '').toLowerCase();
+            const profile = Number(video.DvProfile) || Number(/doviprofile(\d)/.exec(subType)?.[1]) || 0;
+            const dovi = type.startsWith('dovi') || type === 'dolbyvision' || profile > 0;
+            if (dovi && (type === 'dovi' || type === 'doviwithsdr' || profile === 5 ||
+                (profile > 0 && video.DvBlSignalCompatibilityId === 0))) return 'dovi';
+            const hdr = transfer === 'smpte2084' || transfer === 'arib-std-b67' ||
+                String(video.VideoRange || '').toUpperCase() === 'HDR' ||
+                /hdr|hlg|hyperloggamma|dovi|dolbyvision/.test(type);
+            return hdr ? 'hdr' : 'sdr';
+        }
+
+        /**
          * @private
          */
         getStreamByIndex(mediaStreams, jellyIndex) {
@@ -609,6 +634,7 @@
                 if (fps) {
                     streamdata.frameRate = fps;
                 }
+                streamdata.dynamicRange = this.tryGetDynamicRange(options);
 
                 const player = window.api.player;
 

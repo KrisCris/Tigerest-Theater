@@ -330,6 +330,13 @@
         "default": false
       },
       {
+        "value": "hdr.auto_switch",
+        "display_name": "播放 HDR 时自动开启系统 HDR",
+        "help": "播放 HDR 片源时，如果显示器支持 HDR 但 Windows 未开启，自动开启，播放结束后恢复；切换时屏幕会黑一两秒。",
+        "default": true,
+        "platforms": [ "windows" ]
+      },
+      {
         "value": "refreshrate.delay",
         "default": 3,
         "hidden": true

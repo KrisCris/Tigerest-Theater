@@ -65,6 +65,14 @@ target_include_directories(test_main_thread_watchdog PRIVATE ${TEST_INCLUDE_DIRS
 target_compile_definitions(test_main_thread_watchdog PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_main_thread_watchdog COMMAND test_main_thread_watchdog)
 
+if(WIN32)
+  add_executable(test_windows_hdr_switch test_windows_hdr_switch.cpp)
+  target_link_libraries(test_windows_hdr_switch jmp_core Qt6::Test)
+  target_include_directories(test_windows_hdr_switch PRIVATE ${TEST_INCLUDE_DIRS})
+  target_compile_definitions(test_windows_hdr_switch PRIVATE ${TEST_COMPILE_DEFS})
+  add_test(NAME test_windows_hdr_switch COMMAND test_windows_hdr_switch)
+endif()
+
 add_executable(test_report_diagnostics test_report_diagnostics.cpp ../src/utils/ReportDiagnostics.cpp)
 target_include_directories(test_report_diagnostics PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_report_diagnostics PRIVATE Qt6::Core Qt6::Test)
