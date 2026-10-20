@@ -53,7 +53,13 @@ class AppUpdatePolicyTest {
         assertNull(AppUpdatePolicy.select(JSONArray().put(cached), "2.5.0"))
         val untrusted = release("2.5.0").put("body", "<!-- tigerest-mirrors {\"quark\":\"https://evil.example/s/abc123def\",\"baidu\":\"http://pan.baidu.com/s/1AbCdEf\"} -->")
         val plain = AppUpdatePolicy.select(JSONArray().put(untrusted), "2.4.1")!!
-        assertEquals("", plain.quarkUrl); assertEquals("", plain.baiduUrl); assertEquals("", plain.notes)
+        assertEquals(AppUpdatePolicy.DEFAULT_QUARK_SHARE, plain.quarkUrl); assertEquals(AppUpdatePolicy.DEFAULT_BAIDU_SHARE, plain.baiduUrl); assertEquals("", plain.notes)
+    }
+
+    @Test fun usesBuiltInNetdiskSharesWithoutAMarker() {
+        val selected = AppUpdatePolicy.select(JSONArray().put(release("2.5.0")), "2.4.1")!!
+        assertEquals("https://pan.quark.cn/s/88e6f7a795b4", selected.quarkUrl)
+        assertEquals("https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig", selected.baiduUrl)
     }
 
     @Test fun checksActualBytesAndExactLength() {

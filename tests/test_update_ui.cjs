@@ -61,7 +61,12 @@ withBrowser({
  }
  await call('Emulation.clearDeviceMetricsOverride');
  await evaluate('document.querySelector("[data-update-action=baidu]").click()');
- assert.equal(await evaluate('externalLinks.at(-1)'),'https://pan.baidu.com/s/1AbCdEf?pwd=ab12','netdisk opens through the native external opener');
+ assert.equal(await evaluate('externalLinks.at(-1)'),'https://pan.baidu.com/s/1AbCdEf?pwd=ab12','without native folder lookup the share opens through the external opener');
+ await evaluate(`apiPromise.then(api=>{api.system.openAppUpdateMirror=(...args)=>{const cb=args.pop();calls.push(['openAppUpdateMirror',...args]);cb?.()}})`);
+ const links=await evaluate('externalLinks.length');
+ await evaluate('document.querySelector("[data-update-action=quark]").click()');
+ assert.deepEqual(await evaluate('calls.at(-1)'),['openAppUpdateMirror','quark'],'native code opens the version folder');
+ assert.equal(await evaluate('externalLinks.length'),links,'the share itself is not opened as well');
  assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("从网盘下载安装包")'));
  await evaluate(`emit({mirrors:{quark:'javascript:alert(1)'}})`);
  assert.deepEqual(await actionLabels(),['从GitHub获取更新','忽略本次更新','稍后'],'only https mirrors are offered');

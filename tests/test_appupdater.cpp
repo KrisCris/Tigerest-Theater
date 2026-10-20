@@ -278,6 +278,79 @@ private slots:
     QCOMPARE(fourth->state().value("status").toString(), "checking");
     fourth->cancel();
   }
+  void netdiskButtonsOpenTheVersionFolder()
+  {
+    QTemporaryDir dir; FixtureNetwork network;
+    network.responses = {{metadata()},
+      {R"({"data":{"stoken":"a+b/c="}})"},
+      {R"({"data":{"list":[{"fid":"f1","file_name":"notes.txt","dir":false},{"fid":"root1","file_name":"Tigerest-Theater","dir":true}]}})"},
+      {R"({"data":{"list":[{"fid":"f204","file_name":"2.0.4","dir":true},{"fid":"f200","file_name":"2.0.0","dir":true}]}})"},
+      {"<html></html>", 200, {}, false, {{"Set-Cookie", "BAIDUID=abc123; path=/; domain=.baidu.com"}}},
+      {R"({"errno":0,"list":[{"isdir":1,"server_filename":"Tigerest-Theater","path":"/software/Tigerest-Theater"}]})"},
+      {R"({"errno":0,"list":[{"isdir":"1","server_filename":"2.0.0","path":"/software/Tigerest-Theater/2.0.0"}]})"}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("prefs.json"), &network, {});
+    QList<QUrl> opened;
+    connect(&updater, &AppUpdater::openUrl, this, [&](const QUrl& url) { opened.append(url); });
+    updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
+    updater.openMirror("quark");
+    updater.openMirror("quark");
+    QTRY_COMPARE(opened.size(), 1);
+    QCOMPARE(opened.first().toString(QUrl::FullyEncoded), "https://pan.quark.cn/s/88e6f7a795b4#/list/share/f200");
+    QCOMPARE(network.requests.at(1).toString(), "https://drive-h.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc");
+    QVERIFY(network.requests.at(2).toString(QUrl::FullyEncoded).contains("stoken=a%2Bb%2Fc%3D&pdir_fid=0&"));
+    QVERIFY(network.requests.at(3).toString(QUrl::FullyEncoded).contains("&pdir_fid=root1&"));
+    updater.openMirror("baidu");
+    QTRY_COMPARE(opened.size(), 2);
+    QCOMPARE(opened.last().toString(QUrl::FullyEncoded),
+      "https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig#list/path=%2Fsoftware%2FTigerest-Theater%2F2.0.0");
+    QCOMPARE(network.requests.at(4), QUrl("https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig"));
+    QCOMPARE(network.requests.at(5).toString(QUrl::FullyEncoded),
+      "https://pan.baidu.com/share/list?shorturl=8azzOU4piiB3miyZqA1dig&page=1&num=100&web=1&root=1");
+    QCOMPARE(network.requests.at(6).toString(QUrl::FullyEncoded),
+      "https://pan.baidu.com/share/list?shorturl=8azzOU4piiB3miyZqA1dig&page=1&num=100&web=1&dir=%2Fsoftware%2FTigerest-Theater&root=0");
+    const auto cookies = network.requestDetails.at(6).header(QNetworkRequest::CookieHeader).value<QList<QNetworkCookie>>();
+    QCOMPARE(cookies.size(), 1); QCOMPARE(cookies.first().name(), "BAIDUID"); QCOMPARE(cookies.first().value(), "abc123");
+    QCOMPARE(network.requests.size(), 7);
+  }
+  void netdiskButtonsFallBackToTheShare()
+  {
+    QTemporaryDir dir; FixtureNetwork network;
+    network.responses = {{metadata()},
+      {R"({"data":{"stoken":"token"}})"}, {R"({"data":{"list":[{"fid":"f300","file_name":"3.0.0","dir":true}]}})"}, {"{}"},
+      {{}, 503},
+      {"<html></html>"}, {R"({"errno":9019,"errmsg":"need verify"})"}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("prefs.json"), &network, {});
+    QList<QUrl> opened;
+    connect(&updater, &AppUpdater::openUrl, this, [&](const QUrl& url) { opened.append(url); });
+    updater.openMirror("quark");
+    QTest::qWait(50); QVERIFY(opened.isEmpty());
+    updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
+    // A missing version folder, an unreachable service and a refused listing all open the share.
+    for (const char* kind : {"quark", "quark", "baidu"})
+    {
+      const int count = opened.size();
+      updater.openMirror(kind);
+      QTRY_COMPARE(opened.size(), count + 1);
+      QCOMPARE(opened.last(), QUrl(QString(kind) == "quark" ? AppUpdatePolicy::DefaultQuarkShare : AppUpdatePolicy::DefaultBaiduShare));
+    }
+    updater.openMirror("other");
+    QTest::qWait(50); QCOMPARE(opened.size(), 3);
+  }
+  void liveSharesResolveTheVersionFolder()
+  {
+    // Reads the production shares anonymously; run with TIGEREST_LIVE_NETDISK=<released version>.
+    const QString version = qEnvironmentVariable("TIGEREST_LIVE_NETDISK");
+    if (version.isEmpty()) QSKIP("TIGEREST_LIVE_NETDISK is not set");
+    QNetworkAccessManager network; NetdiskFolder folder(&network);
+    for (const char* share : {AppUpdatePolicy::DefaultQuarkShare, AppUpdatePolicy::DefaultBaiduShare})
+    {
+      QUrl page;
+      folder.resolve(QUrl(share), version, [&](const QUrl& url) { page = url; });
+      QTRY_VERIFY_WITH_TIMEOUT(!page.isEmpty(), 15000);
+      qInfo().noquote() << page.toString(QUrl::FullyEncoded);
+      QVERIFY2(page.hasFragment(), "version folder not found");
+    }
+  }
   void rememberedReleaseIsNotShownOnceInstalledOrIgnored()
   {
     QTemporaryDir dir; FixtureNetwork network; network.responses = {{metadata()}, {metadata(), 200, {}, true}, {metadata(), 200, {}, true}};

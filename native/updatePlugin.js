@@ -182,7 +182,8 @@
         if (status === 'downloading') button('暂停下载','cancel',()=>{autoInstall=false;return invoke('cancelAppUpdate');});
         const mirrors = !state.checkOnly && state.version && (status === 'available' || status === 'error' && state.size>0) ?
             [['夸克网盘','quark'],['百度网盘','baidu']].filter(([,key]) => /^https:\/\//.test(state.mirrors?.[key] || '')) : [];
-        for (const [label,key] of mirrors) button(label,key,()=>invoke('openExternalUrl',state.mirrors[key]));
+        // Native code opens this version's folder in the share; older bridges open the share itself.
+        for (const [label,key] of mirrors) button(label,key,()=>api.system.openAppUpdateMirror ? invoke('openAppUpdateMirror',key) : invoke('openExternalUrl',state.mirrors[key]));
         // Ignore and Later wrap together, so a narrow dialog keeps them on one row.
         const dismiss = status === 'available' ? element('span') : actions;
         if (status === 'available') {

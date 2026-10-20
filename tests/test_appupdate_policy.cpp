@@ -89,7 +89,14 @@ private slots:
     QVERIFY(!select({cached}, "2.0.0", Package::WindowsInstaller).valid());
     value["body"] = R"(<!-- tigerest-mirrors {"quark":"https://evil.example/s/abc123def","baidu":"http://pan.baidu.com/s/1AbCdEf"} -->)";
     const auto untrusted = select({value}, "1.0.0", Package::WindowsInstaller);
-    QVERIFY(untrusted.valid()); QVERIFY(untrusted.quarkUrl.isEmpty()); QVERIFY(untrusted.baiduUrl.isEmpty()); QVERIFY(untrusted.notes.isEmpty());
+    QVERIFY(untrusted.valid()); QVERIFY(untrusted.notes.isEmpty());
+    QCOMPARE(untrusted.quarkUrl, QUrl(DefaultQuarkShare)); QCOMPARE(untrusted.baiduUrl, QUrl(DefaultBaiduShare));
+  }
+  void usesBuiltInNetdiskSharesWithoutAMarker()
+  {
+    const auto c = select({release("2.0.0")}, "1.0.0", Package::WindowsInstaller);
+    QCOMPARE(c.quarkUrl, QUrl("https://pan.quark.cn/s/88e6f7a795b4"));
+    QCOMPARE(c.baiduUrl, QUrl("https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig"));
   }
   void verifiesDownloadedBytesAndSize()
   {

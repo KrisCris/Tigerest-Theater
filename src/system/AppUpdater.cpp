@@ -43,6 +43,7 @@ AppUpdater::AppUpdater(const QString& version, Package package, const QString& c
     {"installLabel", package == Package::WindowsInstaller ? "安装更新" : package == Package::WindowsPortable ? "打开 ZIP 更新包" : "打开 DMG 更新包"}};
   m_retryTimer.setSingleShot(true);
   connect(&m_retryTimer, &QTimer::timeout, this, &AppUpdater::beginDownloadRequest);
+  m_folders = new NetdiskFolder(network, this);
 }
 
 AppUpdater::~AppUpdater()
@@ -589,4 +590,11 @@ void AppUpdater::defer()
   m_state["deferred"] = true;
   m_state["installAfterDownload"] = false;
   emit changed(m_state);
+}
+
+void AppUpdater::openMirror(const QString& kind)
+{
+  const QUrl share = kind == "quark" ? m_candidate.quarkUrl : kind == "baidu" ? m_candidate.baiduUrl : QUrl();
+  if (!m_candidate.valid() || share.isEmpty() || m_folders->busy()) return;
+  m_folders->resolve(share, m_candidate.version, [this](const QUrl& page) { emit openUrl(page); });
 }

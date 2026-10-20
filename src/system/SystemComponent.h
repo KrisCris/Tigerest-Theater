@@ -111,6 +111,7 @@ public:
   Q_INVOKABLE void cancelAppUpdate();
   Q_INVOKABLE void skipAppUpdate();
   Q_INVOKABLE void deferAppUpdate();
+  Q_INVOKABLE void openAppUpdateMirror(const QString& kind);
   Q_SIGNAL void appUpdateChanged(const QVariantMap& state);
 
   // called by the web-client when everything is properly inited

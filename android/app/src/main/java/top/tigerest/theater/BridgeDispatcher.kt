@@ -75,6 +75,7 @@ class BridgeDispatcher(private val activity: MainActivity, private val settings:
             "cancelAppUpdate" -> { require(args.length() == 0); activity.updates.engine.cancel() }
             "skipAppUpdate" -> { require(args.length() == 0); activity.updates.engine.skip() }
             "deferAppUpdate" -> { require(args.length() == 0); activity.updates.engine.defer() }
+            "openAppUpdateMirror" -> { require(args.length() == 1 && args.get(0) is String); activity.updates.openMirror(args.getString(0)) }
             "hello" -> true
             "getUserAgent" -> "Tigerest Theater Android/${BuildConfig.VERSION_NAME}"
             "systemInformation", "debugInformation" -> activity.diagnostics()

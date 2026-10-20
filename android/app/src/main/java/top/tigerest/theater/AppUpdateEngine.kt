@@ -147,6 +147,12 @@ class AppUpdateEngine(private val currentVersion: String, private val directory:
         publish(); return true
     }
     @Synchronized fun defer(): Boolean { if (closed) return false; deferred = true; publish(); return true }
+    /** The selected release's netdisk share for "quark" or "baidu", with its version. */
+    @Synchronized fun mirror(kind: String): Pair<String, String>? {
+        val selected = candidate ?: return null
+        val share = when (kind) { "quark" -> selected.quarkUrl; "baidu" -> selected.baiduUrl; else -> "" }
+        return share.takeIf { it.isNotEmpty() }?.let { it to selected.version }
+    }
     @Synchronized fun cancel(): Boolean {
         if (closed || status == "installing") return false
         token++; installAfterDownload = false; source.cancel(); downloaded = null; clearRetry()

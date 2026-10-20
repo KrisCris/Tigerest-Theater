@@ -12,10 +12,10 @@ namespace AppUpdatePolicy
 {
 namespace {
 const QRegularExpression MirrorMarker("<!--\\s*tigerest-mirrors\\s+(\\{[^<>]*\\})\\s*-->");
-QUrl mirror(const QJsonObject& links, const QString& key, const QString& pattern)
+QUrl mirror(const QJsonObject& links, const QString& key, const QString& pattern, const char* fallback)
 {
   const QString url = links.value(key).toString();
-  return QRegularExpression(pattern).match(url).hasMatch() ? QUrl(url) : QUrl();
+  return QUrl(QRegularExpression(pattern).match(url).hasMatch() ? url : QString::fromLatin1(fallback));
 }
 }
 
@@ -59,8 +59,8 @@ Candidate select(const QJsonArray& releases, const QString& currentVersion, Pack
       best = {tag.mid(1), name, body.trimmed().left(20000),
         QUrl("https://github.com/Tigerest/Tigerest-Theater/releases/tag/" + tag),
         QUrl(download), QByteArray::fromHex(digest.mid(7).toLatin1()), static_cast<qint64>(size),
-        mirror(links, "quark", "^https://pan\\.quark\\.cn/s/[0-9A-Za-z]{6,64}(\\?pwd=[0-9A-Za-z]{4})?$"),
-        mirror(links, "baidu", "^https://pan\\.baidu\\.com/s/[0-9A-Za-z_-]{6,64}(\\?pwd=[0-9A-Za-z]{4})?$")};
+        mirror(links, "quark", "^https://pan\\.quark\\.cn/s/[0-9A-Za-z]{6,64}(\\?pwd=[0-9A-Za-z]{4})?$", DefaultQuarkShare),
+        mirror(links, "baidu", "^https://pan\\.baidu\\.com/s/[0-9A-Za-z_-]{6,64}(\\?pwd=[0-9A-Za-z]{4})?$", DefaultBaiduShare)};
       bestVersion = version;
       break;
     }

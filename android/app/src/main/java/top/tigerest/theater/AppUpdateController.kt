@@ -7,9 +7,12 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import okhttp3.OkHttpClient
 import java.io.File
 import java.lang.ref.WeakReference
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class AppUpdateController(private val context: Context, settings: SettingsStore) {
     private val prefs = context.getSharedPreferences("app-updates", Context.MODE_PRIVATE)
@@ -22,6 +25,22 @@ class AppUpdateController(private val context: Context, settings: SettingsStore)
     private var foreground = WeakReference<MainActivity>(null)
     private val installSession = AppUpdateInstallSession()
     @Volatile private var closed = false
+    private val folders = NetdiskFolder(OkHttpNetdisk(OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS)
+        .callTimeout(10, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build(), "Tigerest-Theater-Android/${BuildConfig.VERSION_NAME}"))
+    private val mirrorWork = Executors.newSingleThreadExecutor()
+    private val openingMirror = AtomicBoolean()
+
+    /** Opens the release's netdisk folder page; a Baidu link is taken over by the Baidu Netdisk app when installed. */
+    fun openMirror(kind: String): Boolean {
+        val (share, version) = engine.mirror(kind) ?: return false
+        if (!openingMirror.compareAndSet(false, true)) return true
+        mirrorWork.execute {
+            val page = folders.resolve(share, version)
+            openingMirror.set(false)
+            main.post { if (!closed) foreground.get()?.takeUnless { it.isFinishing || it.isDestroyed }?.openExternal(page) }
+        }
+        return true
+    }
 
     fun debugFixture(address: String) = source.debugFixture(address)
     fun install(automatic: Boolean = false): Boolean = engine.prepareInstall(automatic) { file -> main.post {
@@ -51,5 +70,5 @@ class AppUpdateController(private val context: Context, settings: SettingsStore)
         }
     }
     fun paused(activity: MainActivity) { if (foreground.get() === activity) foreground.clear() }
-    fun close() { closed = true; foreground.clear(); installSession.reset(); main.removeCallbacksAndMessages(null); engine.close() }
+    fun close() { closed = true; foreground.clear(); installSession.reset(); main.removeCallbacksAndMessages(null); mirrorWork.shutdownNow(); engine.close() }
 }

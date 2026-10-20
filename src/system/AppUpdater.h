@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AppUpdatePolicy.h"
+#include "NetdiskFolder.h"
 #include <QObject>
 #include <QVariantMap>
 #include <QPointer>
@@ -31,8 +32,11 @@ public:
   void cancel();
   void skip();
   void defer();
+  // Opens the release's netdisk folder page ("quark" or "baidu"), or the share when it is not found.
+  void openMirror(const QString& kind);
 signals:
   void changed(const QVariantMap& state);
+  void openUrl(const QUrl& url);
 private:
   void publish(const QString& status, const QString& error = {});
   void request(const QUrl& url, bool metadata, int redirects = 0);
@@ -58,6 +62,7 @@ private:
   const QString m_preferencePath;
   QNetworkAccessManager* m_network;
   Launcher m_launcher;
+  NetdiskFolder* m_folders = nullptr;
   QPointer<QNetworkReply> m_reply;
   QFile m_file;
   QByteArray m_metadata;

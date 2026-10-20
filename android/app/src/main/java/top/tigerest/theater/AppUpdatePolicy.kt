@@ -6,13 +6,16 @@ import java.io.File
 import java.math.BigInteger
 import java.security.MessageDigest
 
-/** [quarkUrl] and [baiduUrl] are netdisk share pages from the release notes' tigerest-mirrors marker, or empty. */
+/** [quarkUrl] and [baiduUrl] are netdisk shares: the release notes' tigerest-mirrors marker, else the built-in ones. */
 data class AppUpdateCandidate(val version: String, val releaseUrl: String, val notes: String, val size: Long, val sha256: String, val downloadUrl: String,
     val quarkUrl: String = "", val baiduUrl: String = "")
 data class ApkIdentity(val packageName: String, val versionCode: Long, val versionName: String, val signers: Set<String>)
 
 object AppUpdatePolicy {
     private const val REPOSITORY = "https://github.com/Tigerest/Tigerest-Theater"
+    /** Built-in netdisk shares, one subfolder per released version. */
+    const val DEFAULT_QUARK_SHARE = "https://pan.quark.cn/s/88e6f7a795b4"
+    const val DEFAULT_BAIDU_SHARE = "https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig"
     private val stableVersion = Regex("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)")
     private val mirrorMarker = Regex("<!--\\s*tigerest-mirrors\\s+(\\{[^<>]*\\})\\s*-->")
     private val quark = Regex("https://pan\\.quark\\.cn/s/[0-9A-Za-z]{6,64}(\\?pwd=[0-9A-Za-z]{4})?")
@@ -49,10 +52,11 @@ object AppUpdatePolicy {
             if (asset.optString("state") != "uploaded" || size !in 1..(1024L * 1024 * 1024) || !Regex("sha256:[0-9a-fA-F]{64}").matches(hash) || asset.optString("browser_download_url") != downloadUrl) continue
             val body = release.optString("body")
             val links = mirrorMarker.find(body)?.let { runCatching { JSONObject(it.groupValues[1]) }.getOrNull() }
-            fun mirror(key: String, pattern: Regex) = links?.optString(key)?.takeIf { pattern.matches(it) }.orEmpty()
+            fun mirror(key: String, pattern: Regex, fallback: String) = links?.optString(key)?.takeIf { pattern.matches(it) } ?: fallback
             val notes = body.replace(mirrorMarker, "").trim().take(16000).replace(Regex("<[^>]*>"), "").replace(Regex("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]"), "")
             if (best == null || compare(version, best.version) > 0)
-                best = AppUpdateCandidate(version, releaseUrl, notes, size, hash.substring(7).lowercase(), downloadUrl, mirror("quark", quark), mirror("baidu", baidu))
+                best = AppUpdateCandidate(version, releaseUrl, notes, size, hash.substring(7).lowercase(), downloadUrl,
+                    mirror("quark", quark, DEFAULT_QUARK_SHARE), mirror("baidu", baidu, DEFAULT_BAIDU_SHARE))
         }
         return best
     }

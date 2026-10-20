@@ -165,6 +165,7 @@ bool SystemComponent::componentInitialize()
         return QDesktopServices::openUrl(QUrl::fromLocalFile(path));
       }, this);
     connect(m_appUpdater, &AppUpdater::changed, this, &SystemComponent::appUpdateChanged);
+    connect(m_appUpdater, &AppUpdater::openUrl, this, [](const QUrl& url) { QDesktopServices::openUrl(url); });
   }
 
   return true;
@@ -1216,6 +1217,7 @@ void SystemComponent::installAppUpdate(bool automatic) { if (m_appUpdater) m_app
 void SystemComponent::cancelAppUpdate() { if (m_appUpdater) m_appUpdater->cancel(); }
 void SystemComponent::skipAppUpdate() { if (m_appUpdater) m_appUpdater->skip(); }
 void SystemComponent::deferAppUpdate() { if (m_appUpdater) m_appUpdater->defer(); }
+void SystemComponent::openAppUpdateMirror(const QString& kind) { if (m_appUpdater) m_appUpdater->openMirror(kind); }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 #define BASESTR "protocols=shoutcast,http-video;videoDecoders=h264{profile:high&resolution:2160&level:52};audioDecoders=mp3,aac,dts{bitrate:800000&channels:%1},ac3{bitrate:800000&channels:%2}"
