@@ -148,6 +148,22 @@
         }
         return null;
     }
+    // A view shows its loading spinner while it fetches items and renders
+    // them after the route has changed. Wait under the opaque cover until that
+    // is over and the page stops growing: a copy taken earlier flew in an
+    // empty view, and the real cards were then styled and laid out on the
+    // main thread in the middle of the incoming animation.
+    async function loaded(job, target, timeout = 2400) {
+        const begin = performance.now();
+        let count = -1, steady = 0;
+        await wait(job, () => {
+            const busy = [...document.querySelectorAll('.docspinner.mdlSpinnerActive')].some(n => n.getClientRects().length);
+            const nodes = target.getElementsByTagName('*').length;
+            steady = !busy && nodes === count ? steady + 1 : 0; count = nodes;
+            return steady >= 2 && performance.now() - begin >= 100;
+        }, timeout);
+        job.metric.incomingWaitMs = performance.now() - begin;
+    }
     function hold(job, node) {
         if (!node || job.held.some(h => h.node === node)) return;
         job.held.push({node, value: node.style.visibility});
@@ -502,7 +518,7 @@
             cover.style.background='#0b0d12';const previous=page(),result=await navigate();
             const target=await wait(job,()=>{const n=page();return n && (n!==previous || (samePage && !gallery.active)) ? n : null;});
             if (target && !job.signal.aborted) {
-                await sleep(job,100);
+                await loaded(job,target);
                 // The opaque cover hides the page's own entrance. Snapshot its
                 // final pixels, not an early low-opacity/blurred frame that
                 // would suddenly become sharp when the cover is removed.

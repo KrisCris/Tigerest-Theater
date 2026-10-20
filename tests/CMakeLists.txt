@@ -495,6 +495,10 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_library_incoming_settled_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_library_incoming_settled_webengine PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+  add_test(NAME test_library_incoming_loaded_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_library_incoming_loaded_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_library_incoming_loaded_webengine PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
   add_test(NAME test_episode_motion_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_episode_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
