@@ -48,7 +48,10 @@ private:
   void completeDownload();
   void retryDownload(const QString& message);
   void restartDownload();
-  QString skippedVersion() const;
+  QJsonObject preferences() const;
+  bool savePreferences(const QJsonObject& preferences);
+  void rememberCandidate(const QJsonArray& releases);
+  bool restoreCandidate();
   const QString m_currentVersion;
   const AppUpdatePolicy::Package m_package;
   const QString m_cacheDirectory;
@@ -74,5 +77,7 @@ private:
   bool m_headersAccepted = false;
   bool m_restartedFresh = false;
   bool m_automaticAttempted = false;
+  // A remembered release is on screen while its metadata is refreshed in the background.
+  bool m_silentRefresh = false;
   bool m_packageOpened = false;
 };

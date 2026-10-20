@@ -20,7 +20,9 @@ interface AppUpdateSource {
 class AppUpdateEngine(private val currentVersion: String, private val directory: File, private val source: AppUpdateSource,
     private val enabled: () -> Boolean, private val skipped: () -> String, private val saveSkipped: (String) -> Unit,
     private val executor: Executor,
-    private val retryDelays: List<Long> = listOf(2_000, 5_000, 10_000, 20_000, 30_000)) {
+    private val retryDelays: List<Long> = listOf(2_000, 5_000, 10_000, 20_000, 30_000),
+    /** The last release found, as [AppUpdatePolicy.cachedRelease] JSON; empty when there is none. */
+    private val remembered: () -> String = { "" }, private val remember: (String) -> Unit = {}) {
     @Volatile var changed: (JSONObject) -> Unit = {}
     private var candidate: AppUpdateCandidate? = null
     private var downloaded: File? = null
@@ -31,6 +33,9 @@ class AppUpdateEngine(private val currentVersion: String, private val directory:
     private var deferred = false
     private var installAfterDownload = false
     private var automaticChecked = false
+    // A remembered release is on screen while the release list is fetched again in the background.
+    private var cached = false
+    private var refreshing = false
     private var token = 0L
     private var closed = false
     private var retrying = false
@@ -67,7 +72,8 @@ class AppUpdateEngine(private val currentVersion: String, private val directory:
         .put("version", candidate?.version ?: "").put("releaseUrl", candidate?.releaseUrl ?: "").put("notes", candidate?.notes ?: "")
         .put("size", candidate?.size ?: 0).put("received", received).put("error", error)
         .put("installLabel", "安装更新").put("manual", manual).put("platform", "android").put("deferred", deferred)
-        .put("installAfterDownload", installAfterDownload)
+        .put("installAfterDownload", installAfterDownload).put("cached", cached)
+        .put("mirrors", JSONObject().apply { candidate?.quarkUrl?.takeIf { it.isNotEmpty() }?.let { put("quark", it) }; candidate?.baiduUrl?.takeIf { it.isNotEmpty() }?.let { put("baidu", it) } })
         .put("resumable", candidate != null && received > 0 && status in setOf("available", "downloading", "error"))
         .put("retrying", retrying).put("retryAttempt", retryAttempt).put("retryLimit", retryDelays.size).put("retryDelay", retryDelay)
     private fun publish() { changed(snapshot()) }
@@ -94,14 +100,29 @@ class AppUpdateEngine(private val currentVersion: String, private val directory:
             if (!enabled()) return true
         } else { automaticChecked = true; this.manual = true; deferred = false }
         if (status in setOf("checking", "downloading", "ready", "installing")) { publish(); return true }
+        stopRefresh()
         this.manual = manual; deferred = false; installAfterDownload = false; candidate = null; downloaded = null
-        status = "checking"; received = 0; error = ""; clearRetry(); val generation = ++token; publish()
+        received = 0; error = ""; clearRetry(); val generation = ++token
+        // A release found too late to show last time is shown at once; startup
+        // never waits for the network, which then refreshes it in the background.
+        val restored = if (manual) null else restore()
+        cached = restored != null; refreshing = cached
+        if (restored != null) { candidate = restored; received = retained(restored); status = "available" } else status = "checking"
+        publish()
         task(generation) {
-            val selected = AppUpdatePolicy.select(source.releases(), currentVersion)
+            val releases: JSONArray; val selected: AppUpdateCandidate?
+            try { releases = source.releases(); selected = AppUpdatePolicy.select(releases, currentVersion) }
+            catch (failure: Exception) {
+                // A failed background refresh leaves the remembered release on screen.
+                if (restored != null) { synchronized(this) { if (active(generation)) refreshing = false }; return@task }
+                throw failure
+            }
             synchronized(transferLock) {
                 synchronized(this) {
                     if (!active(generation)) return@task
                     candidate = selected?.takeUnless { !this.manual && it.version == skipped() }
+                    remember(candidate?.let { AppUpdatePolicy.cachedRelease(releases, it)?.toString() }.orEmpty())
+                    cached = false; refreshing = false
                     cleanSuperseded(candidate)
                     received = retained(candidate)
                     status = if (candidate == null) "current" else "available"
@@ -111,10 +132,16 @@ class AppUpdateEngine(private val currentVersion: String, private val directory:
         }
         return true
     }
+    private fun restore(): AppUpdateCandidate? = runCatching {
+        // The full release policy runs again: an installed or skipped version is never shown.
+        AppUpdatePolicy.select(JSONArray().put(JSONObject(remembered())), currentVersion)?.takeUnless { it.version == skipped() }
+    }.getOrNull()
+    /** Downloads and new checks queue behind a refresh on the same executor; stop its request first. */
+    private fun stopRefresh() { if (refreshing) { refreshing = false; source.cancel() } }
     @Synchronized fun skip(): Boolean {
         if (closed || status == "installing") return false
         val selected = candidate ?: return false
-        saveSkipped(selected.version); cancel(); candidate = null; status = "idle"; received = 0; error = ""; deferred = true
+        saveSkipped(selected.version); remember(""); cancel(); candidate = null; cached = false; status = "idle"; received = 0; error = ""; deferred = true
         val generation = token
         task(generation) { synchronized(transferLock) { synchronized(this) { if (active(generation)) discard(selected) } } }
         publish(); return true
@@ -128,7 +155,7 @@ class AppUpdateEngine(private val currentVersion: String, private val directory:
     @Synchronized fun download(): Boolean {
         if (closed || status in setOf("checking", "downloading", "installing")) return false
         val selected = candidate ?: return false
-        manual = true; deferred = false; installAfterDownload = true
+        stopRefresh(); manual = true; deferred = false; installAfterDownload = true
         if (status == "ready") { publish(); return true }
         val generation = ++token
         status = "downloading"; error = ""; received = retained(selected); deferred = false; clearRetry(); publish()

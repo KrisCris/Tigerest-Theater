@@ -73,6 +73,24 @@ private slots:
     QFETCH(QString, key); QFETCH(QJsonValue, value);
     QVERIFY(!select({assetChanged(release("2.0.0"), key, value)}, "1.0.0", Package::WindowsInstaller).valid());
   }
+  void readsNetdiskMirrorsFromReleaseNotes()
+  {
+    auto value = release("2.0.0");
+    value["body"] = R"(Notes
+<!-- tigerest-mirrors {"quark":"https://pan.quark.cn/s/abc123def","baidu":"https://pan.baidu.com/s/1AbC-d_E?pwd=x7k2"} -->)";
+    const auto c = select({value}, "1.0.0", Package::WindowsInstaller);
+    QCOMPARE(c.notes, "Notes");
+    QCOMPARE(c.quarkUrl, QUrl("https://pan.quark.cn/s/abc123def"));
+    QCOMPARE(c.baiduUrl, QUrl("https://pan.baidu.com/s/1AbC-d_E?pwd=x7k2"));
+    // The remembered form selects the same package again.
+    const auto cached = cachedRelease({release("1.5.0"), value}, c);
+    const auto again = select({cached}, "1.0.0", Package::WindowsInstaller);
+    QCOMPARE(again.downloadUrl, c.downloadUrl); QCOMPARE(again.sha256, c.sha256); QCOMPARE(again.baiduUrl, c.baiduUrl);
+    QVERIFY(!select({cached}, "2.0.0", Package::WindowsInstaller).valid());
+    value["body"] = R"(<!-- tigerest-mirrors {"quark":"https://evil.example/s/abc123def","baidu":"http://pan.baidu.com/s/1AbCdEf"} -->)";
+    const auto untrusted = select({value}, "1.0.0", Package::WindowsInstaller);
+    QVERIFY(untrusted.valid()); QVERIFY(untrusted.quarkUrl.isEmpty()); QVERIFY(untrusted.baiduUrl.isEmpty()); QVERIFY(untrusted.notes.isEmpty());
+  }
   void verifiesDownloadedBytesAndSize()
   {
     QTemporaryDir dir;

@@ -240,6 +240,61 @@ private slots:
     QTRY_COMPARE(updater.state().value("status").toString(), "idle");
     updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
   }
+  void rememberedReleaseShowsAtOnceAndRefreshesSilently()
+  {
+    QTemporaryDir dir; FixtureNetwork network;
+    auto releases = QJsonDocument::fromJson(metadata()).array();
+    auto release = releases.first().toObject();
+    release["body"] = R"(Notes <!-- tigerest-mirrors {"baidu":"https://pan.baidu.com/s/1AbCdEf?pwd=ab12"} -->)";
+    releases[0] = release;
+    const auto launch = [&] { return std::make_unique<AppUpdater>("1.0.0", AppUpdatePolicy::Package::WindowsInstaller,
+      dir.filePath("cache"), dir.filePath("prefs.json"), &network, AppUpdater::Launcher{}); };
+    network.responses = {{QJsonDocument(releases).toJson()}};
+    {
+      auto first = launch(); first->check(false, true);
+      QCOMPARE(first->state().value("status").toString(), "checking");
+      QTRY_COMPARE(first->state().value("status").toString(), "available");
+      QVERIFY(!first->state().value("cached").toBool());
+      QCOMPARE(first->state().value("mirrors").toMap().value("baidu").toString(), "https://pan.baidu.com/s/1AbCdEf?pwd=ab12");
+    }
+    // Next launch: shown before the network answers; a failed refresh keeps it.
+    network.responses = {{{}, 503}};
+    auto second = launch(); QStringList statuses;
+    connect(second.get(), &AppUpdater::changed, this, [&](const QVariantMap& state) { statuses.append(state.value("status").toString()); });
+    second->check(false, true);
+    QCOMPARE(second->state().value("status").toString(), "available");
+    QVERIFY(second->state().value("cached").toBool());
+    QCOMPARE(second->state().value("notes").toString(), "Notes");
+    QCOMPARE(network.requests.size(), 2);
+    QTest::qWait(100);
+    QCOMPARE(statuses, QStringList{"available"});
+    // A withdrawn release is forgotten by the refresh.
+    network.responses = {{"[]"}};
+    auto third = launch(); third->check(false, true);
+    QCOMPARE(third->state().value("status").toString(), "available");
+    QTRY_COMPARE(third->state().value("status").toString(), "current");
+    network.responses = {{"[]", 200, {}, true}};
+    auto fourth = launch(); fourth->check(false, true);
+    QCOMPARE(fourth->state().value("status").toString(), "checking");
+    fourth->cancel();
+  }
+  void rememberedReleaseIsNotShownOnceInstalledOrIgnored()
+  {
+    QTemporaryDir dir; FixtureNetwork network; network.responses = {{metadata()}, {metadata(), 200, {}, true}, {metadata(), 200, {}, true}};
+    {
+      AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("prefs.json"), &network, {});
+      updater.check(false, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
+    }
+    AppUpdater installed("2.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("prefs.json"), &network, {});
+    installed.check(false, true); QCOMPARE(installed.state().value("status").toString(), "checking"); installed.cancel();
+    {
+      AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("prefs.json"), &network, {});
+      updater.check(false, true); QCOMPARE(updater.state().value("status").toString(), "available");
+      updater.skip(); QCOMPARE(updater.state().value("status").toString(), "idle");
+    }
+    AppUpdater ignored("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("prefs.json"), &network, {});
+    ignored.check(false, true); QCOMPARE(ignored.state().value("status").toString(), "checking"); ignored.cancel();
+  }
   void startupCannotDowngradeAnExplicitCheckToSilent()
   {
     QTemporaryDir dir; FixtureNetwork network; network.responses = {{metadata(), 200, {}, true}};

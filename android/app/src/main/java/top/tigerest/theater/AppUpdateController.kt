@@ -16,7 +16,8 @@ class AppUpdateController(private val context: Context, settings: SettingsStore)
     private val source = AndroidAppUpdateSource(context)
     val engine = AppUpdateEngine(BuildConfig.VERSION_NAME, File(context.cacheDir, "app-updates"), source,
         { settings.bool("main", "checkForUpdates") }, { prefs.getString("skipped-version", "") ?: "" },
-        { prefs.edit().putString("skipped-version", it).apply() }, Executors.newSingleThreadExecutor())
+        { prefs.edit().putString("skipped-version", it).apply() }, Executors.newSingleThreadExecutor(),
+        remembered = { prefs.getString("remembered-release", "") ?: "" }, remember = { prefs.edit().putString("remembered-release", it).apply() })
     private val main = Handler(Looper.getMainLooper())
     private var foreground = WeakReference<MainActivity>(null)
     private val installSession = AppUpdateInstallSession()

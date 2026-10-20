@@ -1,16 +1,22 @@
 package top.tigerest.theater
 
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.math.BigInteger
 import java.security.MessageDigest
 
-data class AppUpdateCandidate(val version: String, val releaseUrl: String, val notes: String, val size: Long, val sha256: String, val downloadUrl: String)
+/** [quarkUrl] and [baiduUrl] are netdisk share pages from the release notes' tigerest-mirrors marker, or empty. */
+data class AppUpdateCandidate(val version: String, val releaseUrl: String, val notes: String, val size: Long, val sha256: String, val downloadUrl: String,
+    val quarkUrl: String = "", val baiduUrl: String = "")
 data class ApkIdentity(val packageName: String, val versionCode: Long, val versionName: String, val signers: Set<String>)
 
 object AppUpdatePolicy {
     private const val REPOSITORY = "https://github.com/Tigerest/Tigerest-Theater"
     private val stableVersion = Regex("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)")
+    private val mirrorMarker = Regex("<!--\\s*tigerest-mirrors\\s+(\\{[^<>]*\\})\\s*-->")
+    private val quark = Regex("https://pan\\.quark\\.cn/s/[0-9A-Za-z]{6,64}(\\?pwd=[0-9A-Za-z]{4})?")
+    private val baidu = Regex("https://pan\\.baidu\\.com/s/[0-9A-Za-z_-]{6,64}(\\?pwd=[0-9A-Za-z]{4})?")
     private fun numbers(version: String) = version.split('.').map { BigInteger(it) }
     private fun compare(a: String, b: String): Int {
         val left = numbers(a); val right = numbers(b)
@@ -41,10 +47,27 @@ object AppUpdatePolicy {
             val size = sizeText.toLongOrNull() ?: continue
             val hash = asset.optString("digest")
             if (asset.optString("state") != "uploaded" || size !in 1..(1024L * 1024 * 1024) || !Regex("sha256:[0-9a-fA-F]{64}").matches(hash) || asset.optString("browser_download_url") != downloadUrl) continue
-            val notes = release.optString("body").take(16000).replace(Regex("<[^>]*>"), "").replace(Regex("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]"), "")
-            if (best == null || compare(version, best.version) > 0) best = AppUpdateCandidate(version, releaseUrl, notes, size, hash.substring(7).lowercase(), downloadUrl)
+            val body = release.optString("body")
+            val links = mirrorMarker.find(body)?.let { runCatching { JSONObject(it.groupValues[1]) }.getOrNull() }
+            fun mirror(key: String, pattern: Regex) = links?.optString(key)?.takeIf { pattern.matches(it) }.orEmpty()
+            val notes = body.replace(mirrorMarker, "").trim().take(16000).replace(Regex("<[^>]*>"), "").replace(Regex("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]"), "")
+            if (best == null || compare(version, best.version) > 0)
+                best = AppUpdateCandidate(version, releaseUrl, notes, size, hash.substring(7).lowercase(), downloadUrl, mirror("quark", quark), mirror("baidu", baidu))
         }
         return best
+    }
+    /** The selected release, reduced to what [select] reads, for showing it again on the next launch. */
+    fun cachedRelease(releases: JSONArray, candidate: AppUpdateCandidate): JSONObject? {
+        val name = "TigerestTheater-${candidate.version}-android.apk"
+        for (i in 0 until releases.length()) {
+            val release = releases.optJSONObject(i) ?: continue
+            if (release.optString("tag_name") != "v${candidate.version}") continue
+            val all = release.optJSONArray("assets") ?: JSONArray()
+            val assets = JSONArray().apply { for (j in 0 until all.length()) all.optJSONObject(j)?.takeIf { it.optString("name") == name }?.let { put(it) } }
+            return JSONObject().put("tag_name", release.opt("tag_name")).put("draft", release.opt("draft")).put("prerelease", release.opt("prerelease"))
+                .put("html_url", release.opt("html_url")).put("body", release.optString("body").take(40000)).put("assets", assets)
+        }
+        return null
     }
     fun verifyFile(file: File, candidate: AppUpdateCandidate) {
         require(file.isFile && file.length() == candidate.size) { "更新包大小不匹配，请重新下载" }
