@@ -152,17 +152,32 @@
     // them after the route has changed. Wait under the opaque cover until that
     // is over and the page stops growing: a copy taken earlier flew in an
     // empty view, and the real cards were then styled and laid out on the
-    // main thread in the middle of the incoming animation.
+    // main thread in the middle of the incoming animation. Jellyfin's lazy
+    // loader then sets the visible cards' artwork (dropping data-src): a copy
+    // taken before that flew in blank cards whose artwork popped in later.
     async function loaded(job, target, timeout = 2400) {
         const begin = performance.now();
         let count = -1, steady = 0;
+        const shown = node => { const r = node.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth; };
         await wait(job, () => {
-            const busy = [...document.querySelectorAll('.docspinner.mdlSpinnerActive')].some(n => n.getClientRects().length);
+            const busy = [...document.querySelectorAll('.docspinner.mdlSpinnerActive')].some(n => n.getClientRects().length) ||
+                [...target.querySelectorAll('[data-src]')].some(shown);
             const nodes = target.getElementsByTagName('*').length;
             steady = !busy && nodes === count ? steady + 1 : 0; count = nodes;
             return steady >= 2 && performance.now() - begin >= 100;
         }, timeout);
         job.metric.incomingWaitMs = performance.now() - begin;
+    }
+    // Rasterizing a whole page copy and decoding its artwork took the first
+    // 33-133 ms frames of its incoming animation on a phone. Draw it a few
+    // frames ahead in its own layer, nearly transparent over the opaque
+    // cover, at its final scale. The animation then moves tiles that exist.
+    async function primed(job, node, frames = 3) {
+        const begin = performance.now();
+        node.style.willChange = 'transform, opacity'; node.style.opacity = '.01';
+        for (let i = 0; i < frames && !job.signal.aborted; i++) await new Promise(r => requestAnimationFrame(r));
+        node.style.opacity = '';
+        job.metric.incomingPrimeMs = performance.now() - begin;
     }
     function hold(job, node) {
         if (!node || job.held.some(h => h.node === node)) return;
@@ -525,6 +540,7 @@
                 // The central incoming animation below still runs in full.
                 for (const a of target.getAnimations?.()||[]) if (Number.isFinite(a.effect?.getComputedTiming().endTime)) {try{a.finish();}catch{}}
                 const incoming=frozen(job,false);cover.replaceChildren(incoming);sync(job);
+                await primed(job,incoming);
                 await animate(job,incoming,[{opacity:0,transform:'scale(.82)',offset:0},{opacity:1,transform:'scale(1.008)',offset:.82},{opacity:1,transform:'none',offset:1}],{duration:460,easing:'cubic-bezier(.16,.8,.22,1)'});
             }
             return result;
