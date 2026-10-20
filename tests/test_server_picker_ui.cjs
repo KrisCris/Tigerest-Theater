@@ -47,6 +47,20 @@ withBrowser(routes, async ({evaluate, call}) => {
         if (process.env.TIGEREST_PICKER_SCREENSHOTS) require('node:fs').writeFileSync(path.join(process.env.TIGEREST_PICKER_SCREENSHOTS, 'picker-' + width + '.png'),
             Buffer.from((await call('Page.captureScreenshot', {format: 'png', captureBeyondViewport: true})).data, 'base64'));
     }
+    // Pointer: hovering a saved server's name highlights its whole card, like the
+    // server options; hovering its edit/remove buttons does not.
+    const hover = async selector => {
+        const box = await evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; })()`);
+        await call('Input.dispatchMouseEvent', {type: 'mouseMoved', ...box});
+        await new Promise(resolve => setTimeout(resolve, 300));
+        return evaluate(`(() => { const card = document.querySelectorAll('.saved-server')[1], style = getComputedStyle(card);
+          return {border: style.borderTopColor, background: style.backgroundColor, lifted: style.transform !== 'none', name: getComputedStyle(card.querySelector('.saved-server-name')).color}; })()`);
+    };
+    const rest = await hover('#saved-title'), highlighted = await hover('.saved-server:nth-child(2) .saved-server-open');
+    assert.deepEqual(highlighted, {border: 'rgb(227, 179, 92)', background: 'rgb(59, 46, 28)', lifted: true, name: 'rgb(240, 198, 117)'}, 'hovered saved server is highlighted');
+    assert.notDeepEqual(rest, highlighted, 'saved server is plain without hover');
+    assert.deepEqual(await hover('.saved-server:nth-child(2) .saved-server-action'), rest, 'hovering an action button does not highlight the card');
+    await call('Input.dispatchMouseEvent', {type: 'mouseMoved', x: 1, y: 1});
     // Keyboard: the card is a focusable button with a visible outline.
     await evaluate(`document.querySelector('.saved-server-open').focus()`);
     assert.notEqual(await evaluate(`getComputedStyle(document.activeElement).outlineStyle`), 'none');
