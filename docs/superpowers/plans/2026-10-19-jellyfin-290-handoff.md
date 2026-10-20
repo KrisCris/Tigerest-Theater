@@ -244,3 +244,27 @@ Claude于13:44:34 UTC明确交回最终产品 `6fe1b3d2343d61b43f18c36c36ba6f69a
 - EXE SHA256 `0a60586160538b0fe8123e46f656239e78d34c3668d52b8864d38740ad78c18f`；APK SHA256 `ce1d7f7dd90466d6ec1d19dfe654bb14e86349fde02cadbb48b394cdf799a508`。外部manual-trial-current.json记录实际运行状态。
 - 新包只迁移旧配置中的当前服务器，不可能恢复从未保存的全部地址；此后连接成功的Emby/Jellyfin进入同一历史列表。窗口模式和更新状态按钮继续独立保留。既有Modern社区消息/一起看可见性不在本轮新改动范围。
 - Mac本轮交接从既有6736b4b完整历史基线提供累计增量，包含JF10–17及新历史/菜单、共享schema和Apple待办。已读Apple回传433a528；保留其独立Apple改动，不盲套旧共享候选补丁。Apple原生chooser、资源同步和最新平台验收由Mac继续，不能称Windows已验证Apple。本轮未重跑全部版本的播放/性能矩阵，旧矩阵保留旧SHA范围。
+
+## 2026-10-20 01:18 JST 新回归/120帧未完成
+
+本轮以docs/verification/2026-10-20-playback-motion-regressions.md为最新记录。用户明确PC和Android都要120帧。Claude明确交回bbfae89后Codex独立审查/构建/受影响回归通过，Android实际安装并核对APK1ca282b…；系统/播放器返回停住、真实本地10.11.11自然EOF继续第二集并渲染后Back停住通过。性能仍未达标，不能按上轮6fe最终交付状态停工。
+
+01:04同一Claude消息63正式交回120帧优化，Claude当前唯一产品源码写入者；Codex只测固定bbfa，不并行改产品/构建。额外顶栏层归因证据01:16已排队发出，不重复发送。需等明确commit+停手后固定源码、审查构建和真机重测。新Mac 120帧追加文档已在NAS，代码新包尚未出。
+
+Windows staging bbfa EXE bcd2bd9b23eb6fcbc268edf0f6a4e1bcc1cd3dfa03830793e28b054e5082b6d2，output-regression20；用户manual-user-profile仍旧6fe未替换。Androidbbfa安装路径SHA1ca282b12367afdc258b111fee49c19087ddda40cb36d78e13a6ee569d8467d9。手机已交还原远程登录首页、无播放，forward/reverse全清，不能无限沿用00:50开始20–30分钟的独占许可。测试服10.11.11 PID365220原先已运行，不杀。后续仍需120帧性能、PC最终花屏/闪烁、完整受影响功能回归、两端实际更新和Mac增量，自动跟进保持ACTIVE。
+
+01:59 JST：66a23ee已独立审查/构建并装手机91eb53dd…，120仍未通过。已正式向同一Claude交回实际appearance:auto按钮漏优化、三项动态/非均匀背景正确性问题及PC/Android实测；Claude再次唯一产品写入者。Codex停止新产品构建，只用固定66包诊断。详见主新回归文档最新段。手机已恢复原远程home，采样和forward/reverse清理完；Windows用户实例仍6fe，新66仅staging16fc9dad…。不可用旧bbfa状态或此交接消息宣称全部完成。
+
+## 02:24 JST：Claude再次限额，Codex接手
+
+同任务日志17:20:16 UTC明确session limit，UI100%且运行结束，测试后台命令已完成。Codex按用户既有授权成为唯一产品源码写入者；已取消本任务的限额后自动继续，接手通知消息71成功提交且输入框清空。即使额度恢复也不自动交回写入权，避免同时写。
+
+保留Claude未提交的native/webAppearance.js与tests/test_header_backdrop_root_ui.cjs（基线66a23ee）。她已补实际appearance:auto按钮、hover/动态CSS失效、非均匀/阴影覆盖拒绝，并加Chromium>=143门限，因为Qt130的实际滤镜采样语义不同。Chrome自检日志通过、旧代码各项失败记录已看到，但还不是Codex独立通过，更不是120帧达标。开始独立审查与针对性复测；新版本未提交、未构建、未安装。手机继续已归还状态，Windows用户实例仍6fe；暂停自动重跑旧性能样本。
+
+## 03:07 JST 最新接手状态
+
+Codex仍唯一产品写入者；Claude消息71停手交接不变。固定最新73379eb已完成两端构建；Android实际install-r并核对3cf1a1fb…，Windows仅staging2945ff6f…、用户手动实例仍6fe。顶栏重复动画读取与入场冻结暗/糊帧已补红绿测试，Qt三项通过；真实120仍失败，详见新回归文档03:07段。手机这次15分钟独占于约03:00提前归还：原远程home/无播放/forward/reverse空。
+
+Mac新733累计共享包已在NAS，bundle/manifest/SHA核验通过，120未过明确标注；可让Mac并行接入，不覆盖其Apple分支。剩余：顶栏被裁剪的大头像导致多层filter保留，独立reviewer正只读外部fixture验证；PC新733真实探针首页转媒体夹超时需定位，最终D3D画面与呈现帧仍未验证；完成修复后两端实际更新、新版Mac增量和准确结果继续执行。不要因当前部分功能回归或旧API矩阵通过而停用跟进。
+
+03:12补记：当前产品HEAD1b7fdd18755b9d70c3976accd65230064917697e，裁剪头像普通绘制边界的红绿/像素对照通过；Android候选已构建aacc677b…但未安装/未测120，Windows尚未重建。手机仍733且已归还。Windows733后台入场超时在激活窗口后消失，真实远程P95=33.3/25/33.3/25ms，尺寸1280×684，与旧最大化不同；仍未通过120。新test/证据和首次像素fixture波动已记录。用户Windows实例仍6fe，Mac已交733，后续别误称1b7已部署。自动跟进ACTIVE，当前所有权Codex。

@@ -1108,13 +1108,30 @@ function flattenTigerestHeaderGlass() {
         };
         // Where a box paints: its box with shadows and outline, or its text.
         const grown = (box, by) => ({left: box.left - by, top: box.top - by, right: box.right + by, bottom: box.bottom + by});
+        // Ordinary in-flow artwork cannot paint past an ancestor's overflow
+        // clip. Use its border box as a conservative bound (also for rounded
+        // clips); out-of-flow descendants and pseudo-elements need separate
+        // containing-block reasoning and keep their existing wider bounds.
+        const visiblePainting = (node, area) => {
+            let result = {...area}, current = node;
+            for (let parent = node.parentElement; parent && styles.has(parent); current = parent, parent = parent.parentElement) {
+                if (!['static', 'relative'].includes(styles.get(current).position)) break;
+                const style = styles.get(parent);
+                if (!['hidden', 'auto', 'scroll'].includes(style.overflowX) ||
+                    !['hidden', 'auto', 'scroll'].includes(style.overflowY)) continue;
+                const clip = rect(parent);
+                result = {left: Math.max(result.left, clip.left), top: Math.max(result.top, clip.top),
+                    right: Math.min(result.right, clip.right), bottom: Math.min(result.bottom, clip.bottom)};
+            }
+            return result;
+        };
         const paintings = new Map();
         const painting = node => paintings.get(node) ?? paintings.set(node, (() => {
             const style = styles.get(node);
             if (style.visibility === 'hidden' || !node.getClientRects().length) return [];
             const box = visible(value(node, 'background-color')) || value(node, 'background-image') !== 'none' || style.boxShadow !== 'none' ||
                 bordered(style) || style.outlineStyle !== 'none' || node.matches(replaced);
-            const areas = box ? [grown(rect(node), reach(style))] : textRects(node);
+            const areas = box ? [visiblePainting(node, grown(rect(node), reach(style)))] : textRects(node).map(area => visiblePainting(node, area));
             for (const pseudo of ['::before', '::after']) if (pseudoPainted(node, pseudo)) areas.push(pseudoBounds(node, pseudo));
             return areas;
         })()).get(node);

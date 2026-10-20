@@ -230,7 +230,7 @@
                 if(records.some(record=>!panel.contains(record.target)))this.placePanel(state);
             });
             state.placementObserver.observe(view,{childList:true,subtree:true});
-            if(window.ResizeObserver){state.resizeObserver=new ResizeObserver(()=>this.alignPanel(state));state.resizeObserver.observe(view);}
+            if(window.ResizeObserver){state.resizeObserver=new ResizeObserver(()=>this.schedulePanelAlignment(state));state.resizeObserver.observe(view);}
             this.load(state);
         }
         selectContext(state,channel,scope){
@@ -281,7 +281,17 @@
                 if(state.panel.parentElement!==host)host.appendChild(state.panel);
                 state.alignmentSection=null;
             }
-            this.alignPanel(state);
+            this.schedulePanelAlignment(state);
+        }
+        schedulePanelAlignment(state) {
+            // Detail sections load in separate mutation batches. Measuring in
+            // each observer callback repeatedly flushes the same page layout.
+            // Read the latest placement once before the next paint instead.
+            if(state.alignmentFrame!=null)return;
+            state.alignmentFrame=requestAnimationFrame(()=>{
+                state.alignmentFrame=null;
+                if(this.valid(state)&&state.panel.isConnected)this.alignPanel(state);
+            });
         }
         alignPanel(state) {
             const section=state.alignmentSection;
@@ -647,7 +657,7 @@
             this.metadataController?.abort();this.metadataController=null;this.metadataView=null;
             this.client.clear();
             this.publicClient?.clear();this.privateClient.clear();
-            if(this.state){this.state.placementObserver?.disconnect();this.state.resizeObserver?.disconnect();this.state.unsubscribeAvatars?.();clearTimeout(this.state.avatarRetryTimer);this.clearAvatars(this.state);this.state.panel.remove();this.state.publicDialog?.close();this.state.publicDialog?.remove();}
+            if(this.state){this.state.placementObserver?.disconnect();this.state.resizeObserver?.disconnect();cancelAnimationFrame(this.state.alignmentFrame);this.state.unsubscribeAvatars?.();clearTimeout(this.state.avatarRetryTimer);this.clearAvatars(this.state);this.state.panel.remove();this.state.publicDialog?.close();this.state.publicDialog?.remove();}
             this.state=null;
         }
         destroy() {
