@@ -5,6 +5,8 @@ struct TVRootView: View {
     @ObservedObject var model: TVAppModel
     @FocusState private var focused: String?
     @State private var showQuality = false
+    @State private var choosingSort = false
+    @State private var searchText = ""
     private let columns = [GridItem(.adaptive(minimum: 210, maximum: 260), spacing: 32, alignment: .top)]
 
     var body: some View {
@@ -108,8 +110,10 @@ struct TVRootView: View {
                 VStack(alignment: .leading, spacing: 44) {
                     if let page = model.currentPage {
                         Text(page.title).font(.largeTitle.bold())
+                        if model.currentPageIsLibrary { libraryTools(page) }
                         if page.items.isEmpty, !model.busy, model.error == nil {
-                            emptyState("这里还没有媒体", symbol: "film")
+                            if page.search.isEmpty { emptyState("这里还没有媒体", symbol: "film") }
+                            else { emptyState("没有找到「\(page.search)」", symbol: "magnifyingglass") }
                         }
                         itemGrid(page.items)
                         if page.hasMore {
@@ -127,6 +131,38 @@ struct TVRootView: View {
             .onChange(of: model.focusTarget) { _, target in revealBrowseTarget(target, using: proxy) }
         }
         .accessibilityIdentifier("tv.browse")
+    }
+
+    /// Sort and search for a library's poster wall.
+    private func libraryTools(_ page: TVBrowsePage) -> some View {
+        HStack(spacing: 28) {
+            Button { choosingSort = true } label: {
+                Label("排序：" + model.librarySort.title, systemImage: "arrow.up.arrow.down")
+            }
+            .disabled(model.busy)
+            .accessibilityIdentifier("tv.library.sort")
+            .focused($focused, equals: "tv.library.sort")
+            TextField("搜索这个媒体库", text: $searchText)
+                .frame(width: 560)
+                .onSubmit { Task { await model.searchLibrary(searchText) } }
+                .accessibilityIdentifier("tv.library.search")
+                .focused($focused, equals: "tv.library.search")
+            if !page.search.isEmpty {
+                Button("清除搜索") { searchText = ""; Task { await model.searchLibrary("") } }
+                    .disabled(model.busy)
+                    .accessibilityIdentifier("tv.library.clearSearch")
+            }
+            Spacer()
+        }
+        .font(.system(size: 24, weight: .semibold))
+        .focusSection()
+        .onAppear { searchText = page.search }
+        .onChange(of: page.id) { _, _ in searchText = page.search }
+        .confirmationDialog("排序", isPresented: $choosingSort) {
+            ForEach(EmbyLibrarySort.allCases, id: \.rawValue) { sort in
+                Button((sort == model.librarySort ? "✓ " : "") + sort.title) { Task { await model.setLibrarySort(sort) } }
+            }
+        }
     }
 
     private func revealBrowseTarget(_ target: String?, using proxy: ScrollViewProxy) {
@@ -253,6 +289,9 @@ struct TVMediaCard: View {
     let item: JSONValue
     let imageURL: URL?
     var artworkAspectRatio: CGFloat = 16.0 / 9.0
+    /// Episode lists also mark what has not been watched; poster walls only
+    /// mark watched work and the unwatched episode count.
+    var marksUnplayed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -265,6 +304,8 @@ struct TVMediaCard: View {
                             .padding(12)
                     }
                 }
+                .overlay(alignment: .topTrailing) { TVWatchBadge(state: TVMedia.watchState(item), marksUnplayed: marksUnplayed).padding(10) }
+                .overlay(alignment: .bottom) { TVWatchProgress(state: TVMedia.watchState(item)) }
             VStack(alignment: .leading, spacing: 8) {
                 Text(TVMedia.title(item)).font(.headline).lineLimit(1)
                 let subtitle = TVMedia.subtitle(item)
@@ -281,6 +322,48 @@ struct TVMediaCard: View {
             .background(Color(white: 0.11))
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+/// Corner badge: unwatched episode count, watched, or (in episode lists) unwatched.
+struct TVWatchBadge: View {
+    let state: TVWatchState
+    var marksUnplayed = false
+    private let gold = Color(red: 0.94, green: 0.78, blue: 0.47)
+    var body: some View {
+        switch state {
+        case .remaining(let count):
+            badge("\(count) 集未看", foreground: .black, background: gold).accessibilityLabel("\(count) 集未看")
+        case .played:
+            badge("✓ 已看", foreground: .white, background: Color(red: 0.16, green: 0.55, blue: 0.33)).accessibilityLabel("已看完")
+        case .unplayed where marksUnplayed:
+            badge("未看", foreground: .white, background: Color(red: 0.12, green: 0.43, blue: 0.82)).accessibilityLabel("未看")
+        default:
+            EmptyView()
+        }
+    }
+    private func badge(_ text: String, foreground: Color, background: Color) -> some View {
+        Text(text).font(.system(size: 18, weight: .bold)).foregroundStyle(foreground)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(background, in: Capsule())
+            .shadow(color: .black.opacity(0.4), radius: 6, y: 2)
+    }
+}
+
+/// Bar along the artwork's bottom edge for partly watched items.
+struct TVWatchProgress: View {
+    let state: TVWatchState
+    var body: some View {
+        if case .partial(let fraction) = state {
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(.black.opacity(0.55))
+                    Rectangle().fill(Color(red: 0.94, green: 0.78, blue: 0.47)).frame(width: geometry.size.width * max(0.02, min(1, fraction)))
+                }
+            }
+            .frame(height: 7)
+            .accessibilityLabel("看到 \(Int((fraction * 100).rounded()))%")
+        }
     }
 }
 

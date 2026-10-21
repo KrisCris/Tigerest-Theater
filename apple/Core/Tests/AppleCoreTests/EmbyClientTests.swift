@@ -242,6 +242,25 @@ private func session() -> EmbySession {
         }
     }
 
+    @Test func libraryItemsSortAndSearchThePosterWall() async throws {
+        let expected: [EmbyLibrarySort: (String, String)] = [
+            .name: ("SortName", "Ascending"), .recent: ("DateCreated,SortName", "Descending"),
+            .release: ("PremiereDate,ProductionYear,SortName", "Descending"), .rating: ("CommunityRating,SortName", "Descending")]
+        for (sort, (sortBy, order)) in expected {
+            let transport = EmbyFixtureProtocol.install { request in
+                let values = query(request.url!)
+                #expect(values["SortBy"] == sortBy)
+                #expect(values["SortOrder"] == order)
+                #expect(values["SearchTerm"] == (sort == .rating ? "进击的巨人" : nil))
+                return reply(#"{"Items":[],"TotalRecordCount":0}"#)
+            }
+            let client = try EmbyClient(session: session(), urlSession: transport)
+            _ = try await client.libraryItems(in: JSONValue(any: ["Id": "library", "CollectionType": "tvshows"]), sort: sort,
+                                              search: sort == .rating ? "  进击的巨人 \n" : "   ")
+            transport.invalidateAndCancel()
+        }
+    }
+
     @Test func resumeNamesPlayableVideoTypesForEmby48Through410() async throws {
         let transport = EmbyFixtureProtocol.install { request in
             #expect(request.url?.path == "/proxy/emby/Users/user1/Items/Resume")

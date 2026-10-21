@@ -196,7 +196,8 @@ public actor EmbyClient: EmbyHomeAPI {
 
     /// A library opens as a work catalogue, independent of its disk-folder layout.
     /// Series and seasons still use children(of:) for their ordered navigation.
-    public func libraryItems(in library: JSONValue, startIndex: Int = 0, limit: Int = 80) async throws -> EmbyItemPage {
+    public func libraryItems(in library: JSONValue, startIndex: Int = 0, limit: Int = 80,
+                             sort: EmbyLibrarySort = .name, search: String = "") async throws -> EmbyItemPage {
         let id = try Self.identifier(library["Id"].string)
         let types: String
         switch library["CollectionType"].string {
@@ -211,12 +212,15 @@ public actor EmbyClient: EmbyHomeAPI {
         case "photos": types = "Photo,PhotoAlbum"
         default: types = "Series,Movie,Video"
         }
-        return try await items(query: [
+        var query = [
             "ParentId": id, "Recursive": "true", "IncludeItemTypes": types,
             "StartIndex": String(max(0, startIndex)), "Limit": String(min(100, max(1, limit))),
-            "SortBy": "SortName", "SortOrder": "Ascending", "EnableTotalRecordCount": "true",
+            "SortBy": sort.sortBy, "SortOrder": sort.sortOrder, "EnableTotalRecordCount": "true",
             "Fields": Self.fields, "EnableUserData": "true", "EnableImages": "true"
-        ])
+        ]
+        let term = String(search.trimmingCharacters(in: .whitespacesAndNewlines).prefix(100))
+        if !term.isEmpty { query["SearchTerm"] = term }
+        return try await items(query: query)
     }
 
     private func itemPage(_ path: String, query: [String: String]) async throws -> EmbyItemPage {

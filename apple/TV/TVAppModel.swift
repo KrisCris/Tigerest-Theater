@@ -6,6 +6,10 @@ enum TVServerMode {
     case dedicated, selfHosted
 }
 
+enum TVWatchState: Equatable {
+    case unplayed, partial(Double), played, remaining(Int)
+}
+
 struct TVBrowsePage: Identifiable {
     let id = UUID()
     var item: JSONValue
@@ -13,6 +17,8 @@ struct TVBrowsePage: Identifiable {
     var hasMore = false
     var favoriteWorks: [JSONValue]?
     var pendingFocusItemID: String?
+    /// Poster-wall search inside a library; empty shows the whole library.
+    var search = ""
     var title: String { TVMedia.title(item) }
 }
 
@@ -28,6 +34,7 @@ final class TVAppModel: ObservableObject {
     @Published private(set) var homeLoading = false
     @Published private(set) var homeError: String?
     @Published private(set) var homeOrder: EmbyHomeOrder
+    @Published private(set) var librarySort: EmbyLibrarySort
     @Published var error: String?
     @Published private(set) var busy = false
     @Published private(set) var serverMode: TVServerMode?
@@ -80,6 +87,7 @@ final class TVAppModel: ObservableObject {
         self.store = store
         if !fixtureMode { savedServers = (try? store.loadState()) ?? ServerSessionHistory() }
         homeOrder = fixtureMode ? .resume : EmbyHomeOrder(rawValue: UserDefaults.standard.string(forKey: "tv.home.displayOrder") ?? "") ?? .resume
+        librarySort = fixtureMode ? .name : EmbyLibrarySort(rawValue: UserDefaults.standard.string(forKey: "tv.library.sort") ?? "") ?? .name
         player.onStopped = { [weak self] item, position, duration in
             self?.updateProgress(item: item, position: position, duration: duration)
         }
@@ -361,6 +369,35 @@ final class TVAppModel: ObservableObject {
         if let homeLibraryID { previewLibrary(homeLibraryID, refresh: true) }
     }
 
+    /// The current page is a library's poster wall, which can be sorted and searched.
+    var currentPageIsLibrary: Bool {
+        guard let page = currentPage else { return false }
+        return libraries.contains { TVMedia.id($0) == TVMedia.id(page.item) }
+    }
+
+    func setLibrarySort(_ sort: EmbyLibrarySort) async {
+        guard librarySort != sort else { return }
+        librarySort = sort
+        if !fixtureMode { UserDefaults.standard.set(sort.rawValue, forKey: "tv.library.sort") }
+        await reloadLibraryPage()
+    }
+
+    func searchLibrary(_ text: String) async {
+        guard currentPageIsLibrary else { return }
+        let term = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(100))
+        guard term != pages[pages.count - 1].search else { return }
+        pages[pages.count - 1].search = term
+        await reloadLibraryPage()
+    }
+
+    private func reloadLibraryPage() async {
+        guard currentPageIsLibrary else { return }
+        invalidateRequest()
+        let index = pages.count - 1
+        pages[index].items = []; pages[index].hasMore = false; pages[index].pendingFocusItemID = nil
+        await loadPage(append: false)
+    }
+
     private func cancelHome() {
         homeRequestID = UUID(); homeTask?.cancel(); homeTask = nil; homeLoading = false
     }
@@ -540,7 +577,8 @@ final class TVAppModel: ObservableObject {
                     totalCount = all.count
                     result = Array(all.dropFirst(append ? page.items.count : 0).prefix(batchSize))
                 } else if libraries.contains(where: { TVMedia.id($0) == TVMedia.id(page.item) }) {
-                    let works = try await client.libraryItems(in: page.item, startIndex: append ? page.items.count : 0, limit: batchSize)
+                    let works = try await client.libraryItems(in: page.item, startIndex: append ? page.items.count : 0, limit: batchSize,
+                                                              sort: librarySort, search: page.search)
                     result = works.items
                     totalCount = works.totalRecordCount
                 } else {
@@ -907,6 +945,20 @@ enum TVMedia {
         let seconds = (item["RunTimeTicks"].number ?? 0) / 10_000_000
         let duration = seconds > 0 ? "\(boundedInteger(seconds / 60, maximum: 10_000_000)) 分钟" : nil
         return [year, duration].compactMap { $0 }.joined(separator: " · ")
+    }
+    /// Watched, partly watched or unwatched, from the server's user data.
+    /// Series and seasons report how many of their episodes are still unwatched.
+    static func watchState(_ item: JSONValue) -> TVWatchState {
+        let data = item["UserData"]
+        if data["Played"].bool == true { return .played }
+        if isContainer(item) {
+            let count = boundedInteger(data["UnplayedItemCount"].number, maximum: 99_999)
+            return count > 0 ? .remaining(count) : .unplayed
+        }
+        if let percent = data["PlayedPercentage"].number, percent.isFinite, percent > 0, percent < 100 { return .partial(percent / 100) }
+        let runtime = (item["RunTimeTicks"].number ?? 0) / 10_000_000
+        if resumeSeconds(item) > 0, runtime.isFinite, runtime > 0 { return .partial(min(0.99, resumeSeconds(item) / runtime)) }
+        return .unplayed
     }
     static func resumeSeconds(_ item: JSONValue) -> Double {
         let seconds = (item["UserData"]["PlaybackPositionTicks"].number ?? 0) / 10_000_000
