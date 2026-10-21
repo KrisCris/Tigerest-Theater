@@ -19,6 +19,9 @@
 #include <windows.h>
 #include <psapi.h>
 #include <tlhelp32.h>
+#elif defined(Q_OS_MAC)
+#include <sys/sysctl.h>
+#include <unistd.h>
 #endif
 
 namespace
@@ -29,6 +32,21 @@ qint64 steadyMs()
 {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
     std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// A debugger stopping the process at a breakpoint is not a stall.
+bool debuggerAttached()
+{
+#if defined(Q_OS_WIN) && defined(_M_X64)
+  return IsDebuggerPresent();
+#elif defined(Q_OS_MAC)
+  int request[] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()};
+  kinfo_proc info = {};
+  size_t size = sizeof(info);
+  return sysctl(request, 4, &info, &size, nullptr, 0) == 0 && (info.kp_proc.p_flag & P_TRACED);
+#else
+  return false;
+#endif
 }
 
 #ifdef TIGEREST_STALL_STACKS
@@ -316,7 +334,7 @@ void MainThreadWatchdog::run()
     {
       if (resumed)
         m_lastBeat.compare_exchange_strong(beat, now);
-      else if (now - beat >= m_options.stallMs && !IsDebuggerPresent())
+      else if (now - beat >= m_options.stallMs && !debuggerAttached())
       {
         stalledBeat = beat;
         startedAt = QDateTime::currentDateTimeUtc().addMSecs(beat - now);

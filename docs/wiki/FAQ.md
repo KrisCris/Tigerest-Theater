@@ -67,7 +67,8 @@ RIFE 生成中间帧；画质预设处理缩放、边缘和色彩等画面效果
 - **RIFE：** Windows 使用 NVIDIA 可选扩展；Mac 和 iPad 随包提供，格式范围不同；Android 和 Apple TV 暂无。
 - **一起看：** Windows、Mac、Android、iPad 可用，Apple TV 暂不支持。
 - **离线下载：** Windows、Mac、iPad 可用；Android 和 Apple TV 暂无。
-- **界面：** Windows、Mac、Android、iPad 使用 Emby 网页界面加原生播放器；Apple TV 是独立的原生电视界面，没有「Tigerest Theater 设置」分类。
+- **界面：** Windows、Mac、Android、iPad 使用服务器的 Emby／Jellyfin 网页界面加原生播放器；Apple TV 是独立的原生电视界面，没有「Tigerest Theater 设置」分类。
+- **HDR：** Windows 自动开启系统 HDR；Android、Mac 和 iPad 在支持 HDR 的屏幕上直接输出；Apple TV 未专门适配。
 - Android 没有后台持续播放或画中画。正式 Mac 附件只提供 Apple Silicon。
 
 完整对照见[教程首页](https://github.com/Tigerest/Tigerest-Theater/wiki/Home#各平台功能范围)，实现方式见[技术原理](https://github.com/Tigerest/Tigerest-Theater/wiki/Architecture)。

@@ -105,11 +105,12 @@ static struct mp_image *convert(struct mp_filter *f, struct mp_image *src) {
         double scale_start = trace_ms();
         p->software_format = imgfmt2pixfmt(sw->imgfmt);
 #endif
-        // Only the measured 8-bit BT.709 path uses Metal. Other matrices,
+        // Only the measured BT.709 NV12/P010 paths use Metal. Other matrices,
         // ranges, chroma siting and pixel formats retain swscale's conversion.
         bool converted = false;
         const int chroma = sw->params.chroma_location;
-        const bool nv12 = sw->imgfmt == pixfmt2imgfmt(AV_PIX_FMT_NV12) &&
+        const bool p010 = sw->imgfmt == pixfmt2imgfmt(AV_PIX_FMT_P010);
+        const bool nv12 = (p010 || sw->imgfmt == pixfmt2imgfmt(AV_PIX_FMT_NV12)) &&
             sw->params.repr.sys == PL_COLOR_SYSTEM_BT_709 &&
             (sw->params.repr.levels == PL_COLOR_LEVELS_FULL ||
              sw->params.repr.levels == PL_COLOR_LEVELS_LIMITED) &&
@@ -122,7 +123,8 @@ static struct mp_image *convert(struct mp_filter *f, struct mp_image *src) {
                     sw->planes[1], sw->stride[1], (float **)rgb->planes, rgb->stride,
                     sw->params.repr.levels == PL_COLOR_LEVELS_FULL,
                     chroma == PL_CHROMA_CENTER ||
-                    (chroma == PL_CHROMA_UNKNOWN && sw->params.repr.levels == PL_COLOR_LEVELS_FULL));
+                    (chroma == PL_CHROMA_UNKNOWN && sw->params.repr.levels == PL_COLOR_LEVELS_FULL),
+                    p010);
             if (!converted) {
                 // Fall back on this frame and avoid repeating a failed GPU
                 // setup/command on every subsequent source frame.

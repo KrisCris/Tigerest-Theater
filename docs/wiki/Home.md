@@ -1,11 +1,11 @@
 # Tigerest Theater 使用教程
 
-这里是 EMBY 大河版的中文使用说明，对应 Windows、Android 2.9.3 与 Mac、iPad、Apple TV 2.8.0。客户端支持 Windows、Apple Silicon Mac、Android、iPad 和 Apple TV；播放内容和访问权限来自你连接的 Emby 或 Jellyfin 服务器（Jellyfin 目前限 Windows、Android 2.9.0 及之后）。
+这里是 EMBY 大河版的中文使用说明，对应 2.9.3（Windows、Android、Mac、iPad 与 Apple TV 均为 2.9.3）。客户端支持 Windows、Apple Silicon Mac、Android、iPad 和 Apple TV；播放内容和访问权限来自你连接的 Emby 或 Jellyfin 服务器。
 
 ## 第一次使用
 
 1. 按设备选择并安装[正式版本](https://github.com/Tigerest/Tigerest-Theater/releases/latest)：见[安装与更新](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation)。
-2. 选择大河专属入口或填写自己的 Emby 地址：见[服务器与登录](https://github.com/Tigerest/Tigerest-Theater/wiki/Server)。
+2. 选择大河专属入口或填写自己的 Emby／Jellyfin 地址：见[服务器与登录](https://github.com/Tigerest/Tigerest-Theater/wiki/Server)。
 3. 登录服务器，打开一部作品并播放：见[播放与设置](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback)。Apple TV 的操作方式不同，见 [Apple TV](https://github.com/Tigerest/Tigerest-Theater/wiki/Apple-TV)。
 4. 根据需要选择字幕、检查弹幕。先用默认设置播放，再调整画质或启用补帧。
 5. 自建 Emby 用户想看公共评论时，打开详情页的「评论账号」完成独立注册或登录。
@@ -29,11 +29,13 @@
 | [常见问题](https://github.com/Tigerest/Tigerest-Theater/wiki/FAQ) | 平台区别、账号范围、补帧与共享功能的常见疑问 |
 | [技术原理](https://github.com/Tigerest/Tigerest-Theater/wiki/Architecture) | 各客户端的实现与架构、播放链路、一起看同步、评论和弹幕的数据流 |
 
-## 2.9.3 更新了什么（Windows、Android）
+## 2.9.3 更新了什么
 
 - **HDR：** Windows 播放 HDR 片源时自动开启系统 HDR 并以 HDR10 输出；Android 在 HDR 屏幕上直接输出 HDR，开始播放时提示 HDR／SDR 输出方式。见[播放与画质](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback#hdr-播放)。
 - **更新提醒：** 有新版本时每次打开软件弹窗一次，可从 GitHub、夸克网盘或百度网盘获取，或忽略本次更新。见[安装](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation#应用内更新)。
 - **Windows 卡死报告：** 播放器卡住或启动超时时自动发送故障报告给服务器管理员，可在客户端设置中关闭。
+- **苹果三端（由 2.8.0 直接升级）：** Mac、iPad 与 Apple TV 支持 Jellyfin 并记住连接过的服务器；Mac 与 iPad 在 HDR 屏幕上直接输出 HDR10／杜比视界；Mac 的更新提醒与 Windows 相同。见[服务器与登录](https://github.com/Tigerest/Tigerest-Theater/wiki/Server)和[播放与画质](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback#hdr-播放)。
+- **iPad 与 Apple TV：** iPad 上 10 位 SDR 片源开启 RIFE 后长时间播放不再持续掉帧，并支持妙控键盘快捷键；iPad 和 Apple TV 戴 AirPods 时多声道音轨都可用空间音频。见 [RIFE 补帧](https://github.com/Tigerest/Tigerest-Theater/wiki/RIFE)。
 
 ## 2.9.1 更新了什么（Windows、Android）
 
@@ -50,7 +52,7 @@
 - **Android 折叠屏：** 在外屏启动后，Jellyfin 媒体库和详情页的布局不再错乱，媒体库滚动更流畅。
 - **首页重复作品：** 同一部作品的两个条目合并为一张卡（原定 2.8.1，并入本版）。
 
-Mac、iPad 与 Apple TV 的 2.9.0 稍后补充，在此之前继续使用 2.8.0。
+苹果三端的 Jellyfin 支持随 2.9.3 发布。
 
 ## 2.8.0 更新了什么
 
@@ -63,16 +65,17 @@ Mac、iPad 与 Apple TV 的 2.9.0 稍后补充，在此之前继续使用 2.8.0�
 
 2.6.1 起 Windows 网页界面按屏幕刷新率运行，并新增 iPad 客户端；2.7.0 起首页「继续观看」按观看记录排序，兼容 Emby 4.8–4.10 和 .strm 媒体库，并补充了 Apple TV 首版。完整记录见[更新记录](https://github.com/Tigerest/Tigerest-Theater/blob/main/CHANGELOG.md)。
 
-**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.9.1 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
+**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.9.3 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
 ## 各平台功能范围
 
 | 功能 | Windows | Apple Silicon Mac | Android | iPad | Apple TV |
 | --- | --- | --- | --- | --- | --- |
-| Emby 浏览、MPV 播放、弹幕、公共评论 | 支持 | 支持 | 支持 | 支持 | 支持，原生电视界面；公共评论需已有账号 |
+| Emby／Jellyfin 浏览、MPV 播放、弹幕、公共评论 | 支持 | 支持 | 支持 | 支持 | 支持，原生电视界面；公共评论需已有账号 |
+| HDR 直接输出 | 自动开启系统 HDR，HDR10 输出 | 支持 HDR 的屏幕上输出 | 支持 HDR 的屏幕上输出 | 支持 HDR 的屏幕上输出 | 未专门适配 |
 | 一起看 | 支持 | 支持 | 支持 | 支持 | 暂无 |
 | 画质预设 | 三档桌面预设 | 三档桌面预设 | 使用 Android 可用设置 | 支持 | 原生、轻量增强、完整桌面滤镜 |
-| RIFE 补帧 | NVIDIA 可选扩展 | 随包，Core ML / Metal | 暂无 | 随包，1080p 固定两倍 | 暂无 |
+| RIFE 补帧 | NVIDIA 可选扩展 | 随包，Core ML / Metal | 暂无 | 随包，1080p 8／10 位 SDR 固定两倍 | 暂无 |
 | 下载与离线媒体 | 支持 | 支持 | 暂无 | 支持 | 暂无 |
 | 应用内更新 | 下载并安装 | 下载 DMG 后替换应用 | 下载并交给系统安装器 | 只检查和提示 | 暂无 |
 | 安装包签名 | 未做 Authenticode 签名 | 临时签名，未公证 | 正式签名 | 未签名，需自行签名 | 未签名，需自行签名 |

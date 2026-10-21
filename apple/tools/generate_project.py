@@ -13,7 +13,7 @@ def file(path, kind):
 def configurations(name, settings):
     configs=[]
     for mode in ['Debug','Release']:
-        configs.append(obj(name+mode,'XCBuildConfiguration',name=mode,**({'baseConfigurationReference':file('Local.xcconfig','text.xcconfig')} if name != 'project' else {}),buildSettings={**settings,'ONLY_ACTIVE_ARCH':'YES' if mode=='Debug' else 'NO','SWIFT_OPTIMIZATION_LEVEL':'-Onone' if mode=='Debug' else '-O', **({'SWIFT_ACTIVE_COMPILATION_CONDITIONS':settings.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS','')+' DEBUG'} if mode=='Debug' else {})}))
+        configs.append(obj(name+mode,'XCBuildConfiguration',name=mode,**({'baseConfigurationReference':file('Local.xcconfig','text.xcconfig')} if name != 'project' else {}),buildSettings={**settings,'ONLY_ACTIVE_ARCH':'YES' if mode=='Debug' else 'NO','SWIFT_OPTIMIZATION_LEVEL':'-Onone' if mode=='Debug' else '-O', **({'SWIFT_ACTIVE_COMPILATION_CONDITIONS':settings.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS','')+' DEBUG'} if mode=='Debug' else {}), **({'GCC_PREPROCESSOR_DEFINITIONS':'$(inherited) TIGEREST_RIFE_TIMING=1'} if mode=='Debug' and name=='app' else {})}))
     return obj(name+'config','XCConfigurationList',buildConfigurations=configs,defaultConfigurationIsVisible=0,defaultConfigurationName='Release')
 def generate():
     existing=ROOT/'TigerestTheater.xcodeproj/project.pbxproj'

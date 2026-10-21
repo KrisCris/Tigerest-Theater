@@ -193,12 +193,13 @@ void tgrife_color_destroy(void *converter) {
     if (converter) { fx.color_destroys++; talloc_free(converter); }
 }
 int tgrife_color_convert(void *converter, const uint8_t *y, int ys, const uint8_t *uv,
-                        int uvs, float *out[3], const int strides[3], int full, int centered) {
+                        int uvs, float *out[3], const int strides[3], int full, int centered,
+                        int p010) {
     (void)uv; (void)uvs;
     assert(converter && ys == sizeof(float) && strides[0] == sizeof(float));
-    assert((full == 0 || full == 1) && (centered == 0 || centered == 1));
+    assert((full == 0 || full == 1) && (centered == 0 || centered == 1) && (p010 == 0 || p010 == 1));
     fx.color_conversions++;
-    fx.color_full_range = full; fx.color_centered = centered;
+    fx.color_full_range = full; fx.color_centered = centered; fx.color_p010 = p010;
     if (fx.fail_color_convert) return 0;
     for (int p = 0; p < 3; p++) out[p][0] = *(const float *)y;
     return 1;

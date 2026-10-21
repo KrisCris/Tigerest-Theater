@@ -1,6 +1,6 @@
 # iPad 安装与构建
 
-2.8.0 的系统要求为 iPadOS 26 及以后版本。发行附件 [`TigerestTheater-2.8.0-ipad.ipa`](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-ipad.ipa) 是完整的设备版应用，但**未签名，必须先用自己的 Apple 身份重签名才能安装**。它不含作者的个人开发签名、设备名单、证书或账号。不是 App Store 或 TestFlight 安装包，也不能直接在“文件”中点开安装。
+2.9.3 的系统要求为 iPadOS 26 及以后版本。发行附件 [`TigerestTheater-2.9.3-ipad.ipa`](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-ipad.ipa) 是完整的设备版应用，但**未签名，必须先用自己的 Apple 身份重签名才能安装**。它不含作者的个人开发签名、设备名单、证书或账号。不是 App Store 或 TestFlight 安装包，也不能直接在“文件”中点开安装。
 
 已有侧载签名工具的用户，可以导入 IPA 并使用自己的账号签名。免费账号的签名有有效期，需要按 Apple 的规则续签。覆盖更新时保持原来的应用标识与签名身份；不要先卸载应用，以免丢失配置和离线媒体。
 

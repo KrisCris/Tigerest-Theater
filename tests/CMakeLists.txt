@@ -699,6 +699,17 @@ if(Node_EXECUTABLE)
                      $<TARGET_FILE:${MAIN_TARGET}>)
     set_tests_properties(test_server_onboarding_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   endif()
+  # The Mac client shares the update dialog; iPad's check-only dialog is the same script.
+  if(APPLE AND NODE_HAS_WEBENGINE_TEST_APIS STREQUAL "true")
+    add_test(NAME test_update_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_update_ui.cjs
+                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_update_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+    add_test(NAME test_ipad_update_webengine
+             COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_ipad_update_ui.cjs
+                     $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+    set_tests_properties(test_ipad_update_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+  endif()
   add_test(NAME test_player_lifecycle
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_player_lifecycle.js)
   add_test(NAME test_stream_credentials

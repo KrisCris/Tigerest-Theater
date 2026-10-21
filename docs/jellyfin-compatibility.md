@@ -1,6 +1,6 @@
 # Jellyfin 连接与兼容范围
 
-Tigerest Theater 2.9.0 起，Windows 与 Android 客户端可以连接 Jellyfin 服务器；Mac、iPad 与 Apple TV 的支持随苹果端 2.9.0 补充。具体验证范围见 [验收记录](verification/2026-10-19-jellyfin-2.9.0.md) 与 [2.9.0 发布说明](releases/2026-10-19-v2.9.0.md)；2.8.0 及更早版本不支持 Jellyfin。
+Tigerest Theater 2.9.0 起，Windows 与 Android 客户端可以连接 Jellyfin 服务器；Mac、iPad 与 Apple TV 的支持随苹果端 2.9.3 发布（苹果三端从 2.8.0 直接升级到 2.9.3）。具体验证范围见 [验收记录](verification/2026-10-19-jellyfin-2.9.0.md) 与 [2.9.0 发布说明](releases/2026-10-19-v2.9.0.md)；2.8.0 及更早版本不支持 Jellyfin。
 
 ## 连接自己的服务器
 

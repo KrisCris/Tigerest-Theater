@@ -928,6 +928,8 @@
 				<string>YES</string>
 				<key>SWIFT_OPTIMIZATION_LEVEL</key>
 				<string>-Onone</string>
+				<key>GCC_PREPROCESSOR_DEFINITIONS</key>
+				<string>$(inherited) TIGEREST_RIFE_TIMING=1</string>
 			</dict>
 		</dict>
 		<key>1B104479E55E37CF8A63CBDF</key>

@@ -1,16 +1,16 @@
-# Tigerest Theater / EMBY 大河版
+# Tigerest Theater
 
-<p align="center"><img src="screenshots/poster.webp" alt="大河影院 · EMBY 大河版宣传海报：电脑、平板、折叠屏与手机上的沉浸式首页"></p>
+<p align="center"><img src="screenshots/poster.webp" alt="大河影院 · Tigerest Theater 宣传海报：电脑、平板、折叠屏与手机上的沉浸式首页"></p>
 
-把 Emby 媒体库、MPV 播放器、弹幕和作品讨论放在一起。支持 Windows、Apple Silicon Mac、iPad、Android 与 Apple TV，提供 MPV 播放、弹幕和对应平台的画质选项。
+把 Emby／Jellyfin 媒体库、MPV 播放器、弹幕和作品讨论放在一起。支持 Windows、Apple Silicon Mac、iPad、Android 与 Apple TV，提供 MPV 播放、弹幕和对应平台的画质选项。
 
 [下载正式版](https://github.com/Tigerest/Tigerest-Theater/releases/latest) · [使用教程](https://github.com/Tigerest/Tigerest-Theater/wiki) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/Tigerest/Tigerest-Theater/issues) · [作者 B站](https://space.bilibili.com/12562485)
 
-**当前版本：Windows、Android 2.9.3；Mac、iPad 与 Apple TV 2.8.0。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
+**当前版本：Windows、Android、Mac、iPad 与 Apple TV 均为 2.9.3。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
 
 **已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.9.3 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
-客户端不包含影视资源。你需要已有的 Emby 服务器地址和账号；媒体库、播放与下载权限由所连接的服务器提供。本项目是非官方 Emby 客户端，与 Emby LLC 无隶属关系。
+客户端不包含影视资源。你需要已有的 Emby 或 Jellyfin 服务器地址和账号；媒体库、播放与下载权限由所连接的服务器提供。本项目是非官方客户端，与 Emby LLC 及 Jellyfin 项目无隶属关系。
 
 ## 项目特色
 
@@ -22,7 +22,7 @@
   <tr>
     <td width="50%">
       <b>五个平台都能用，画质开箱即用</b><br>
-      Windows、Apple Silicon Mac、iPad、Android 与 Apple TV 都能连接自己的 Emby，各端内置 MPV 播放核心，无需另装播放器。桌面内置 shader 滤镜和画质调整，一键切换画质预设：默认档用 SSimDownscaler 改善缩小、KrigBilateral 重建色度、RAVU Zoom 放大并抗锯齿，再配合去色带与 EWA Lanczos 缩放；iPad 与 Apple TV 也能选用这套桌面预设。
+      Windows、Apple Silicon Mac、iPad、Android 与 Apple TV 都能连接自己的 Emby 或 Jellyfin，各端内置 MPV 播放核心，无需另装播放器。桌面内置 shader 滤镜和画质调整，一键切换画质预设：默认档用 SSimDownscaler 改善缩小、KrigBilateral 重建色度、RAVU Zoom 放大并抗锯齿，再配合去色带与 EWA Lanczos 缩放；iPad 与 Apple TV 也能选用这套桌面预设。
     </td>
     <td width="50%"><img src="screenshots/quality-settings.webp" alt="MPV 画质与插件设置：大河内置模式、GPU-Next 渲染与画质预设"></td>
   </tr>
@@ -77,11 +77,19 @@
   </tr>
 </table>
 
-## 2.9.3 更新（Windows、Android）
+## 2.9.3 更新
+
+五个平台均已发布 2.9.3。Mac、iPad 与 Apple TV 由 2.8.0 直接升级，同时带来 2.9.0 起的 Jellyfin 支持。
+
 
 - **HDR：** Windows 播放 HDR 片源时，显示器支持 HDR 而系统未开启会自动开启，结束后恢复（「播放 HDR 时自动开启系统 HDR」，默认开启），并以真正的 HDR10 输出；Android 在 HDR 屏幕上把 HDR 视频直接交给系统显示，开始播放时与 Mac、iPad 一样提示 HDR／SDR 输出方式，旋转屏幕不再重启解码。
 - **更新提醒：** 有新版本时每次打开软件弹窗一次，检查在后台进行、不拖慢启动；可「直接下载」（先经 GitHub 下载加速镜像，连不上再用 GitHub 原址，下载后按 GitHub 的 SHA-256 核验）；夸克与百度网盘收在「备用下载」里，直接下载失败时自动展开；也可「忽略本次更新」直到下一个版本。
-- **Windows 卡死报告：** 播放器主线程卡住或视频启动超时时，自动向服务器管理员发送附带诊断日志和线程调用栈的故障报告（每次运行最多 3 份，可在客户端设置中关闭）；卡顿刚结束时开始的播放不再被误判为启动超时。 见 [2.9.3 发布说明](docs/releases/2026-10-21-v2.9.3.md)。
+- **Windows 卡死报告：** 播放器主线程卡住或视频启动超时时，自动向服务器管理员发送附带诊断日志和线程调用栈的故障报告（每次运行最多 3 份，可在客户端设置中关闭）；卡顿刚结束时开始的播放不再被误判为启动超时。
+- **苹果三端支持 Jellyfin：** Mac、iPad 与 Apple TV 都可以连接 Jellyfin（10.9–12.2，含 `/jellyfin` 子路径），并记住连接过的服务器，切换失败不会丢掉当前登录。
+- **Mac、iPad HDR：** 支持 HDR 的屏幕上，HDR10 与杜比视界直接以 HDR 输出，开始播放时提示输出方式；SDR 屏幕保持原来的色调映射。
+- **Mac：** 更新提醒与 Windows 规则相同；界面继续跟随显示器刷新率，120 Hz 屏上约 120 帧。
+- **iPad：** 10 位 SDR 片源开启 RIFE 后长时间播放不再持续掉帧（颜色转换改用 Metal）；戴 AirPods 时多声道音轨可用空间音频；支持妙控键盘调音量、快进快退和按住右键倍速。
+- **Apple TV：** 同步升级与 Jellyfin 支持，戴 AirPods 时多声道音轨同样可用空间音频；暂不提供「一起看」和 RIFE。见 [2.9.3 发布说明](docs/releases/2026-10-21-v2.9.3.md)。
 
 ## 2.9.1 更新（Windows、Android）
 
@@ -100,7 +108,7 @@
 - **Android 折叠屏：** 在外屏启动应用后，Jellyfin 不再切到手机布局；媒体库首行不再被标签栏盖住，展开后详情页海报不再压住标题，媒体库滚动恢复到接近 120 fps。
 - **首页重复作品：** 服务器上同一部作品有两个条目时，首页按作品身份合并为一张卡（原定于 2.8.1，未单独发布，并入本版）。
 
-Mac、iPad 与 Apple TV 的 2.9.0 稍后补充到同一发行页，在此之前继续使用 2.8.0。完整范围与验证见 [2.9.0 发布说明](docs/releases/2026-10-19-v2.9.0.md)。
+苹果三端的 Jellyfin 支持随 2.9.3 发布。完整范围与验证见 [2.9.0 发布说明](docs/releases/2026-10-19-v2.9.0.md)。
 
 ## 2.8.0 更新重点
 
@@ -125,21 +133,21 @@ iPad 与 Apple TV 的 IPA 均未签名，需使用自己的 Apple 身份签名�
 | Windows 安装版 | [2.9.3 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
 | Windows 便携版 | [2.9.3 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-x64.zip) | 同上；完整解压后运行 |
 | Android | [2.9.3 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-android.apk) | Android 15+，arm64-v8a / x86_64 |
-| Apple Silicon Mac | [2.8.0 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-arm64.dmg) | macOS 26+，M 系列芯片 |
-| iPad | [2.8.0 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-ipad.ipa) | iPadOS 26+，须自行签名安装 |
-| Apple TV | [2.8.0 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-tvos.ipa) | tvOS 26+，须为 Apple TV 签名安装 |
+| Apple Silicon Mac | [2.9.3 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-arm64.dmg) | macOS 26+，M 系列芯片 |
+| iPad | [2.9.3 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-ipad.ipa) | iPadOS 26+，须自行签名安装 |
+| Apple TV | [2.9.3 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-tvos.ipa) | tvOS 26+，须为 Apple TV 签名安装 |
 
 包内已包含 MPV 和基础运行库，无需另装播放器。Windows RIFE 大型组件是可选扩展；已有 NVIDIA 1.0.0 扩展可以继续使用。正式 Mac 下载仅提供 Apple Silicon 版本。
 
-无法访问 GitHub 时，可从[夸克网盘](https://pan.quark.cn/s/88e6f7a795b4)或[百度网盘](https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig)下载 Windows／Android 安装包，每个版本一个文件夹，内容与发行页附件相同。
+无法访问 GitHub 时，可从[夸克网盘](https://pan.quark.cn/s/88e6f7a795b4)或[百度网盘](https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig)下载 Windows／Android 安装包，每个版本一个文件夹，内容与发行页附件相同；Mac、iPad 与 Apple TV 的安装包目前只在 GitHub 发行页提供。
 
-Windows／Android 使用 [2.9.3 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-SHA256SUMS.txt)；Mac／iPad／Apple TV 使用 [2.8.0 Apple 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.8.0/TigerestTheater-2.8.0-APPLE-SHA256SUMS.txt)。来源与验证记录见各自发行页的 `RELEASE-MANIFEST.json` 和 `APPLE-RELEASE-MANIFEST.json` 附件。
+Windows／Android 使用 [2.9.3 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-SHA256SUMS.txt)；Mac／iPad／Apple TV 使用 [2.9.3 Apple 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-APPLE-SHA256SUMS.txt)。来源与验证记录见发行页的 `RELEASE-MANIFEST.json` 和 `APPLE-RELEASE-MANIFEST.json` 附件。
 
 ### 第一次使用
 
 1. 下载对应平台安装包。Windows 安装版运行向导；便携版完整解压；Mac 将应用拖入「应用程序」；Android 安装 APK；iPad／Apple TV 按上述说明签名并安装对应 IPA。
-2. 打开客户端，选择「大河李斯特专属 EMBY」或「自建 EMBY」。
-3. 自建服务器填写完整地址，例如 `http://192.168.1.100:8096` 或 `https://example.com/emby`，然后使用该服务器账号登录。
+2. 打开客户端，选择「大河李斯特专属 EMBY」或「自建服务器」。
+3. 自建 Emby／Jellyfin 服务器填写完整地址，例如 `http://192.168.1.100:8096`、`https://example.com/emby` 或 `https://example.com/jellyfin`，然后使用该服务器账号登录。
 4. 进入作品详情并播放。桌面与移动端可在 Emby 设置中的「Tigerest Theater 设置」调整播放选项；Apple TV 使用原生页面和播放器菜单，画质从页面顶部「画质」进入。
 5. 想参与公共讨论时，大河用户可直接进入评论区；自建用户点击「评论账号」注册或登录；Apple TV 请使用已有的公共评论账号登录。
 
@@ -149,7 +157,7 @@ Windows 安装包目前未做 Authenticode 签名。Mac 使用 ad-hoc 签名，�
 
 ### 从旧版更新
 
-Windows、Mac 与 Android 客户端启动时后台检查正式版本，以右上角更新图标红点提示；也可在「客户端」设置中点击「检查客户端更新」。下载会核验文件大小与 SHA-256，支持暂停、继续和中断后的续传；Android 下载完成后交给系统安装器确认安装。
+Windows、Mac 与 Android 客户端启动时后台检查正式版本；有新版本时每次打开软件弹窗一次，可「从GitHub获取更新」、从夸克或百度网盘下载，或「忽略本次更新」直到下一个版本，右上角更新图标也会显示红点。也可在「客户端」设置中点击「检查客户端更新」。下载会核验文件大小与 SHA-256，支持暂停、继续和中断后的续传；Android 下载完成后交给系统安装器确认安装。
 
 手动更新前完全退出客户端，包括 Windows 托盘。安装版覆盖安装；便携版备份并保留 `data`，使用完整新版文件；Mac 替换应用；Android 使用同签名正式 APK 覆盖安装。iPad 与 Apple TV 重新签名后覆盖安装，保留原应用标识和签名身份，不要先卸载。
 
@@ -169,7 +177,9 @@ iPad 应用内仅检查和提示更新，不自动替换安装；Apple TV 暂无
 
 Android 提供双击暂停、横滑跳转、左右侧亮度／音量调节、长按临时倍速、防误触锁及选集。系统关闭自动旋转时保留当前方向。详见 [播放与设置](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback)。
 
-iPad 支持横滑跳转、左右侧亮度／音量调节、长按临时倍速、锁定和季集选择，播放时隐藏系统状态栏。Apple TV 使用遥控器操作首页与海报墙，支持选季选集、上一集／下一集、字幕选择和详情页内评论；电视端暂不提供音轨选择、离线下载、直播或服务端转码，完整范围见 [电视端说明](apple/TV/README.md)。
+iPad 支持横滑跳转、左右侧亮度／音量调节、长按临时倍速、锁定和季集选择，播放时隐藏系统状态栏；接妙控键盘时上／下键调音量、左／右键快退／快进 15 秒、按住右键临时倍速。戴 AirPods 播放 5.1／7.1 音轨时保留多声道，可开启系统空间音频。
+
+Mac 与 iPad 在支持 HDR 的屏幕上把 HDR10 与杜比视界直接以 HDR 输出，开始播放时提示输出方式和色彩空间；SDR 屏幕保持色调映射。Apple TV 使用遥控器操作首页与海报墙，支持选季选集、上一集／下一集、字幕选择和详情页内评论；电视端暂不提供音轨选择、离线下载、直播或服务端转码，完整范围见 [电视端说明](apple/TV/README.md)。
 
 ### 公共评论、头像与消息
 
@@ -205,7 +215,7 @@ RIFE 默认关闭，需要大河内置播放配置：
 | --- | --- | --- |
 | Windows NVIDIA | 下载或离线导入 NVIDIA 1.0.0 扩展；三个 4.25 系列模型与可调目标帧率 | 最高逐行 SDR 4K / 60 fps；实际实时性能取决于设备和设置 |
 | Apple Silicon Mac | 模型与插件随包提供，使用 Core ML / Metal | 最高逐行 SDR 1080p / 30 fps、恒定帧率，输出两倍帧率 |
-| iPad | 随包 Core ML / Metal 原生滤镜，默认关闭 | 1920×1080、BT.709 SDR、23–30 fps，固定两倍；其他规格原帧通过 |
+| iPad | 随包 Core ML / Metal 原生滤镜，默认关闭 | 1920×1080、BT.709 SDR（8 位或 10 位）、23–30 fps，固定两倍；其他规格原帧通过 |
 | Android | 暂不提供 RIFE | 使用基础播放 |
 | Apple TV | 暂不提供 RIFE | 可选原生、轻量增强及桌面画质预设 |
 

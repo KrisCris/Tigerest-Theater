@@ -80,7 +80,12 @@ import AppleCore
             // Playback already permits AirPlay/A2DP. Their explicit options are for
             // playAndRecord and produce paramErr (-50) on physical iPads.
             try session.setCategory(.playback, mode: .moviePlayback)
+            // Without this every route reports two channels and mpv downmixes
+            // 5.1/7.1 to stereo. Spatial-capable routes (AirPods Pro/Max) then
+            // present multichannel output, which the system spatializes.
+            try? session.setSupportsMultichannelContent(true)
             try session.setActive(true)
+            try? session.setPreferredOutputNumberOfChannels(session.maximumOutputNumberOfChannels)
             let next = try MPVEngine(layer: surface.metal); engine = next
             do {
                 try applySettings()
@@ -101,7 +106,7 @@ import AppleCore
                 if !headers.isEmpty { try next.set("http-header-fields", headers.joined(separator: ",")) }
                 try next.command(["loadfile", url, "replace"])
             } catch { next.close(); engine = nil; throw error }
-            model.diagnostics.record("info", "Player load requested"); state.begin(); active = true; locked = false; loaded = false; dynamicRangeReported = false; dynamicRangeNotice = ""; position = 0; duration = 0; watchdog = PlaybackWatchdog()
+            model.diagnostics.record("info", "Player load requested"); state.begin(); active = true; locked = false; loaded = false; dynamicRangeReported = false; resetValidationTimeline(); dynamicRangeNotice = ""; position = 0; duration = 0; watchdog = PlaybackWatchdog()
             UIApplication.shared.isIdleTimerDisabled = true
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
             model.danmaku.autoMatch(metadata["metadata"],mediaURL:URL(string:url)); emit("windowVisible", [.bool(true)]); emit("onMetaData", [metadata, .string(url)])
@@ -270,7 +275,19 @@ import AppleCore
         }
     }
     @objc private func routeChanged(_ note: Notification) {
-        if note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { _ = try? dispatch("pause", []) }
+        let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+        if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { _ = try? dispatch("pause", []) }
+        // Headphones or AirPlay connected/disconnected: the new route may carry
+        // a different channel count; let mpv reopen its output for it.
+        if reason == AVAudioSession.RouteChangeReason.newDeviceAvailable.rawValue || reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue {
+            Task { @MainActor [weak self] in self?.renegotiateOutputChannels() }
+        }
+    }
+    private func renegotiateOutputChannels() {
+        guard active, let engine else { return }
+        let session = AVAudioSession.sharedInstance()
+        try? session.setPreferredOutputNumberOfChannels(session.maximumOutputNumberOfChannels)
+        try? engine.command(["ao-reload"])
     }
     #if DEBUG
     /// Validation builds only: the latest diagnostics in Caches for devicectl.
@@ -279,9 +296,49 @@ import AppleCore
         guard Date().timeIntervalSince(diagnosticsWrittenAt) >= 5, let data = try? JSONEncoder().encode(diagnostics()) else { return }
         diagnosticsWrittenAt = Date()
         try? data.write(to: URL.cachesDirectory.appending(path: "playback-diagnostics.json"), options: .atomic)
+        appendValidationTimeline()
+    }
+    /// One line per 5 s for long-playback investigations (frame drops, RIFE
+    /// inference time, thermal state, memory). Restarted for every media.
+    private var timelineStarted = false
+    private func appendValidationTimeline() {
+        guard let engine else { return }
+        let url = URL.cachesDirectory.appending(path: "playback-timeline.jsonl")
+        if !timelineStarted || ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > 2_000_000 {
+            try? Data().write(to: url); timelineStarted = true
+        }
+        var info = task_vm_info_data_t(), count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let footprint = withUnsafeMutablePointer(to: &info) { $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) } } == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
+        let rife = engine.json("vf-metadata/tigerest-rife")
+        var line: [String: JSONValue] = [
+            "uptime": .number(ProcessInfo.processInfo.systemUptime.rounded()), "position": .number(position.rounded()),
+            "paused": .bool(paused), "speed": .number(rate), "thermal": .number(Double(ProcessInfo.processInfo.thermalState.rawValue)),
+            "lowPower": .bool(ProcessInfo.processInfo.isLowPowerModeEnabled), "memoryMB": .number(footprint.rounded()),
+            "brightness": .number(brightness), "ao": .string(engine.string("current-ao")),
+        ]
+        for key in ["frame-drop-count", "decoder-frame-drop-count", "vo-delayed-frame-count", "mistimed-frame-count",
+                    "avsync", "total-avsync-change", "display-fps", "estimated-vf-fps", "container-fps", "demuxer-cache-duration"] {
+            line[key] = .number(engine.number(key))
+        }
+        line["paused-for-cache"] = .bool(engine.flag("paused-for-cache"))
+        // Timing keys exist because Debug defines TIGEREST_RIFE_TIMING; colorBackend
+        // turns to "swscale" for the rest of the file once a Metal conversion fails.
+        for key in ["status", "inferenceMs", "generated", "bypassed", "resets", "failures", "inputs", "outputs",
+                    "colorBackend", "software_format", "downloadMs", "conversionMs", "conversionCPUMs",
+                    "pipelineMs", "pipelinePeakMs", "pipeline_samples", "pipeline_over_budget",
+                    "inputQueueFrames", "outputQueueFrames"] {
+            if rife[key] != .null { line["rife." + key] = rife[key] }
+        }
+        guard var data = try? JSONEncoder().encode(JSONValue.object(line)), let handle = try? FileHandle(forWritingTo: url) else { return }
+        data.append(0x0A); handle.seekToEndOfFile(); handle.write(data); try? handle.close()
     }
     #endif
-    func diagnostics() -> JSONValue { .object(["nativeRife": engine?.json("vf-metadata/tigerest-rife") ?? .null,"qualityPreset": .string(qualitySelection.preset), "shaderPaths": engine?.json("glsl-shaders") ?? .array([]), "renderPasses": engine?.json("vo-passes") ?? .null, "brightness": .number(brightness), "systemVolume": .number(systemVolume.value), "version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false)]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos", "sub-font", "sub-fonts-dir"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "videoParams": engine?.json("video-params") ?? .null, "videoOutParams": engine?.json("video-out-params") ?? .null, "edrHeadroom": .object(["current": .number(Double(surface.window?.screen.currentEDRHeadroom ?? 0)), "potential": .number(Double(surface.window?.screen.potentialEDRHeadroom ?? 0)), "brightness": .number(Double(surface.window?.screen.brightness ?? -1))]), "colorOutput": .object(Dictionary(uniqueKeysWithValues: ["target-colorspace-hint", "tone-mapping", "target-trc", "target-prim", "target-peak"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
+    #if DEBUG
+    private func resetValidationTimeline() { timelineStarted = false }
+    #else
+    private func resetValidationTimeline() {}
+    #endif
+    func diagnostics() -> JSONValue { .object(["nativeRife": engine?.json("vf-metadata/tigerest-rife") ?? .null,"qualityPreset": .string(qualitySelection.preset), "shaderPaths": engine?.json("glsl-shaders") ?? .array([]), "renderPasses": engine?.json("vo-passes") ?? .null, "brightness": .number(brightness), "systemVolume": .number(systemVolume.value), "version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false), "channels": .string(engine?.string("audio-out-params/channels") ?? ""), "sourceChannels": .string(engine?.string("audio-params/channels") ?? ""), "sessionOutputChannels": .number(Double(AVAudioSession.sharedInstance().outputNumberOfChannels)), "sessionMaximumOutputChannels": .number(Double(AVAudioSession.sharedInstance().maximumOutputNumberOfChannels)), "supportsMultichannel": .bool(AVAudioSession.sharedInstance().supportsMultichannelContent), "route": .array(AVAudioSession.sharedInstance().currentRoute.outputs.map { .object(["type": .string($0.portType.rawValue), "channels": .number(Double($0.channels?.count ?? 0)), "spatialAudio": .bool($0.isSpatialAudioEnabled)]) })]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos", "sub-font", "sub-fonts-dir"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "videoParams": engine?.json("video-params") ?? .null, "videoOutParams": engine?.json("video-out-params") ?? .null, "edrHeadroom": .object(["current": .number(Double(surface.window?.screen.currentEDRHeadroom ?? 0)), "potential": .number(Double(surface.window?.screen.potentialEDRHeadroom ?? 0)), "brightness": .number(Double(surface.window?.screen.brightness ?? -1))]), "colorOutput": .object(Dictionary(uniqueKeysWithValues: ["target-colorspace-hint", "tone-mapping", "target-trc", "target-prim", "target-peak"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
     func applySettings() throws {
         guard let engine else { return }
         try engine.resetQuality()
