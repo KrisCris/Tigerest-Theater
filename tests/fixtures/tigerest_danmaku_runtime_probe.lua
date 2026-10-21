@@ -587,6 +587,27 @@ function cases.fresh_profile_autoloads_through_comment_rendering()
     assert(s.env.COMMENTS and #s.env.COMMENTS == 1, 'Response must pass through the actual comment parser')
     assert(s.history().show_danmaku == true, 'Fresh profile must retain its enabled preference')
 end
+function cases.bottom_comments_stay_off_the_subtitles()
+    local s = sandbox(true)
+    s.emit('file-loaded')
+    s.respond(1, {animes = {{type = 'tvseries', animeTitle = 'Fixture series', bangumiId = '42'}}})
+    s.respond(2, {bangumi = {episodes = {{episodeNumber = '3', episodeTitle = 'Episode three', episodeId = 420003}}}})
+    s.respond(3, {count = 3, comments = {{p = '10,4,16777215', m = 'Bottom'}, {p = '10,5,16777215', m = 'Top'},
+        {p = '10,1,16777215', m = 'Scroll'}}})
+    local by = {}
+    for _, comment in ipairs(s.env.COMMENTS or {}) do by[comment.clean_text] = comment end
+    assert(by.Bottom and by.Bottom.style == 'R2L' and by.Bottom.move, 'Bottom comments must scroll instead of covering subtitles')
+    assert(by.Top and by.Top.style == 'TOP' and by.Top.pos, 'Top comments stay fixed')
+    -- Even at a 100% display area the bottom fifth of the picture is left to subtitles.
+    local r = sandbox(); r.env.options.displayarea = 1; r.start_render()
+    r.env.COMMENTS = {{start_time = 0, end_time = 30, style = 'R2L', move = {1920, 800, -1920, 800}, text = '{\\move(1920,800,-1920,800)}Upper'},
+        {start_time = 0, end_time = 30, style = 'R2L', move = {1920, 1000, -1920, 1000}, text = '{\\move(1920,1000,-1920,1000)}Lower'}}
+    r.set('time-pos', 11); r.advance(0.05)
+    local drawn = ''
+    for _, overlay in ipairs(r.overlays) do drawn = drawn .. (overlay.data or '') end
+    assert(drawn:find('Upper', 1, true), 'Comments above the subtitle area are drawn')
+    assert(not drawn:find('Lower', 1, true), 'Comments in the bottom fifth are not drawn')
+end
 function cases.explicit_off_is_preserved()
     local s = sandbox(true)
     s.set_history({show_danmaku = false})
