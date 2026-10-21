@@ -24,7 +24,7 @@ withBrowser({
  const dialogOpen=()=>evaluate('!!document.querySelector("#tigerest-update-dialog[open]")');
  const actionLabels=()=>evaluate('[...document.querySelectorAll("#tigerest-update-dialog [data-update-action]")].map(node=>node.textContent)');
  assert.equal(await dialogOpen(),true,'a release found before the user acts prompts at startup');
- assert.deepEqual(await actionLabels(),['从GitHub获取更新','忽略本次更新','稍后']);
+ assert.deepEqual(await actionLabels(),['直接下载','忽略本次更新','稍后']);
  await evaluate('document.querySelector("[data-update-action=close]").click()');
  assert.deepEqual(await evaluate('calls.at(-1)'),['deferAppUpdate']);
  await evaluate(`emit({deferred:true});emit({deferred:false});`);
@@ -53,7 +53,7 @@ withBrowser({
  assert.equal(await evaluate('document.querySelector("[data-update-dot]").hidden'),false,'Later keeps the available update reachable');
  assert.deepEqual(await evaluate('calls.at(-1)'),['deferAppUpdate']);
  await evaluate(`emit({mirrors:{quark:'https://pan.quark.cn/s/abc123def',baidu:'https://pan.baidu.com/s/1AbCdEf?pwd=ab12'}});document.querySelector("#tigerest-update-button").click()`);
- assert.deepEqual(await actionLabels(),['从GitHub获取更新','夸克网盘','百度网盘','忽略本次更新','稍后'],'netdisk buttons follow the release mirrors');
+ assert.deepEqual(await actionLabels(),['直接下载','夸克网盘','百度网盘','忽略本次更新','稍后'],'netdisk buttons follow the release mirrors');
  for(const width of [1100,360]){
   await call('Emulation.setDeviceMetricsOverride',{width,height:740,deviceScaleFactor:1,mobile:width<500});
   const rows=await evaluate(`(()=>{const top=action=>document.querySelector('[data-update-action='+action+']').getBoundingClientRect().top,bg=action=>getComputedStyle(document.querySelector('[data-update-action='+action+']')).backgroundColor;return {together:Math.abs(top('skip')-top('close'))<1,primary:bg('download'),skip:bg('skip')}})()`);
@@ -69,7 +69,7 @@ withBrowser({
  assert.equal(await evaluate('externalLinks.length'),links,'the share itself is not opened as well');
  assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("从网盘下载安装包")'));
  await evaluate(`emit({mirrors:{quark:'javascript:alert(1)'}})`);
- assert.deepEqual(await actionLabels(),['从GitHub获取更新','忽略本次更新','稍后'],'only https mirrors are offered');
+ assert.deepEqual(await actionLabels(),['直接下载','忽略本次更新','稍后'],'only https mirrors are offered');
  await evaluate(`emit({mirrors:{}});document.querySelector("[data-update-action=close]").click()`);
  await evaluate(`emit({status:'available',deferred:true});`);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog").open'),false,'Later survives state replay without persisting skip');
@@ -82,12 +82,12 @@ withBrowser({
  await evaluate('TigerestUpdate.check()');assert.deepEqual(await evaluate('calls.at(-1)'),['checkForUpdates',true]);
  await evaluate(`emit({status:'available',manual:true});document.querySelector('[data-update-action=download]').click()`);
  assert.deepEqual(await evaluate('calls.at(-1)'),['downloadAppUpdate']);
- await evaluate(`emit({status:'downloading',received:512,speed:2048});`);
+ await evaluate(`emit({status:'downloading',received:512,speed:2048,source:'gh-proxy.com'});`);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-dialog progress").value'),50);
- assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("2.0 KB/s")'),'download speed is visible');
- await evaluate(`emit({retrying:true,retryAttempt:2,retryLimit:5,retryDelay:5});`);
- assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("第 2/5 次")'),'native retry budget is visible');
- await evaluate(`emit({platform:'android',retrying:false});`);
+ assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("2.0 KB/s · 来源 gh-proxy.com")'),'download speed and source are visible');
+ await evaluate(`emit({retrying:true,retryAttempt:2,retryLimit:5,retryDelay:5,source:'ghproxy.net'});`);
+ assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("第 2/5 次自动重试（ghproxy.net）")'),'native retry budget and next source are visible');
+ await evaluate(`emit({platform:'android',retrying:false,source:''});`);
  assert.equal(await evaluate('document.querySelector("[data-update-action=cancel]").textContent'),'暂停下载','Android keeps a paused partial');
  await evaluate(`emit({status:'available',resumable:true,retrying:false});`);
  assert.equal(await evaluate('document.querySelector("[data-update-action=download]").textContent'),'继续下载');

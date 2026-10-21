@@ -59,6 +59,8 @@ int main(int argc,char** argv) {
         const auto options=QJsonDocument::fromJson(optionsFile.readAll()).object();
         QFile ca(options["ca"].toString());if(!ca.open(QIODevice::ReadOnly))return 3;
         if(options["trustTestCa"].toBool(true))manager.setTrustedCertificateForTest(ca.readAll());
+        QList<QUrl> sources;for(const auto& source:options["sources"].toArray())sources.append(QUrl(source.toString()));
+        manager.setDownloadSourcesForTest(sources);
         const auto cancelAt=options["cancelAt"].toDouble(-1);
         if(cancelAt>=0)QObject::connect(&manager,&rife::RifeExtensionManager::statusChanged,[&,cancelAt](const QVariantMap& status){if(status["state"]=="downloading"&&status["doneBytes"].toLongLong()>=cancelAt)manager.cancel();});
     }

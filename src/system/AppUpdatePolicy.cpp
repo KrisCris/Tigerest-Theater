@@ -19,6 +19,11 @@ QUrl mirror(const QJsonObject& links, const QString& key, const QString& pattern
 }
 }
 
+QList<QUrl> downloadSources(const Candidate& candidate)
+{
+  return DownloadProxies::sources(candidate.downloadUrl);
+}
+
 Candidate select(const QJsonArray& releases, const QString& currentVersion, Package package)
 {
   const QRegularExpression currentPattern("^v?(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})(-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$");

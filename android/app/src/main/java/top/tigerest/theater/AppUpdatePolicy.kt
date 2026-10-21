@@ -16,6 +16,9 @@ object AppUpdatePolicy {
     /** Built-in netdisk shares, one subfolder per released version. */
     const val DEFAULT_QUARK_SHARE = "https://pan.quark.cn/s/88e6f7a795b4"
     const val DEFAULT_BAIDU_SHARE = "https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig"
+    /** GitHub download accelerators, tried in order before the release URL. Size and SHA-256 still come from the GitHub API. */
+    val DOWNLOAD_PROXIES = listOf("https://gh-proxy.com/", "https://ghproxy.net/")
+    fun downloadSources(url: String) = DOWNLOAD_PROXIES.map { it + url } + url
     private val stableVersion = Regex("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)")
     private val mirrorMarker = Regex("<!--\\s*tigerest-mirrors\\s+(\\{[^<>]*\\})\\s*-->")
     private val quark = Regex("https://pan\\.quark\\.cn/s/[0-9A-Za-z]{6,64}(\\?pwd=[0-9A-Za-z]{4})?")

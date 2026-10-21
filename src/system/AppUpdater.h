@@ -50,8 +50,10 @@ private:
   void refreshCachedProgress();
   void beginDownloadRequest();
   void completeDownload();
-  void retryDownload(const QString& message);
+  void retryDownload(const QString& message, bool switchSource = false);
   void restartDownload();
+  // Retries on the next source when an accelerator misbehaves; false on the release URL itself.
+  bool skipProxy(const QString& message);
   QJsonObject preferences() const;
   bool savePreferences(const QJsonObject& preferences);
   void rememberCandidate(const QJsonArray& releases);
@@ -79,6 +81,9 @@ private:
   qint64 m_requestOffset = 0;
   qint64 m_progressHighWater = 0;
   int m_retryCount = 0;
+  // Index into AppUpdatePolicy::downloadSources(); the release URL alone once a package failed its digest.
+  int m_source = 0;
+  bool m_directOnly = false;
   bool m_headersAccepted = false;
   bool m_restartedFresh = false;
   bool m_automaticAttempted = false;

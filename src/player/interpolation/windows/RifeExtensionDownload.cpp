@@ -1,4 +1,5 @@
 #include "RifeExtensionDownload.h"
+#include "shared/DownloadProxies.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QEventLoop>
@@ -46,7 +47,8 @@ QString fileHash(QFile& file,const RifeExtensionArchive::Options& options) {
 }
 }
 QString RifeExtensionDownload::fetch(const QJsonObject& item,const QString& root,
-    const RifeExtensionArchive::Options& options,const QByteArray& testCertificate,QString* error)
+    const RifeExtensionArchive::Options& options,const QByteArray& testCertificate,QString* error,
+    const QList<QUrl>& testSources)
 {
     auto fail=[&](const QString& message){if(error)*error=message;return QString{};};
     if(error)error->clear();
@@ -77,11 +79,16 @@ QString RifeExtensionDownload::fetch(const QJsonObject& item,const QString& root
     if(freeBytes<size-file.size()+item["unpackedSize"].toDouble()+256*1024*1024)return fail("Insufficient disk space for extension download and staging");
     // Created on this worker thread, with no Emby connection, cookie jar or auth.
     QNetworkAccessManager network;
+    // A github.com archive also comes through the download accelerators; the catalog's size and SHA-256 still decide.
+    QString sourceFailure;
+    const auto sources=testSources.isEmpty()?DownloadProxies::sources(url):testSources;
+    for(const auto& source:sources) {
+        if(source.scheme()!="https")return fail("Extension download is not available from a fixed HTTPS URL");
     for(int attempt=0;attempt<2;++attempt) {
         if(isCancelled(options))return fail("Extension operation cancelled");
         const auto requestedOffset=resumable?file.size():0;
         if(!file.seek(requestedOffset))return fail("Cannot seek extension download");
-        QNetworkRequest request(url);
+        QNetworkRequest request(source);
         request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,QNetworkRequest::NoLessSafeRedirectPolicy);
         request.setRawHeader("Accept-Encoding","identity");request.setTransferTimeout(30000);
         if(!testCertificate.isEmpty()) {
@@ -92,8 +99,10 @@ QString RifeExtensionDownload::fetch(const QJsonObject& item,const QString& root
         if(requestedOffset>0){request.setRawHeader("Range","bytes="+QByteArray::number(requestedOffset)+"-");request.setRawHeader("If-Range",etag);}
         auto* reply=network.get(request);
         QEventLoop loop;QTimer cancelTimer;cancelTimer.setInterval(25);
-        bool accepted=false,retryFresh=false;QString failure;
+        // A local failure ends the download; a bad response moves on to the next source.
+        bool accepted=false,retryFresh=false,local=false,discard=false;QString failure;
         auto abort=[&](const QString& reason){failure=reason;reply->abort();};
+        auto stop=[&](const QString& reason){local=true;abort(reason);};
         auto headers=[&] {
             if(accepted||!failure.isEmpty()||!reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).isValid())return;
             const auto status=reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -105,7 +114,7 @@ QString RifeExtensionDownload::fetch(const QJsonObject& item,const QString& root
                     retryFresh=requestedOffset>0&&attempt==0;abort("Range or ETag changed; partial response rejected");return;
                 }
             } else if(status==200) {
-                if(!file.resize(0)||!file.seek(0)){abort("Cannot reset extension download");return;}
+                if(!file.resize(0)||!file.seek(0)){stop("Cannot reset extension download");return;}
             } else {abort("Extension download HTTP status "+QString::number(status));return;}
             const auto contentLength=reply->header(QNetworkRequest::ContentLengthHeader);
             const auto wanted=status==206?size-requestedOffset:size;
@@ -114,35 +123,45 @@ QString RifeExtensionDownload::fetch(const QJsonObject& item,const QString& root
             if(!encoding.isEmpty()&&encoding!="identity"){abort("Unsupported download content encoding");return;}
             const QJsonObject record{{"schemaVersion",1},{"url",url.toString()},{"sha256",hash},{"size",size},
                 {"etag",strongEtag(responseEtag)?QString::fromLatin1(responseEtag):QString{}}};
-            if(!saveMeta(metaPath,record)){abort("Cannot commit extension resume metadata");return;}
+            if(!saveMeta(metaPath,record)){stop("Cannot commit extension resume metadata");return;}
+            etag=strongEtag(responseEtag)?responseEtag:QByteArray();
             accepted=true;
         };
         auto consume=[&] {
             headers();if(!accepted||!failure.isEmpty())return;
             while(reply->bytesAvailable()>0) {
-                if(isCancelled(options)){abort("Extension operation cancelled");return;}
+                if(isCancelled(options)){stop("Extension operation cancelled");return;}
                 const auto bytes=reply->read(1024*1024);
-                if(bytes.size()>size-file.pos()){abort("Download exceeds trusted catalog size");return;}
-                if(file.write(bytes)!=bytes.size()){abort("Cannot write extension download");return;}
+                if(bytes.size()>size-file.pos()){discard=true;abort("Download exceeds trusted catalog size");return;}
+                if(file.write(bytes)!=bytes.size()){stop("Cannot write extension download");return;}
                 if(options.progress)options.progress(file.pos(),size);
             }
         };
         QObject::connect(reply,&QNetworkReply::metaDataChanged,&loop,headers);
         QObject::connect(reply,&QIODevice::readyRead,&loop,consume);
         QObject::connect(reply,&QNetworkReply::finished,&loop,&QEventLoop::quit);
-        QObject::connect(&cancelTimer,&QTimer::timeout,&loop,[&]{if(isCancelled(options))abort("Extension operation cancelled");});
+        QObject::connect(&cancelTimer,&QTimer::timeout,&loop,[&]{if(isCancelled(options))stop("Extension operation cancelled");});
         cancelTimer.start();loop.exec();cancelTimer.stop();consume();
         const auto networkError=reply->error();const auto networkText=reply->errorString();
         delete reply;
         if(!file.flush())return fail("Cannot flush extension download");
         if(isCancelled(options))return fail("Extension operation cancelled");
         if(retryFresh){if(!file.resize(0)||!file.seek(0))return fail("Cannot reset extension download");resumable=false;etag.clear();continue;}
-        if(!failure.isEmpty())return fail(failure);
-        if(networkError!=QNetworkReply::NoError)return fail("Extension download failed: "+networkText);
-        if(!accepted||file.size()!=size)return fail("Incomplete extension download");
-        if(fileHash(file,options)!=hash)return fail(isCancelled(options)?"Extension operation cancelled":"Downloaded archive hash differs from trusted catalog");
-        return path;
+        if(local)return fail(failure);
+        if(failure.isEmpty()&&networkError==QNetworkReply::NoError&&accepted&&file.size()==size) {
+            const auto received=fileHash(file,options);
+            if(isCancelled(options))return fail("Extension operation cancelled");
+            if(received==hash)return path;
+            failure="Downloaded archive hash differs from trusted catalog";discard=true;
+        }
+        if(failure.isEmpty())failure=networkError!=QNetworkReply::NoError?"Extension download failed: "+networkText:"Incomplete extension download";
+        sourceFailure=failure;
+        // Bytes that failed verification are dropped; an interrupted prefix is resumed from the next source.
+        if(discard){if(!file.resize(0))return fail("Cannot reset extension download");etag.clear();}
+        resumable=strongEtag(etag)&&file.size()>0&&file.size()<size;
+        break;
     }
-    return fail("Extension download could not restart safely");
+    }
+    return fail(sourceFailure.isEmpty()?"Extension download could not restart safely":sourceFailure);
 }
 }

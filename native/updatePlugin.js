@@ -160,8 +160,8 @@
         const transfer = `${bytes(state.received)} / ${bytes(state.size)}`;
         const message = state.checkOnly && !['checking','error'].includes(status) ? [state.message,state.status==='unpublished' && state.projectVersion ? `项目最新正式版 ${state.projectVersion}` : ''].filter(Boolean).join('\n') : status === 'current' ? '当前平台暂无可安装的新正式版。' :
             status === 'checking' ? '正在检查正式发布，请稍候…' :
-            status === 'downloading' ? state.retrying ? `${transfer}。${state.retryDelay || 1} 秒后第 ${state.retryAttempt || 1}/${state.retryLimit || 5} 次自动重试。${state.resumable?'已保留进度，将继续下载。':''}` :
-                `已下载 ${percent}%（${transfer}）${percent===100?'，正在校验…':state.speed>0?` · ${bytes(state.speed)}/s`:''}` :
+            status === 'downloading' ? state.retrying ? `${transfer}。${state.retryDelay || 1} 秒后第 ${state.retryAttempt || 1}/${state.retryLimit || 5} 次自动重试${state.source?`（${state.source}）`:''}。${state.resumable?'已保留进度，将继续下载。':''}` :
+                `已下载 ${percent}%（${transfer}）${percent===100?'，正在校验…':state.speed>0?` · ${bytes(state.speed)}/s`:''}${state.source && percent<100?` · 来源 ${state.source}`:''}` :
             status === 'installing' ? '请按系统提示完成更新。取消后可再次安装。' :
             status === 'available' ? `${state.resumable?`已保留 ${transfer}，可继续下载。`:`大小约 ${(Number(state.size||0)/1048576).toFixed(1)} MB。`}下载校验完成后将${state.installLabel || '打开安装程序'}。${state.mirrors?.quark || state.mirrors?.baidu ? '\n无法访问 GitHub 时，可从网盘下载安装包手动安装。' : ''}` :
             status === 'error' && state.resumable ? `已保留 ${transfer}，重试会继续下载。` : '';
@@ -173,7 +173,7 @@
         if (state.checkOnly && ['available','current','unpublished'].includes(status)) {
             button('查看发布说明','release',()=>invoke('openExternalUrl',state.releaseUrl));
         } else if (!state.checkOnly && (status === 'available' || status === 'error' && state.version && state.size>0)) {
-            button(state.resumable?'继续下载':status==='error'?'重试下载':'从GitHub获取更新','download',async()=>{autoInstall=true;await invoke('downloadAppUpdate');});
+            button(state.resumable?'继续下载':status==='error'?'重试下载':'直接下载','download',async()=>{autoInstall=true;await invoke('downloadAppUpdate');});
         } else if (status === 'ready' && !state.checkOnly) {
             button(state.installLabel || '安装更新','install',()=>install(false));
         } else if (status === 'error') {

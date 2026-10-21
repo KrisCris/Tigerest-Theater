@@ -169,7 +169,7 @@ void RifeExtensionManager::download(const QString& id){start("downloading",[this
     const auto item=RifeExtensionArchive::catalogPackage(m_catalog,id,m_appVersion,&error);
     if(!error.isEmpty()){result.error=error;return result;}
     if(!ensureRoot(m_root)){result.error="Cannot create private extension root";return result;}
-    const auto path=RifeExtensionDownload::fetch(item,m_root+"/downloads",archiveOptions(),m_testCertificate,&error);
+    const auto path=RifeExtensionDownload::fetch(item,m_root+"/downloads",archiveOptions(),m_testCertificate,&error,m_testSources);
     if(path.isEmpty()){result.error=error;return result;}
     QMetaObject::invokeMethod(this,[this]{publish({{"state","installing"},{"doneBytes",0}});},Qt::QueuedConnection);
     return install(path);

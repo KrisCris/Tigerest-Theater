@@ -1,5 +1,12 @@
 # 更新记录
 
+## 未发布
+
+**Windows 与 Android**
+
+- **更新下载走加速镜像：** 更新窗口的「从GitHub获取更新」改名为「直接下载」，依次尝试 gh-proxy.com、ghproxy.net，连不上再回到 GitHub 原址；下载中显示当前来源。镜像只负责传输，文件大小与 SHA-256 仍以 GitHub 发布信息为准；镜像下载的包未通过核验时，自动从 GitHub 原址重新下载一次。
+- **Windows RIFE 组件：** 设置里下载 RIFE 补帧组件也按同样顺序使用加速镜像，并按内置清单核验大小与 SHA-256。
+
 ## v2.9.3 — 2026-10-21
 
 **Windows 与 Android**（Mac、iPad 与 Apple TV 随后补充）

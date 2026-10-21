@@ -39,6 +39,7 @@ AppUpdater::AppUpdater(const QString& version, Package package, const QString& c
     {"size", qint64(0)}, {"received", qint64(0)}, {"error", ""}, {"manual", false}, {"deferred", false}, {"installAfterDownload", false},
     {"cached", false}, {"mirrors", QVariantMap()},
     {"resumable", false}, {"retrying", false}, {"retryAttempt", 0}, {"retryLimit", RetryLimit}, {"retryDelay", 0}, {"speed", qint64(0)},
+    {"source", ""},
     {"platform", package == Package::MacArm64 ? "macos" : package == Package::Unsupported ? "unsupported" : "windows"},
     {"installLabel", package == Package::WindowsInstaller ? "安装更新" : package == Package::WindowsPortable ? "打开 ZIP 更新包" : "打开 DMG 更新包"}};
   m_retryTimer.setSingleShot(true);
@@ -97,6 +98,7 @@ void AppUpdater::clearTransfer(bool discard)
   m_state["resumable"] = !discard && strongEtag(m_etag) && m_state.value("received").toLongLong() > 0;
   m_state["retrying"] = false;
   m_state["speed"] = qint64(0);
+  m_state["source"] = QString();
   m_cacheLock.reset();
   m_file.setFileName(QString());
   m_readyPath.clear();
@@ -192,6 +194,7 @@ void AppUpdater::receive(QNetworkReply* reply, bool metadata)
   const qint64 responseSize = metadata ? maximum : maximum - m_requestOffset;
   if (hasLength && (contentLength < 0 || contentLength > responseSize || (!metadata && contentLength != responseSize)))
   {
+    if (!metadata && skipProxy("加速下载源返回的大小不对，正在换用下一个下载源。")) return;
     fail("更新响应大小不符合预期。", !metadata);
     return;
   }
@@ -202,6 +205,7 @@ void AppUpdater::receive(QNetworkReply* reply, bool metadata)
     const qint64 received = metadata ? m_metadata.size() : m_file.size();
     if (bytes.size() > maximum - received)
     {
+      if (!metadata && skipProxy("加速下载源返回的数据过多，正在换用下一个下载源。")) return;
       fail("更新响应超过允许的大小。", !metadata);
       return;
     }
@@ -309,10 +313,12 @@ void AppUpdater::beginDownloadRequest()
   m_state["retrying"] = false;
   m_state["resumable"] = m_requestOffset > 0;
   m_transferClock.start(); m_progressClock.invalidate();
+  // Every attempt starts again from the source's own URL; the release URL then hands out a fresh signed redirect.
+  const QUrl source = AppUpdatePolicy::downloadSources(m_candidate).value(m_source);
+  m_state["source"] = source.host();
   publish("downloading");
   if (!m_file.isOpen() || m_state.value("status") != "downloading") return;
-  // Always obtain a fresh signed asset redirect from the canonical URL.
-  request(m_candidate.downloadUrl, false);
+  request(source, false);
 }
 
 void AppUpdater::restartDownload()
@@ -329,7 +335,7 @@ void AppUpdater::restartDownload()
   m_retryTimer.start(0);
 }
 
-void AppUpdater::retryDownload(const QString& message)
+void AppUpdater::retryDownload(const QString& message, bool switchSource)
 {
   if (m_reply)
   {
@@ -339,8 +345,13 @@ void AppUpdater::retryDownload(const QString& message)
   if (!m_file.isOpen() || !m_file.flush()) { fail("无法保存更新进度。", true); return; }
   // Count consecutive attempts that did not grow the retained package. A
   // server ignoring Range must not refill the budget by rewriting its prefix.
-  if (m_file.size() > m_progressHighWater)
+  const bool progressed = m_file.size() > m_progressHighWater;
+  if (progressed)
   { m_progressHighWater = m_file.size(); m_retryCount = 0; }
+  // A source that was making progress is retried; one that was not gives way to the next.
+  if ((switchSource || !progressed) && !m_directOnly)
+    m_source = (m_source + 1) % (AppUpdatePolicy::DownloadProxyCount + 1);
+  m_state["source"] = AppUpdatePolicy::downloadSources(m_candidate).value(m_source).host();
   if (m_retryCount >= RetryLimit)
   { fail(strongEtag(m_etag) && m_file.size() > 0 ? "自动重试未完成，已保留进度，可点击继续下载。" : "自动重试未完成，请稍后重新下载。"); return; }
   const int delay = RetryDelays[m_retryCount++];
@@ -353,12 +364,32 @@ void AppUpdater::retryDownload(const QString& message)
   publish("downloading", message);
 }
 
+bool AppUpdater::skipProxy(const QString& message)
+{
+  if (m_directOnly || m_source >= AppUpdatePolicy::DownloadProxyCount) return false;
+  retryDownload(message, true);
+  return true;
+}
+
 void AppUpdater::completeDownload()
 {
   const bool flushed = m_file.flush();
   m_file.close();
   if (!flushed || !AppUpdatePolicy::verifyFile(m_file.fileName(), m_candidate))
-  { fail("更新文件长度或 SHA-256 校验失败，请重新下载。", true); return; }
+  {
+    // Bytes from an accelerator do not match GitHub's digest: download once more from the release URL alone.
+    if (flushed && !m_directOnly && m_file.open(QIODevice::ReadWrite) && m_file.resize(0))
+    {
+      m_directOnly = true; m_source = AppUpdatePolicy::DownloadProxyCount;
+      m_etag.clear(); QFile::remove(m_metadataPath);
+      m_retryCount = 0; m_progressHighWater = 0; m_restartedFresh = false;
+      m_state["received"] = qint64(0);
+      beginDownloadRequest();
+      return;
+    }
+    fail("更新文件长度或 SHA-256 校验失败，请重新下载。", true);
+    return;
+  }
   m_readyPath = m_downloadDirectory + "/" + m_candidate.fileName;
   if (!plainPath(m_readyPath) || (QFile::exists(m_readyPath) && !QFile::remove(m_readyPath)) ||
       !QFile::rename(m_file.fileName(), m_readyPath))
@@ -386,6 +417,7 @@ void AppUpdater::finish(QNetworkReply* reply, bool metadata, int redirects)
     if (redirects >= 5 || !target.isValid() || target.scheme() != "https" || !knownHost ||
         !target.userInfo().isEmpty() || target.hasFragment() || (target.port() != -1 && target.port() != 443))
     {
+      if (!metadata && skipProxy("加速下载源返回了不受信任的跳转，正在换用下一个下载源。")) return;
       fail("更新服务器返回了不安全或过多的重定向。");
       return;
     }
@@ -402,6 +434,7 @@ void AppUpdater::finish(QNetworkReply* reply, bool metadata, int redirects)
         error == QNetworkReply::OperationCanceledError || error == QNetworkReply::TemporaryNetworkFailureError ||
         error == QNetworkReply::HostNotFoundError || error == QNetworkReply::ConnectionRefusedError))
     { retryDownload("更新下载中断，正在重试。"); return; }
+    if (!metadata && skipProxy("加速下载源暂时不可用，正在换用下一个下载源。")) return;
     fail(status == 403 || status == 429 ? "GitHub 请求受限，请稍后重试。" : "无法获取更新，请检查网络后重试。");
     return;
   }
@@ -461,6 +494,7 @@ void AppUpdater::download()
   if (!m_candidate.valid() || (status != "available" && status != "error")) return;
   clearTransfer();
   m_retryCount = 0; m_progressHighWater = 0; m_restartedFresh = false;
+  m_source = 0; m_directOnly = false;
   m_state["retryAttempt"] = 0;
   m_state["manual"] = true;
   m_state["deferred"] = false;

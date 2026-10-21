@@ -18,6 +18,7 @@ if(WIN32)
   target_sources(tigerest_rife_control PRIVATE windows/RifeExtensionArchive.cpp windows/RifeExtensionArchive.h)
   target_sources(tigerest_rife_control PRIVATE windows/RifeExtensionManager.cpp windows/RifeExtensionManager.h)
   target_sources(tigerest_rife_control PRIVATE windows/RifeExtensionDownload.cpp windows/RifeExtensionDownload.h)
+  target_include_directories(tigerest_rife_control PRIVATE ${CMAKE_SOURCE_DIR}/src)
   target_link_libraries(tigerest_rife_control PRIVATE tigerest_miniz Qt6::Network)
   target_sources(tigerest_rife_control PRIVATE windows/RifeRuntimeManager.cpp windows/RifeRuntimeManager.h
     windows/RifeVSScriptRuntime.cpp windows/RifeVSScriptRuntime.h)

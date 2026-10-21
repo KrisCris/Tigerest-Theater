@@ -15,6 +15,10 @@ interface AppUpdateSource {
     fun download(candidate: AppUpdateCandidate, destination: File, cancelled: () -> Boolean, progress: (Long) -> Unit)
     fun validateApk(file: File, candidate: AppUpdateCandidate)
     fun cancel()
+    /** The host the package currently comes from, for the progress text. */
+    fun activeSource(): String = ""
+    /** True when a package that failed verification should be downloaded once more from the release URL alone. */
+    fun retryDirect(candidate: AppUpdateCandidate): Boolean = false
 }
 
 class AppUpdateEngine(private val currentVersion: String, private val directory: File, private val source: AppUpdateSource,
@@ -76,6 +80,7 @@ class AppUpdateEngine(private val currentVersion: String, private val directory:
         .put("mirrors", JSONObject().apply { candidate?.quarkUrl?.takeIf { it.isNotEmpty() }?.let { put("quark", it) }; candidate?.baiduUrl?.takeIf { it.isNotEmpty() }?.let { put("baidu", it) } })
         .put("resumable", candidate != null && received > 0 && status in setOf("available", "downloading", "error"))
         .put("retrying", retrying).put("retryAttempt", retryAttempt).put("retryLimit", retryDelays.size).put("retryDelay", retryDelay)
+        .put("source", if (status == "downloading") source.activeSource() else "")
     private fun publish() { changed(snapshot()) }
     @Synchronized private fun active(generation: Long) = !closed && generation == token
     private fun task(generation: Long, action: () -> Unit) {
@@ -174,44 +179,59 @@ class AppUpdateEngine(private val currentVersion: String, private val directory:
                 var failures = 0
                 var highWater = resumeOffset(part, selected)
                 try {
-                    while (resumeOffset(part, selected) != selected.size && resumeOffset(complete, selected) != selected.size) {
-                        if (!active(generation)) return@task
-                        val beforeHighWater = highWater
-                        try {
-                            source.download(selected, part, { !active(generation) }) { bytes ->
-                                val gained = bytes > highWater
-                                if (gained) highWater = bytes
-                                synchronized(this) { if (active(generation)) { received = bytes; if (gained) { error = ""; clearRetry() }; publish() } }
-                            }
-                            // A source returning a short body is also an interrupted attempt.
-                            if (part.length() != selected.size) throw IOException("更新包下载中断")
-                        } catch (failure: IOException) {
+                    // A package rejected after an accelerated download is fetched once more from the release URL alone.
+                    var packageFile: File
+                    while (true) {
+                        while (resumeOffset(part, selected) != selected.size && resumeOffset(complete, selected) != selected.size) {
                             if (!active(generation)) return@task
-                            // All expected bytes are present even if the connection failed at its end.
-                            if (part.length() == selected.size) break
-                            highWater = maxOf(highWater, resumeOffset(part, selected))
-                            if (highWater > beforeHighWater) failures = 0
-                            if (failures >= retryDelays.size) throw UpdateRetryExhausted("更新下载多次中断，已保留下载进度。请检查网络后重试下载。")
-                            val delay = retryDelays[failures++]
-                            val attempt = failures
-                            synchronized(this) {
+                            val beforeHighWater = highWater
+                            try {
+                                source.download(selected, part, { !active(generation) }) { bytes ->
+                                    val gained = bytes > highWater
+                                    if (gained) highWater = bytes
+                                    synchronized(this) { if (active(generation)) { received = bytes; if (gained) { error = ""; clearRetry() }; publish() } }
+                                }
+                                // A source returning a short body is also an interrupted attempt.
+                                if (part.length() != selected.size) throw IOException("更新包下载中断")
+                            } catch (failure: IOException) {
                                 if (!active(generation)) return@task
-                                received = retained(selected); retrying = true; retryAttempt = attempt; retryDelay = (delay + 999) / 1000
-                                error = "下载中断，$retryDelay 秒后自动继续（第 $attempt/${retryDelays.size} 次重试）。"; publish()
-                            }
-                            pause(delay, generation)
-                            synchronized(this) {
-                                if (!active(generation)) return@task
-                                retryDelay = 0; error = "正在重新连接（第 $attempt/${retryDelays.size} 次重试）…"; publish()
+                                // All expected bytes are present even if the connection failed at its end.
+                                if (part.length() == selected.size) break
+                                highWater = maxOf(highWater, resumeOffset(part, selected))
+                                if (highWater > beforeHighWater) failures = 0
+                                if (failures >= retryDelays.size) throw UpdateRetryExhausted("更新下载多次中断，已保留下载进度。请检查网络后重试下载。")
+                                val delay = retryDelays[failures++]
+                                val attempt = failures
+                                synchronized(this) {
+                                    if (!active(generation)) return@task
+                                    received = retained(selected); retrying = true; retryAttempt = attempt; retryDelay = (delay + 999) / 1000
+                                    error = "下载中断，$retryDelay 秒后自动继续（第 $attempt/${retryDelays.size} 次重试）。"; publish()
+                                }
+                                pause(delay, generation)
+                                synchronized(this) {
+                                    if (!active(generation)) return@task
+                                    retryDelay = 0; error = "正在重新连接（第 $attempt/${retryDelays.size} 次重试）…"; publish()
+                                }
                             }
                         }
+                        if (!active(generation)) return@task
+                        packageFile = if (resumeOffset(complete, selected) == selected.size) complete else part
+                        try {
+                            AppUpdatePolicy.verifyFile(packageFile, selected)
+                            source.validateApk(packageFile, selected)
+                            break
+                        } catch (failure: Exception) {
+                            if (!active(generation)) return@task
+                            discard(selected)
+                            // Accelerated bytes that fail GitHub's digest or the signature check are fetched once more from GitHub.
+                            if (failure is IOException || !source.retryDirect(selected)) throw failure
+                        }
+                        failures = 0; highWater = 0
+                        synchronized(this) {
+                            if (!active(generation)) return@task
+                            received = 0; error = "加速下载的更新包未通过校验，改从 GitHub 重新下载…"; publish()
+                        }
                     }
-                    if (!active(generation)) return@task
-                    val packageFile = if (resumeOffset(complete, selected) == selected.size) complete else part
-                    try {
-                        AppUpdatePolicy.verifyFile(packageFile, selected)
-                        source.validateApk(packageFile, selected)
-                    } catch (failure: Exception) { if (active(generation)) discard(selected); throw failure }
                     synchronized(this) {
                         if (!active(generation)) return@task
                         if (packageFile == part) { complete.delete(); check(part.renameTo(complete)) { "无法保存更新包，请重试" } }

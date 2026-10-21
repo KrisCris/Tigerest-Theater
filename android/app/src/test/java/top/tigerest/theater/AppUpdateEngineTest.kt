@@ -21,11 +21,18 @@ class AppUpdateEngineTest {
             if (error) throw IllegalStateException("暂时无法连接更新服务")
             return JSONArray("""[{"tag_name":"v2.5.0","draft":false,"prerelease":false,"html_url":"https://github.com/Tigerest/Tigerest-Theater/releases/tag/v2.5.0","body":"Fixed","assets":[{"name":"TigerestTheater-2.5.0-android.apk","state":"uploaded","size":3,"digest":"sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","browser_download_url":"https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/TigerestTheater-2.5.0-android.apk"}]}]""")
         }
+        var direct = false
+        /** What the release URL alone delivers; by default the same bytes. */
+        var directBytes: String? = null
+        var directRequests = 0
         override fun download(candidate: AppUpdateCandidate, destination: File, cancelled: () -> Boolean, progress: (Long) -> Unit) {
-            destination.writeText(bytes); progress(bytes.length.toLong()); duringDownload()
+            val body = if (direct) (directBytes ?: bytes).also { directRequests++ } else bytes
+            destination.writeText(body); progress(body.length.toLong()); duringDownload()
         }
         override fun validateApk(file: File, candidate: AppUpdateCandidate) {}
         override fun cancel() {}
+        override fun activeSource() = if (direct) "github.com" else "gh-proxy.com"
+        override fun retryDirect(candidate: AppUpdateCandidate) = !direct.also { direct = true }
     }
     private fun scenario(action: (AppUpdateEngine, Source, Queue, File, Array<String>, Array<Boolean>) -> Unit) {
         val source = Source(); val queue = Queue(); val directory = Files.createTempDirectory("app-updater").toFile()
@@ -103,9 +110,20 @@ class AppUpdateEngineTest {
         assertEquals(3L, engine.snapshot().getLong("received"))
     }
 
+    @Test fun badAcceleratedPackageIsFetchedAgainFromGitHub() = scenario { engine, source, queue, _, _, _ ->
+        engine.check(true); queue.run(); source.bytes = "abd"; source.directBytes = "abc"
+        val sources = mutableListOf<String>()
+        engine.changed = { state -> if (state.getString("status") == "downloading") sources += state.getString("source") }
+        engine.download(); queue.run()
+        assertEquals("ready", engine.snapshot().getString("status")); assertEquals(1, source.directRequests)
+        assertEquals(listOf("gh-proxy.com", "github.com"), sources.distinct())
+        assertEquals("", engine.snapshot().getString("source"))
+    }
+
     @Test fun rejectsBadHashAndRechecksBytesImmediatelyBeforeInstallation() = scenario { engine, source, queue, directory, _, _ ->
         engine.check(true); queue.run(); source.bytes = "abd"
         engine.download(); queue.run(); assertEquals("error", engine.snapshot().getString("status")); assertTrue(directory.listFiles()!!.isEmpty())
+        assertEquals(1, source.directRequests)
         source.bytes = "abc"
         engine.download(); queue.run(); assertEquals("ready", engine.snapshot().getString("status"))
         directory.listFiles()!!.single().writeText("abd")

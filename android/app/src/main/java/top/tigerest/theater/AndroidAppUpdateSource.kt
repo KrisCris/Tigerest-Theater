@@ -25,6 +25,7 @@ class AndroidAppUpdateSource(private val context: Context): AppUpdateSource {
     private val cancellation = AtomicLong()
     @Volatile private var call: Call? = null
     @Volatile private var fixture = ""
+    @Volatile private var sources: DownloadSources? = null
 
     fun debugFixture(address: String) {
         check(BuildConfig.DEBUG) { "发布版不支持测试更新源" }
@@ -73,14 +74,20 @@ class AndroidAppUpdateSource(private val context: Context): AppUpdateSource {
     }
 
     override fun download(candidate: AppUpdateCandidate, destination: File, cancelled: () -> Boolean, progress: (Long) -> Unit) {
-        val address = if (BuildConfig.DEBUG && fixture.isNotEmpty()) "$fixture/download" else candidate.downloadUrl
+        val urls = if (BuildConfig.DEBUG && fixture.isNotEmpty()) listOf("$fixture/download") else AppUpdatePolicy.downloadSources(candidate.downloadUrl)
+        // Kept per package so a progressing or verified-bad source is remembered across the engine's retries.
+        val chain = sources?.takeIf { it.key == candidate.sha256 } ?: DownloadSources(candidate.sha256, urls).also { sources = it }
         if (cancelled()) throw InterruptedIOException("cancelled")
-        val offset = resumeOffset(destination, candidate)
-        if (offset == candidate.size) { progress(offset); return }
-        open(address, "application/octet-stream", cancelled, offset).use { response ->
-            writePackage(response, candidate, destination, offset, cancelled, progress)
+        chain.run(cancelled, { resumeOffset(destination, candidate) }) { address ->
+            val offset = resumeOffset(destination, candidate)
+            if (offset == candidate.size) { progress(offset); return@run }
+            open(address, "application/octet-stream", cancelled, offset).use { response ->
+                writePackage(response, candidate, destination, offset, cancelled, progress)
+            }
         }
     }
+    override fun activeSource(): String = sources?.current?.toHttpUrl()?.host ?: ""
+    override fun retryDirect(candidate: AppUpdateCandidate) = sources?.takeIf { it.key == candidate.sha256 }?.directOnly() ?: false
 
     private fun identity(info: PackageInfo) = ApkIdentity(info.packageName, info.longVersionCode, info.versionName ?: "",
         info.signingInfo?.apkContentsSigners?.map { signature -> MessageDigest.getInstance("SHA-256").digest(signature.toByteArray()).joinToString("") { "%02x".format(it) } }?.toSet() ?: emptySet())

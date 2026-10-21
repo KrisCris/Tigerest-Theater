@@ -1,6 +1,8 @@
 #pragma once
 #include "RifeExtensionArchive.h"
+#include <QList>
 #include <QObject>
+#include <QUrl>
 #include <QVariantMap>
 #include <QThread>
 #include <memory>
@@ -25,6 +27,7 @@ public:
                                        int deviceCount,int major,int minor);
     void setAvailableBytesForTest(qint64 bytes){m_availableBytes=bytes;}
     void setTrustedCertificateForTest(QByteArray certificate){m_testCertificate=std::move(certificate);}
+    void setDownloadSourcesForTest(QList<QUrl> sources){m_testSources=std::move(sources);}
 signals:
     void statusChanged(const QVariantMap& status);
     void operationFinished(bool ok,const QString& error);
@@ -41,6 +44,7 @@ private:
     std::atomic_bool m_cancelled{false};
     qint64 m_availableBytes=-1;
     QByteArray m_testCertificate;
+    QList<QUrl> m_testSources;
     std::function<QString()> m_gpuReportProvider;
     std::shared_ptr<QLockFile> m_lease;
     void start(const QString& state,std::function<OperationResult()> work,bool startup=false);

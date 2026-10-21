@@ -11,6 +11,7 @@ import okio.BufferedSource
 import okio.ForwardingSource
 import okio.buffer
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
 import java.io.IOException
@@ -104,5 +105,61 @@ class AppUpdateTransferTest {
     @Test fun nonPackageSuccessResponseIsRejected() = scenario("a") { destination ->
         assertThrows(IllegalStateException::class.java) { write(destination, response(204, "".toResponseBody())) }
         assertEquals("a", destination.readText())
+    }
+
+    /** Downloads the latest APK through the accelerators and checks GitHub's digest; run with TIGEREST_LIVE_PROXY=1. */
+    @Test fun liveProxyDownloadsTheReleasedApk() {
+        assumeTrue(System.getenv("TIGEREST_LIVE_PROXY").orEmpty().isNotEmpty())
+        val http = okhttp3.OkHttpClient.Builder().followRedirects(false).readTimeout(45, java.util.concurrent.TimeUnit.SECONDS).build()
+        val releases = http.newCall(Request.Builder().url("https://api.github.com/repos/Tigerest/Tigerest-Theater/releases?per_page=30").build())
+            .execute().use { org.json.JSONArray(it.body!!.string()) }
+        val latest = AppUpdatePolicy.select(releases, "0.0.1")!!
+        val file = Files.createTempFile("live-proxy", ".apk").toFile()
+        try {
+            val sources = DownloadSources(latest.sha256, AppUpdatePolicy.downloadSources(latest.downloadUrl))
+            val started = System.nanoTime()
+            sources.run({ false }, { resumeOffset(file, latest) }) { url ->
+                http.newCall(Request.Builder().url(url).header("Accept-Encoding", "identity").build()).execute().use { response ->
+                    check(response.code == 200) { "HTTP ${response.code}" }
+                    writePackage(response, latest, file, 0, { false }) {}
+                }
+            }
+            AppUpdatePolicy.verifyFile(file, latest)
+            println("live proxy: ${latest.version} ${latest.size} bytes in ${(System.nanoTime() - started) / 1_000_000} ms via ${sources.current}")
+            assertEquals(0, sources.index)
+        } finally { file.delete() }
+    }
+
+    @Test fun proxiesGiveWayToTheNextSourceUnlessTheyWereProgressing() {
+        val release = "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.5.0/a.apk"
+        val urls = AppUpdatePolicy.downloadSources(release)
+        assertEquals(listOf("https://gh-proxy.com/$release", "https://ghproxy.net/$release", release), urls)
+        var retained = 0L
+        val tried = mutableListOf<String>()
+        // An unavailable proxy and a misbehaving one are skipped within one attempt; the release URL delivers.
+        val sources = DownloadSources("sha", urls)
+        assertEquals("done", sources.run({ false }, { retained }) { url ->
+            tried += url
+            when (url) { urls[0] -> throw IOException("refused"); urls[1] -> { retained = 1; throw IllegalArgumentException("oversized") }; else -> "done" }
+        })
+        assertEquals(urls, tried)
+        // The release URL's own failure reaches the engine, whose next retry starts from the first proxy again.
+        tried.clear(); retained = 0
+        val failing = DownloadSources("sha", urls)
+        assertThrows(IOException::class.java) { failing.run({ false }, { retained }) { url -> tried += url; throw IOException("down") } }
+        assertEquals(urls, tried); assertEquals(0, failing.index)
+        // A proxy that was adding bytes is kept for the engine's retry.
+        val progressing = DownloadSources("sha", urls)
+        assertThrows(IOException::class.java) { progressing.run({ false }, { retained }) { retained += 5; throw IOException("reset") } }
+        assertEquals(0, progressing.index)
+        // Cancellation is never mistaken for a failing source.
+        val cancelled = DownloadSources("sha", urls)
+        assertThrows(InterruptedIOException::class.java) { cancelled.run({ true }, { 0 }) { throw InterruptedIOException("cancelled") } }
+        assertEquals(0, cancelled.index)
+        // After a verification failure only the release URL is used, once.
+        assertTrue(cancelled.directOnly()); assertFalse(cancelled.directOnly())
+        assertEquals(release, cancelled.current)
+        assertThrows(IOException::class.java) { cancelled.run({ false }, { 0 }) { url -> assertEquals(release, url); throw IOException("down") } }
+        assertEquals(release, cancelled.current)
     }
 }

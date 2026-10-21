@@ -6,6 +6,39 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InterruptedIOException
 
+/**
+ * The accelerated URLs, then the release URL, for one package. A proxy that fails before adding bytes, or misbehaves,
+ * gives way to the next at once; one that was adding bytes is kept for the engine's next retry. Once a package failed
+ * verification only the release URL is used.
+ */
+class DownloadSources(val key: String, private val urls: List<String>) {
+    @Volatile var index = 0
+        private set
+    @Volatile private var direct = false
+    val current get() = urls[index]
+
+    /** Switches to the release URL alone; false when it already was. */
+    fun directOnly(): Boolean {
+        if (direct) return false
+        direct = true; index = urls.lastIndex
+        return true
+    }
+
+    fun <T> run(cancelled: () -> Boolean, retained: () -> Long, attempt: (String) -> T): T {
+        while (true) {
+            val before = retained()
+            try { return attempt(urls[index]) } catch (failure: Exception) {
+                if (cancelled()) throw failure
+                val progressed = retained() > before
+                if (index < urls.lastIndex && !(progressed && failure is IOException)) { index++; continue }
+                // The release URL fails as before; the next retry starts from the first proxy unless bytes were arriving.
+                if (!progressed && !direct) index = 0
+                throw failure
+            }
+        }
+    }
+}
+
 /** A complete partial is verified by the engine without another network request. */
 fun resumeOffset(destination: File, candidate: AppUpdateCandidate): Long =
     destination.length().takeIf { destination.isFile && it in 1..candidate.size } ?: 0L

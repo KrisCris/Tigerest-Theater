@@ -22,7 +22,7 @@ class DownloadTests(unittest.TestCase):
         manifest_path.write_text(json.dumps(manifest))
         self.archive=self.root/'large.zip';self.item=self.fixture.build(self.archive)
         self.body=self.archive.read_bytes();self.requests=[];self.http_requests=[];self.mode='normal'
-        self.etag='"fixture-v1"';self.slow=False
+        self.etag='"fixture-v1"';self.slow=False;self.paths=[];self.broken=None;self.sources=[]
         fixtures=Path(__file__).parent/'fixtures/rife-download'
         self.ca=fixtures/'loopback-cert.pem';key_path=fixtures/'loopback-test-key.pem'
         test=self
@@ -31,6 +31,10 @@ class DownloadTests(unittest.TestCase):
             def do_GET(self):
                 destination=test.http_requests if self.server is test.http_server else test.requests
                 destination.append({key.lower():value for key,value in self.headers.items()})
+                test.paths.append(self.path)
+                # A broken first source stands in for an unavailable or corrupting download accelerator.
+                if self.path=='/broken.zip' and test.broken=='unavailable':
+                    self.send_response(503);self.send_header('Content-Length','0');self.end_headers();return
                 if test.mode=='downgrade' and self.server is test.server:
                     self.send_response(302);self.send_header('Location',f'http://127.0.0.1:{test.http_server.server_port}/extension.zip')
                     self.send_header('Content-Length','0');self.end_headers();return
@@ -44,7 +48,7 @@ class DownloadTests(unittest.TestCase):
                 try:
                     for start in range(offset,len(test.body),16384):
                         block=test.body[start:start+16384]
-                        if test.mode=='corrupt':block=bytes(b^1 for b in block)
+                        if test.mode=='corrupt' or (self.path=='/broken.zip' and test.broken=='corrupt'):block=bytes(b^1 for b in block)
                         self.wfile.write(block);self.wfile.flush()
                         if test.slow:time.sleep(0.02)
                 except (BrokenPipeError,ConnectionResetError,ssl.SSLError):pass
@@ -62,7 +66,7 @@ class DownloadTests(unittest.TestCase):
 
     def run_download(self,cancel_at=-1,*,action='download',trust=True):
         self.catalog.write_text(json.dumps({'schemaVersion':1,'packages':[self.item]}),encoding='utf-8')
-        options=self.root/'options.json';options.write_text(json.dumps({'ca':str(self.ca),'cancelAt':cancel_at,'trustTestCa':trust}),encoding='utf-8')
+        options=self.root/'options.json';options.write_text(json.dumps({'ca':str(self.ca),'cancelAt':cancel_at,'trustTestCa':trust,'sources':self.sources}),encoding='utf-8')
         result=subprocess.run([self.host,action,str(self.catalog),str(self.data),'2.1.2','default',str(options)],capture_output=True,timeout=25)
         self.assertEqual(result.returncode,0,result.stderr.decode(errors='replace'))
         return json.loads(result.stdout)
@@ -132,6 +136,19 @@ class DownloadTests(unittest.TestCase):
         self.assertFalse((self.data/'active.json').exists())
         self.assertEqual(len(self.requests),1)
         self.assertEqual(self.http_requests,[],'The real plaintext listener must receive no downgraded request')
+
+    def test_unavailable_or_corrupt_first_source_falls_back(self):
+        broken=f'https://127.0.0.1:{self.server.server_port}/broken.zip'
+        for kind in ('unavailable','corrupt'):
+            with self.subTest(kind):
+                self.data=self.root/f'下载 {kind}';self.paths=[];self.requests=[];self.broken=kind;self.sources=[broken,self.url]
+                report=self.run_download();self.assertTrue(report['ok'],report)
+                self.assertEqual(self.paths,['/broken.zip','/extension.zip'])
+                # Bytes that failed the catalog hash are dropped, not resumed from the next source.
+                self.assertNotIn('range',self.requests[1])
+        self.data=self.root/'下载 都损坏';self.broken='corrupt';self.mode='corrupt';self.paths=[];self.sources=[broken,self.url]
+        report=self.run_download();self.assertFalse(report['ok'],report);self.assertIn('hash',report['error'])
+        self.assertEqual(self.paths,['/broken.zip','/extension.zip'])
 
     def test_weak_etag_cannot_resume(self):
         self.etag='W/"fixture-v1"';self.seed_partial()

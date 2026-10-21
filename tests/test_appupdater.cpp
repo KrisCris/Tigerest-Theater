@@ -47,6 +47,7 @@ protected:
     return new FixtureReply(request, responses.isEmpty() ? Response{{}, 503} : responses.takeFirst(), this);
   }
 };
+static const QString Release = "https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.0/TigerestTheater-2.0.0-x64.exe";
 static QByteArray metadata()
 {
   return R"([{"tag_name":"v2.0.0","draft":false,"prerelease":false,"body":"Notes","assets":[{"name":"TigerestTheater-2.0.0-x64.exe","size":3,"digest":"sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","browser_download_url":"https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.0/TigerestTheater-2.0.0-x64.exe"}]}])";
@@ -351,6 +352,28 @@ private slots:
       QVERIFY2(page.hasFragment(), "version folder not found");
     }
   }
+  void liveDownloadThroughTheFirstProxy()
+  {
+    // Downloads the latest Windows installer from GitHub's production release through the first accelerator and
+    // verifies it against the API digest; run with TIGEREST_LIVE_PROXY=<a version older than the latest release>.
+    const QString version = qEnvironmentVariable("TIGEREST_LIVE_PROXY");
+    if (version.isEmpty()) QSKIP("TIGEREST_LIVE_PROXY is not set");
+    QTemporaryDir dir; QNetworkAccessManager network;
+    AppUpdater updater(version, AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    QStringList sources;
+    connect(&updater, &AppUpdater::changed, &updater, [&](const QVariantMap& state) {
+      const auto source = state.value("source").toString();
+      if (!source.isEmpty() && sources.value(sources.size() - 1) != source) sources << source;
+    });
+    updater.check(true, true); QTRY_COMPARE_WITH_TIMEOUT(updater.state().value("status").toString(), "available", 30000);
+    QElapsedTimer clock; clock.start(); updater.download();
+    QTRY_VERIFY_WITH_TIMEOUT(updater.state().value("status") == "ready" || updater.state().value("status") == "error", 600000);
+    const auto bytes = updater.state().value("size").toLongLong();
+    qInfo().noquote() << updater.state().value("version").toString() << bytes << "bytes in" << clock.elapsed() << "ms via" << sources.join(" -> ")
+      << updater.state().value("error").toString();
+    QCOMPARE(updater.state().value("status").toString(), "ready");
+    QCOMPARE(sources.value(0), "gh-proxy.com");
+  }
   void rememberedReleaseIsNotShownOnceInstalledOrIgnored()
   {
     QTemporaryDir dir; FixtureNetwork network; network.responses = {{metadata()}, {metadata(), 200, {}, true}, {metadata(), 200, {}, true}};
@@ -410,13 +433,50 @@ private slots:
   }
   void rejectsDamagedDownloadThenAllowsRetry()
   {
-    QTemporaryDir dir; FixtureNetwork network; network.responses = {{metadata()}, {"bad"}, {"abc"}};
+    // The accelerated package fails GitHub's digest, so the release URL is tried alone; it fails too.
+    QTemporaryDir dir; FixtureNetwork network; network.responses = {{metadata()}, {"bad"}, {"bad"}, {"abc"}};
     AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
     updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
     updater.download(); QTRY_COMPARE(updater.state().value("status").toString(), "error");
     QVERIFY(!updater.state().value("error").toString().isEmpty());
     QCOMPARE(updater.state().value("version").toString(), "2.0.0");
+    QCOMPARE(network.requests.mid(1), (QList<QUrl>{QUrl("https://gh-proxy.com/" + Release), QUrl(Release)}));
+    QVERIFY(network.requestDetails.last().rawHeader("Range").isEmpty());
     updater.download(); QTRY_COMPARE(updater.state().value("status").toString(), "ready");
+    QCOMPARE(network.requests.last(), QUrl("https://gh-proxy.com/" + Release));
+  }
+  void downloadsThroughTheProxiesBeforeTheReleaseUrl()
+  {
+    // A refusing and an unavailable accelerator are skipped; the release URL then delivers the package.
+    QTemporaryDir dir; FixtureNetwork network; network.responses = {{metadata()}, {{}, 404}, {{}, 503}, {"abc"}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    QStringList sources;
+    connect(&updater, &AppUpdater::changed, &updater, [&](const QVariantMap& state) {
+      if (state.value("status") == "downloading" && sources.value(sources.size() - 1) != state.value("source").toString())
+        sources << state.value("source").toString();
+    });
+    updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
+    updater.download(); QTRY_COMPARE_WITH_TIMEOUT(updater.state().value("status").toString(), "ready", 15000);
+    QCOMPARE(network.requests.mid(1), (QList<QUrl>{QUrl("https://gh-proxy.com/" + Release), QUrl("https://ghproxy.net/" + Release), QUrl(Release)}));
+    QCOMPARE(sources, (QStringList{"gh-proxy.com", "ghproxy.net", "github.com"}));
+  }
+  void progressingProxyIsResumedAndMisbehavingProxyIsSkipped()
+  {
+    QTemporaryDir dir; FixtureNetwork network;
+    network.responses = {{metadata()}, {"a", 200, {}, false, {{"ETag", "\"asset\""}}, QNetworkReply::RemoteHostClosedError},
+      {"bc", 206, {}, false, {{"ETag", "\"asset\""}, {"Content-Range", "bytes 1-2/3"}}}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("skip.json"), &network, {});
+    updater.check(true, true); QTRY_COMPARE(updater.state().value("status").toString(), "available");
+    updater.download(); QTRY_COMPARE_WITH_TIMEOUT(updater.state().value("status").toString(), "ready", 10000);
+    QCOMPARE(network.requests.last(), QUrl("https://gh-proxy.com/" + Release));
+    QCOMPARE(network.requestDetails.last().rawHeader("Range"), QByteArray("bytes=1-"));
+    // An untrusted redirect or a wrong length from an accelerator moves on instead of failing the download.
+    QTemporaryDir other; FixtureNetwork second;
+    second.responses = {{metadata()}, {{}, 302, QUrl("http://example.com/package")}, {"abcd", 200, {}, false, {{"Content-Length", "4"}}}, {"abc"}};
+    AppUpdater skipping("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, other.filePath("cache"), other.filePath("skip.json"), &second, {});
+    skipping.check(true, true); QTRY_COMPARE(skipping.state().value("status").toString(), "available");
+    skipping.download(); QTRY_COMPARE_WITH_TIMEOUT(skipping.state().value("status").toString(), "ready", 15000);
+    QCOMPARE(second.requests.mid(1), (QList<QUrl>{QUrl("https://gh-proxy.com/" + Release), QUrl("https://ghproxy.net/" + Release), QUrl(Release)}));
   }
   void rejectsInsecureRedirectsAndOversizedMetadata()
   {

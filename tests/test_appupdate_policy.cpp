@@ -98,6 +98,16 @@ private slots:
     QCOMPARE(c.quarkUrl, QUrl("https://pan.quark.cn/s/88e6f7a795b4"));
     QCOMPARE(c.baiduUrl, QUrl("https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig"));
   }
+  void triesTheDownloadProxiesBeforeTheReleaseUrl()
+  {
+    const auto c = select({release("2.0.0")}, "1.0.0", Package::WindowsInstaller);
+    QCOMPARE(downloadSources(c), (QList<QUrl>{QUrl("https://gh-proxy.com/" + c.downloadUrl.toString()),
+      QUrl("https://ghproxy.net/" + c.downloadUrl.toString()), c.downloadUrl}));
+    QCOMPARE(downloadSources(c).value(DownloadProxyCount), c.downloadUrl);
+    // Only github.com downloads go through the accelerators.
+    QCOMPARE(DownloadProxies::sources(QUrl("https://example.com/a.zip")), QList<QUrl>{QUrl("https://example.com/a.zip")});
+    QCOMPARE(DownloadProxies::sources(QUrl("http://github.com/a.zip")), QList<QUrl>{QUrl("http://github.com/a.zip")});
+  }
   void verifiesDownloadedBytesAndSize()
   {
     QTemporaryDir dir;
