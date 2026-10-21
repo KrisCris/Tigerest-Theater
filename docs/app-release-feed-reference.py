@@ -30,6 +30,7 @@ FEED_PATH = "/api/tigerest/v1/app/releases"
 RELEASE_FIELDS = ("tag_name", "draft", "prerelease", "html_url", "published_at", "body", "assets")
 ASSET_FIELDS = ("name", "state", "size", "digest", "browser_download_url")
 MAX_PAYLOAD = 1024 * 1024
+MAX_ENVELOPE = 2 * 1024 * 1024  # 解压后的响应体；1 MiB 载荷经 base64 后约 1.34 MiB
 STALE_AFTER = dt.timedelta(hours=72)
 CLOCK_SKEW = dt.timedelta(minutes=10)
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -95,6 +96,8 @@ def envelope(private_key: Ed25519PrivateKey, key_id: str, raw: bytes) -> bytes:
 
 def open_envelope(body: bytes, public_keys: dict, at: dt.datetime = None):
     """客户端会做的检查，返回 (载荷, 载荷字节数)；任何一项不通过，客户端就退回直接请求 GitHub。"""
+    if len(body) > MAX_ENVELOPE:
+        raise ValueError("响应体超过 2 MiB")
     outer = json.loads(body)
     key = public_keys.get(outer.get("keyId"))
     if key is None:
@@ -124,7 +127,8 @@ def matches(served: list, served_size: int, github: list) -> bool:
     count = len(served)
     if served != expected[:count]:
         return False
-    return count == len(expected) or served_size + len(encode(expected[count])) > MAX_PAYLOAD
+    # 追加下一项还要多一个逗号（列表原本为空时除外）。
+    return count == len(expected) or served_size + len(encode(expected[count])) + (1 if count else 0) > MAX_PAYLOAD
 
 
 def public_base64(private_key: Ed25519PrivateKey) -> str:
@@ -184,9 +188,22 @@ def self_test(sample: str = "") -> None:
     assert 0 < count < len(filter_releases(padded)) and matches(trimmed["releases"], trimmed_size, padded), "裁剪结果应当通过比对"
     holed = trimmed["releases"][:1] + trimmed["releases"][2:]
     assert not matches(holed, trimmed_size, padded), "中间缺项的列表不应通过比对"
+    # 边界：完整内容恰好超出 1 字节时只能留一项；恰好等于上限时两项都要留。
+    def fake(tag, body=""):
+        return {"tag_name": tag, "draft": False, "prerelease": False, "html_url": f"https://github.com/{REPOSITORY}/releases/tag/{tag}",
+                "published_at": stamp(moment), "body": body, "assets": []}
+    pair = [fake("v9.9.1"), fake("v9.9.0")]
+    base = len(build_payload(pair, stamp(moment), stamp(moment)))
+    for extra, kept in ((1, 1), (0, 2)):
+        edge = [pair[0], fake("v9.9.0", "x" * (MAX_PAYLOAD - base + extra))]
+        edge_feed, edge_size = open_envelope(envelope(key, "self-test", build_payload(edge, stamp(moment), stamp(moment))), keys)
+        assert len(edge_feed["releases"]) == kept and matches(edge_feed["releases"], edge_size, edge), f"上限边界 +{extra} 字节比对出错"
+    assert not matches([pair[0]], base - len(encode(pair[1])) - 1, [pair[0], fake("v9.9.0", "x" * (MAX_PAYLOAD - base))]), "放得下却被裁掉不应通过"
+    # 信封超过 2 MiB 时，读取阶段就要放弃。
+    assert rejected(b" " * (MAX_ENVELOPE + 1), keys), "超大信封被接受"
     tags = [release["tag_name"] for release in feed["releases"]]
     print(f"self-test 通过：{len(tags)} 个 release（GitHub 原始 {len(github)} 个），载荷 {len(raw)} 字节，最新 {tags[:3]}；"
-          f"长说明裁剪到 {count} 个；陈旧、时间颠倒、未来签发与篡改均被拒绝")
+          f"长说明裁剪到 {count} 个；1 MiB 边界、超大信封、陈旧、时间颠倒、未来签发与篡改均符合预期")
     if sample:
         with open(sample, "w", encoding="utf-8") as file:
             json.dump(feed, file, ensure_ascii=False, indent=2)
@@ -196,7 +213,14 @@ def self_test(sample: str = "") -> None:
 def read_feed(address: str) -> bytes:
     request = urllib.request.Request(address.rstrip("/") + FEED_PATH, headers={"User-Agent": "tigerest-release-feed-verify"})
     with urllib.request.urlopen(request, timeout=30) as response:
-        return response.read()
+        # 像客户端一样边读边限：超过 2 MiB 就放弃，不先把整个响应读进内存。（urllib 不请求 gzip，读到的就是原文。）
+        length = response.headers.get("Content-Length")
+        if length is not None and int(length) > MAX_ENVELOPE:
+            sys.exit(f"响应体声明 {length} 字节，超过 2 MiB")
+        body = response.read(MAX_ENVELOPE + 1)
+    if len(body) > MAX_ENVELOPE:
+        sys.exit("响应体超过 2 MiB")
+    return body
 
 
 def verify(address: str, public_key: str) -> None:
