@@ -27,7 +27,7 @@ struct TVPlayerView: View {
             TVVideoSurface(player: player).ignoresSafeArea()
             if let repository = player.danmaku { DanmakuOverlay(repository: repository, player: player).ignoresSafeArea().allowsHitTesting(false) }
             if player.buffering { ProgressView("正在缓冲").frame(maxWidth: .infinity, maxHeight: .infinity) }
-            if controlsVisible || player.paused {
+            if controlsVisible {
                 VStack(alignment: .leading, spacing: 22) {
                     HStack(spacing: 30) {
                         Text(player.title).font(.title2).lineLimit(2).accessibilityIdentifier("tv.player.title")
@@ -79,8 +79,13 @@ struct TVPlayerView: View {
             // A Menu event that dismissed a presented panel must not also
             // leave playback if SwiftUI forwards it during that transition.
             guard !panelVisible, Date().timeIntervalSince(panelDismissedAt) > 0.5 else { return }
+            // Back first hides the playback controls; only a bare video leaves.
+            if controlsVisible { controlsVisible = false; return }
             player.stop()
         }
+        // Pausing (remote, route loss or a room) shows the controls; they stay
+        // until Back hides them because the timer below skips paused playback.
+        .onChange(of: player.paused) { _, paused in if paused { reveal() } }
         .task(id: interaction) {
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled, !player.paused, !player.buffering, !model.busy, !panelVisible else { return }
