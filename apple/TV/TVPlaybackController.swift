@@ -46,6 +46,20 @@ import AppleCore
             let saved = UserDefaults.standard.string(forKey: "tv.qualityPreset") ?? "native"
             qualityPreset = ["tigerest-default", "tv-balanced"].contains(saved) ? saved : "native"
         }
+        NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
+            let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            // AirPods or an HDMI receiver connected/disconnected: the new route may
+            // carry a different channel count; let mpv reopen its output for it.
+            guard reason == AVAudioSession.RouteChangeReason.newDeviceAvailable.rawValue ||
+                  reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue else { return }
+            Task { @MainActor in self?.renegotiateOutputChannels() }
+        }
+    }
+    private func renegotiateOutputChannels() {
+        guard active, let engine else { return }
+        let session = AVAudioSession.sharedInstance()
+        try? session.setPreferredOutputNumberOfChannels(session.maximumOutputNumberOfChannels)
+        try? engine.command(["ao-reload"])
     }
 
     func play(_ playback: EmbyPlayback, client: EmbyClient, session: EmbySession? = nil) throws {
@@ -55,7 +69,11 @@ import AppleCore
         defer { if engine == nil { active = false } }
         let audio = AVAudioSession.sharedInstance()
         try audio.setCategory(.playback, mode: .moviePlayback)
+        // Without this every route reports two channels and mpv downmixes 5.1/7.1;
+        // with it AirPods get multichannel audio for the system to spatialize.
+        try? audio.setSupportsMultichannelContent(true)
         try audio.setActive(true)
+        try? audio.setPreferredOutputNumberOfChannels(audio.maximumOutputNumberOfChannels)
         let next: MPVEngine
         do { next = try MPVEngine(layer: surface.metal) }
         catch { try? audio.setActive(false); throw error }
@@ -140,6 +158,9 @@ import AppleCore
                 try? data.write(to: URL.cachesDirectory.appending(path: "tv-playback-probe.json"), options: .atomic)
             }
         }
+        #if DEBUG
+        if loaded, now - lastAudioTrace >= 5 { lastAudioTrace = now; writeAudioTrace(engine) }
+        #endif
         if watchdog.stalled(position: position, now: now, paused: paused) {
             stop(); error = "播放长时间没有进展，请检查网络后重试。"; return
         }
@@ -166,6 +187,22 @@ import AppleCore
         do { try engine.command(["seek", String(target), "absolute+exact"]); watchdog = PlaybackWatchdog(); danmakuEpoch &+= 1; frameStability.interrupt() }
         catch { self.error = "未能跳转播放位置" }
     }
+    #if DEBUG
+    /// Validation builds only: the current audio path in Caches for devicectl.
+    private var lastAudioTrace = 0.0
+    private func writeAudioTrace(_ engine: MPVEngine) {
+        let session = AVAudioSession.sharedInstance()
+        let trace: JSONValue = .object([
+            "ao": .string(engine.string("current-ao")), "outChannels": .string(engine.string("audio-out-params/channels")),
+            "sourceChannels": .string(engine.string("audio-params/channels")), "codec": .string(engine.string("audio-codec-name")),
+            "sessionOutputChannels": .number(Double(session.outputNumberOfChannels)),
+            "sessionMaximumOutputChannels": .number(Double(session.maximumOutputNumberOfChannels)),
+            "supportsMultichannel": .bool(session.supportsMultichannelContent), "position": .number(position.rounded()),
+            "route": .array(session.currentRoute.outputs.map { .object(["type": .string($0.portType.rawValue), "name": .string($0.portName), "channels": .number(Double($0.channels?.count ?? 0)), "spatialAudio": .bool($0.isSpatialAudioEnabled)]) }),
+        ])
+        if let data = try? JSONEncoder().encode(trace) { try? data.write(to: URL.cachesDirectory.appending(path: "tv-audio-trace.json"), options: .atomic) }
+    }
+    #endif
     private func safeTime(_ value: Double) -> Double { value.isFinite ? min(1_000_000_000, max(0, value)) : 0 }
     private func isLocalFixture(_ playback: EmbyPlayback) -> Bool {
         fixtureMode && playback.url.isFileURL

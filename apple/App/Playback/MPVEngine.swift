@@ -24,13 +24,8 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
             // The pinned iOS MPVKit disables Lua; ytdl/osc script options do not exist.
             // avfoundation (AVSampleBufferAudioRenderer) keeps 5.1/7.1 with its layout, so
             // the system can spatialize it for AirPods; RemoteIO only gets two channels
-            // on those routes. audiounit remains the fallback. Apple TV keeps audiounit,
-            // its tested output over HDMI.
-            #if os(tvOS)
-            let audioOutput = "audiounit"
-            #else
+            // on those routes (iPad and Apple TV alike). audiounit remains the fallback.
             let audioOutput = "avfoundation,audiounit"
-            #endif
             let options = ["profile":"high-quality", "config":"no", "vo":"gpu-next", "gpu-api":"vulkan", "gpu-context":"moltenvk", "hwdec":"videotoolbox", "ao":audioOutput, "idle":"yes", "keep-open":"yes", "input-default-bindings":"no", "tls-verify":"yes", "save-position-on-quit":"no", "tls-ca-file":Bundle.main.resourceURL!.appending(path:"Web/cacert.pem").path, "sub-fonts-dir":Bundle.main.resourceURL!.appending(path:"SubtitleFonts").path, "sub-font":"Source Han Sans SC"]
             for (name, value) in options { try check(mpv_set_option_string(handle, name, value), operation: name) }
             var pointer = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))

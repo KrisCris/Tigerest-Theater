@@ -11,10 +11,21 @@ import Combine
 @MainActor final class UIApplication { static let shared = UIApplication(); var isIdleTimerDisabled = false }
 @MainActor final class AVAudioSession {
  enum Category { case playback }; enum Mode { case moviePlayback }; enum Options { case notifyOthersOnDeactivation }
+ enum RouteChangeReason: UInt { case newDeviceAvailable = 1, oldDeviceUnavailable = 2 }
+ struct PortType { let rawValue: String }
+ struct Port { let portType: PortType; let portName: String; let channels: [Int]?; let isSpatialAudioEnabled: Bool }
+ struct Route { var outputs: [Port] }
+ static let routeChangeNotification = Notification.Name("AVAudioSessionRouteChangeNotification")
  static let shared = AVAudioSession(); static func sharedInstance() -> AVAudioSession { shared }
+ var supportsMultichannelContent = false, preferredOutputChannels = 0
+ var maximumOutputNumberOfChannels = 2, outputNumberOfChannels = 2
+ var currentRoute = Route(outputs: [])
  func setCategory(_ category: Category, mode: Mode) throws {}
  func setActive(_ active: Bool, options: Options? = nil) throws {}
+ func setSupportsMultichannelContent(_ value: Bool) throws { supportsMultichannelContent = value }
+ func setPreferredOutputNumberOfChannels(_ count: Int) throws { preferredOutputChannels = count }
 }
+let AVAudioSessionRouteChangeReasonKey = "AVAudioSessionRouteChangeReasonKey"
 @MainActor final class MPVEngine {
  enum Event { case loaded, restarted, ended, failed }
  static var failNewQuality = false
