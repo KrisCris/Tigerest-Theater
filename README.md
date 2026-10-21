@@ -1,6 +1,6 @@
-# Tigerest Theater / EMBY 大河版
+# Tigerest Theater
 
-<p align="center"><img src="screenshots/poster.webp" alt="大河影院 · EMBY 大河版宣传海报：电脑、平板、折叠屏与手机上的沉浸式首页"></p>
+<p align="center"><img src="screenshots/poster.webp" alt="大河影院 · Tigerest Theater 宣传海报：电脑、平板、折叠屏与手机上的沉浸式首页"></p>
 
 把 Emby／Jellyfin 媒体库、MPV 播放器、弹幕和作品讨论放在一起。支持 Windows、Apple Silicon Mac、iPad、Android 与 Apple TV，提供 MPV 播放、弹幕和对应平台的画质选项。
 
