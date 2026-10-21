@@ -11,11 +11,11 @@ Windows、Mac、Android 和 iPad 现在都匿名请求 `https://api.github.com/r
 ## 接口
 
 ```http
-GET http://nas.tigerest.top:18443/api/tigerest/v1/app/releases
+GET <社区服务地址>/api/tigerest/v1/app/releases
 ```
 
 - 匿名访问，不带 Emby 身份头。版本检查发生在登录之前，连接 Jellyfin 或其他服务器的用户也要用。
-- 与弹幕、评论共用 18443 端口和同一主机名。不重定向，不需要 CORS（只有原生客户端访问）。
+- `<社区服务地址>` 就是客户端现在访问弹幕和评论用的那个地址，主机和端口都相同。不重定向，不需要 CORS（只有原生客户端访问）。
 - 支持 `GET` 和 `HEAD`，不接受查询参数，忽略多余的参数。
 - 响应头 `Content-Type: application/json; charset=utf-8`。可以 gzip，签名针对的是解压后的内容。
 - 建议加上 `ETag`，命中 `If-None-Match` 时返回 304。
@@ -95,7 +95,7 @@ GET http://nas.tigerest.top:18443/api/tigerest/v1/app/releases
 
 ## 为什么要签名
 
-18443 端口是 HTTP。没有签名的话，同一网络里的任何人都可以改写响应，比如：
+社区服务地址用的是 HTTP，不是 HTTPS。没有签名的话，同一网络里的任何人都可以改写响应，比如：
 
 - 把网盘链接换成自己的分享，诱导用户下载被篡改的安装包；
 - 改掉 SHA-256，让加速镜像送来的错误文件通过校验；
@@ -131,8 +131,9 @@ def envelope(private_key: Ed25519PrivateKey, key_id: str, payload: dict) -> byte
 import base64, json, urllib.request
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+SERVICE = "<社区服务地址>"
 PUBLIC_KEY = "<后端给出的公钥 base64>"
-env = json.load(urllib.request.urlopen("http://nas.tigerest.top:18443/api/tigerest/v1/app/releases"))
+env = json.load(urllib.request.urlopen(SERVICE + "/api/tigerest/v1/app/releases"))
 raw = base64.b64decode(env["payload"])
 Ed25519PublicKey.from_public_bytes(base64.b64decode(PUBLIC_KEY)).verify(base64.b64decode(env["signature"]), raw)
 feed = json.loads(raw)
