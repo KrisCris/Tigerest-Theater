@@ -72,8 +72,12 @@ Name: "{autodesktop}\Tigerest Theater"; Filename: "{app}\{#MyAppExeName}"; Comme
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /passive /norestart"; StatusMsg: "Installing Visual C++ Redistributable..."; Flags: waituntilterminated; Check: ShouldInstallVCRedist
 ; Launch app after install
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch Tigerest Theater"; Flags: nowait postinstall skipifsilent
+; Start the new version again after an in-app update (UpdateHandoff.iss)
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser; Check: RelaunchRequested
 
 [Code]
+#include "@PROJECT_SOURCE_DIR@/bundle/win/UpdateHandoff.iss"
+
 var
   RemoveUserData: Boolean;
   VCRedistNeeded: Boolean;
@@ -107,6 +111,7 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
   NeedsRestart := False;
+  CloseUpdatingClient;
 
   if not VCRedistNeeded then
   begin
@@ -118,11 +123,12 @@ begin
   if IsAdmin then
   begin
     // Offer to install VCRedist system-wide
-    if MsgBox('A system-wide Visual C++ Redistributable was not detected.' + #13#10 + #13#10 +
+    // A silent in-app update keeps the app-local runtime instead of asking.
+    if SuppressibleMsgBox('A system-wide Visual C++ Redistributable was not detected.' + #13#10 + #13#10 +
               'Would you like to install it system-wide?' + #13#10 +
               '(Recommended - receives security updates via Windows Update)' + #13#10 + #13#10 +
               'The app-local runtime remains available either way.',
-              mbConfirmation, MB_YESNO) = IDYES then
+              mbConfirmation, MB_YESNO, IDNO) = IDYES then
     begin
       InstallVCRedist := True;
       Log('Will install VCRedist system-wide');

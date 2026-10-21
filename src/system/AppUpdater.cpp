@@ -41,7 +41,9 @@ AppUpdater::AppUpdater(const QString& version, Package package, const QString& c
     {"resumable", false}, {"retrying", false}, {"retryAttempt", 0}, {"retryLimit", RetryLimit}, {"retryDelay", 0}, {"speed", qint64(0)},
     {"source", ""},
     {"platform", package == Package::MacArm64 ? "macos" : package == Package::Unsupported ? "unsupported" : "windows"},
-    {"installLabel", package == Package::WindowsInstaller ? "安装更新" : package == Package::WindowsPortable ? "打开 ZIP 更新包" : "打开 DMG 更新包"}};
+    {"installLabel", package == Package::WindowsInstaller ? "安装更新" : package == Package::WindowsPortable ? "打开 ZIP 更新包" : "打开 DMG 更新包"},
+    // The Windows installer runs silently, closes this app and starts the new version.
+    {"autoRestart", package == Package::WindowsInstaller}};
   m_retryTimer.setSingleShot(true);
   connect(&m_retryTimer, &QTimer::timeout, this, &AppUpdater::beginDownloadRequest);
   m_folders = new NetdiskFolder(network, this);
@@ -552,9 +554,17 @@ void AppUpdater::install(bool automatic)
     return;
   }
   m_packageOpened = true;
+  // The silent installer asks this app to quit once it is past UAC; until then, or until
+  // installerReturned(), the update stays "installing".
+  if (m_package == Package::WindowsInstaller) return;
   // Opening a package hands control to the OS; it does not prove installation.
-  // Keep explicit reopening possible after a canceled installer/archive viewer.
+  // Keep explicit reopening possible after a canceled archive viewer.
   publish("ready");
+}
+
+void AppUpdater::installerReturned(const QString& message)
+{
+  if (m_state.value("status") == "installing") publish("ready", message);
 }
 
 void AppUpdater::cancel()

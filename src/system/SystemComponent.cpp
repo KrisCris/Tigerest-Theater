@@ -33,6 +33,7 @@
 #include "input/InputComponent.h"
 #include "SystemComponent.h"
 #include "AppUpdater.h"
+#include "InstallerHandoff.h"
 #include "CommunityBridge.h"
 #include "MainThreadWatchdog.h"
 #include "player/PlayerComponent.h"
@@ -144,20 +145,22 @@ bool SystemComponent::componentInitialize()
     m_appUpdater = new AppUpdater(Version::GetVersionString(), package,
       ProfileManager::activeProfile().cacheDir("updates"),
       ProfileManager::activeProfile().dataDir("app-update-preferences.json"), network,
-      [](const QString& path, Package kind) {
+      [this](const QString& path, Package kind) {
 #ifdef Q_OS_WIN
         if (kind == Package::WindowsInstaller)
         {
-          const QString nativePath = QDir::toNativeSeparators(path);
-          SHELLEXECUTEINFOW launch = {};
-          launch.cbSize = sizeof(launch);
-          launch.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
-          launch.lpVerb = L"open"; // Respect the installer's elevation manifest.
-          launch.lpFile = reinterpret_cast<LPCWSTR>(nativePath.utf16());
-          launch.nShow = SW_SHOWNORMAL;
-          const bool success = ShellExecuteExW(&launch);
-          if (launch.hProcess) CloseHandle(launch.hProcess);
-          return success;
+          if (!m_installerHandoff)
+          {
+            m_installerHandoff = new InstallerHandoff(this);
+            connect(m_installerHandoff, &InstallerHandoff::closeRequested, this, [this] {
+              qInfo() << "Update installer is ready; closing so it can install and restart the new version";
+              exit();
+            });
+            connect(m_installerHandoff, &InstallerHandoff::returned, this, [this] {
+              m_appUpdater->installerReturned("安装程序已退出，没有完成更新，可以再次点击安装。");
+            });
+          }
+          return m_installerHandoff->start(path);
         }
 #else
         Q_UNUSED(kind);
@@ -1213,7 +1216,27 @@ void SystemComponent::checkForUpdates(bool manual)
 
 QVariantMap SystemComponent::appUpdateState() const { return m_appUpdater ? m_appUpdater->state() : QVariantMap(); }
 void SystemComponent::downloadAppUpdate() { if (m_appUpdater) m_appUpdater->download(); }
-void SystemComponent::installAppUpdate(bool automatic) { if (m_appUpdater) m_appUpdater->install(automatic); }
+void SystemComponent::installAppUpdate(bool automatic)
+{
+  if (!m_appUpdater) return;
+  // An unattended install closes the app, so a download finishing mid-video waits for it to end.
+  if (automatic && m_appUpdater->state().value("autoRestart").toBool() && PlayerComponent::Get().inPlayback())
+  {
+    if (!m_installAfterPlayback)
+    {
+      m_installAfterPlayback = new QTimer(this);
+      m_installAfterPlayback->setInterval(5000);
+      connect(m_installAfterPlayback, &QTimer::timeout, this, [this] {
+        if (PlayerComponent::Get().inPlayback()) return;
+        m_installAfterPlayback->stop();
+        m_appUpdater->install(true);
+      });
+    }
+    m_installAfterPlayback->start();
+    return;
+  }
+  m_appUpdater->install(automatic);
+}
 void SystemComponent::cancelAppUpdate() { if (m_appUpdater) m_appUpdater->cancel(); }
 void SystemComponent::skipAppUpdate() { if (m_appUpdater) m_appUpdater->skip(); }
 void SystemComponent::deferAppUpdate() { if (m_appUpdater) m_appUpdater->defer(); }

@@ -224,6 +224,13 @@ if(WIN32 AND Python3_Interpreter_FOUND)
   add_test(NAME test_app_update_transfer COMMAND "${Python3_EXECUTABLE}" -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_app_update_transfer.py")
   set_tests_properties(test_app_update_transfer PROPERTIES TIMEOUT 90
     ENVIRONMENT "APP_UPDATE_TRANSFER_HOST=$<TARGET_FILE:app_update_transfer_host>")
+  add_executable(installer_handoff_host installer_handoff_host.cpp ../src/system/InstallerHandoff.cpp)
+  target_include_directories(installer_handoff_host PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_link_libraries(installer_handoff_host PRIVATE Qt6::Core)
+  find_program(TIGEREST_TEST_ISCC iscc PATHS "$ENV{LOCALAPPDATA}/Programs/Inno Setup 6" "C:/Program Files (x86)/Inno Setup 6" "C:/Program Files/Inno Setup 6")
+  add_test(NAME test_installer_handoff COMMAND "${Python3_EXECUTABLE}" -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_installer_handoff.py")
+  set_tests_properties(test_installer_handoff PROPERTIES TIMEOUT 300
+    ENVIRONMENT "INSTALLER_HANDOFF_HOST=$<TARGET_FILE:installer_handoff_host>;ISCC=${TIGEREST_TEST_ISCC}")
   add_test(NAME test_openssl_runtime_deployment COMMAND "${Python3_EXECUTABLE}" -B -X utf8 "${CMAKE_CURRENT_SOURCE_DIR}/test_openssl_runtime_deployment.py")
   add_executable(rife_extension_manager_host rife_extension_manager_host.cpp)
   target_link_libraries(rife_extension_manager_host PRIVATE tigerest_rife_control)

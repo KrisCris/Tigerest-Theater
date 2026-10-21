@@ -158,7 +158,7 @@
         const status = state.status;
         if (!detailsOpen) return;
         create();
-        title.textContent = ({available:'发现新版本',checking:'检查更新',downloading:'正在下载更新',ready:'更新已准备好',installing:'正在打开安装程序',current:'检查完成',unpublished:'iPad 版本发布情况',error:'更新未完成'})[status] || '客户端更新';
+        title.textContent = ({available:'发现新版本',checking:'检查更新',downloading:'正在下载更新',ready:'更新已准备好',installing:state.autoRestart?'正在安装更新':'正在打开安装程序',current:'检查完成',unpublished:'iPad 版本发布情况',error:'更新未完成'})[status] || '客户端更新';
         const version = state.version ? `当前版本 ${state.currentVersion || '—'} → ${state.version}` : `当前版本 ${state.currentVersion || '—'}`;
         const percent = state.size>0 ? Math.min(100,Math.max(0,Math.round((state.received||0)*100/state.size))) : 0;
         const bytes = value => Number(value)>=1048576 ? `${(Number(value)/1048576).toFixed(1)} MB` : `${(Math.max(0,Number(value)||0)/1024).toFixed(1)} KB`;
@@ -167,7 +167,7 @@
             status === 'checking' ? '正在检查正式发布，请稍候…' :
             status === 'downloading' ? state.retrying ? `${transfer}。${state.retryDelay || 1} 秒后第 ${state.retryAttempt || 1}/${state.retryLimit || 5} 次自动重试${state.source?`（${state.source}）`:''}。${state.resumable?'已保留进度，将继续下载。':''}` :
                 `已下载 ${percent}%（${transfer}）${percent===100?'，正在校验…':state.speed>0?` · ${bytes(state.speed)}/s`:''}${state.source && percent<100?` · 来源 ${state.source}`:''}` :
-            status === 'installing' ? '请按系统提示完成更新。取消后可再次安装。' :
+            status === 'installing' ? state.autoRestart ? '大河影院马上会自动关闭，装好后自动重新打开。如果出现系统权限提示，请选择「是」。' : '请按系统提示完成更新。取消后可再次安装。' :
             status === 'available' ? `${state.resumable?`已保留 ${transfer}，可继续下载。`:`大小约 ${(Number(state.size||0)/1048576).toFixed(1)} MB。`}下载校验完成后将${state.installLabel || '打开安装程序'}。` :
             status === 'error' && state.resumable ? `已保留 ${transfer}，重试会继续下载。` : '';
         details.textContent = [version,message,state.error].filter(Boolean).join('\n');

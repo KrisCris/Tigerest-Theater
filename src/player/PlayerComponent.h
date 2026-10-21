@@ -90,6 +90,8 @@ public:
   // Keep the Qt/native host windows alive until mpv releases its video output.
   void requestApplicationQuit();
   bool isShuttingDown() const { return m_shuttingDown; }
+  // A video is loaded, playing or paused.
+  bool inPlayback() const { return m_inPlayback; }
 #endif
   void updateDanmakuAuthorization(const QString& path, const QString& generation);
 #ifdef Q_OS_MAC

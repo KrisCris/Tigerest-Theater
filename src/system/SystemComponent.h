@@ -192,6 +192,10 @@ private:
 
   QNetworkAccessManager* m_networkManager;
   AppUpdater* m_appUpdater = nullptr;
+  QTimer* m_installAfterPlayback = nullptr;
+#ifdef Q_OS_WIN
+  class InstallerHandoff* m_installerHandoff = nullptr;
+#endif
   CommunityBridge* m_communityBridge = nullptr;
   MainThreadWatchdog* m_watchdog = nullptr;
   QVariantMap m_unfinishedFault;

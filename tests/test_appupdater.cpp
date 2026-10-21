@@ -423,10 +423,14 @@ private slots:
     QTRY_COMPARE(updater.state().value("status").toString(), "ready");
     QVERIFY(updater.state().value("installAfterDownload").toBool()); // Survives a web document replacement.
     QCOMPARE(updater.state().value("received").toLongLong(), 3);
-    updater.install(true); QCOMPARE(updater.state().value("status").toString(), "ready"); QVERIFY(QFile::exists(launched));
+    QVERIFY(updater.state().value("autoRestart").toBool());
+    updater.install(true); QCOMPARE(updater.state().value("status").toString(), "installing"); QVERIFY(QFile::exists(launched));
     QVERIFY(!updater.state().value("installAfterDownload").toBool());
-    updater.install(true); QCOMPARE(launches, 1); // A queued duplicate ready signal cannot relaunch it.
-    updater.install(); QCOMPARE(launches, 2); // An installer wizard can be canceled after launch.
+    updater.install(true); updater.install(); QCOMPARE(launches, 1); // Nothing relaunches the running installer.
+    updater.installerReturned("安装已取消"); // e.g. its UAC prompt was declined
+    QCOMPARE(updater.state().value("status").toString(), "ready"); QCOMPARE(updater.state().value("error").toString(), "安装已取消");
+    updater.install(); QCOMPARE(launches, 2);
+    updater.installerReturned({});
     QFile file(launched); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("abd"); file.close();
     launched.clear(); updater.install(); QVERIFY(launched.isEmpty()); QCOMPARE(launches, 2);
     QCOMPARE(updater.state().value("status").toString(), "error");

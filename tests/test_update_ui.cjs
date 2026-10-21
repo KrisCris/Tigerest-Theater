@@ -102,6 +102,9 @@ withBrowser({
  await evaluate(`emit({status:'ready',error:'系统安装已取消'});`);
  assert.equal(await evaluate('calls.filter(c=>c[0]==="installAppUpdate").length'),1,'installer cancellation must not loop');
  assert.ok(await evaluate('document.querySelector("#tigerest-update-dialog").textContent.includes("系统安装已取消")'));
+ await evaluate(`emit({status:'installing',autoRestart:true,error:''})`);
+ assert.ok(await evaluate('(()=>{const text=document.querySelector("#tigerest-update-dialog").textContent;return text.includes("正在安装更新")&&text.includes("自动重新打开")})()'),'a silent Windows install explains that the app closes and reopens');
+ await evaluate(`emit({status:'ready',autoRestart:false})`);
  await evaluate(`emit({status:'ready',installAfterDownload:true});emit({status:'ready',installAfterDownload:true});`);
  assert.equal(await evaluate('calls.filter(c=>c[0]==="installAppUpdate").length'),2,'native session retains one-click intent after document replacement');
  await evaluate(`emit({status:'ready',installAfterDownload:false});`);

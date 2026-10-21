@@ -29,6 +29,8 @@ public:
   void check(bool manual, bool enabled);
   void download();
   void install(bool automatic = false);
+  // The silent installer ended without closing the app, e.g. its UAC prompt was declined.
+  void installerReturned(const QString& message);
   void cancel();
   void skip();
   void defer();
