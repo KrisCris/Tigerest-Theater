@@ -14,6 +14,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.security.MessageDigest
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipFile
@@ -22,6 +23,8 @@ import java.util.zip.ZipFile
 class AndroidAppUpdateSource(private val context: Context): AppUpdateSource {
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(45, TimeUnit.SECONDS)
         .followRedirects(false).followSslRedirects(false).build()
+    // GitHub stays the answer when the community server is slow.
+    private val feedHttp = http.newBuilder().callTimeout(10, TimeUnit.SECONDS).build()
     private val cancellation = AtomicLong()
     @Volatile private var call: Call? = null
     @Volatile private var fixture = ""
@@ -65,12 +68,30 @@ class AndroidAppUpdateSource(private val context: Context): AppUpdateSource {
 
     override fun releases(): JSONArray {
         val generation = cancellation.get()
+        if (!(BuildConfig.DEBUG && fixture.isNotEmpty())) feedReleases { generation != cancellation.get() }?.let { return it }
         val address = if (BuildConfig.DEBUG && fixture.isNotEmpty()) "$fixture/releases" else "https://api.github.com/repos/Tigerest/Tigerest-Theater/releases?per_page=30"
         return open(address, "application/vnd.github+json", { generation != cancellation.get() }).use { response ->
             val bytes = response.body?.byteStream()?.readNBytes(2 * 1024 * 1024 + 1) ?: throw IllegalStateException("更新服务返回空数据")
             require(bytes.size <= 2 * 1024 * 1024) { "更新信息过大" }
             JSONArray(bytes.toString(Charsets.UTF_8))
         }
+    }
+
+    /** The signed community feed's releases; null (logged) for anything but a trusted, current envelope, so GitHub is asked as before. */
+    private fun feedReleases(cancelled: () -> Boolean): JSONArray? = try {
+        val active = feedHttp.newCall(Request.Builder().url(ReleaseFeed.ADDRESS)
+            .header("User-Agent", "Tigerest-Theater-Android/${BuildConfig.VERSION_NAME}").header("Accept", "application/json").build())
+        call = active
+        if (cancelled()) active.cancel()
+        active.execute().use { response ->
+            if (response.code != 200) throw ReleaseFeed.Rejected("HTTP ${response.code}")
+            val bytes = response.body?.byteStream()?.readNBytes(ReleaseFeed.MAX_ENVELOPE + 1) ?: throw ReleaseFeed.Rejected("empty response")
+            ReleaseFeed.open(bytes, Instant.now())
+        }
+    } catch (failure: Exception) {
+        if (cancelled()) throw InterruptedIOException("cancelled")
+        DiagnosticsLog.app.record("info", "Release feed not used, asking GitHub: ${failure.javaClass.simpleName} ${failure.message.orEmpty().take(200)}")
+        null
     }
 
     override fun download(candidate: AppUpdateCandidate, destination: File, cancelled: () -> Boolean, progress: (Long) -> Unit) {

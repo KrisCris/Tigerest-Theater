@@ -346,7 +346,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  check["启动时后台检查或手动检查"] --> api["GitHub Releases 接口<br/>最近 30 个发行"]
+  check["启动时后台检查或手动检查"] --> feed["社区服务器的版本列表<br/>（Ed25519 签名）"]
+  feed -->|"验签、新鲜度通过"| pick
+  feed -->|"连不上、超时或不可信"| api["GitHub Releases 接口<br/>最近 30 个发行"]
   api --> pick["选出比当前版本高、<br/>且带本平台安装包的正式版"]
   pick --> dot["更新图标显示红点；<br/>用户操作前完成则弹窗一次"]
   pick --> remember["记住这个发行；<br/>下次启动先弹窗，再后台刷新"]
@@ -355,7 +357,9 @@ flowchart TD
   verify --> install["Windows 安装器或便携 ZIP<br/>Mac DMG · Android 系统安装器"]
 ```
 
-安装包依次从 GitHub 下载加速镜像 `gh-proxy.com`、`ghproxy.net` 和 GitHub 原址下载。正在出数据的来源断线后先在原处续传；还没出数据就失败、返回错误状态、不受信任的跳转或长度不对时立刻换下一个。镜像只负责传输：大小和 SHA-256 只取自 GitHub 接口，经镜像下载的文件校验不通过时丢弃，只从 GitHub 原址重新下载一次。两个镜像转发 GitHub 的 ETag，续传可以跨来源；gh-proxy.com 对超过约 512 MB 的文件不支持断点续传，会从头重新下载。Windows RIFE 扩展的下载使用同一组镜像，校验值来自客户端内置的扩展目录。
+版本信息先向社区服务器要：服务器定时读取 GitHub 的发行列表，用 Ed25519 签名后提供给客户端，客户端用内置公钥验签，再检查数据新鲜度（最近一次读取 GitHub 不超过 72 小时）。连不上、10 秒内没有回应、被重定向、超过 2 MiB、验签失败或数据过期时，改为直接请求 GitHub 接口，用户看不到区别。这样多数用户不再占用 GitHub 的匿名额度，也不会再遇到「GitHub 请求受限」。签名只保证列表出自我们的服务器；安装包仍只从 GitHub 发行页（经加速镜像）下载，并按列表里的 SHA-256 核验。Windows 与 Mac 的验签代码在 `src/system/ReleaseFeed.cpp` 和 `Ed25519.cpp`，Android 在 `ReleaseFeed.kt` 和 `Ed25519.kt`；规则见 `docs/backend-app-release-feed.md`。iPad 暂时仍直接请求 GitHub。
+
+安装包依次从 GitHub 下载加速镜像 `gh-proxy.com`、`ghproxy.net` 和 GitHub 原址下载。正在出数据的来源断线后先在原处续传；还没出数据就失败、返回错误状态、不受信任的跳转或长度不对时立刻换下一个。镜像只负责传输：大小和 SHA-256 只取自版本信息（GitHub 接口或社区服务器签名转发的原值），经镜像下载的文件校验不通过时丢弃，只从 GitHub 原址重新下载一次。两个镜像转发 GitHub 的 ETag，续传可以跨来源；gh-proxy.com 对超过约 512 MB 的文件不支持断点续传，会从头重新下载。Windows RIFE 扩展的下载使用同一组镜像，校验值来自客户端内置的扩展目录。
 
 发行页没有本平台安装包时，更新器直接跳过这个版本。Windows 与 Mac 共用同一个 C++ 更新器（`src/system/AppUpdater.cpp`）和网页更新窗口；Android 用 Kotlin 实现同样的规则。iPad 只检查和提示，不下载安装；Apple TV 没有应用内更新检查。
 
