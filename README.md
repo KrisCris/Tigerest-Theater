@@ -89,7 +89,7 @@
 - **Mac、iPad HDR：** 支持 HDR 的屏幕上，HDR10 与杜比视界直接以 HDR 输出，开始播放时提示输出方式；SDR 屏幕保持原来的色调映射。
 - **Mac：** 更新提醒与 Windows 规则相同；界面继续跟随显示器刷新率，120 Hz 屏上约 120 帧。
 - **iPad：** 10 位 SDR 片源开启 RIFE 后长时间播放不再持续掉帧（颜色转换改用 Metal）；戴 AirPods 时多声道音轨可用空间音频；支持妙控键盘调音量、快进快退和按住右键倍速。
-- **Apple TV：** 同步升级与 Jellyfin 支持，暂不提供「一起看」和 RIFE。见 [2.9.3 发布说明](docs/releases/2026-10-21-v2.9.3.md)。
+- **Apple TV：** 同步升级与 Jellyfin 支持，戴 AirPods 时多声道音轨同样可用空间音频；暂不提供「一起看」和 RIFE。见 [2.9.3 发布说明](docs/releases/2026-10-21-v2.9.3.md)。
 
 ## 2.9.1 更新（Windows、Android）
 

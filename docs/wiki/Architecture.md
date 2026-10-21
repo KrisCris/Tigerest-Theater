@@ -206,7 +206,7 @@ flowchart TB
 - 登录、首页、条目、PlaybackInfo 和进度回报由 AppleCore 直接调用服务器接口完成，与 iPad 共用同一个 Swift 包。AppleCore 从 `/System/Info/Public` 的产品名和版本号判断是 Emby 还是 Jellyfin，Jellyfin 下改用它的字段参数和条目类型。连接过的服务器保存在列表里，新地址确认可用后才替换当前会话。登录会话保存在 Keychain，不保存密码。
 - 遥控器操作首页、海报墙和播放：播放和暂停、前后跳转 10 秒、上一集和下一集、选季选集。
 - 画质分三档：原生、轻量增强、完整桌面滤镜。高帧率视频或持续掉帧时，轻量增强会临时降低当前视频的处理负载，选择本身不变。
-- 播放器与 iPad 共用 MPV 引擎代码，但音频使用经过电视测试的 audiounit 输出，也不启用 EDR 图层（tvOS 没有这个属性）。
+- 播放器与 iPad 共用 MPV 引擎代码：音频同样优先使用 avfoundation 输出并声明多声道内容，AirPods 可以做空间音频；不启用 EDR 图层（tvOS 没有这个属性）。
 - 不包含 RIFE 和一起看，也没有应用内更新检查。
 
 ## 一起看

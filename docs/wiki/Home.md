@@ -35,7 +35,7 @@
 - **更新提醒：** 有新版本时每次打开软件弹窗一次，可从 GitHub、夸克网盘或百度网盘获取，或忽略本次更新。见[安装](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation#应用内更新)。
 - **Windows 卡死报告：** 播放器卡住或启动超时时自动发送故障报告给服务器管理员，可在客户端设置中关闭。
 - **苹果三端（由 2.8.0 直接升级）：** Mac、iPad 与 Apple TV 支持 Jellyfin 并记住连接过的服务器；Mac 与 iPad 在 HDR 屏幕上直接输出 HDR10／杜比视界；Mac 的更新提醒与 Windows 相同。见[服务器与登录](https://github.com/Tigerest/Tigerest-Theater/wiki/Server)和[播放与画质](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback#hdr-播放)。
-- **iPad：** 10 位 SDR 片源开启 RIFE 后长时间播放不再持续掉帧；戴 AirPods 时多声道音轨可用空间音频；支持妙控键盘快捷键。见 [RIFE 补帧](https://github.com/Tigerest/Tigerest-Theater/wiki/RIFE)。
+- **iPad 与 Apple TV：** iPad 上 10 位 SDR 片源开启 RIFE 后长时间播放不再持续掉帧，并支持妙控键盘快捷键；iPad 和 Apple TV 戴 AirPods 时多声道音轨都可用空间音频。见 [RIFE 补帧](https://github.com/Tigerest/Tigerest-Theater/wiki/RIFE)。
 
 ## 2.9.1 更新了什么（Windows、Android）
 
