@@ -2,6 +2,8 @@ const assert=require('node:assert/strict'),path=require('node:path');
 const withBrowser=require('./community_browser.cjs');
 withBrowser({
  '/':{type:'text/html',body:`<!doctype html><meta charset="utf-8"><body><div class="skinHeader"><div class="headerRight"></div></div><script>
+ // The desktop host injects its own update plugin; replace it with the iPad-shaped one.
+ window.TigerestUpdate?.destroy();delete window.TigerestUpdate;
  window.jmpInfo={capabilities:{selfUpdate:false,updateCheck:true}};
  window.finishCheck=null;window.calls=[];window.listeners=[];window.state={status:'idle',currentVersion:'2.6.0',checkOnly:true};
  const system={appUpdateChanged:{connect(fn){listeners.push(fn)},disconnect(fn){listeners=listeners.filter(x=>x!==fn)}},appUpdateState(cb){cb(state)}};

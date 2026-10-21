@@ -23,6 +23,20 @@ import AppleCore
         let media = EmbyPlayback(url: URL(fileURLWithPath: "/tmp/fixture.mp4"), headers: [:], item: .object([:]), mediaSourceID: "source", playSessionID: "session", startSeconds: 0)
         try player.play(media, client: EmbyClient(session: session))
     }
+    func testMultichannelOutputIsRequestedAndRenegotiatedOnRouteChange() async throws {
+        let audio = AVAudioSession.sharedInstance()
+        audio.supportsMultichannelContent = false; audio.preferredOutputChannels = 0; audio.maximumOutputNumberOfChannels = 6
+        let player = TVPlaybackController(arguments: ["--tv-fixture"])
+        try playFixture(player); defer { player.stop() }
+        XCTAssertTrue(audio.supportsMultichannelContent, "5.1/7.1 must reach the route for spatial audio")
+        XCTAssertEqual(audio.preferredOutputChannels, 6)
+        audio.preferredOutputChannels = 0; audio.maximumOutputNumberOfChannels = 2
+        NotificationCenter.default.post(name: AVAudioSession.routeChangeNotification, object: nil,
+                                        userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.newDeviceAvailable.rawValue])
+        for _ in 0..<50 where player.engine?.commands.contains(["ao-reload"]) != true { await Task.yield() }
+        XCTAssertEqual(player.engine?.commands.filter { $0 == ["ao-reload"] }.count, 1, "a new route reopens the audio output")
+        XCTAssertEqual(audio.preferredOutputChannels, 2)
+    }
     func testFreshDefaultIsNativeWithoutPersistingOrReducingDrawable() throws {
         try withPreference(nil) {
             let player = TVPlaybackController(arguments: [])
