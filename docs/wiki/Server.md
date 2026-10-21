@@ -1,6 +1,6 @@
 # 服务器与登录
 
-**Jellyfin：** Windows 与 Android 2.9.0 起可以连接 Jellyfin 服务器：选择「自建服务器」，填写完整地址（反向代理子路径如 `/jellyfin` 要保留），再用该 Jellyfin 服务器的账号登录。已实测 10.9.11、10.10.7、10.11.0、10.11.11 与 12.2；Mac、iPad、Apple TV 的 Jellyfin 支持随苹果端 2.9.0 补充。详见仓库的 [Jellyfin 连接说明](../jellyfin-compatibility.md)。下面的 Emby 说明同样适用。
+**Jellyfin：** Windows 与 Android 2.9.0 起、Mac、iPad 与 Apple TV 2.9.3 起可以连接 Jellyfin 服务器：选择「自建服务器」，填写完整地址（反向代理子路径如 `/jellyfin` 要保留），再用该 Jellyfin 服务器的账号登录。五个平台都实测了 10.9.11、10.10.7、10.11.0、10.11.11 与 12.2 的登录和播放（苹果三端还分别测试了根路径和 `/jellyfin` 子路径）。Apple TV 使用原生的服务器选择和登录页面。详见仓库的 [Jellyfin 连接说明](https://github.com/Tigerest/Tigerest-Theater/blob/main/docs/jellyfin-compatibility.md)。下面的 Emby 说明同样适用。
 
 客户端负责浏览和播放，服务器提供内容与权限。安装客户端后，需要使用你有权访问的 Emby 服务器。
 

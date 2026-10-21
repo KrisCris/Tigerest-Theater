@@ -1,6 +1,6 @@
 # 技术原理
 
-这一页介绍 Tigerest Theater 的实现方式：五个客户端各用什么技术、哪些代码是共用的，以及播放、一起看、评论、弹幕和更新的数据怎样流动。内容对应 2.8.0。日常使用不需要读这一页，操作说明见[教程首页](https://github.com/Tigerest/Tigerest-Theater/wiki/Home)。
+这一页介绍 Tigerest Theater 的实现方式：五个客户端各用什么技术、哪些代码是共用的，以及播放、一起看、评论、弹幕和更新的数据怎样流动。内容对应 2.9.3。日常使用不需要读这一页，操作说明见[教程首页](https://github.com/Tigerest/Tigerest-Theater/wiki/Home)。
 
 ## 总览
 
@@ -13,7 +13,7 @@ flowchart TB
     P["iPad<br/>WKWebView + MPVKit"]
     T["Apple TV<br/>SwiftUI + MPVKit"]
   end
-  E["你的 Emby 服务器<br/>媒体库、账号、播放地址、进度"]
+  E["你的 Emby／Jellyfin 服务器<br/>媒体库、账号、播放地址、进度"]
   S["大河社区服务<br/>评论 · 消息 · 弹幕 · 一起看"]
   G["GitHub Releases<br/>版本信息与安装包"]
   CDN["网盘 / CDN<br/>服务器 302 跳转时"]
@@ -25,7 +25,7 @@ flowchart TB
   S --> D
 ```
 
-- **客户端不带媒体，视频也不经过本项目的服务。** 播放器直接从你连接的 Emby 拉流；Emby 把请求 302 跳转到网盘或 CDN 时，播放器跟着跳转。媒体库、账号权限和观看进度都由 Emby 管理。
+- **客户端不带媒体，视频也不经过本项目的服务。** 播放器直接从你连接的 Emby 或 Jellyfin 服务器拉流；服务器把请求 302 跳转到网盘或 CDN 时，播放器跟着跳转。媒体库、账号权限和观看进度都由 Emby 管理。
 - **社区服务**是本项目自己维护的服务端，源码不随客户端公开。评论、消息、弹幕网关、共享弹幕匹配和一起看运行在同一个进程里，只处理文字、匹配关系和房间状态，不接触视频流。社区服务暂时不可用时，浏览和播放不受影响。
 - **更新检查**读取 GitHub Releases 的公开接口，安装包也从发行页下载。
 
@@ -36,10 +36,10 @@ flowchart TB
 | 目录 | 内容 | 用于 |
 | --- | --- | --- |
 | `src/` | Qt / C++ 桌面程序：窗口、播放器组件、设置、更新器、评论桥、RIFE 控制 | Windows、Mac |
-| `native/` | 注入 Emby 网页的扩展脚本：播放器插件、首页、评论、一起看、设置页、更新提示 | Windows、Mac、Android、iPad |
+| `native/` | 注入 Emby／Jellyfin 网页的扩展脚本：播放器插件、首页、评论、一起看、设置页、更新提示 | Windows、Mac、Android、iPad |
 | `resources/mpv/` | 内置 MPV 配置和 Lua 插件：uosc 控制栏、uosc_danmaku 弹幕、画质菜单、播放统计 | Windows、Mac |
 | `android/` | Kotlin 应用：网页宿主、原生桥、播放器、手势、弹幕、更新 | Android |
-| `apple/Core/` | AppleCore Swift 包：Emby 接口、首页数据、评论、弹幕匹配与排版、设置规则 | iPad、Apple TV |
+| `apple/Core/` | AppleCore Swift 包：Emby／Jellyfin 接口、首页数据、评论、弹幕匹配与排版、设置规则 | iPad、Apple TV |
 | `apple/App/` | iPad 应用：网页宿主、原生桥、播放器、下载、弹幕 | iPad |
 | `apple/TV/` | Apple TV 的原生界面与播放 | Apple TV |
 | `apple/NativeRIFE/` | iPad 的 RIFE 视频滤镜 | iPad |
@@ -48,15 +48,17 @@ flowchart TB
 
 ## 共用的网页界面
 
-Windows、Mac、Android 和 iPad 的媒体库界面就是 Emby 服务器自带的网页端。客户端打开服务器的 `web/index.html`，在页面自己的脚本运行之前注入本项目的扩展脚本。所以浏览、搜索、详情这些页面跟随服务器的 Emby 版本（兼容 4.8–4.10），而沉浸式首页、评论区、一起看、「Tigerest Theater 设置」分类和更新提示是扩展脚本加上去的。
+Windows、Mac、Android 和 iPad 的媒体库界面就是服务器自带的网页端：连接 Emby 时是 Emby 网页，连接 Jellyfin 时是 Jellyfin 网页。客户端打开服务器的 `web/index.html`，在页面自己的脚本运行之前注入本项目的扩展脚本。所以浏览、搜索、详情这些页面跟随服务器版本（Emby 兼容 4.8–4.10，Jellyfin 兼容 10.9–12.2，包括 12.2 的 Modern 与 Legacy 两种布局），而沉浸式首页、评论区、一起看、「Tigerest Theater 设置」分类和更新提示是扩展脚本加上去的。
+
+两种网页加载扩展的方式不同：Emby 把功能注册成 AMD 模块（`embycompat.js`），Jellyfin 通过自己的 NativeShell 插件接口创建插件（`jellyfinPlugin.js`），并按地址里的 hash 而不是 Emby 的页面管理器切换视图。扩展脚本据此分别接入首页、转场和播放器；同一份播放器插件在两边都注册为 MPV 播放器。
 
 ```mermaid
 flowchart TD
   start["启动客户端"] --> chooser["随包的服务器选择页"]
-  chooser -->|"读取 /System/Info/Public 确认是 Emby"| load["打开服务器的 Emby 网页"]
+  chooser -->|"读取 /System/Info/Public 识别 Emby 或 Jellyfin"| load["打开服务器的网页端"]
   load --> inject["页面开始加载时注入扩展脚本<br/>只对已保存的服务器地址生效"]
-  inject --> compat["Emby 兼容层<br/>适配 4.8–4.10 的网页差异"]
-  inject --> players["播放器插件<br/>向 Emby 注册 MPV 视频和音频播放器"]
+  inject --> compat["兼容层<br/>Emby 4.8–4.10 · Jellyfin 10.9–12.2"]
+  inject --> players["播放器插件<br/>向网页注册 MPV 视频和音频播放器"]
   inject --> features["首页 · 评论 · 一起看 · 设置页 · 更新提示"]
   players -->|"window.api.player"| bridge["原生桥"]
   features -->|"window.api.system / settings"| bridge
@@ -80,10 +82,10 @@ flowchart TD
 ```mermaid
 sequenceDiagram
   participant U as 用户
-  participant W as Emby 网页播放管理
+  participant W as 网页播放管理
   participant P as MPV 播放器插件
   participant N as 原生播放器 libmpv
-  participant E as Emby 服务器
+  participant E as Emby／Jellyfin 服务器
   U->>W: 点击播放
   W->>E: 请求 PlaybackInfo
   E-->>W: 播放地址
@@ -93,11 +95,11 @@ sequenceDiagram
   N->>E: 拉流
   E-->>N: 视频数据，或 302 跳到其他主机
   N-->>P: 播放、进度、结束等事件
-  P-->>W: 转成 Emby 播放器事件
+  P-->>W: 转成网页播放器事件
   W->>E: 回报播放进度和观看状态
 ```
 
-- Emby 网页的播放管理器通过 PlaybackInfo 选择媒体源、音轨、字幕以及直接播放还是转码，并负责播放队列、上一集和下一集，以及向服务器回报进度。客户端向它注册一个 MPV 播放器，接管真正的解码和显示。
+- 网页的播放管理器（Emby 与 Jellyfin 的流程相同）通过 PlaybackInfo 选择媒体源、音轨、字幕以及直接播放还是转码，并负责播放队列、上一集和下一集，以及向服务器回报进度。客户端向它注册一个 MPV 播放器，接管真正的解码和显示。
 - **令牌：** 服务器给的播放地址不带令牌时（Emby 关闭了 AddApiKeyToDirectStreamUrl），插件只给与当前服务器同一来源的地址补上令牌，其他主机的地址原样交给播放器。桌面端再把令牌从地址里移到 `Authorization` 请求头；MPV 跟随 302 跳到其他主机时会丢掉这个请求头，所以令牌不会发给网盘或 CDN。日志里的令牌会被打码。
 - **字幕：** 内嵌字幕由 MPV 直接读取；Emby 的外挂字幕按地址交给 MPV 加载。ASS 字幕由 libass 渲染，保留脚本自带的样式和字体。
 - **画质预设：** 桌面、iPad 和 Apple TV 的画质档位是一组 MPV 着色器和缩放参数，在播放器里切换，不改变 Emby 返回的视频。
@@ -110,7 +112,7 @@ sequenceDiagram
 flowchart TB
   subgraph window["主窗口 Qt Quick"]
     chrome["自绘标题栏"]
-    web["WebEngineView<br/>Emby 网页 + 扩展脚本"]
+    web["WebEngineView<br/>服务器网页 + 扩展脚本"]
     video["视频区域<br/>MPV 原生子窗口"]
   end
   web <-->|"WebChannel"| comps["C++ 组件<br/>player · settings · system · window · input"]
@@ -135,6 +137,9 @@ Mac 与 Windows 是同一套 Qt 代码，区别主要在视频输出和补帧：
 
 - **独立播放窗口：** macOS 的 Cocoa 不支持 MPV 的 `--wid` 嵌入，所以默认使用独立的 GPU-Next 播放窗口（Metal），停止后回到媒体库窗口。
 - **随包 RIFE：** 同样通过 MPV 的 VapourSynth 滤镜接入，但滤镜是本项目自己的插件：Core ML 负责推理，Metal 负责光流变形等图像处理。只处理 1080p、30 fps 以内的逐行 SDR 恒定帧率视频，输出两倍帧率；其他视频原帧播放。
+- **网页层：** 与 Windows 一样使用打过补丁的 QtWebEngine：补丁把播放窗口所在屏幕的 display link 交给 Chromium，网页动画跟随显示器刷新率（120 Hz 屏上约 120 帧）。Qt SDK 自带的引擎拿不到屏幕信息，只能固定 60 帧，所以打包脚本从验证过的发行包复制修补版引擎，前后核对它的 UUID，并把来源写进 `build-provenance.json`。
+- **HDR：** 每次加载视频时，客户端检查播放窗口所在屏幕能否显示超过 SDR 白的亮度（EDR 余量）。能显示时（如 XDR 屏）关闭 MPV 的自动 ICC 配置，MPV 按片源选择 HDR10（PQ）交换链，并把 HDR 元数据交给 Core Animation，由系统映射到屏幕；普通 SDR 屏保留 ICC 色彩管理和 MPV 的色调映射。开始播放时用 MPV 的独立叠加层在右上角提示 4 秒输出方式，不占用弹幕插件使用的左上角消息位置。
+- **更新：** 与 Windows 共用同一个 C++ 更新器和更新窗口，规则相同，只是选择 `arm64.dmg`，校验后打开 DMG。
 - 评论登录保存在 Keychain。正式包只提供 Apple Silicon 版本，使用临时签名，未经 Apple 公证。
 
 ### Android
@@ -142,7 +147,7 @@ Mac 与 Windows 是同一套 Qt 代码，区别主要在视频输出和补帧：
 ```mermaid
 flowchart TB
   act["MainActivity"] --> host["网页宿主<br/>Android System WebView"]
-  host -->|"注入 androidBridge.js 和扩展脚本"| page["Emby 网页"]
+  host -->|"注入 androidBridge.js 和扩展脚本"| page["服务器网页"]
   page <-->|"WebMessageListener JSON 消息"| disp["桥接分发"]
   disp --> pc["播放控制<br/>libmpv + SurfaceView"]
   disp --> set["设置存储"]
@@ -164,7 +169,7 @@ flowchart TB
 ```mermaid
 flowchart TB
   app["SwiftUI 应用"] --> host["网页宿主 WKWebView<br/>每个配置档独立的网站数据"]
-  host -->|"注入 ipadBridge.js 和扩展脚本"| page["Emby 网页"]
+  host -->|"注入 ipadBridge.js 和扩展脚本"| page["服务器网页"]
   page <-->|"脚本消息"| bridge["原生桥"]
   bridge --> player["播放控制<br/>MPVKit + Metal"]
   bridge --> dl["下载与离线媒体"]
@@ -177,27 +182,31 @@ flowchart TB
 
 - 随包的页面和资源通过自定义的 `tigerest://` 协议提供；扩展脚本只注入到当前服务器的页面。
 - 播放、手势、弹幕和离线媒体是 Swift 原生实现。弹幕使用独立的显示时钟和文字图层缓存，与 Apple TV 共用 AppleCore 中的匹配和排版代码。
-- **RIFE：** 编译成 MPV 的视频滤镜，排在字幕和着色器之前。符合条件的 NV12 视频由 Metal 完成输入颜色转换，Core ML 推理，经过有上限的异步队列输出。只处理 1920×1080、BT.709 SDR、23–30 fps 的视频，固定两倍；其他格式原帧通过。
+- **RIFE：** 编译成 MPV 的视频滤镜，排在字幕和着色器之前，在独立线程上运行，经过有上限的异步队列与播放线程交换画面。VideoToolbox 解码出的 NV12（8 位）和 P010（10 位）画面由 Metal 转换成模型需要的浮点 RGB：P010 的 16 位采样先换算成 8 位刻度的浮点值，保留 10 位精度，再走与 NV12 相同的计算，结果与固定版本 swscale 逐像素一致（误差在 1/4096 以内）。其他格式或 Metal 失败时退回 swscale。随后由 Core ML 推理生成中间帧。只处理 1920×1080、BT.709 SDR、23–30 fps 的视频，固定两倍；其他格式原帧通过。在 23.976 fps 下每帧的处理预算是 41.7 毫秒：CPU 转换要 9–16 毫秒，整帧会接近或超过预算，Metal 转换约 3 毫秒，整帧约 30 毫秒。
+- **HDR：** 屏幕的 EDR 余量大于 1（iPad Pro）时，MPV 打开色彩空间提示，播放图层允许 EDR，HDR10 与杜比视界以 10 位 PQ 输出；其他 iPad 色调映射到 SDR。开始播放时在画面上提示输出方式。
+- **音频：** 优先使用 MPV 的 avfoundation 输出（AVSampleBufferAudioRenderer），保留 5.1／7.1 的声道布局交给系统，AirPods 等设备可以做空间音频；以前的 RemoteIO 输出在这类线路上只拿到两个声道。音频会话声明多声道内容，耳机或 AirPlay 连接变化时重新协商声道数。
+- **键盘：** 接实体键盘时，方向键调音量、快进快退和按住倍速，空格播放／暂停；带修饰键的方向键保持系统作用。
 - **更新：** 应用内只检查和提示新版本。IPA 未签名，需要用自己的 Apple 身份签名安装，所以不能自动替换。
 
 ### Apple TV
 
-tvOS 没有 WebKit，Apple TV 因此不加载 Emby 网页，全部界面用 SwiftUI 原生实现。
+tvOS 没有 WebKit，Apple TV 因此不加载服务器网页，全部界面用 SwiftUI 原生实现。
 
 ```mermaid
 flowchart TB
   root["SwiftUI 界面<br/>首页 · 海报墙 · 详情 · 选集 · 评论 · 画质"] --> model["应用状态"]
-  model --> core["AppleCore<br/>Emby 接口 · 首页数据 · 评论 · 弹幕匹配"]
-  core -->|"REST"| emby["Emby 服务器"]
+  model --> core["AppleCore<br/>Emby／Jellyfin 接口 · 首页数据 · 评论 · 弹幕匹配"]
+  core -->|"REST"| emby["Emby／Jellyfin 服务器"]
   core -->|"评论"| svc["社区服务"]
   model --> play["播放控制<br/>MPVKit + Metal"]
   play --> extra["字幕 · 弹幕 · 画质预设"]
   play -->|"回报进度"| emby
 ```
 
-- 登录、首页、条目、PlaybackInfo 和进度回报由 AppleCore 直接调用 Emby 接口完成，与 iPad 共用同一个 Swift 包。登录会话保存在 Keychain，不保存密码。
+- 登录、首页、条目、PlaybackInfo 和进度回报由 AppleCore 直接调用服务器接口完成，与 iPad 共用同一个 Swift 包。AppleCore 从 `/System/Info/Public` 的产品名和版本号判断是 Emby 还是 Jellyfin，Jellyfin 下改用它的字段参数和条目类型。连接过的服务器保存在列表里，新地址确认可用后才替换当前会话。登录会话保存在 Keychain，不保存密码。
 - 遥控器操作首页、海报墙和播放：播放和暂停、前后跳转 10 秒、上一集和下一集、选季选集。
 - 画质分三档：原生、轻量增强、完整桌面滤镜。高帧率视频或持续掉帧时，轻量增强会临时降低当前视频的处理负载，选择本身不变。
+- 播放器与 iPad 共用 MPV 引擎代码，但音频使用经过电视测试的 audiounit 输出，也不启用 EDR 图层（tvOS 没有这个属性）。
 - 不包含 RIFE 和一起看，也没有应用内更新检查。
 
 ## 一起看
@@ -346,7 +355,7 @@ flowchart TD
   verify --> install["Windows 安装器或便携 ZIP<br/>Mac DMG · Android 系统安装器"]
 ```
 
-发行页没有本平台安装包时，更新器直接跳过这个版本。iPad 只检查和提示，不下载安装；Apple TV 没有应用内更新检查。
+发行页没有本平台安装包时，更新器直接跳过这个版本。Windows 与 Mac 共用同一个 C++ 更新器（`src/system/AppUpdater.cpp`）和网页更新窗口；Android 用 Kotlin 实现同样的规则。iPad 只检查和提示，不下载安装；Apple TV 没有应用内更新检查。
 
 找到的发行连同它的说明保存在本机偏好设置里（Windows/Mac：配置目录的 `app-update-preferences.json`；Android：`app-updates` 偏好）。下次启动先用完整的发行规则重新核对这份记录，已安装或已忽略的版本不会显示；后台刷新失败时保留记录和弹窗，刷新结果变化时替换或删除记录。
 
@@ -373,8 +382,8 @@ flowchart TD
 | 平台 | 构建 | 自动测试 |
 | --- | --- | --- |
 | Windows | CMake + MSVC，Qt 6.9 与自建 QtWebEngine，Inno Setup 打包 | CTest：C++ 单元测试、扩展脚本测试、QtWebEngine 界面测试、真实 MPV 播放测试、安装包检查 |
-| Mac | 同一套 CMake 工程 | 同一套测试中适用于 Mac 的部分 |
+| Mac | 同一套 CMake 工程；打包时换入修补版 QtWebEngine | 同一套测试中适用于 Mac 的部分（2.9.3 共 83 项，含更新窗口界面测试）、打包检查 |
 | Android | Gradle + Kotlin | JVM 单元测试、lint、签名和 16 KB 对齐检查 |
-| iPad、Apple TV | 由脚本生成 Xcode 工程，固定 MPVKit 版本 | AppleCore 的 Swift 测试、XCTest、Apple TV 遥控器界面测试 |
+| iPad、Apple TV | 由脚本生成 Xcode 工程，固定 MPVKit 版本 | AppleCore 的 Swift 测试、XCTest、Apple TV 遥控器界面测试、RIFE 调度测试、Metal 颜色转换与 swscale 的逐像素对照 |
 
 每次发行附带 `RELEASE-MANIFEST.json`（苹果三端为 `APPLE-RELEASE-MANIFEST.json`），记录来源提交、测试结果和验证范围；测试用模拟数据还是真实服务器、真实播放，分开记录。构建说明见仓库中的 [Windows](https://github.com/Tigerest/Tigerest-Theater/blob/main/dev/windows/README.md)、[macOS](https://github.com/Tigerest/Tigerest-Theater/blob/main/dev/macos/README.md)、[Android](https://github.com/Tigerest/Tigerest-Theater/blob/main/android/README.md)、[iPad](https://github.com/Tigerest/Tigerest-Theater/blob/main/docs/apple/INSTALL.md) 和 [Apple TV](https://github.com/Tigerest/Tigerest-Theater/blob/main/apple/TV/README.md)。

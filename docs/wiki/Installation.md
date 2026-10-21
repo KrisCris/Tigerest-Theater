@@ -2,20 +2,20 @@
 
 ## 选择正确的包
 
-从[正式发行页](https://github.com/Tigerest/Tigerest-Theater/releases/latest)下载，基础包已经包含 MPV 与运行库。下面以 2.8.0 的文件名示例说明；安装步骤也适用于后续同类正式包。
+从[正式发行页](https://github.com/Tigerest/Tigerest-Theater/releases/latest)下载，基础包已经包含 MPV 与运行库。下面以 2.9.3 的文件名示例说明；安装步骤也适用于后续同类正式包。
 
 | 设备 | 包名 | 最低要求 |
 | --- | --- | --- |
-| Windows 安装版 | TigerestTheater-2.8.0-x64.exe | Windows 10 1903+ 或 Windows 11，x64 |
-| Windows 便携版 | TigerestTheater-2.8.0-x64.zip | 同上 |
-| Android | TigerestTheater-2.8.0-android.apk | Android 15+，arm64-v8a / x86_64 |
-| Apple Silicon Mac | TigerestTheater-2.8.0-arm64.dmg | macOS 26+，M 系列 |
-| iPad | TigerestTheater-2.8.0-ipad.ipa | iPadOS 26+，需要自行签名 |
-| Apple TV | TigerestTheater-2.8.0-tvos.ipa | tvOS 26+，需要自行签名 |
+| Windows 安装版 | TigerestTheater-2.9.3-x64.exe | Windows 10 1903+ 或 Windows 11，x64 |
+| Windows 便携版 | TigerestTheater-2.9.3-x64.zip | 同上 |
+| Android | TigerestTheater-2.9.3-android.apk | Android 15+，arm64-v8a / x86_64 |
+| Apple Silicon Mac | TigerestTheater-2.9.3-arm64.dmg | macOS 26+，M 系列 |
+| iPad | TigerestTheater-2.9.3-ipad.ipa | iPadOS 26+，需要自行签名 |
+| Apple TV | TigerestTheater-2.9.3-tvos.ipa | tvOS 26+，需要自行签名 |
 
 Windows 安装版适合日常使用，由安装器管理程序目录；便携版适合把程序与配置放在同一个文件夹。Mac 正式附件目前仅提供 Apple Silicon 版本。Android 的系统版本和处理器架构必须同时满足要求。iPad 和 Apple TV 的 IPA 是两个不同的设备包，不能互换。
 
-无法访问 GitHub 时，可从固定的[夸克网盘](https://pan.quark.cn/s/88e6f7a795b4)或[百度网盘](https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig)分享文件夹下载 Windows／Android 安装包。每个版本一个子文件夹，附件与发行页相同，请用其中的 `SHA256SUMS.txt` 校验。
+无法访问 GitHub 时，可从固定的[夸克网盘](https://pan.quark.cn/s/88e6f7a795b4)或[百度网盘](https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig)分享文件夹下载 Windows／Android 安装包（Mac、iPad 与 Apple TV 的安装包目前只在 GitHub 发行页提供）。每个版本一个子文件夹，附件与发行页相同，请用其中的 `SHA256SUMS.txt` 校验。
 
 ## Windows 安装版
 
@@ -79,7 +79,7 @@ Windows、Mac 和 Android 有新版本时，每次打开软件弹出一次更新
 更新窗口里可以选择：
 
 - 「从GitHub获取更新」：下载、校验后打开安装程序。
-- 「夸克网盘」「百度网盘」：在浏览器中打开网盘分享里这个版本的文件夹，登录网盘后下载，适合无法访问 GitHub 时手动下载安装包。Android 上夸克的手机网页不能直接打开子文件夹，会停在分享首页，再依次点开 `Tigerest-Theater` 和版本号文件夹；装有百度网盘应用时，百度网盘链接可能由应用接管。找不到版本文件夹时打开整个分享。
+- 「夸克网盘」「百度网盘」：在浏览器中打开网盘分享里这个版本的文件夹，登录网盘后下载，适合无法访问 GitHub 时手动下载安装包（网盘里目前只有 Windows／Android 安装包，Mac 请从 GitHub 获取）。Android 上夸克的手机网页不能直接打开子文件夹，会停在分享首页，再依次点开 `Tigerest-Theater` 和版本号文件夹；装有百度网盘应用时，百度网盘链接可能由应用接管。找不到版本文件夹时打开整个分享。
 - 「忽略本次更新」：直到下一个新版本发布前不再弹窗。
 - 「稍后」：本次运行不再弹出，下次打开软件再提示。
 
@@ -93,18 +93,18 @@ Windows、Mac 和 Android 有新版本时，每次打开软件弹出一次更新
 
 ## 核对 SHA-256
 
-发行页有两份校验清单：Windows 和 Android 的文件在 `TigerestTheater-2.8.0-SHA256SUMS.txt`，Mac、iPad 和 Apple TV 的文件在 `TigerestTheater-2.8.0-APPLE-SHA256SUMS.txt`。先找到文件名对应的摘要，再与本机结果对照。
+发行页有两份校验清单：Windows 和 Android 的文件在 `TigerestTheater-2.9.3-SHA256SUMS.txt`，Mac、iPad 和 Apple TV 的文件在 `TigerestTheater-2.9.3-APPLE-SHA256SUMS.txt`。先找到文件名对应的摘要，再与本机结果对照。
 
 Windows PowerShell 示例：
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath 'C:\Downloads\TigerestTheater-2.8.0-x64.exe'
+Get-FileHash -Algorithm SHA256 -LiteralPath 'C:\Downloads\TigerestTheater-2.9.3-x64.exe'
 ```
 
 macOS 终端示例：
 
 ```sh
-shasum -a 256 ~/Downloads/TigerestTheater-2.8.0-arm64.dmg
+shasum -a 256 ~/Downloads/TigerestTheater-2.9.3-arm64.dmg
 ```
 
 摘要应完全相同，大小写不影响比较。如果不同，重新下载该文件；不要使用校验失败的包继续更新。
