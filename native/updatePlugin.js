@@ -3,6 +3,8 @@
     if (global.TigerestUpdate || (global.jmpInfo?.capabilities?.selfUpdate === false && global.jmpInfo?.capabilities?.updateCheck !== true)) return;
     let api, started, state = {}, dialog, style, title, details, notes, progress, actions, entry, entryDot, observer;
     let disposed = false, autoInstall = false, installInFlight = false, detailsOpen = false, revision = 0;
+    // The netdisk buttons stay folded under 备用下载 until asked for or a download fails.
+    let backupOpen = false;
     // The startup prompt shows once per document, and only before the user starts doing something.
     let prompted = false, interacted = false;
     const touched = event => { if (event.isTrusted) interacted = true; };
@@ -27,7 +29,7 @@
         return node;
     }
     function close() {
-        detailsOpen = false;
+        detailsOpen = false; backupOpen = false;
         if (state.status === 'available') {
             state = {...state, deferred:true};
             invoke('deferAppUpdate').catch(() => {});
@@ -61,6 +63,9 @@
           #tigerest-update-dialog .tg-update-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }
           #tigerest-update-dialog button { font:inherit; min-height:44px; padding:9px 16px; border-radius:9px; border:1px solid #48505d; background:#242a35; color:#ecedf2; cursor:pointer; }
           #tigerest-update-dialog .tg-update-dismiss { display:flex; gap:inherit; }
+          #tigerest-update-dialog .tg-update-backup { order:1; flex-basis:100%; display:flex; flex-wrap:wrap; align-items:center; gap:inherit; padding-top:12px; border-top:1px solid #ffffff15; }
+          #tigerest-update-dialog .tg-update-backup span { flex-basis:100%; color:#adb3bf; font-size:.92em; }
+          #tigerest-update-dialog .tg-update-backup[hidden] { display:none; }
           #tigerest-update-dialog .tg-update-actions > button:first-child { background:#ffba27; border-color:#ffba27; color:#17130a; font-weight:650; }
           #tigerest-update-dialog button:focus-visible { outline:2px solid #fff; outline-offset:3px; }
           #tigerest-update-dialog button:disabled { opacity:.5; cursor:wait; }
@@ -163,7 +168,7 @@
             status === 'downloading' ? state.retrying ? `${transfer}。${state.retryDelay || 1} 秒后第 ${state.retryAttempt || 1}/${state.retryLimit || 5} 次自动重试${state.source?`（${state.source}）`:''}。${state.resumable?'已保留进度，将继续下载。':''}` :
                 `已下载 ${percent}%（${transfer}）${percent===100?'，正在校验…':state.speed>0?` · ${bytes(state.speed)}/s`:''}${state.source && percent<100?` · 来源 ${state.source}`:''}` :
             status === 'installing' ? '请按系统提示完成更新。取消后可再次安装。' :
-            status === 'available' ? `${state.resumable?`已保留 ${transfer}，可继续下载。`:`大小约 ${(Number(state.size||0)/1048576).toFixed(1)} MB。`}下载校验完成后将${state.installLabel || '打开安装程序'}。${state.mirrors?.quark || state.mirrors?.baidu ? '\n无法访问 GitHub 时，可从网盘下载安装包手动安装。' : ''}` :
+            status === 'available' ? `${state.resumable?`已保留 ${transfer}，可继续下载。`:`大小约 ${(Number(state.size||0)/1048576).toFixed(1)} MB。`}下载校验完成后将${state.installLabel || '打开安装程序'}。` :
             status === 'error' && state.resumable ? `已保留 ${transfer}，重试会继续下载。` : '';
         details.textContent = [version,message,state.error].filter(Boolean).join('\n');
         notes.textContent = String(state.notes || '').slice(0,20000);
@@ -182,8 +187,16 @@
         if (status === 'downloading') button('暂停下载','cancel',()=>{autoInstall=false;return invoke('cancelAppUpdate');});
         const mirrors = !state.checkOnly && state.version && (status === 'available' || status === 'error' && state.size>0) ?
             [['夸克网盘','quark'],['百度网盘','baidu']].filter(([,key]) => /^https:\/\//.test(state.mirrors?.[key] || '')) : [];
-        // Native code opens this version's folder in the share; older bridges open the share itself.
-        for (const [label,key] of mirrors) button(label,key,()=>api.system.openAppUpdateMirror ? invoke('openAppUpdateMirror',key) : invoke('openExternalUrl',state.mirrors[key]));
+        if (mirrors.length) {
+            const backup = element('div'); backup.className = 'tg-update-backup'; backup.id = 'tigerest-update-backup'; backup.hidden = !backupOpen;
+            backup.appendChild(element('span','直接下载不成功时，可从网盘下载安装包手动安装。'));
+            const toggle = element('button','备用下载'); toggle.type = 'button'; toggle.dataset.updateAction = 'backup';
+            toggle.setAttribute('aria-controls',backup.id); toggle.setAttribute('aria-expanded',String(backupOpen));
+            toggle.addEventListener('click',() => { backupOpen = !backupOpen; backup.hidden = !backupOpen; toggle.setAttribute('aria-expanded',String(backupOpen)); });
+            actions.append(toggle, backup);
+            // Native code opens this version's folder in the share; older bridges open the share itself.
+            for (const [label,key] of mirrors) button(label,key,()=>api.system.openAppUpdateMirror ? invoke('openAppUpdateMirror',key) : invoke('openExternalUrl',state.mirrors[key]),backup);
+        }
         // Ignore and Later wrap together, so a narrow dialog keeps them on one row.
         const dismiss = status === 'available' ? element('span') : actions;
         if (status === 'available') {
@@ -195,6 +208,7 @@
     }
     function receive(next) {
         if (disposed || !next || typeof next !== 'object') return;
+        if (next.status==='error' && state.status==='downloading') backupOpen=true;
         revision++; state=next;
         if (state.status==='error') autoInstall=false;
         if (!prompted && !state.checkOnly && !state.manual && !state.deferred && state.status==='available' && actionable()) {

@@ -53,11 +53,16 @@ withBrowser({
  assert.equal(await evaluate('document.querySelector("[data-update-dot]").hidden'),false,'Later keeps the available update reachable');
  assert.deepEqual(await evaluate('calls.at(-1)'),['deferAppUpdate']);
  await evaluate(`emit({mirrors:{quark:'https://pan.quark.cn/s/abc123def',baidu:'https://pan.baidu.com/s/1AbCdEf?pwd=ab12'}});document.querySelector("#tigerest-update-button").click()`);
- assert.deepEqual(await actionLabels(),['直接下载','夸克网盘','百度网盘','忽略本次更新','稍后'],'netdisk buttons follow the release mirrors');
+ assert.deepEqual(await actionLabels(),['直接下载','备用下载','夸克网盘','百度网盘','忽略本次更新','稍后'],'netdisk buttons follow the release mirrors');
+ const backupShown=()=>evaluate('(()=>{const panel=document.querySelector("#tigerest-update-backup");return !panel.hidden&&panel.getClientRects().length>0&&document.querySelector("[data-update-action=backup]").getAttribute("aria-expanded")==="true"})()');
+ assert.equal(await backupShown(),false,'netdisks start folded under 备用下载');
+ assert.equal(await evaluate('document.querySelector("[data-update-action=baidu]").getClientRects().length'),0,'folded netdisk buttons are not visible');
+ await evaluate('document.querySelector("[data-update-action=backup]").click()');
+ assert.equal(await backupShown(),true,'备用下载 unfolds the netdisks');
  for(const width of [1100,360]){
   await call('Emulation.setDeviceMetricsOverride',{width,height:740,deviceScaleFactor:1,mobile:width<500});
-  const rows=await evaluate(`(()=>{const top=action=>document.querySelector('[data-update-action='+action+']').getBoundingClientRect().top,bg=action=>getComputedStyle(document.querySelector('[data-update-action='+action+']')).backgroundColor;return {together:Math.abs(top('skip')-top('close'))<1,primary:bg('download'),skip:bg('skip')}})()`);
-  assert.ok(rows.together&&rows.primary!==rows.skip,'Ignore and Later stay on one row and only the GitHub button is primary at '+width+'px: '+JSON.stringify(rows));
+  const rows=await evaluate(`(()=>{const box=action=>document.querySelector('[data-update-action='+action+']').getBoundingClientRect(),bg=action=>getComputedStyle(document.querySelector('[data-update-action='+action+']')).backgroundColor;return {together:Math.abs(box('skip').top-box('close').top)<1,below:box('quark').top>=box('close').bottom,primary:bg('download'),skip:bg('skip'),backup:bg('backup')}})()`);
+  assert.ok(rows.together&&rows.below&&rows.primary!==rows.skip&&rows.backup===rows.skip,'Ignore and Later stay on one row, netdisks sit below and only 直接下载 is primary at '+width+'px: '+JSON.stringify(rows));
  }
  await call('Emulation.clearDeviceMetricsOverride');
  await evaluate('document.querySelector("[data-update-action=baidu]").click()');
@@ -100,6 +105,11 @@ withBrowser({
  await evaluate(`emit({status:'ready',installAfterDownload:true});emit({status:'ready',installAfterDownload:true});`);
  assert.equal(await evaluate('calls.filter(c=>c[0]==="installAppUpdate").length'),2,'native session retains one-click intent after document replacement');
  await evaluate(`emit({status:'ready',installAfterDownload:false});`);
+ await evaluate(`emit({status:'downloading',received:100,mirrors:{quark:'https://pan.quark.cn/s/abc123def'}});emit({status:'error',error:'无法获取更新'})`);
+ assert.equal(await backupShown(),true,'a failed download unfolds 备用下载');
+ await evaluate(`document.querySelector('[data-update-action=backup]').click();emit({error:'仍无法获取更新'})`);
+ assert.equal(await backupShown(),false,'the user can fold it again after the failure');
+ await evaluate(`emit({mirrors:{}})`);
  await evaluate(`emit({status:'error',error:'下载校验失败'});document.querySelector('[data-update-action=download]').click()`);
  assert.deepEqual(await evaluate('calls.at(-1)'),['downloadAppUpdate']);
  await evaluate(`emit({status:'downloading',received:100});document.querySelector('[data-update-action=cancel]').click()`);
@@ -174,6 +184,6 @@ withBrowser({
  assert.equal(await dialogOpen(),true,'the remembered release prompts at the next launch');
  await evaluate('TigerestUpdate.destroy()');assert.equal(await evaluate('listeners.length'),0);
  assert.equal(await evaluate('document.querySelector("#tigerest-update-button")'),null);
- console.log('update UI: startup prompt once (cached or before interaction), netdisk mirrors, red dot, header replacement, skip/manual, text safety, progress, install-once, retry/cancel and narrow layout passed');
+ console.log('update UI: startup prompt once (cached or before interaction), netdisk mirrors under 备用下载, red dot, header replacement, skip/manual, text safety, progress, install-once, retry/cancel and narrow layout passed');
 // Qt does not tick animation frames when launched with windowsHide, even while document.hidden is false.
 },{visible:true}).catch(e=>{console.error(e);process.exitCode=1});
