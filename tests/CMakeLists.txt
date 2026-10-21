@@ -732,3 +732,11 @@ if(WIN32)
       "PATH=path_list_prepend:$<TARGET_FILE_DIR:tigerest_rife>")
   endforeach()
 endif()
+
+# Runs the uosc_danmaku ASS conversion outside mpv with stubbed mp APIs.
+find_program(LUAJIT_EXECUTABLE luajit)
+if(LUAJIT_EXECUTABLE)
+  add_test(NAME test_danmaku_bottom_scroll
+           COMMAND ${LUAJIT_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_danmaku_bottom_scroll.lua
+                   ${CMAKE_SOURCE_DIR}/resources/mpv/plugins/uosc_danmaku)
+endif()

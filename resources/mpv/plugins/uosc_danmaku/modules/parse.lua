@@ -692,9 +692,11 @@ function convert_danmaku_to_ass_events(force)
         local danmaku_type = d.type
 
         local end_time = nil
-        if danmaku_type >= 1 and danmaku_type <= 3 then
+        -- Bottom comments (type 4) scroll like types 1-3 so they never sit on
+        -- the subtitles.
+        if danmaku_type >= 1 and danmaku_type <= 4 then
             end_time = appear_time + scrolltime
-        elseif danmaku_type == 5 or danmaku_type == 4 then
+        elseif danmaku_type == 5 then
             end_time = appear_time + fixtime
         end
 
@@ -727,8 +729,8 @@ function convert_danmaku_to_ass_events(force)
         local style, effect
         local pos, move = nil, nil
 
-        -- 滚动弹幕 (类型 1, 2, 3)
-        if danmaku_type >= 1 and danmaku_type <= 3 then
+        -- 滚动弹幕 (类型 1, 2, 3；底部弹幕类型 4 也改为滚动，避免遮住字幕)
+        if danmaku_type >= 1 and danmaku_type <= 4 then
             style = "R2L"
             local text_length = get_str_width(text, fontsize)
             local x1 = res_x + text_length / 2
@@ -744,16 +746,6 @@ function convert_danmaku_to_ass_events(force)
             style = "TOP"
             local x = res_x / 2
             local y = get_fixed_y(fontsize, appear_time, fixtime, top_array, true)
-            if y then
-                effect = string.format("{\\pos(%d, %d)}", x, y)
-                pos = {x, y}
-            end
-
-        -- 底部弹幕 (类型 4)
-        elseif danmaku_type == 4 then
-            style = "BTM"
-            local x = res_x / 2
-            local y = get_fixed_y(fontsize, appear_time, fixtime, top_array, false)
             if y then
                 effect = string.format("{\\pos(%d, %d)}", x, y)
                 pos = {x, y}

@@ -21,7 +21,7 @@ public enum DanmakuParser {
                     guard let fields=row.array else { return nil }
                     func field(_ n: Int) -> JSONValue { fields.indices.contains(n) ? fields[n] : .null }
                     let time=field(0).number ?? field(0).string.flatMap(Double.init) ?? 0
-                    let mode=field(1).string == "top" ? 4 : field(1).string == "bottom" ? 5 : 1
+                    let mode=field(1).string == "top" ? 5 : field(1).string == "bottom" ? 4 : 1
                     let color=field(2).number.flatMap { $0.isFinite && (0...Double(UInt32.max)).contains($0) ? UInt32($0) : nil } ?? field(2).string.flatMap { UInt32($0.replacingOccurrences(of:"#",with:""),radix:16) } ?? 0xffffff
                     return .object(["p":.string(String(format:"%.2f,%d,%u",locale:Locale(identifier:"en_US_POSIX"),time,mode,color)),"m":field(4) == .null ? field(3) : field(4)])
                 })

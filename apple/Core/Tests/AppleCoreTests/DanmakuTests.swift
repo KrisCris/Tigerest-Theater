@@ -72,13 +72,24 @@ private func DanmakuProvidersFixture() -> [DanmakuProvider] {
     #expect(layout.visible(at:4).first(where:{$0.comment.text=="top2"})?.lane==1)
     #expect(layout.visible(at:8.2).allSatisfy{$0.comment.mode==1})
 }
+@Test func bottomDanmakuScrollsInTheTopLanesInsteadOfCoveringSubtitles() {
+    let comments:[DanmakuComment]=[.init(time:0,text:"bottom",mode:4),.init(time:0,text:"top",mode:5),.init(time:0,text:"scroll")]
+    let layout=DanmakuLayout(comments.map{($0,100)},width:1000,lanes:3,duration:8)
+    let rows=Dictionary(uniqueKeysWithValues:layout.visible(at:1).map{($0.comment.text,$0)})
+    #expect(rows["bottom"]?.scrolls==true)
+    #expect(rows["bottom"]?.duration==8)
+    #expect(rows["bottom"]?.lane==0, "bottom comments take the first scrolling lane, not the last screen row")
+    #expect(rows["top"]?.scrolls==false)
+    #expect(rows["top"]?.lane==0)
+    #expect(rows["scroll"]?.lane==1)
+}
 @Test func danmakuLayoutRejectsCatchUpCollision() {
     let layout=DanmakuLayout([(.init(time:0,text:"short"),40),(.init(time:1,text:"long"),900)],width:1000,lanes:1,duration:8)
     #expect(layout.visible(at:2).map(\.comment.text)==["short"])
 }
 @Test func alternatePCResponseIsNormalized() throws {
     let comments=try DanmakuParser.parse(data:Data(##"{"danmuku":[[1.234,"right","#ff0000","","hello"],[2,"top",255,"fixed"],[3,"bottom","ffffff","","bottom"]],"danum":3}"##.utf8))
-    #expect(comments == [.init(time:1.23,text:"hello",color:0xff0000),.init(time:2,text:"fixed",mode:4,color:255),.init(time:3,text:"bottom",mode:5)])
+    #expect(comments == [.init(time:1.23,text:"hello",color:0xff0000),.init(time:2,text:"fixed",mode:5,color:255),.init(time:3,text:"bottom",mode:4)])
 }
 @Test func officialHeadersMatchShippedPC() throws {
     let fixture=Bundle.module.url(forResource:"pc-danmaku-signing",withExtension:"json",subdirectory:"Fixtures")!

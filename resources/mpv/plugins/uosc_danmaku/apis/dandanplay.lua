@@ -220,9 +220,9 @@ local function normalize_danmaku_response(d)
             if pos == "right" then
                 mode = 1
             elseif pos == "top" then
-                mode = 4
-            elseif pos == "bottom" then
                 mode = 5
+            elseif pos == "bottom" then
+                mode = 4
             end
 
             local colorDec = 16777215
