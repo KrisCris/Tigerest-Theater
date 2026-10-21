@@ -56,6 +56,9 @@ struct TVSubtitleOption: Identifiable, Equatable {
                 try engine.set("sub-fonts-dir", fonts.path)
             }
             try engine.set("sub-font", "Source Han Sans SC")
+            // Plain-text subtitles a little larger than mpv's default for
+            // viewing distance; ASS keeps its authored sizes (override is off).
+            try engine.set("sub-scale", "1.15")
             try engine.set("sub-ass-override", "no")
         } catch { self.error = "字幕设置未能初始化，请在字幕面板重新选择。" }
     }

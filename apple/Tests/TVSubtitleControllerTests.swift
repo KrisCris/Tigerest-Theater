@@ -150,6 +150,7 @@ import AppleCore
         let engine = try MPVEngine(), subtitles = TVSubtitleController()
         subtitles.begin(playback: playback(), engine: engine)
         XCTAssertEqual(engine.string("sub-font"), "Source Han Sans SC")
+        XCTAssertEqual(engine.string("sub-scale"), "1.15")
         XCTAssertEqual(engine.string("sub-fonts-dir"), Bundle.main.resourceURL?.appending(path: "SubtitleFonts").path)
         XCTAssertEqual(engine.string("sub-ass-override"), "no")
         XCTAssertEqual(engine.string("sub-ass-style-overrides"), "")
