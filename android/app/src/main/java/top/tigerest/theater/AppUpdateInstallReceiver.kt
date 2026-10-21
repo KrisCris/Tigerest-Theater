@@ -13,13 +13,9 @@ class AppUpdateInstallReceiver : BroadcastReceiver() {
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION ->
                 AppUpdateController.active.get()?.confirm(intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java))
-            // The update stopped the old process; this runs in the new version. Open it again.
-            PackageInstaller.STATUS_SUCCESS -> {
-                DiagnosticsLog.app.record("info", "App update installed; reopening")
-                runCatching {
-                    context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.onFailure { DiagnosticsLog.app.record("warn", "Reopening after update failed: ${it.javaClass.simpleName}") }
-            }
+            // This runs in the new version. It cannot reopen itself: Android blocks activity starts
+            // from a background receiver, so the system's install screen offers to open it instead.
+            PackageInstaller.STATUS_SUCCESS -> DiagnosticsLog.app.record("info", "App update installed")
             else -> AppUpdateController.active.get()?.installFailed(status, intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE))
         }
     }
