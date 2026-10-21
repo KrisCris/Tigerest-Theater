@@ -2,6 +2,7 @@
 
 #include "AppUpdatePolicy.h"
 #include "NetdiskFolder.h"
+#include "ReleaseFeed.h"
 #include <QObject>
 #include <QVariantMap>
 #include <QPointer>
@@ -26,6 +27,10 @@ public:
              QNetworkAccessManager* network, Launcher launcher, QObject* parent = nullptr);
   ~AppUpdater() override;
   QVariantMap state() const;
+  // The signed release feed asked before the GitHub API; without one only GitHub is asked.
+  void setReleaseFeed(const QUrl& feed, const ReleaseFeed::Keys& keys,
+                      std::function<QDateTime()> now = &QDateTime::currentDateTimeUtc)
+  { m_releaseFeed = feed; m_feedKeys = keys; m_now = std::move(now); }
   void check(bool manual, bool enabled);
   void download();
   void install(bool automatic = false);
@@ -41,6 +46,8 @@ signals:
   void openUrl(const QUrl& url);
 private:
   void publish(const QString& status, const QString& error = {});
+  // Asks the release feed when there is one, else the GitHub API.
+  void requestReleases();
   void request(const QUrl& url, bool metadata, int redirects = 0);
   void receive(QNetworkReply* reply, bool metadata);
   void finish(QNetworkReply* reply, bool metadata, int redirects);
@@ -66,6 +73,11 @@ private:
   const QString m_preferencePath;
   QNetworkAccessManager* m_network;
   Launcher m_launcher;
+  QUrl m_releaseFeed;
+  ReleaseFeed::Keys m_feedKeys;
+  std::function<QDateTime()> m_now;
+  // The metadata request in flight is the release feed's; any failure of it falls back to GitHub.
+  bool m_feedRequest = false;
   NetdiskFolder* m_folders = nullptr;
   QPointer<QNetworkReply> m_reply;
   QFile m_file;

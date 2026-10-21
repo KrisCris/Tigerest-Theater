@@ -52,10 +52,103 @@ static QByteArray metadata()
 {
   return R"([{"tag_name":"v2.0.0","draft":false,"prerelease":false,"body":"Notes","assets":[{"name":"TigerestTheater-2.0.0-x64.exe","size":3,"digest":"sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","browser_download_url":"https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.0.0/TigerestTheater-2.0.0-x64.exe"}]}])";
 }
+static const QUrl Feed("http://feed.test/api/tigerest/v1/app/releases");
+static const QUrl GitHubReleases("https://api.github.com/repos/Tigerest/Tigerest-Theater/releases?per_page=30");
+// Envelopes signed by the test key of fixtures/make_release_feed_cases.mjs; they offer the same v2.0.0 as metadata().
+static QJsonObject feedCases()
+{
+  QFile file(FIXTURES "/release_feed_cases.json");
+  if (!file.open(QIODevice::ReadOnly)) qFatal("release_feed_cases.json missing");
+  return QJsonDocument::fromJson(file.readAll()).object();
+}
+static QByteArray feedEnvelope(const QString& name)
+{
+  for (const auto& value : feedCases().value("envelopes").toArray())
+    if (value.toObject().value("name").toString() == name) return value.toObject().value("envelope").toString().toUtf8();
+  qFatal("no such envelope");
+  return {};
+}
+static void useFeed(AppUpdater& updater)
+{
+  const auto cases = feedCases();
+  const QDateTime now = QDateTime::fromString(cases.value("now").toString(), Qt::ISODate);
+  updater.setReleaseFeed(Feed, {{cases.value("keyId").toString(), QByteArray::fromBase64(cases.value("publicKey").toString().toLatin1())}},
+                         [now] { return now; });
+}
 class TestAppUpdater : public QObject
 {
   Q_OBJECT
 private slots:
+  void signedFeedIsAskedBeforeGitHub_data()
+  {
+    QTest::addColumn<QByteArray>("body");
+    QTest::addColumn<int>("status");
+    QTest::addColumn<QUrl>("redirect");
+    QTest::addColumn<bool>("trusted");
+    QTest::newRow("signed") << feedEnvelope("valid") << 200 << QUrl() << true;
+    QTest::newRow("stale") << feedEnvelope("stale") << 200 << QUrl() << false;
+    QTest::newRow("other-key") << feedEnvelope("other-key") << 200 << QUrl() << false;
+    QTest::newRow("tampered") << feedEnvelope("tampered-payload") << 200 << QUrl() << false;
+    QTest::newRow("github-shaped") << metadata() << 200 << QUrl() << false;
+    QTest::newRow("unavailable") << QByteArray() << 503 << QUrl() << false;
+    QTest::newRow("not-modified") << feedEnvelope("valid") << 304 << QUrl() << false;
+    QTest::newRow("redirect") << QByteArray() << 302 << GitHubReleases << false;
+    QTest::newRow("oversized") << QByteArray(AppUpdatePolicy::MaximumMetadataBytes + 1, ' ') << 200 << QUrl() << false;
+  }
+  void signedFeedIsAskedBeforeGitHub()
+  {
+    QFETCH(QByteArray, body); QFETCH(int, status); QFETCH(QUrl, redirect); QFETCH(bool, trusted);
+    QTemporaryDir dir; FixtureNetwork network; network.responses = {{body, status, redirect}, {metadata()}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("prefs.json"), &network, {});
+    useFeed(updater);
+    updater.check(true, true);
+    QTRY_COMPARE(updater.state().value("status").toString(), "available");
+    QCOMPARE(updater.state().value("version").toString(), "2.0.0");
+    // Anything but a trusted envelope is GitHub's turn, as before the feed existed; it never reports an error itself.
+    QCOMPARE(network.requests, trusted ? QList<QUrl>{Feed} : (QList<QUrl>{Feed, GitHubReleases}));
+    QCOMPARE(network.requestDetails.first().rawHeader("Accept"), "application/json");
+    QVERIFY(!network.requestDetails.first().hasRawHeader("X-GitHub-Api-Version"));
+    if (!trusted) QVERIFY(network.requestDetails.last().hasRawHeader("X-GitHub-Api-Version"));
+  }
+  void githubErrorsStillShowWhenTheFeedFails()
+  {
+    QTemporaryDir dir; FixtureNetwork network; network.responses = {{{}, 503}, {{}, 429}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("prefs.json"), &network, {});
+    useFeed(updater);
+    updater.check(true, true);
+    QTRY_COMPARE(updater.state().value("status").toString(), "error");
+    QCOMPARE(updater.state().value("error").toString(), "GitHub 请求受限，请稍后重试。");
+    QCOMPARE(network.requests, (QList<QUrl>{Feed, GitHubReleases}));
+  }
+  void slowFeedFallsBackWithinTenSeconds()
+  {
+    QTemporaryDir dir; FixtureNetwork network; network.responses = {{feedEnvelope("valid"), 200, {}, true}, {metadata()}};
+    AppUpdater updater("1.0.0", AppUpdatePolicy::Package::WindowsInstaller, dir.filePath("cache"), dir.filePath("prefs.json"), &network, {});
+    useFeed(updater);
+    QElapsedTimer clock; clock.start();
+    updater.check(true, true);
+    QTRY_COMPARE_WITH_TIMEOUT(updater.state().value("status").toString(), "available", 15000);
+    QVERIFY(clock.elapsed() >= 9500 && clock.elapsed() < 14000);
+    QCOMPARE(network.requests, (QList<QUrl>{Feed, GitHubReleases}));
+  }
+  void rememberedReleaseStaysWhenFeedAndGitHubFail()
+  {
+    QTemporaryDir dir; FixtureNetwork network; network.responses = {{feedEnvelope("valid")}};
+    const auto launch = [&] {
+      auto updater = std::make_unique<AppUpdater>("1.0.0", AppUpdatePolicy::Package::WindowsInstaller,
+        dir.filePath("cache"), dir.filePath("prefs.json"), &network, AppUpdater::Launcher{});
+      useFeed(*updater); return updater; };
+    { auto first = launch(); first->check(false, true); QTRY_COMPARE(first->state().value("status").toString(), "available"); }
+    network.responses = {{{}, 503}, {{}, 503}};
+    auto second = launch(); QStringList statuses;
+    connect(second.get(), &AppUpdater::changed, this, [&](const QVariantMap& state) { statuses.append(state.value("status").toString()); });
+    second->check(false, true);
+    QVERIFY(second->state().value("cached").toBool());
+    QTRY_COMPARE(network.requests.size(), 3);
+    QTest::qWait(100);
+    QCOMPARE(statuses, QStringList{"available"});
+    QCOMPARE(network.requests.mid(1), (QList<QUrl>{Feed, GitHubReleases}));
+  }
   void repeatedPrefixesDoNotRefillRetryBudget_data()
   {
     QTest::addColumn<QByteArray>("etag");

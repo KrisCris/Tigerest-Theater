@@ -34,6 +34,7 @@
 #include "SystemComponent.h"
 #include "AppUpdater.h"
 #include "InstallerHandoff.h"
+#include "ReleaseFeed.h"
 #include "CommunityBridge.h"
 #include "MainThreadWatchdog.h"
 #include "player/PlayerComponent.h"
@@ -167,6 +168,7 @@ bool SystemComponent::componentInitialize()
 #endif
         return QDesktopServices::openUrl(QUrl::fromLocalFile(path));
       }, this);
+    m_appUpdater->setReleaseFeed(ReleaseFeed::address(), ReleaseFeed::productionKeys());
     connect(m_appUpdater, &AppUpdater::changed, this, &SystemComponent::appUpdateChanged);
     connect(m_appUpdater, &AppUpdater::openUrl, this, [](const QUrl& url) { QDesktopServices::openUrl(url); });
   }

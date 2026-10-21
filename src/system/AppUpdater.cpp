@@ -1,4 +1,7 @@
 #include "AppUpdater.h"
+#include "ReleaseFeed.h"
+#include <QDateTime>
+#include <QDebug>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -11,6 +14,7 @@ using AppUpdatePolicy::Package;
 namespace {
 constexpr int RetryDelays[] = {2000, 5000, 10000, 20000, 30000};
 constexpr int RetryLimit = sizeof(RetryDelays) / sizeof(RetryDelays[0]);
+const char* const GitHubReleases = "https://api.github.com/repos/Tigerest/Tigerest-Theater/releases?per_page=30";
 bool plainPath(const QString& path)
 {
   const QFileInfo info(path);
@@ -77,6 +81,7 @@ void AppUpdater::clearTransfer(bool discard)
 {
   m_retryTimer.stop();
   m_silentRefresh = false;
+  m_feedRequest = false;
   if (m_reply)
   {
     auto* reply = m_reply.data();
@@ -141,7 +146,6 @@ void AppUpdater::check(bool manual, bool enabled)
     publish("error", "此平台暂不支持应用内更新，请在发行页面查看可用版本。");
     return;
   }
-  const QUrl releases("https://api.github.com/repos/Tigerest/Tigerest-Theater/releases?per_page=30");
   // A release found too late to show last time is shown at once; startup
   // never waits for the network, which then refreshes it in the background.
   if (!manual && restoreCandidate())
@@ -151,12 +155,18 @@ void AppUpdater::check(bool manual, bool enabled)
     publish("available");
     if (m_state.value("status") != "available" || m_reply) return;
     m_silentRefresh = true;
-    request(releases, true);
+    requestReleases();
     return;
   }
   publish("checking");
   if (m_state.value("status") != "checking") return;
-  request(releases, true);
+  requestReleases();
+}
+
+void AppUpdater::requestReleases()
+{
+  m_feedRequest = !m_releaseFeed.isEmpty();
+  request(m_feedRequest ? m_releaseFeed : QUrl(GitHubReleases), true);
 }
 
 void AppUpdater::request(const QUrl& url, bool metadata, int redirects)
@@ -164,15 +174,17 @@ void AppUpdater::request(const QUrl& url, bool metadata, int redirects)
   QNetworkRequest request(url);
   request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
   request.setHeader(QNetworkRequest::UserAgentHeader, "Tigerest-Theater-Updater/" + m_currentVersion);
-  request.setRawHeader("Accept", metadata ? "application/vnd.github+json" : "application/octet-stream");
+  request.setRawHeader("Accept", m_feedRequest ? "application/json" : metadata ? "application/vnd.github+json" : "application/octet-stream");
   request.setRawHeader("Accept-Encoding", "identity");
-  if (metadata) request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
+  if (metadata && !m_feedRequest) request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
   if (!metadata && m_requestOffset > 0)
   {
     request.setRawHeader("Range", "bytes=" + QByteArray::number(m_requestOffset) + "-");
     request.setRawHeader("If-Range", m_etag);
   }
-  request.setTransferTimeout(30000);
+  // GitHub stays the answer when the community server is slow.
+  const int timeout = m_feedRequest ? 10000 : 30000;
+  request.setTransferTimeout(timeout);
   auto* reply = m_network->get(request);
   m_reply = reply;
   reply->setReadBufferSize(128 * 1024);
@@ -180,7 +192,7 @@ void AppUpdater::request(const QUrl& url, bool metadata, int redirects)
   connect(reply, &QNetworkReply::finished, this, [this, reply, metadata, redirects] { finish(reply, metadata, redirects); });
   // Slow downloads may keep making progress indefinitely. Only metadata has
   // an overall deadline; package transfers use the inactivity timeout above.
-  if (metadata) QTimer::singleShot(30000, reply, [this, reply] {
+  if (metadata) QTimer::singleShot(timeout, reply, [this, reply] {
     if (m_reply == reply) fail("检查更新超时，请稍后重试。");
   });
 }
@@ -416,7 +428,7 @@ void AppUpdater::finish(QNetworkReply* reply, bool metadata, int redirects)
     const QString host = target.host().toLower();
     const bool knownHost = metadata ? host == "api.github.com" :
       (host == "github.com" || host == "release-assets.githubusercontent.com" || host == "objects.githubusercontent.com");
-    if (redirects >= 5 || !target.isValid() || target.scheme() != "https" || !knownHost ||
+    if (m_feedRequest || redirects >= 5 || !target.isValid() || target.scheme() != "https" || !knownHost ||
         !target.userInfo().isEmpty() || target.hasFragment() || (target.port() != -1 && target.port() != 443))
     {
       if (!metadata && skipProxy("加速下载源返回了不受信任的跳转，正在换用下一个下载源。")) return;
@@ -444,21 +456,29 @@ void AppUpdater::finish(QNetworkReply* reply, bool metadata, int redirects)
   reply->deleteLater();
   if (metadata)
   {
-    QJsonParseError parseError;
-    const auto document = QJsonDocument::fromJson(m_metadata, &parseError);
-    m_metadata.clear();
-    if (parseError.error != QJsonParseError::NoError || !document.isArray() || document.array().size() > 30)
+    std::optional<QJsonArray> releases;
+    QString reason;
+    if (m_feedRequest) releases = ReleaseFeed::open(m_metadata, m_now(), m_feedKeys, &reason);
+    else
     {
-      fail("更新服务器返回了无效的版本信息。");
+      QJsonParseError parseError;
+      const auto document = QJsonDocument::fromJson(m_metadata, &parseError);
+      if (parseError.error == QJsonParseError::NoError && document.isArray()) releases = document.array();
+    }
+    m_metadata.clear();
+    if (!releases || releases->size() > 30)
+    {
+      fail(m_feedRequest ? "rejected: " + (reason.isEmpty() ? QString("more than 30 releases") : reason) : "更新服务器返回了无效的版本信息。");
       return;
     }
+    m_feedRequest = false;
     m_silentRefresh = false;
     m_state["cached"] = false;
-    m_candidate = AppUpdatePolicy::select(document.array(), m_currentVersion, m_package);
+    m_candidate = AppUpdatePolicy::select(*releases, m_currentVersion, m_package);
     const bool skipped = m_candidate.valid() && !m_state.value("manual").toBool() &&
       m_candidate.version == preferences().value("skippedVersion").toString();
     if (skipped) m_candidate = {};
-    rememberCandidate(document.array());
+    rememberCandidate(*releases);
     if (skipped)
     {
       publish("idle");
@@ -474,6 +494,20 @@ void AppUpdater::finish(QNetworkReply* reply, bool metadata, int redirects)
 
 void AppUpdater::fail(const QString& message, bool discard)
 {
+  // Whatever went wrong with the release feed, the GitHub API is asked as before the feed existed.
+  if (m_feedRequest)
+  {
+    qInfo() << "Release feed not used, asking GitHub:" << message;
+    m_feedRequest = false;
+    if (m_reply)
+    {
+      auto* reply = m_reply.data(); m_reply.clear();
+      disconnect(reply, nullptr, this, nullptr); reply->abort(); reply->deleteLater();
+    }
+    m_metadata.clear();
+    request(QUrl(GitHubReleases), true);
+    return;
+  }
   // A failed background refresh leaves the remembered release on screen.
   if (m_silentRefresh)
   {
