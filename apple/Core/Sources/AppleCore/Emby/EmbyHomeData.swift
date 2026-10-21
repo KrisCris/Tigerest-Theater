@@ -7,6 +7,24 @@ public enum EmbyHomeOrder: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// Order of a library's poster wall. Emby and Jellyfin accept the same sort
+/// fields; ties fall back to the name.
+public enum EmbyLibrarySort: String, CaseIterable, Codable, Sendable {
+    case name, recent, release, rating
+    public var title: String {
+        switch self { case .name: "名称"; case .recent: "最近添加"; case .release: "发行时间"; case .rating: "评分" }
+    }
+    var sortBy: String {
+        switch self {
+        case .name: "SortName"
+        case .recent: "DateCreated,SortName"
+        case .release: "PremiereDate,ProductionYear,SortName"
+        case .rating: "CommunityRating,SortName"
+        }
+    }
+    var sortOrder: String { self == .name ? "Ascending" : "Descending" }
+}
+
 public struct EmbyHomeWatchState: Sendable, Equatable {
     public var unwatched: Bool?
     public var played: Int?

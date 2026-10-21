@@ -52,7 +52,8 @@ struct DanmakuOverlay<Player: ObservableObject & DanmakuPlaybackState>: UIViewRe
         layer.opacity=Float(settings.setting("danmaku","opacity").number ?? 0.7)
         guard key != next else {return};key=next;clearLayers();images.removeAllObjects()
         font=UIFont.systemFont(ofSize:size,weight:bold ? .bold : .regular)
-        line=size+8*scale;lanes=max(1,Int(max(0,bounds.height-40)*area/line))
+        // The bottom fifth of the picture stays clear for subtitles at any display area.
+        line=size+8*scale;lanes=max(1,Int(max(0,bounds.height-40)*min(area,0.8)/line))
         var widths:[String:Double]=[:]
         let measured=(area>0 ? repository.allComments : []).map { source in
             // One scrolling lane per comment; keep all words from imported
@@ -89,8 +90,8 @@ struct DanmakuOverlay<Player: ObservableObject & DanmakuPlaybackState>: UIViewRe
                 let bitmap=image(for:row);label=CALayer();label.contents=bitmap.cgImage;label.contentsScale=bitmap.scale
                 label.bounds=CGRect(origin:.zero,size:bitmap.size);layer.addSublayer(label);labels[row.id]=label
             }
-            let x=row.comment.mode==1 ? bounds.width-(position-row.comment.time)*row.speed+row.width/2 : bounds.width/2
-            let y=row.comment.mode==4 ? bounds.height-20-Double(lanes-row.lane)*line : 20+Double(row.lane)*line+line/2
+            let x=row.scrolls ? bounds.width-(position-row.comment.time)*row.speed+row.width/2 : bounds.width/2
+            let y=20+Double(row.lane)*line+line/2
             label.position=CGPoint(x:x,y:y)
         }
         CATransaction.commit()

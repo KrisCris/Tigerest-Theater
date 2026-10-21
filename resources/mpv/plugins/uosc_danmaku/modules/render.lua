@@ -120,7 +120,8 @@ function render(pos_arg)
 
         if event.start_time > pos then break end  -- 后续弹幕提前退出
         if event.end_time >= pos then
-            local text = realtime_position_text(event, pos, height * options.displayarea)
+            -- The bottom fifth of the picture stays clear for subtitles.
+            local text = realtime_position_text(event, pos, height * math.min(options.displayarea, 0.8))
             if text then
                 text = text:gsub(re_entity, "")
             end

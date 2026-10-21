@@ -95,6 +95,7 @@ struct TVDetailView: View {
                     if let certificate = item["OfficialRating"].string, !certificate.isEmpty {
                         Text(certificate).foregroundStyle(.secondary)
                     }
+                    watchSummary
                 }.font(.system(size: 22))
                 actions(onComments: onComments).padding(.vertical, 10)
             }
@@ -109,6 +110,25 @@ struct TVDetailView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 16)).focusSection()
+    }
+
+    /// Watched, partly watched or unwatched, next to the rating.
+    @ViewBuilder private var watchSummary: some View {
+        switch TVMedia.watchState(item) {
+        case .played:
+            Label(TVMedia.isContainer(item) ? "已全部看完" : "已看完", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(Color(red: 0.35, green: 0.8, blue: 0.5)).accessibilityIdentifier("tv.detail.watchState")
+        case .partial(let fraction):
+            Label("看到 \(Int((fraction * 100).rounded()))%", systemImage: "circle.lefthalf.filled")
+                .foregroundStyle(gold).accessibilityIdentifier("tv.detail.watchState")
+        case .remaining(let count):
+            Label("还有 \(count) 集未看", systemImage: "circle")
+                .foregroundStyle(gold).accessibilityIdentifier("tv.detail.watchState")
+        case .unplayed:
+            if !TVMedia.isContainer(item) {
+                Label("未看", systemImage: "circle").foregroundStyle(.white.opacity(0.7)).accessibilityIdentifier("tv.detail.watchState")
+            }
+        }
     }
 
     private func actions(onComments: @escaping () -> Void) -> some View {
@@ -207,6 +227,7 @@ struct TVDetailView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         TVArtwork(url: model.client?.homeArtworkURL(for: child, purpose: .poster), symbol: "rectangle.stack")
                             .frame(height: 265).clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(alignment: .topTrailing) { TVWatchBadge(state: TVMedia.watchState(child)).padding(10) }
                         Text(TVMedia.title(child)).font(.system(size: 22, weight: .semibold)).lineLimit(2)
                     }
                 }
@@ -229,7 +250,7 @@ struct TVDetailView: View {
                         else { await model.open(child) }
                     }
                 } label: {
-                    TVMediaCard(item: child, imageURL: model.client?.homeArtworkURL(for: child, purpose: .cover))
+                    TVMediaCard(item: child, imageURL: model.client?.homeArtworkURL(for: child, purpose: .cover), marksUnplayed: true)
                         .overlay(alignment: .topLeading) {
                             if current {
                                 Text("当前集").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
