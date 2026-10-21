@@ -1061,6 +1061,42 @@
 				<string>DF598413992CC64288533FF3</string>
 			</array>
 		</dict>
+		<key>B8BD42B6C7B245B11D7EE4D1</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>UITests/ReleaseFeedDeviceTests.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>BFDAF04B8FDCD3CE0DB88AFD</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>B8BD42B6C7B245B11D7EE4D1</string>
+		</dict>
+		<key>8E19572866D3855368E3BC51</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>UITests/ScreenTourTests.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>1C13E84EF58C4E43C08FAED3</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>8E19572866D3855368E3BC51</string>
+		</dict>
 		<key>E3C3E8FB911DB112998F819A</key>
 		<dict>
 			<key>isa</key>
@@ -1078,6 +1114,51 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>E3C3E8FB911DB112998F819A</string>
+		</dict>
+		<key>3351F272385AD8570134A7FF</key>
+		<dict>
+			<key>isa</key>
+			<string>XCSwiftPackageProductDependency</string>
+			<key>productName</key>
+			<string>AppleCore</string>
+			<key>package</key>
+			<string>0D45F5FD462B8C70BFFB1002</string>
+		</dict>
+		<key>91DE35C6EEF4CDE2A1A6432E</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>text.json</string>
+			<key>path</key>
+			<string>../tests/fixtures/release_feed_cases.json</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>C5AC35849E49046D21910596</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>91DE35C6EEF4CDE2A1A6432E</string>
+		</dict>
+		<key>EDA46B2626E48A558095C2ED</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>text.json</string>
+			<key>path</key>
+			<string>../tests/fixtures/release_feed_production.json</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>4930B7046A8B1F28A56C8E35</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>EDA46B2626E48A558095C2ED</string>
 		</dict>
 		<key>E7F08BCC397888750F5CB9BD</key>
 		<dict>
@@ -1304,7 +1385,43 @@
 			<integer>2147483647</integer>
 			<key>files</key>
 			<array>
+				<string>BFDAF04B8FDCD3CE0DB88AFD</string>
+				<string>1C13E84EF58C4E43C08FAED3</string>
 				<string>179A5352D02788DA66205050</string>
+			</array>
+			<key>runOnlyForDeploymentPostprocessing</key>
+			<integer>0</integer>
+		</dict>
+		<key>4625AB740BBAD5CA87481350</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>productRef</key>
+			<string>3351F272385AD8570134A7FF</string>
+		</dict>
+		<key>497639E2F38DB3F946CE62A2</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFrameworksBuildPhase</string>
+			<key>buildActionMask</key>
+			<integer>2147483647</integer>
+			<key>files</key>
+			<array>
+				<string>4625AB740BBAD5CA87481350</string>
+			</array>
+			<key>runOnlyForDeploymentPostprocessing</key>
+			<integer>0</integer>
+		</dict>
+		<key>14F0309E5479D955E2A2D11E</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXResourcesBuildPhase</string>
+			<key>buildActionMask</key>
+			<integer>2147483647</integer>
+			<key>files</key>
+			<array>
+				<string>C5AC35849E49046D21910596</string>
+				<string>4930B7046A8B1F28A56C8E35</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>
@@ -1326,6 +1443,8 @@
 			<key>buildPhases</key>
 			<array>
 				<string>82132A846243111892F62DD5</string>
+				<string>497639E2F38DB3F946CE62A2</string>
+				<string>14F0309E5479D955E2A2D11E</string>
 			</array>
 			<key>dependencies</key>
 			<array>
@@ -1333,6 +1452,10 @@
 			</array>
 			<key>buildRules</key>
 			<array/>
+			<key>packageProductDependencies</key>
+			<array>
+				<string>3351F272385AD8570134A7FF</string>
+			</array>
 		</dict>
 		<key>0A3E27B8CA818264D75C8D81</key>
 		<dict>
@@ -1392,7 +1515,11 @@
 				<string>6156F6FBE9966162E46029C0</string>
 				<string>6CD29CB503CA703D25BF51D9</string>
 				<string>3AF843C0B03FD9397EF6752C</string>
+				<string>B8BD42B6C7B245B11D7EE4D1</string>
+				<string>8E19572866D3855368E3BC51</string>
 				<string>E3C3E8FB911DB112998F819A</string>
+				<string>91DE35C6EEF4CDE2A1A6432E</string>
+				<string>EDA46B2626E48A558095C2ED</string>
 				<string>0A3E27B8CA818264D75C8D81</string>
 			</array>
 			<key>sourceTree</key>

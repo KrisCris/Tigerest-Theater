@@ -30,15 +30,7 @@ import AppleCore
         let job=Task { @MainActor in
             let result:JSONValue
             do {
-                var request=URLRequest(url:URL(string:"https://api.github.com/repos/Tigerest/Tigerest-Theater/releases?per_page=30")!)
-                request.setValue("application/vnd.github+json",forHTTPHeaderField:"Accept")
-                request.setValue("TigerestTheater-iPad/"+currentVersion,forHTTPHeaderField:"User-Agent")
-                request.timeoutInterval=20
-                let (bytes,response)=try await http.bytes(for:request)
-                guard let response=response as? HTTPURLResponse,response.statusCode==200,response.expectedContentLength<=2*1024*1024 else {throw URLError(.badServerResponse)}
-                var data=Data()
-                for try await byte in bytes {guard data.count<2*1024*1024 else {throw URLError(.dataLengthExceedsMaximum)};data.append(byte)}
-                guard let releases=try JSONDecoder().decode(JSONValue.self,from:data).array else {throw URLError(.cannotParseResponse)}
+                let releases=try await releaseList()
                 var value=IPadUpdatePolicy.state(releases:releases,currentVersion:currentVersion).object!
                 value["manual"] = .bool(manualCheck)
                 if !manualCheck,value["version"]?.string==defaults.string(forKey:"TigerestSkippedIPadVersion"),value["status"]?.string=="available" {value["status"] = .string("idle")}
@@ -49,6 +41,40 @@ import AppleCore
             lastCheck=Date();publish(result);task=nil;return result
         }
         task=job;return await job.value
+    }
+    /// The community server's signed release list first; on any problem the
+    /// same request goes to GitHub, and only a GitHub failure reaches the user.
+    private func releaseList() async throws -> [JSONValue] {
+        do {
+            var request=URLRequest(url:ReleaseFeed.productionURL)
+            request.setValue("application/json",forHTTPHeaderField:"Accept")
+            return try ReleaseFeed.releases(envelope:try await body(request,timeout:10))
+        } catch {
+            model.diagnostics.record("info","Release feed not used, asking GitHub: \(error)")
+        }
+        var request=URLRequest(url:URL(string:"https://api.github.com/repos/Tigerest/Tigerest-Theater/releases?per_page=30")!)
+        request.setValue("application/vnd.github+json",forHTTPHeaderField:"Accept")
+        guard let releases=try JSONDecoder().decode(JSONValue.self,from:try await body(request,timeout:20)).array else {throw URLError(.cannotParseResponse)}
+        return releases
+    }
+    /// A 200 response of at most 2 MiB, read within `timeout` seconds overall. Redirects are not followed.
+    private func body(_ base:URLRequest,timeout:TimeInterval) async throws -> Data {
+        var request=base
+        request.setValue("TigerestTheater-iPad/"+currentVersion,forHTTPHeaderField:"User-Agent")
+        request.timeoutInterval=timeout
+        let http=self.http,limit=ReleaseFeed.maximumEnvelopeBytes
+        return try await withThrowingTaskGroup(of:Data.self) { group in
+            group.addTask {
+                let (bytes,response)=try await http.bytes(for:request)
+                guard let response=response as? HTTPURLResponse,response.statusCode==200,response.expectedContentLength<=Int64(limit) else {throw URLError(.badServerResponse)}
+                var data=Data()
+                for try await byte in bytes {guard data.count<limit else {throw URLError(.dataLengthExceedsMaximum)};data.append(byte)}
+                return data
+            }
+            group.addTask { try await Task.sleep(for:.seconds(timeout));throw URLError(.timedOut) }
+            defer {group.cancelAll()}
+            return try await group.next()!
+        }
     }
     func skip() {
         guard state["status"].string=="available",let version=state["version"].string,!version.isEmpty else {return}

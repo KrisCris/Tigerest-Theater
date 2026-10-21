@@ -61,11 +61,16 @@ def generate():
     testFiles=[]
     for path in sorted((ROOT/'UITests').glob('*.swift')):
         relative=str(path.relative_to(ROOT));ref=file(relative,'sourcecode.swift');files.append(ref);testFiles.append(obj(relative+'build','PBXBuildFile',fileRef=ref))
+    # Device tests also run AppleCore logic (release feed signatures) with the desktop fixtures.
+    testCore=obj('testcorelib','XCSwiftPackageProductDependency',productName='AppleCore',package=core)
+    testResources=[]
+    for name in ['release_feed_cases.json','release_feed_production.json']:
+        ref=file('../tests/fixtures/'+name,'text.json');files.append(ref);testResources.append(obj(name+'testbuild','PBXBuildFile',fileRef=ref))
     testProduct=obj('testproduct','PBXFileReference',explicitFileType='wrapper.cfbundle',path='TigerestUITests.xctest',sourceTree='BUILT_PRODUCTS_DIR')
     projectID=hashlib.sha256(b'project').hexdigest()[:24].upper()
     proxy=obj('proxy','PBXContainerItemProxy',containerPortal=projectID,proxyType=1,remoteGlobalIDString=target,remoteInfo='TigerestTheater')
     dependency=obj('testdepend','PBXTargetDependency',target=target,targetProxy=proxy)
-    testTarget=obj('uitests','PBXNativeTarget',name='TigerestUITests',productName='TigerestUITests',productReference=testProduct,productType='com.apple.product-type.bundle.ui-testing',buildConfigurationList=configurations('tests',{**settings,'PRODUCT_NAME':'TigerestUITests','PRODUCT_BUNDLE_IDENTIFIER':'top.tigerest.theater.ipad.uitests','GENERATE_INFOPLIST_FILE':'YES','INFOPLIST_FILE':'','TEST_TARGET_NAME':'TigerestTheater'}),buildPhases=[obj('testphase','PBXSourcesBuildPhase',buildActionMask=2147483647,files=testFiles,runOnlyForDeploymentPostprocessing=0)],dependencies=[dependency],buildRules=[])
+    testTarget=obj('uitests','PBXNativeTarget',name='TigerestUITests',productName='TigerestUITests',productReference=testProduct,productType='com.apple.product-type.bundle.ui-testing',buildConfigurationList=configurations('tests',{**settings,'PRODUCT_NAME':'TigerestUITests','PRODUCT_BUNDLE_IDENTIFIER':'top.tigerest.theater.ipad.uitests','GENERATE_INFOPLIST_FILE':'YES','INFOPLIST_FILE':'','TEST_TARGET_NAME':'TigerestTheater'}),buildPhases=[obj('testphase','PBXSourcesBuildPhase',buildActionMask=2147483647,files=testFiles,runOnlyForDeploymentPostprocessing=0),obj('testframeworks','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[obj('testcorelink','PBXBuildFile',productRef=testCore)],runOnlyForDeploymentPostprocessing=0),obj('testresources','PBXResourcesBuildPhase',buildActionMask=2147483647,files=testResources,runOnlyForDeploymentPostprocessing=0)],dependencies=[dependency],buildRules=[],packageProductDependencies=[testCore])
     products=obj('products','PBXGroup',name='Products',children=[product,testProduct],sourceTree='<group>')
     main=obj('main','PBXGroup',children=files+[products],sourceTree='<group>')
     obj('project','PBXProject',attributes={'BuildIndependentTargetsInParallel':'YES','LastUpgradeCheck':'2700','TargetAttributes':{target:{'CreatedOnToolsVersion':'27.2'},testTarget:{'CreatedOnToolsVersion':'27.2','TestTargetID':target}}},buildConfigurationList=configurations('project',{'CLANG_ENABLE_MODULES':'YES'}),compatibilityVersion='Xcode 14.0',developmentRegion='zh-Hans',knownRegions=['en','zh-Hans','Base'],mainGroup=main,productRefGroup=products,projectDirPath='',projectRoot='',targets=[target,testTarget],packageReferences=packages)
