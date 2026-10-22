@@ -23,7 +23,8 @@ struct QualitySettings: View {
                     LabeledContent("渲染",value:diagnostic["renderBackend"].string ?? "")
                     LabeledContent("硬件解码",value:diagnostic["hwdec"].string ?? "未启用")
                     LabeledContent("尺寸",value:"\(Int(diagnostic["sourceWidth"].number ?? 0)) × \(Int(diagnostic["sourceHeight"].number ?? 0))")
-                    Text("RIFE 状态：\(diagnostic["nativeRife"]["status"].string ?? "未启用")，已生成 \(diagnostic["nativeRife"]["generated"].string ?? "0") 帧").font(.caption).foregroundStyle(.secondary)
+                    LabeledContent("丢帧",value:"输出 \(Int(diagnostic["voDrops"].number ?? 0)) · 解码 \(Int(diagnostic["decoderDrops"].number ?? 0))")
+                    Text("RIFE 状态：\(diagnostic["nativeRife"]["status"].string ?? "未启用")，已生成 \(diagnostic["nativeRife"]["generated"].string ?? "0") 帧\(diagnostic["nativeRife"]["inferenceP95Ms"].string.map { "，推理 p95 " + $0 + " ms" } ?? "")").font(.caption).foregroundStyle(.secondary)
                 }
                 if !message.isEmpty {Text(message)}
             }.navigationTitle("画质设置").toolbar {Button("完成"){dismiss()}}

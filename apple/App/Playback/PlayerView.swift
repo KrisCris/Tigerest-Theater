@@ -159,15 +159,8 @@ struct PlayerView: View {
             }
         }.ignoresSafeArea().foregroundStyle(.white)
             .onAppear { if !tutorialSeen { presentTutorial() }; scheduleHide() }
-            .onChange(of: player.dynamicRangeNotice) { _, text in
-                dynamicRangeTask?.cancel()
-                withAnimation(.easeOut(duration: 0.2)) { dynamicRangeNotice = text }
-                guard !text.isEmpty else { return }
-                dynamicRangeTask = Task { @MainActor in
-                    do { try await Task.sleep(for: .seconds(4)) } catch { return }
-                    withAnimation(.easeOut(duration: 0.4)) { dynamicRangeNotice = "" }
-                }
-            }
+            .onChange(of: player.dynamicRangeNotice) { _, text in showCornerNotice(text, seconds: 4) }
+            .onChange(of: player.performanceNotice) { _, text in showCornerNotice(text, seconds: 7) }
             .onDisappear { unlockTask?.cancel(); hideTask?.cancel(); feedbackTask?.cancel(); dynamicRangeTask?.cancel(); player.endTemporarySpeed() }
             .onChange(of: [seeking, showTutorial, showDanmaku, showQueue, importSubtitle]) { _, _ in scheduleHide() }
             .onChange(of: player.locked) { _, locked in
@@ -234,6 +227,16 @@ struct PlayerView: View {
         case .holdBegan:
             if player.beginTemporarySpeed() { gestureFeedback(String(format: "临时 %.2g×", max(2, player.rate)), true) }
         case .holdEnded: break
+        }
+    }
+    /// The top-left notice: the output format at start, or a RIFE performance hint.
+    private func showCornerNotice(_ text: String, seconds: Double) {
+        dynamicRangeTask?.cancel()
+        withAnimation(.easeOut(duration: 0.2)) { dynamicRangeNotice = text }
+        guard !text.isEmpty else { return }
+        dynamicRangeTask = Task { @MainActor in
+            do { try await Task.sleep(for: .seconds(seconds)) } catch { return }
+            withAnimation(.easeOut(duration: 0.4)) { dynamicRangeNotice = "" }
         }
     }
     private func gestureFeedback(_ text: String, _ touching: Bool) {

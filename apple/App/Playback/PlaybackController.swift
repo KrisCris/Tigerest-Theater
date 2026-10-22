@@ -29,6 +29,9 @@ import AppleCore
     /// Shown once per media when the VO reports its target colorspace.
     @Published var dynamicRangeNotice = ""
     private var dynamicRangeReported = false
+    /// Shown once per media when RIFE cannot keep up (the desktop rule); interpolation stays on.
+    @Published var performanceNotice = ""
+    private var rifeGuard = RifePerformanceGuard(), rifeWarned = false, rifePolledAt = 0.0
     @Published var tracks: [JSONValue] = []
     @Published var queue: [JSONValue] = []
     var currentID = "", metadata: JSONValue = .null
@@ -107,7 +110,7 @@ import AppleCore
                 if !headers.isEmpty { try next.set("http-header-fields", headers.joined(separator: ",")) }
                 try next.command(["loadfile", url, "replace"])
             } catch { next.close(); engine = nil; throw error }
-            model.diagnostics.record("info", "Player load requested"); state.begin(); active = true; locked = false; loaded = false; dynamicRangeReported = false; resetValidationTimeline(); dynamicRangeNotice = ""; position = 0; duration = 0; watchdog = PlaybackWatchdog()
+            model.diagnostics.record("info", "Player load requested"); state.begin(); active = true; locked = false; loaded = false; dynamicRangeReported = false; resetValidationTimeline(); dynamicRangeNotice = ""; performanceNotice = ""; rifeGuard.reset(); rifeWarned = false; position = 0; duration = 0; watchdog = PlaybackWatchdog()
             UIApplication.shared.isIdleTimerDisabled = true
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
             model.danmaku.autoMatch(metadata["metadata"],mediaURL:URL(string:url)); emit("windowVisible", [.bool(true)]); emit("onMetaData", [metadata, .string(url)])
@@ -201,8 +204,28 @@ import AppleCore
                 model.diagnostics.record("info", "Dynamic range: " + text.replacingOccurrences(of: "\n", with: " | "))
             }
         }
+        if loaded { pollRifePerformance(engine) }
         if watchdog.stalled(position: position, now: ProcessInfo.processInfo.systemUptime, paused: paused) { fail("播放超过 30 秒没有进展，请检查网络后重试"); return }
         updateNowPlaying()
+    }
+    /// Once a second, the desktop CoreML guard over the filter's counters. Like
+    /// the desktop, a sustained shortfall only shows a hint: a presentation
+    /// drop is not proof that inference is too slow, so the user decides.
+    private func pollRifePerformance(_ engine: MPVEngine) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard !rifeWarned, now - rifePolledAt >= 1 else { return }
+        rifePolledAt = now
+        let rife = engine.json("vf-metadata/tigerest-rife")
+        guard case .object = rife else { rifeGuard.reset(); return }
+        func count(_ key: String) -> UInt64 { UInt64(rife[key].string ?? "") ?? 0 }
+        let drops = UInt64(max(0, engine.number("frame-drop-count"))) + UInt64(max(0, engine.number("decoder-frame-drop-count")))
+        let suspended = paused || buffering || engine.flag("seeking") || rife["status"].string != "active"
+        let fps = engine.number("container-fps"), p95 = Double(rife["inferenceP95Ms"].string ?? "") ?? 0
+        guard rifeGuard.update(nowMs: Int64(now * 1000), predictions: count("generated"), pairs: count("inputs"), p95Ms: p95,
+                               drops: drops, fps: fps, suspended: suspended) else { return }
+        rifeWarned = true
+        performanceNotice = "检测到持续丢帧，可在「画质设置」查看播放诊断，并考虑降低性能开销"
+        model.diagnostics.record("warning", "RIFE playback warning (interpolation retained): drops=\(drops) generated=\(count("generated")) inputs=\(count("inputs")) p95Ms=\(p95) sourceFps=\(fps)")
     }
     private func finish(_ generation: UInt64) {
         model.diagnostics.record("info", "Player reached end of file")
@@ -387,7 +410,7 @@ import AppleCore
     #else
     private func resetValidationTimeline() {}
     #endif
-    func diagnostics() -> JSONValue { .object(["nativeRife": engine?.json("vf-metadata/tigerest-rife") ?? .null,"qualityPreset": .string(qualitySelection.preset), "shaderPaths": engine?.json("glsl-shaders") ?? .array([]), "renderPasses": engine?.json("vo-passes") ?? .null, "brightness": .number(brightness), "systemVolume": .number(systemVolume.value), "version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false), "channels": .string(engine?.string("audio-out-params/channels") ?? ""), "sourceChannels": .string(engine?.string("audio-params/channels") ?? ""), "sessionOutputChannels": .number(Double(AVAudioSession.sharedInstance().outputNumberOfChannels)), "sessionMaximumOutputChannels": .number(Double(AVAudioSession.sharedInstance().maximumOutputNumberOfChannels)), "supportsMultichannel": .bool(AVAudioSession.sharedInstance().supportsMultichannelContent), "route": .array(AVAudioSession.sharedInstance().currentRoute.outputs.map { .object(["type": .string($0.portType.rawValue), "channels": .number(Double($0.channels?.count ?? 0)), "spatialAudio": .bool($0.isSpatialAudioEnabled)]) })]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos", "sub-font", "sub-fonts-dir"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "videoParams": engine?.json("video-params") ?? .null, "videoOutParams": engine?.json("video-out-params") ?? .null, "edrHeadroom": .object(["current": .number(Double(surface.window?.screen.currentEDRHeadroom ?? 0)), "potential": .number(Double(surface.window?.screen.potentialEDRHeadroom ?? 0)), "brightness": .number(Double(surface.window?.screen.brightness ?? -1))]), "colorOutput": .object(Dictionary(uniqueKeysWithValues: ["target-colorspace-hint", "tone-mapping", "target-trc", "target-prim", "target-peak"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
+    func diagnostics() -> JSONValue { .object(["nativeRife": engine?.json("vf-metadata/tigerest-rife") ?? .null,"qualityPreset": .string(qualitySelection.preset), "shaderPaths": engine?.json("glsl-shaders") ?? .array([]), "renderPasses": engine?.json("vo-passes") ?? .null, "brightness": .number(brightness), "systemVolume": .number(systemVolume.value), "version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false), "channels": .string(engine?.string("audio-out-params/channels") ?? ""), "sourceChannels": .string(engine?.string("audio-params/channels") ?? ""), "sessionOutputChannels": .number(Double(AVAudioSession.sharedInstance().outputNumberOfChannels)), "sessionMaximumOutputChannels": .number(Double(AVAudioSession.sharedInstance().maximumOutputNumberOfChannels)), "supportsMultichannel": .bool(AVAudioSession.sharedInstance().supportsMultichannelContent), "route": .array(AVAudioSession.sharedInstance().currentRoute.outputs.map { .object(["type": .string($0.portType.rawValue), "channels": .number(Double($0.channels?.count ?? 0)), "spatialAudio": .bool($0.isSpatialAudioEnabled)]) })]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "voDrops": .number(engine?.number("frame-drop-count") ?? 0), "decoderDrops": .number(engine?.number("decoder-frame-drop-count") ?? 0), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos", "sub-font", "sub-fonts-dir"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "videoParams": engine?.json("video-params") ?? .null, "videoOutParams": engine?.json("video-out-params") ?? .null, "edrHeadroom": .object(["current": .number(Double(surface.window?.screen.currentEDRHeadroom ?? 0)), "potential": .number(Double(surface.window?.screen.potentialEDRHeadroom ?? 0)), "brightness": .number(Double(surface.window?.screen.brightness ?? -1))]), "colorOutput": .object(Dictionary(uniqueKeysWithValues: ["target-colorspace-hint", "tone-mapping", "target-trc", "target-prim", "target-peak"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
     func applySettings() throws {
         guard let engine else { return }
         try engine.resetQuality()
