@@ -119,7 +119,7 @@ import AppleCore
                 feedback("\(delta >= 0 ? "快进" : "快退") \(abs(delta)) 秒\n\(time(target)) / \(time(player.duration))", true)
             case .volume(let value):
                 if player.systemVolume.set(value) { feedback("音量 \(Int((value * 100).rounded()))%", true) }
-                else { feedback("请使用 iPad 音量键调整当前输出", true) }
+                else { feedback("请使用音量键调整当前输出", true) }
             case .brightness(let value):
                 player.setBrightness(value); feedback("亮度 \(Int((player.brightness * 100).rounded()))%", true)
             case .unseekable: feedback("此视频暂不支持滑动跳转", true)

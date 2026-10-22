@@ -77,8 +77,8 @@ import AppleCore
                 settings["main", default: [:]]["serverConnectionMode"] = .string(mode)
             }
             let bootstrap: JSONValue = .object([
-                "version": .string(version), "deviceName": .string("iPad"), "platform": .string("ipad"), "mode": .string("desktop"),
-                "userAgent": .string(view.customUserAgent!), "scriptPath": .string("tigerest://bundle"), "mpvConfigMode": .string("embedded"), "mpvConfigDir": .string("iPad 应用内配置"),
+                "version": .string(version), "deviceName": .string(UIDevice.current.model), "platform": .string("ipad"), "mode": .string("desktop"),
+                "userAgent": .string(view.customUserAgent!), "scriptPath": .string("tigerest://bundle"), "mpvConfigMode": .string("embedded"), "mpvConfigDir": .string(UIDevice.current.model + " 应用内配置"),
                 "settings": .object(settings.mapValues(JSONValue.object)), "sections": .array(model.settings.sections), "settingsDescriptions": .object(model.settings.descriptions),
                 "capabilities": .object(["downloads": .bool(true), "nativePlayback": .bool(true), "desktopWindowControls": .bool(false), "selfUpdate": .bool(false), "updateCheck": .bool(true), "rife": .bool(SettingsStore.nativeRifeAvailable)])
             ])

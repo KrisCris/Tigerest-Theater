@@ -225,7 +225,7 @@ struct PlayerView: View {
         case .volume(let step):
             // One step matches an iPad volume button press (1/16).
             let next = min(1, max(0, player.systemVolume.value + Double(step) / 16))
-            flash(player.systemVolume.set(next) ? "音量 \(Int((next * 100).rounded()))%" : "请使用 iPad 音量键调整当前输出")
+            flash(player.systemVolume.set(next) ? "音量 \(Int((next * 100).rounded()))%" : "请使用音量键调整当前输出")
         case .seek(let seconds):
             guard player.duration > 0 else { flash("此视频暂不支持跳转"); return }
             let target = min(player.duration, max(0, player.position + Double(seconds)))

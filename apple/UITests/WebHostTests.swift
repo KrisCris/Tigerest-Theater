@@ -332,8 +332,9 @@ extension WebHostTests {
         start.press(forDuration: 0.1, thenDragTo: end)
         let position = app.staticTexts["playbackTime"]
         XCTAssertTrue(position.wait(for: \.label, toEqual: "0:02 / 0:12", timeout: 3) || position.label == "0:03 / 0:12", position.label)
-        let brightStart = video.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
-        brightStart.press(forDuration: 0.1, thenDragTo: video.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.2)))
+        // Start above the transport row: on a portrait phone it sits near 40% of the height.
+        let brightStart = video.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.3))
+        brightStart.press(forDuration: 0.1, thenDragTo: video.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.1)))
         XCTAssertTrue(app.staticTexts["playerGestureFeedback"].label.hasPrefix("亮度"))
         app.buttons["退出播放"].tap()
         XCTAssertTrue(app.buttons["验证播放手势"].exists)

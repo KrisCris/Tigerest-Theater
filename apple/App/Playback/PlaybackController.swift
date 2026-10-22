@@ -139,7 +139,7 @@ import AppleCore
         case "setSubtitleStream": try track("sid", arg(0))
         case "setAudioDelay": try engine?.set("audio-delay", String((arg(0).number ?? 0) / 1000))
         case "setSubtitleDelay": try engine?.set("sub-delay", String((arg(0).number ?? 0) / 1000))
-        case "getAudioDeviceList": return .array([.object(["name": .string("auto"), "description": .string("iPad 系统音频输出")])])
+        case "getAudioDeviceList": return .array([.object(["name": .string("auto"), "description": .string(UIDevice.current.model + " 系统音频输出")])])
         case "setAudioDevice": guard arg(0).string == "auto" else { throw CoreError.invalidRequest }
         case "getWebPlaylist": return .array(queue)
         case "getCurrentWebPlaylistItemId": return .string(currentID)
