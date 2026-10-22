@@ -328,11 +328,13 @@ import AppleCore
             }
         }
     }
+    /// Only an open output can be the wrong size: before the first frame the
+    /// VO is configured for the drawable as it is then, so there is nothing to do.
     private func outputMismatched(_ engine: MPVEngine) -> Bool {
         let drawable = surface.metal.drawableSize
-        guard drawable.width > 1, drawable.height > 1 else { return false }
-        guard case .object(let osd) = engine.json("osd-dimensions") else { return true }
-        return osd["w"]?.number != drawable.width || osd["h"]?.number != drawable.height
+        guard loaded, drawable.width > 1, drawable.height > 1, case .object(let osd) = engine.json("osd-dimensions"),
+              let width = osd["w"]?.number, let height = osd["h"]?.number, width > 0, height > 0 else { return false }
+        return width != drawable.width || height != drawable.height
     }
     /// mpv's MoltenVK context sizes its swapchain only when the video output is
     /// configured, so after a rotation the picture stays at the old size in a corner.
@@ -343,7 +345,10 @@ import AppleCore
         let aspect = engine.string("video-aspect-override"), paused = engine.flag("pause")
         let refresh = { if paused { try? engine.command(["seek", String(engine.number("time-pos")), "absolute+exact"]) } }
         try? engine.set("video-aspect-override", aspect == "1.000000" ? "2" : "1"); refresh()
-        try? await Task.sleep(for: .milliseconds(paused ? 250 : 120))
+        // Restore only once a frame with the changed aspect has reached the VO;
+        // a filter such as RIFE may need a few frames after a seek to output one.
+        var waited = 0
+        while waited < 30, outputMismatched(engine) { try? await Task.sleep(for: .milliseconds(50)); waited += 1 }
         try? engine.set("video-aspect-override", aspect); refresh()
     }
     @objc private func routeChanged(_ note: Notification) {
