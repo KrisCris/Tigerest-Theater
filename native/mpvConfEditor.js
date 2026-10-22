@@ -365,7 +365,7 @@ function createMpvConfEditor({element, player, settings, saveSetting, notify}) {
         library.querySelector('.wrap')?.remove();
         const wrap = element('div', 'wrap');
         const note = element('p', 'tgs-conf-note',
-            `${state?.shaders?.costNote || ''} 自己的着色器放在 ${state?.userShaderDir || 'shaders/user'}，写成 glsl-shader=~~/shaders/user/文件名.glsl；升级不会改动这个目录。`);
+            `${state?.shaders?.costNote || ''}${state?.shaders?.measuredOn ? `实测设备：${state.shaders.measuredOn}。` : ''} 自己的着色器放在 ${state?.userShaderDir || 'shaders/user'}，写成 glsl-shader=~~/shaders/user/文件名.glsl；升级不会改动这个目录。`);
         const table = element('table');
         const head = element('tr');
         for (const label of ['着色器', '作用', '适合', '触发条件', '开销', '强度', '说明']) head.appendChild(element('th', '', label));
@@ -376,7 +376,7 @@ function createMpvConfEditor({element, player, settings, saveSetting, notify}) {
             name.append(element('div', '', shader.title), element('div', 'tgs-conf-source', shader.path));
             row.appendChild(name);
             for (const value of [shader.purpose, shader.content, shader.trigger,
-                shader.measuredMs != null ? `${shader.cost}（${shader.measuredMs} ms）` : shader.cost, shader.strength, shader.note]) {
+                shader.measuredMs != null ? `${shader.cost}（约 ${shader.measuredMs} ms）` : shader.cost, shader.strength, shader.note]) {
                 row.appendChild(element('td', '', value));
             }
             table.appendChild(row);
@@ -567,7 +567,7 @@ function createMpvConfEditor({element, player, settings, saveSetting, notify}) {
                         : (state?.shaders?.groups || []).find(g => g.id === group)?.title || group));
                     for (const shader of shaders) {
                         details.appendChild(pickerItem(`${shader.title}`, [shader.path, shader.purpose, shader.content && `适合${shader.content}`,
-                            shader.trigger, shader.cost && `开销${shader.cost}`, shader.strength && `强度${shader.strength}`, shader.note].filter(Boolean).join(' · '),
+                            shader.trigger, shader.cost && `开销${shader.cost}${shader.measuredMs != null ? `（约 ${shader.measuredMs} ms）` : ''}`, shader.strength && `强度${shader.strength}`, shader.note].filter(Boolean).join(' · '),
                             '添加', () => done({type: 'shader', path: shader.path, comment: `${shader.title}：${shader.note || shader.purpose}`}),
                             target === 'default' ? '着色器建议写在档位里；写在全局部分时，切档会被清空。' : ''));
                     }

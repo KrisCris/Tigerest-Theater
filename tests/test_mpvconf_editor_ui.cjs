@@ -118,4 +118,20 @@ withBrowser({
  assert.ok(fs.readFileSync(conf,'utf8').includes('\nvf-append=@user-2:fps=60\n'),'disabling RIFE did not restore the line');
  assert.equal(await filters(),'@user-1:hflip,@user-2:fps');
  console.log('mpv.conf editor: form, validation, leave guard, "+" insert, lock, restore and RIFE suspension verified');
-},{startupTimeout:30000});
+},{startupTimeout:30000}).then(()=>withBrowser({
+ '/':{type:'text/html',body:'<!doctype html><meta charset="utf-8"><title>mpv.conf notice fixture</title><body style="background:#141414;color:#eee"></body>'}
+},async({evaluate})=>{
+ // A file another program wrote, with an option only the client may set:
+ // the client comments it out at startup and tells the user once.
+ await evaluate('window.initCompleted');
+ await until(evaluate,'!!document.querySelector(".tgs-conf-modal")','startup notice was not shown',15000);
+ assert.match(await evaluate('document.querySelector(".tgs-conf-modal").textContent'),/mpv 配置里有不能生效的行/);
+ await evaluate('[...document.querySelectorAll(".tgs-conf-modal button")].find(b=>b.textContent==="前往设置").click()');
+ await until(evaluate,'!!document.querySelector(".tgs-conf-text")?.value','"前往设置" did not open the editor');
+ assert.match(await evaluate('document.querySelector(".tgs-conf-diagnostics").textContent'),/已被软件注释，不会执行/);
+ assert.match(await evaluate('document.querySelector(".tgs-conf-text").value'),/#\[已忽略:软件管理\] vo=gpu/);
+ console.log('mpv.conf startup notice verified');
+},{startupTimeout:30000,settings:{mpv:{mpvConfEditorMigrated:true}},prepareProfile:async(root,folder)=>{
+ fs.mkdirSync(path.join(folder,'mpv'),{recursive:true});
+ fs.writeFileSync(path.join(folder,'mpv','mpv.conf'),'# 其他程序写的配置\nvo=gpu\n');
+}}));

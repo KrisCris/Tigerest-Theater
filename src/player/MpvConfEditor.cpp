@@ -190,7 +190,7 @@ QVariantMap edit(const QString& user, const QVariantMap& operation)
   const QString value = operation.value(QStringLiteral("value")).toString();
   const QString comment = operation.value(QStringLiteral("comment")).toString();
   const QList<MpvConf::Line> lines = MpvConf::parse(user);
-  const int lineCount = lines.size();
+  const int lineCount = int(lines.size());
   int afterLine = operation.value(QStringLiteral("afterLine"), -1).toInt();
 
   if (type == QStringLiteral("set"))

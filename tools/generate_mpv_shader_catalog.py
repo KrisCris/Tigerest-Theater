@@ -208,6 +208,8 @@ def build():
         title, purpose, content, cost, strength, note = describe(group, name)
         when, hooks = trigger(data.decode("utf-8", "replace"))
         timing = timings.get("results", {}).get(relative)
+        if timing is not None:
+            timing = round(timing, 1)
         entries.append({
             "path": relative,
             "group": group,
@@ -225,7 +227,8 @@ def build():
     catalog = {
         "version": 1,
         "groups": [{"id": key, "title": value} for key, value in GROUPS.items()],
-        "costNote": "性能开销为相对档位（低 / 中 / 高 / 极高），按模型规模排序；measuredMs 为实测的每帧耗时（毫秒），未实测时为 null。",
+        "costNote": "开销档位（低 / 中 / 高 / 极高）按模型规模排序；括号里的毫秒数是在下面这台设备上实测的每帧 GPU 耗时，"
+                    "放大到 1920×1080 时测得，其他设备、分辨率会不同；1 ms 以下的差异受显卡自动降频影响，不能用来排序。",
         "measuredOn": timings.get("device"),
         "shaders": entries,
     }

@@ -78,7 +78,7 @@ int sectionEnd(const QList<MpvConf::Line>& lines, int headerIndex)
   for (int i = headerIndex + 1; i < lines.size(); ++i)
     if (lines[i].kind == MpvConf::Line::Section)
       return i;
-  return lines.size();
+  return int(lines.size());
 }
 
 bool sameKey(const QString& written, const QString& key)
@@ -111,10 +111,10 @@ Parts split(const QString& text)
 {
   Parts parts;
   const QStringList lines = splitLines(text);
-  const int headBegin = lines.indexOf(HeadBegin);
-  const int headEnd = headBegin >= 0 ? lines.indexOf(HeadEnd, headBegin) : -1;
-  const int tailBegin = lines.indexOf(TailBegin, headEnd >= 0 ? headEnd : 0);
-  const int tailEnd = tailBegin >= 0 ? lines.indexOf(TailEnd, tailBegin) : -1;
+  const qsizetype headBegin = lines.indexOf(HeadBegin);
+  const qsizetype headEnd = headBegin >= 0 ? lines.indexOf(HeadEnd, headBegin) : -1;
+  const qsizetype tailBegin = lines.indexOf(TailBegin, headEnd >= 0 ? headEnd : 0);
+  const qsizetype tailEnd = tailBegin >= 0 ? lines.indexOf(TailEnd, tailBegin) : -1;
   if (headBegin < 0 || headEnd < 0 || tailBegin < 0 || tailEnd < 0)
   {
     parts.user = joinLines(lines);
@@ -158,13 +158,13 @@ bool parseOption(const QString& text, QString* key, QString* value, bool* hasVal
     line = line.mid(2);
   if (line.isEmpty() || line.startsWith('#') || line.startsWith('['))
     return false;
-  const int equals = line.indexOf('=');
+  const qsizetype equals = line.indexOf('=');
   QString name;
   QString parsed;
   bool assigned = false;
   if (equals < 0)
   {
-    const int comment = line.indexOf('#');
+    const qsizetype comment = line.indexOf('#');
     name = (comment < 0 ? line : line.left(comment)).trimmed();
   }
   else
@@ -178,7 +178,7 @@ bool parseOption(const QString& text, QString* key, QString* value, bool* hasVal
     if (rest.startsWith('"') || rest.startsWith('\''))
     {
       const QChar quote = rest.front();
-      const int close = rest.indexOf(quote, 1);
+      const qsizetype close = rest.indexOf(quote, 1);
       if (close < 0)
         return false;
       parsed = rest.mid(1, close - 1);
@@ -199,7 +199,7 @@ bool parseOption(const QString& text, QString* key, QString* value, bool* hasVal
     }
     else
     {
-      const int comment = rest.indexOf('#');
+      const qsizetype comment = rest.indexOf('#');
       parsed = (comment < 0 ? rest : rest.left(comment)).trimmed();
     }
     if (!remainder.isEmpty() && !remainder.startsWith('#'))
@@ -234,7 +234,7 @@ QList<Line> parse(const QString& user)
     else if (trimmed.startsWith(SuspendedPrefix) || trimmed.startsWith(IgnoredPrefix))
     {
       const bool suspended = trimmed.startsWith(SuspendedPrefix);
-      const int close = trimmed.indexOf(']');
+      const qsizetype close = trimmed.indexOf(']');
       const QString prefix = suspended ? SuspendedPrefix : IgnoredPrefix;
       if (close < 0)
       {
@@ -512,11 +512,11 @@ QList<FilterEntry> parseFilters(const QString& value)
     QString rest = text;
     if (rest.startsWith('@'))
     {
-      const int colon = rest.indexOf(':');
+      const qsizetype colon = rest.indexOf(':');
       entry.label = (colon < 0 ? rest.mid(1) : rest.mid(1, colon - 1)).trimmed();
       rest = colon < 0 ? QString() : rest.mid(colon + 1);
     }
-    const int equals = rest.indexOf('=');
+    const qsizetype equals = rest.indexOf('=');
     entry.name = (equals < 0 ? rest : rest.left(equals)).trimmed();
     entry.params = equals < 0 ? QString() : rest.mid(equals + 1);
     if (entry.name.startsWith('!'))
@@ -581,7 +581,7 @@ QList<ProfileInfo> profiles(const QList<Line>& lines)
   {
     if (line.kind == Line::Section && line.section != QStringLiteral("default") && !index.contains(line.section))
     {
-      index.insert(line.section, result.size());
+      index.insert(line.section, int(result.size()));
       result << ProfileInfo{line.section, QString(), line.number};
     }
     if (line.kind == Line::Option && line.key == QStringLiteral("profile-desc") && index.contains(line.section))
@@ -669,7 +669,7 @@ int shaderCount(const QList<ProfileStep>& steps)
       shaders.removeAll(step.value);
   }
   shaders.removeAll(QString());
-  return shaders.size();
+  return int(shaders.size());
 }
 
 ResolvedValue resolveValue(const QList<Line>& lines, const QString& section, const QString& key)
@@ -690,7 +690,7 @@ ResolvedValue resolveValue(const QList<Line>& lines, const QString& section, con
     }
     if (explicitValue.found)
       return explicitValue;
-    for (int i = parents.size() - 1; i >= 0; --i)
+    for (qsizetype i = parents.size() - 1; i >= 0; --i)
     {
       const QString parent = parents[i].trimmed();
       if (parent == name)
@@ -1022,17 +1022,17 @@ QString appendLines(const QString& user, const QString& section, const QStringLi
   QStringList output = splitLines(user);
   const QList<Line> lines = parse(user);
   QStringList inserted = added;
-  int insertAt = -1;
+  qsizetype insertAt = -1;
   if (section == QStringLiteral("default"))
   {
-    int firstSection = lines.size();
-    for (int i = 0; i < lines.size(); ++i)
+    qsizetype firstSection = lines.size();
+    for (qsizetype i = 0; i < lines.size(); ++i)
       if (lines[i].kind == Line::Section)
       {
         firstSection = i;
         break;
       }
-    for (int i = firstSection - 1; i >= 0; --i)
+    for (qsizetype i = firstSection - 1; i >= 0; --i)
       if (lines[i].kind == Line::Option || lines[i].kind == Line::Suspended || lines[i].kind == Line::Ignored)
       {
         insertAt = i + 1;
@@ -1086,7 +1086,7 @@ QString setOption(const QString& user, const QString& section, const QString& ke
   QStringList output = splitLines(user);
   const QList<Line> lines = parse(user);
   const QString text = formatOption(key, value);
-  for (int i = lines.size() - 1; i >= 0; --i)
+  for (qsizetype i = lines.size() - 1; i >= 0; --i)
   {
     if (lines[i].kind == Line::Option && lines[i].section == section && sameKey(lines[i].key, key))
     {
@@ -1105,7 +1105,7 @@ QString removeOption(const QString& user, const QString& section, const QString&
 {
   QStringList output = splitLines(user);
   const QList<Line> lines = parse(user);
-  for (int i = lines.size() - 1; i >= 0; --i)
+  for (qsizetype i = lines.size() - 1; i >= 0; --i)
   {
     if (lines[i].kind == Line::Option && lines[i].section == section && sameKey(lines[i].key, key))
     {
