@@ -275,6 +275,23 @@ import AppleCore
             interruptionIntent = nil
         }
     }
+    private var fallbackTask: Task<Void, Never>?, fallbackLimit: String?
+    /// Switching hwdec mid-file restarts the decoder at the current packet, without
+    /// the frames it refers back to. VideoToolbox rejects those, and after three
+    /// failed frames mpv decodes the rest of the file in software. Allow more
+    /// failures while the caller restarts from the preceding keyframe, then put the
+    /// limit back so a format VideoToolbox cannot decode still falls back quickly.
+    private func allowDecoderRestart(_ engine: MPVEngine) {
+        if fallbackLimit == nil { fallbackLimit = engine.string("hwdec-software-fallback") }
+        try? engine.set("hwdec-software-fallback", "60")
+        fallbackTask?.cancel()
+        fallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled, let self else { return }
+            if let limit = self.fallbackLimit, !limit.isEmpty { try? self.engine?.set("hwdec-software-fallback", limit) }
+            self.fallbackLimit = nil
+        }
+    }
     private var resizeTask: Task<Void, Never>?
     private func surfaceResized() {
         resizeTask?.cancel()
@@ -385,7 +402,10 @@ import AppleCore
         let screen = surface.window?.screen ?? UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
         let hdrDisplay = (screen?.potentialEDRHeadroom ?? 1) > 1
         let mapping = ["hwdec": hardware == "disabled" ? "no" : hardware == "copy" ? "videotoolbox-copy" : "videotoolbox", "demuxer-max-bytes": String(Int((settings.get("video", "cache").number ?? 100) * 1048576)), "video-sync": text("video", "sync_mode"), "alang": text("mpv", "audioLanguage"), "slang": text("mpv", "subtitleLanguage"), "cache-pause": text("mpv", "cachePause"), "deband": text("mpv", "deband"), "tone-mapping": text("mpv", "toneMapping"), "target-colorspace-hint": hdrDisplay ? text("mpv", "targetColorspaceHint") : "no", "audio-channels": text("audio", "channels"), "deinterlace": text("video", "deinterlace"), "audio-delay": String((settings.get("video", "audio_delay.normal").number ?? 0) / 1000), "sub-font": nativeSubtitleFont, "sub-ass-override": text("subtitles", "ass_style_override")]
+        let decoderChanged = loaded && mapping["hwdec"] != engine.string("hwdec")
+        if decoderChanged { allowDecoderRestart(engine) }
         for (key, value) in mapping { try engine.setting(key, value.isEmpty ? nil : value) }
+        if decoderChanged { try engine.command(["seek", String(engine.number("time-pos")), "absolute+exact"]) }
         try applySubtitles()
         try applyAspect()
         // Match PlayerComponent::setAudioConfiguration. The iOS FFmpeg build
