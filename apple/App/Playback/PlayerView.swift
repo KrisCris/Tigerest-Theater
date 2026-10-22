@@ -48,7 +48,40 @@ struct PlayerView: View {
     @State private var tutorialRevision: UInt64 = 0
     @AppStorage("TigerestPlaybackGesturesSeen") private var tutorialSeen = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var widthClass
+    @Environment(\.verticalSizeClass) private var heightClass
+    /// A portrait phone: rows that fit a landscape screen have to be split or tightened.
+    private var narrow: Bool { widthClass == .compact && heightClass == .regular }
     private func act(_ method: String, _ args: [JSONValue] = []) { do { try player.dispatch(method, args) } catch { player.notice = "播放操作未完成" } }
+    private var playbackTime: some View {
+        Text("\(time(player.position)) / \(time(player.duration))").monospacedDigit().lineLimit(1).minimumScaleFactor(0.8).accessibilityIdentifier("playbackTime")
+    }
+    @ViewBuilder private var playbackMenus: some View {
+        Menu("\(player.rate, specifier: "%.2g")×") { ForEach([0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4], id: \.self) { rate in Button("\(rate, specifier: "%.2g")×") { act("setPlaybackRate", [.number(rate * 1000)]) } } }
+        Button("弹幕") { showDanmaku = true }
+        Button("选集") { showQueue = true }
+            .disabled(player.queue.isEmpty)
+            .popover(isPresented: $showQueue) {
+                NavigationStack {
+                    List {
+                        ForEach(Array(player.queue.enumerated()), id: \.offset) { _, item in
+                            if let id = item["PlaylistItemId"].string {
+                                Button { player.selectQueueItem(id); showQueue = false } label: {
+                                    if id == player.currentID { Label(queueLabel(item), systemImage: "play.fill") }
+                                    else { Text(queueLabel(item)) }
+                                }
+                            }
+                        }
+                    }.navigationTitle("选集").navigationBarTitleDisplayMode(.inline)
+                        .toolbar { Button("完成") { showQueue = false } }
+                }.buttonStyle(.plain)
+                    .frame(minWidth: 280, idealWidth: 360, maxWidth: 420, minHeight: 260, idealHeight: 440, maxHeight: 560)
+                    .presentationCompactAdaptation(.popover)
+            }
+        Menu("音轨") { trackMenu("audio", method: "setAudioStream") }
+        Menu("字幕") { Button("关闭") { act("setSubtitleStream", [.number(-1)]) }; trackMenu("sub", method: "setSubtitleStream"); Button("导入字幕") { importSubtitle = true }; Button("提前 0.5 秒") { delay(-0.5) }; Button("延后 0.5 秒") { delay(0.5) } }
+        Menu("码率") { ForEach([0, 20000000, 10000000, 4000000], id: \.self) { bitrate in Button(bitrate == 0 ? "原始画质" : "\(bitrate / 1000000) Mbps") { player.model.bridge.emit("player", "streamingBitrateRequested", [.number(Double(bitrate))]) } } }
+    }
     var body: some View {
         ZStack {
             Color.black
@@ -86,7 +119,7 @@ struct PlayerView: View {
                     }
                     Spacer()
                     if !player.locked {
-                        HStack(spacing: 40) {
+                        HStack(spacing: narrow ? 24 : 40) {
                             Button { player.adjacent(-1) } label: { Image(systemName: "backward.end.fill") }.accessibilityLabel("上一集")
                                 .disabled(player.adjacentID(-1) == nil)
                             Button { act("seekTo", [.number(max(0, player.position - 10) * 1000)]) } label: { Image(systemName: "gobackward.10") }
@@ -97,38 +130,20 @@ struct PlayerView: View {
                         }.font(.title2)
                         Spacer()
                         Slider(value: Binding(get: { seeking ? scrub : player.position }, set: { scrub = $0 }), in: 0...max(1, player.duration), onEditingChanged: { editing in seeking = editing; if !editing { act("seekTo", [.number(scrub * 1000)]) } })
-                        HStack {
-                            Text("\(time(player.position)) / \(time(player.duration))").monospacedDigit().accessibilityIdentifier("playbackTime")
-                            Spacer()
-                            Menu("\(player.rate, specifier: "%.2g")×") { ForEach([0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4], id: \.self) { rate in Button("\(rate, specifier: "%.2g")×") { act("setPlaybackRate", [.number(rate * 1000)]) } } }
-                            Button("弹幕") { showDanmaku = true }
-                            Button("选集") { showQueue = true }
-                                .disabled(player.queue.isEmpty)
-                                .popover(isPresented: $showQueue) {
-                                    NavigationStack {
-                                        List {
-                                            ForEach(Array(player.queue.enumerated()), id: \.offset) { _, item in
-                                                if let id = item["PlaylistItemId"].string {
-                                                    Button { player.selectQueueItem(id); showQueue = false } label: {
-                                                        if id == player.currentID { Label(queueLabel(item), systemImage: "play.fill") }
-                                                        else { Text(queueLabel(item)) }
-                                                    }
-                                                }
-                                            }
-                                        }.navigationTitle("选集").navigationBarTitleDisplayMode(.inline)
-                                            .toolbar { Button("完成") { showQueue = false } }
-                                    }.buttonStyle(.plain)
-                                        .frame(minWidth: 280, idealWidth: 360, maxWidth: 420, minHeight: 260, idealHeight: 440, maxHeight: 560)
-                                        .presentationCompactAdaptation(.popover)
-                                }
-                            Menu("音轨") { trackMenu("audio", method: "setAudioStream") }
-                            Menu("字幕") { Button("关闭") { act("setSubtitleStream", [.number(-1)]) }; trackMenu("sub", method: "setSubtitleStream"); Button("导入字幕") { importSubtitle = true }; Button("提前 0.5 秒") { delay(-0.5) }; Button("延后 0.5 秒") { delay(0.5) } }
-                            Menu("码率") { ForEach([0, 20000000, 10000000, 4000000], id: \.self) { bitrate in Button(bitrate == 0 ? "原始画质" : "\(bitrate / 1000000) Mbps") { player.model.bridge.emit("player", "streamingBitrateRequested", [.number(Double(bitrate))]) } } }
-                        }.font(.callout)
+                        // A portrait phone has no room for the time beside the buttons;
+                        // an overflowing row would also widen the video surface.
+                        if narrow {
+                            VStack(alignment: .leading, spacing: 4) {
+                                playbackTime
+                                HStack { playbackMenus }.frame(maxWidth: .infinity, alignment: .trailing)
+                            }.font(.callout)
+                        } else {
+                            HStack { playbackTime; Spacer(); playbackMenus }.font(.callout)
+                        }
                         if !player.notice.isEmpty { Text(player.notice).font(.caption) }
                         DanmakuPlaybackStatus(repository: player.model.danmaku)
                     }
-                }.buttonStyle(PlayerTouchButtonStyle()).padding(28)
+                }.buttonStyle(PlayerTouchButtonStyle()).padding(narrow ? 16 : 28)
             }
             if player.locked && unlockVisible {
                 HStack {
@@ -261,7 +276,11 @@ struct PlayerView: View {
         }
     }
     private func delay(_ change: Double) { act("setSubtitleDelay", [.number(((player.engine?.number("sub-delay") ?? 0) + change) * 1000)]) }
-    private func time(_ value: Double) -> String { let v = Int(max(0, value)); return String(format: "%d:%02d:%02d", v / 3600, v / 60 % 60, v % 60) }
+    /// H:MM:SS only when the media reaches an hour; shorter media show M:SS.
+    private func time(_ value: Double) -> String {
+        let v = Int(max(0, value))
+        return max(value, player.duration) >= 3600 ? String(format: "%d:%02d:%02d", v / 3600, v / 60 % 60, v % 60) : String(format: "%d:%02d", v / 60, v % 60)
+    }
 }
 
 private struct PlayerTouchButtonStyle: ButtonStyle {

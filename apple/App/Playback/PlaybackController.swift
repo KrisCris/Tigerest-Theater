@@ -36,6 +36,7 @@ import AppleCore
     init(model: AppModel) {
         self.model = model
         super.init()
+        surface.onDrawableSizeChange = { [weak self] _ in self?.surfaceResized() }
         NotificationCenter.default.addObserver(self, selector: #selector(interruption(_:)), name: AVAudioSession.interruptionNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(routeChanged(_:)), name: AVAudioSession.routeChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(suspendInteraction), name: UIApplication.willResignActiveNotification, object: nil)
@@ -273,6 +274,37 @@ import AppleCore
             if let intent = interruptionIntent, state.mayResume(interruptedAt: intent), AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume) { try? AVAudioSession.sharedInstance().setActive(true); try? engine?.set("pause", "no") }
             interruptionIntent = nil
         }
+    }
+    private var resizeTask: Task<Void, Never>?
+    private func surfaceResized() {
+        resizeTask?.cancel()
+        resizeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            // The drawable can still be settling after the first try; check and try again.
+            for _ in 0..<3 {
+                guard !Task.isCancelled, let self, self.active, let engine = self.engine, self.outputMismatched(engine) else { return }
+                await self.reconfigureVideoOutput(engine)
+                try? await Task.sleep(for: .milliseconds(700))
+            }
+        }
+    }
+    private func outputMismatched(_ engine: MPVEngine) -> Bool {
+        let drawable = surface.metal.drawableSize
+        guard drawable.width > 1, drawable.height > 1 else { return false }
+        guard case .object(let osd) = engine.json("osd-dimensions") else { return true }
+        return osd["w"]?.number != drawable.width || osd["h"]?.number != drawable.height
+    }
+    /// mpv's MoltenVK context sizes its swapchain only when the video output is
+    /// configured, so after a rotation the picture stays at the old size in a corner.
+    /// A momentary aspect change reconfigures the output on the next frame and keeps
+    /// the decoder (reopening the output would drop VideoToolbox). While paused,
+    /// redecode the shown frame so there is a next frame.
+    private func reconfigureVideoOutput(_ engine: MPVEngine) async {
+        let aspect = engine.string("video-aspect-override"), paused = engine.flag("pause")
+        let refresh = { if paused { try? engine.command(["seek", String(engine.number("time-pos")), "absolute+exact"]) } }
+        try? engine.set("video-aspect-override", aspect == "1.000000" ? "2" : "1"); refresh()
+        try? await Task.sleep(for: .milliseconds(paused ? 250 : 120))
+        try? engine.set("video-aspect-override", aspect); refresh()
     }
     @objc private func routeChanged(_ note: Notification) {
         let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt

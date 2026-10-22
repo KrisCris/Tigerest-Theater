@@ -303,7 +303,7 @@ extension WebHostTests {
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout: 20))
         app.buttons["验证播放手势"].tap()
         XCTAssertTrue(app.buttons["锁定"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["playbackTime"].wait(for: \.label, toEqual: "0:00:00 / 0:00:12", timeout: 3))
+        XCTAssertTrue(app.staticTexts["playbackTime"].wait(for: \.label, toEqual: "0:00 / 0:12", timeout: 3))
         return app
     }
     @MainActor func testTouchLockRequiresLongPressToUnlock() {
@@ -321,7 +321,7 @@ extension WebHostTests {
         XCTAssertTrue(unlock.waitForExistence(timeout: 2), "锁定时轻点画面应唤回解锁按钮")
         unlock.press(forDuration: 0.8)
         XCTAssertTrue(app.buttons["锁定"].waitForExistence(timeout: 3))
-        XCTAssertEqual(app.staticTexts["playbackTime"].label, "0:00:00 / 0:00:12")
+        XCTAssertEqual(app.staticTexts["playbackTime"].label, "0:00 / 0:12")
     }
     @MainActor func testHorizontalSeekAndBrightnessGestureFeedback() {
         let app = openGestureFixture()
@@ -331,7 +331,7 @@ extension WebHostTests {
         let end = video.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.32))
         start.press(forDuration: 0.1, thenDragTo: end)
         let position = app.staticTexts["playbackTime"]
-        XCTAssertTrue(position.wait(for: \.label, toEqual: "0:00:02 / 0:00:12", timeout: 3) || position.label == "0:00:03 / 0:00:12", position.label)
+        XCTAssertTrue(position.wait(for: \.label, toEqual: "0:02 / 0:12", timeout: 3) || position.label == "0:03 / 0:12", position.label)
         let brightStart = video.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
         brightStart.press(forDuration: 0.1, thenDragTo: video.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.2)))
         XCTAssertTrue(app.staticTexts["playerGestureFeedback"].label.hasPrefix("亮度"))
@@ -397,7 +397,7 @@ extension WebHostTests {
         app.typeKey(" ",modifierFlags:[])
         XCTAssertTrue(app.buttons["播放"].waitForExistence(timeout:2), "隐藏 OSD 后空格必须暂停")
         let position=app.staticTexts["playbackTime"].label
-        XCTAssertFalse(position.hasPrefix("0:00:00"));XCTAssertFalse(position.hasPrefix("0:00:02"))
+        XCTAssertFalse(position.hasPrefix("0:00 "));XCTAssertFalse(position.hasPrefix("0:02 "))
         app.buttons["弹幕"].tap()
         let search=app.textFields["搜索作品"];XCTAssertTrue(search.waitForExistence(timeout:3));search.tap();search.typeText("Blue Box")
         XCTAssertEqual(search.value as? String,"Blue Box","搜索框内空格必须作为文本输入")

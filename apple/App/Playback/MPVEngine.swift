@@ -146,6 +146,8 @@ struct MPVFailure: Error { let operation: String; let code: Int32; var message: 
 final class MetalSurface: UIView {
     override class var layerClass: AnyClass { CAMetalLayer.self }
     var metal: CAMetalLayer { layer as! CAMetalLayer }
+    /// Called after the drawable size changes (rotation, split view, presentation).
+    var onDrawableSizeChange: ((CGSize) -> Void)?
     override init(frame: CGRect) {
         super.init(frame: frame); backgroundColor = .black
         metal.device = MTLCreateSystemDefaultDevice(); metal.framebufferOnly = true
@@ -155,6 +157,9 @@ final class MetalSurface: UIView {
         super.layoutSubviews()
         let scale = window?.screen.scale ?? traitCollection.displayScale
         metal.contentsScale = scale
-        metal.drawableSize = CGSize(width: max(1, bounds.width * scale), height: max(1, bounds.height * scale))
+        let size = CGSize(width: max(1, bounds.width * scale), height: max(1, bounds.height * scale))
+        guard metal.drawableSize != size else { return }
+        metal.drawableSize = size
+        onDrawableSizeChange?(size)
     }
 }
