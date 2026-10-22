@@ -39,7 +39,7 @@ withBrowser({
 },async({evaluate,call})=>{
  const assertDrawerAlignment = async layout => {
   const positions=await evaluate(`(()=>{const position=row=>({icon:row.querySelector('.navDrawerListItemIcon').getBoundingClientRect().left,text:row.querySelector('.listItemBodyText').getBoundingClientRect().left});return {native:position(document.querySelector('.mainDrawer .navMenuOption')),categories:[...document.querySelectorAll('.mainDrawer [data-settings-category]')].map(row=>({category:row.dataset.settingsCategory,...position(row)}))}})()`);
-  assert.equal(positions.categories.length,8);
+  assert.equal(positions.categories.length,7);
   for(const category of positions.categories){
    assert.ok(Math.abs(category.icon-positions.native.icon)<1,`${layout}: ${category.category} icon must align with native General (${JSON.stringify(positions)})`);
    assert.ok(Math.abs(category.text-positions.native.text)<1,`${layout}: ${category.category} text must align with native General (${JSON.stringify(positions)})`);
@@ -92,7 +92,7 @@ withBrowser({
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-inline .tgs-tabs, #tigerest-settings-inline [role=tablist]").length'),0,
   'content has no duplicate category navigation');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category]")].map(row=>row.dataset.settingsCategory)'),
-  ['main','home','audio','video','subtitles','mpv','danmaku','other'],'all supported categories are in Emby left navigation');
+  ['main','home','audio','video','subtitles','mpv','danmaku'],'all supported categories are in Emby left navigation');
  assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'audio');
  const playbackCategoryTitle=await evaluate('window.tigerestAndroidApi ? "播放器" : "MPV 画质与插件"');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .listItemBodyText")].map(node=>node.textContent)'),
@@ -118,10 +118,10 @@ withBrowser({
  assert.equal(await evaluate('jmpInfo.settings.danmaku.opacity'),0.7,'reset restores defaults');
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-style").length'),1,'reset releases prior style and controls');
  await evaluate('renderSettingsDrawer();new Promise(resolve=>setTimeout(resolve,20))');
- assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),8,'rerender does not duplicate native menu entries');
+ assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),7,'rerender does not duplicate native menu entries');
  assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'danmaku','reset/rerender preserve selected category');
  await evaluate(`(()=>{const container=document.querySelector('.navDrawerItemsContainer');const rowItems=new Map([...container.children].map((row,index)=>[row,container.items[index]]));container.getItemFromElement=row=>rowItems.get(row);container.items=null;container.getItem=()=>null;for(const row of container.children){delete row.dataset.index;row.querySelector('.listItemBodyText').textContent=rowItems.get(row).Name;}window.virtualRowItems=rowItems;})()`);
- assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),8,'virtualized native rows resolve through getItemFromElement');
+ assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),7,'virtualized native rows resolve through getItemFromElement');
  await call('Emulation.setDeviceMetricsOverride',{width:360,height:740,deviceScaleFactor:1,mobile:true});
  await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true,'phone has no document overflow');

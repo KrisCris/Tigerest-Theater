@@ -1,30 +1,17 @@
 -- Tigerest Theater 的 UOSC 画质档菜单。
--- 只暴露用户确认的“默认 / 真人 / 激进测试”三档，并在切换后核对实际 shader 数量。
+-- 档位来自客户端的 mpv.conf（默认 / 真人 / 激进测试，以及用户自建的 tigerest-user-* 档位）。
+-- 切档由客户端执行：它按 mpv.conf 当前内容逐项设置并核对着色器数量，设置页修改后无需重启。
 
 local mp = require('mp')
 local utils = require('mp.utils')
 
-local current_profile = 'tigerest-default'
+local current_profile = mp.get_property('user-data/profile_menu/current') or 'tigerest-default'
 
+-- 客户端尚未发布档位列表时使用的内置三档。
 local profiles = {
-	{
-		title = '默认',
-		hint = 'Anime AA：SSim + Krig + ravu zoom',
-		profile = 'tigerest-default',
-		expected_shaders = 3,
-	},
-	{
-		title = '真人',
-		hint = '真人影视：SSim + ravu zoom',
-		profile = 'tigerest-liveaction',
-		expected_shaders = 2,
-	},
-	{
-		title = '激进测试',
-		hint = 'Anime4K 完整链，用于检查 shader 挂载',
-		profile = 'tigerest-aggressive-test',
-		expected_shaders = 4,
-	},
+	{ title = '默认', hint = 'Anime AA：SSim + Krig + ravu zoom', profile = 'tigerest-default' },
+	{ title = '真人', hint = '真人影视：SSim + ravu zoom', profile = 'tigerest-liveaction' },
+	{ title = '激进测试', hint = 'Anime4K 完整链，用于检查 shader 挂载', profile = 'tigerest-aggressive-test' },
 }
 
 local function find_profile(name)
@@ -39,25 +26,6 @@ end
 local function current_title()
 	local item = find_profile(current_profile)
 	return item and item.title or current_profile
-end
-
-local function shader_count()
-	local shaders = mp.get_property_native('glsl-shaders', {})
-	local count = 0
-	for _, shader in ipairs(shaders) do
-		if type(shader) == 'string' and shader:match('%S') then
-			count = count + 1
-		end
-	end
-	return count
-end
-
-local function set_current_profile(name)
-	if not find_profile(name) then
-		return
-	end
-	current_profile = name
-	mp.set_property_native('user-data/profile_menu/current', name)
 end
 
 local function update_button()
@@ -78,25 +46,8 @@ local function update_button()
 end
 
 local function apply_profile(name)
-	local item = find_profile(name)
-	if not item then
-		mp.commandv('show-text', '未知滤镜档位: ' .. tostring(name), 2400)
-		return
-	end
-
-	-- mpv 的列表型选项在运行时应用 Profile 时可能累加，所以先显式清空外部 shader。
-	mp.commandv('change-list', 'glsl-shaders', 'clr', '')
-	mp.commandv('apply-profile', item.profile)
-
-	local actual = shader_count()
-	set_current_profile(item.profile)
-	update_button()
-	if actual == item.expected_shaders then
-		mp.commandv('show-text', string.format('已切换滤镜: %s（%d 个 shader）', item.title, actual), 2400)
-	else
-		mp.commandv('show-text', string.format('滤镜切换失败: %s（预期 %d，实际 %d 个 shader）',
-			item.title, item.expected_shaders, actual), 3200)
-	end
+	-- 客户端负责清空旧着色器、按 mpv.conf 设置档位并在画面上提示结果。
+	mp.commandv('script-message', 'tigerest-apply-profile', name)
 end
 
 local function build_menu()
@@ -112,7 +63,7 @@ local function build_menu()
 	return {
 		type = 'profile-menu',
 		title = '滤镜',
-		hint = '切换默认、真人或 shader 链路测试档',
+		hint = '切换 mpv.conf 中的画质档位',
 		items = items,
 	}
 end
@@ -127,14 +78,22 @@ mp.register_script_message('apply-profile', apply_profile)
 	mp.add_key_binding(nil, 'apply-liveaction', function() apply_profile('tigerest-liveaction') end)
 	mp.add_key_binding(nil, 'apply-aggressive-test', function() apply_profile('tigerest-aggressive-test') end)
 
--- 宿主在设置页应用初始档位或用原生快捷键切换后会写入该属性；观察它以同步菜单高亮。
+-- 客户端在启动和保存 mpv.conf 后发布档位列表。
+mp.observe_property('user-data/profile_menu/profiles', 'string', function(_, value)
+	local parsed = value and utils.parse_json(value)
+	if type(parsed) == 'table' and #parsed > 0 then
+		profiles = parsed
+		update_button()
+	end
+end)
+
+-- 客户端每次切档后写入当前档位；观察它以同步菜单高亮和按钮提示。
 mp.observe_property('user-data/profile_menu/current', 'string', function(_, value)
-	if value and find_profile(value) and value ~= current_profile then
+	if value and value ~= '' and value ~= current_profile then
 		current_profile = value
 		update_button()
 	end
 end)
 
-set_current_profile(current_profile)
 update_button()
 	mp.register_event('file-loaded', update_button)

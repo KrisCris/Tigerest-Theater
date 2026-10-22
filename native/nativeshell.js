@@ -870,17 +870,12 @@ function getTigerestSettingsCategories() {
         mpv: {
             title: 'MPV 画质与插件',
             icon: '&#xe024;', // high_quality
-            subtitle: '渲染、HDR、缓存、uosc 与弹幕'
+            subtitle: '渲染后端、插件与 mpv.conf 编辑器'
         },
         danmaku: {
             title: '弹幕样式',
             icon: '&#xe0b7;', // chat
             subtitle: '内置 uosc_danmaku 的长期默认外观'
-        },
-        other: {
-            title: '高级',
-            icon: '&#xe429;', // tune
-            subtitle: '直接传入 mpv.conf 选项'
         }
     };
     if (window.tigerestAndroidApi || window.tigerestIPadApi) {
@@ -954,9 +949,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     const restartSettings = new Set([
         'home.startupFullscreen',
         'main.enableMPV',
-        'mpv.configMode',
         'mpv.renderBackend',
-        'mpv.systemConfigDir',
         'mpv.enableUosc',
         'mpv.enableConsole',
         'mpv.enableDanmaku',
@@ -968,10 +961,16 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         'danmaku.opacity',
         'danmaku.displayarea'
     ]);
-    const embeddedOnlyMpvSettings = new Set([
+    // On the desktop the mpv.conf editor owns these: the quality preset, the
+    // profile parameters and the playback options are lines of that file.
+    // Android and iPad keep the plain settings, which they apply themselves.
+    const desktopMpvEditor = !window.tigerestAndroidApi && !window.tigerestIPadApi &&
+        typeof window.tigerestCreateMpvConfEditor === 'function' && typeof window.api?.player?.mpvConfState === 'function';
+    const editorMpvSettings = new Set([
+        'configMode',
+        'systemConfigDir',
+        'advancedProfileOverrides',
         'shaderPreset',
-        'enableUosc',
-        'enableDanmaku',
         'scale',
         'cscale',
         'dscale',
@@ -1000,6 +999,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         'screenshotFormat',
         'screenshotDirectory'
     ]);
+    let mpvConfEditor = null;
 
     const css = document.createElement('style');
     css.id = 'tigerest-settings-style';
@@ -1202,9 +1202,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         if (!rifeCallout) return;
         const enabled = Boolean(jmpInfo.settings.video.aiRife);
         const rife = mpvDiagnostics.rife;
-        if (jmpInfo.mpvConfigMode === 'system') {
-            rifeCallout.textContent = 'AI 补帧需要使用内置播放配置。';
-        } else if (enabled && !rife.runtimeAvailable) {
+        if (enabled && !rife.runtimeAvailable) {
             rifeCallout.textContent = typeof window.api.player.rifeExtensionStatus === 'function'
                 ? 'AI 补帧已开启；请先安装 NVIDIA RIFE 扩展并完全退出、重新启动客户端。运行库检查失败时仍可正常播放原帧。'
                 : 'AI 补帧已开启，但内置组件尚未加载。请完全退出并重新启动客户端；若仍不可用，请检查安装包是否完整。';
@@ -1217,8 +1215,14 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         }
     };
 
-    const activate = section => {
+    const activate = async section => {
         if (!groups.has(section)) return;
+        if (activeSection === 'mpv' && section !== 'mpv' && mpvConfEditor?.pendingErrors()) {
+            if (await mpvConfEditor.confirmLeave() === 'stay') {
+                if (categorySelect) categorySelect.value = 'mpv';
+                return;
+            }
+        }
         activeSection = section;
         sessionStorage.setItem('tigerestSettingsTab', section);
         if (categorySelect) categorySelect.value = section;
@@ -1333,7 +1337,6 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             if (rifeExtensionPanel) group.appendChild(rifeExtensionPanel.node);
         }
         if (section === 'mpv' && !window.tigerestAndroidApi && !window.tigerestIPadApi) {
-            const activeMode = jmpInfo.mpvConfigMode === 'system' ? '系统用户配置' : '大河内置配置';
             const activeRoot = jmpInfo.mpvConfigDir || '尚未解析';
             const shaderFiles = Array.isArray(mpvDiagnostics.shaderFiles) ? mpvDiagnostics.shaderFiles : [];
             const shaderNames = shaderFiles
@@ -1365,18 +1368,13 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             group.appendChild(element(
                 'div',
                 'tgs-callout',
-                `当前实际使用：${activeMode} · ${activeRoot}。渲染后端：${rendererName}（当前 VO：${activeVo}）；默认配置档：${profileName}；视频 ${sourceSize} → 输出 ${outputSize}；实际缩放：${actualScale}；当前加载着色器：${shaderSummary}；完整帧流水线：${passSummary}。播放中按 Ctrl+J 开关统计总览、按数字 2 查看完整处理页，或按 Ctrl+Shift+J 直接显示完整页。自动模式优先读取你现有的 Windows/macOS 用户 mpv.conf；只有找不到用户配置时才部署内置配置。GPU-Next 模式会把 mpv 子窗口绑定到客户端窗口；兼容模式则锁定 vo=libmpv，防止 profile 另开播放窗口。标记“仅内置”的项可预先编辑，但只在切换为大河内置模式后生效，不会覆盖当前用户配置档与着色器。`
-            ));
-        } else if (section === 'other') {
-            group.appendChild(element(
-                'div',
-                'tgs-callout',
-                '这里接受标准 mpv.conf 的 key=value，每行一项，并在客户端选项之后应用。请不要填写 vo、wid 或 gpu-context；错误参数会记录为无敏感信息的警告。'
+                `当前播放器：配置目录 ${activeRoot}。渲染后端：${rendererName}（当前 VO：${activeVo}）；当前画质档：${profileName}；视频 ${sourceSize} → 输出 ${outputSize}；实际缩放：${actualScale}；当前加载着色器：${shaderSummary}；完整帧流水线：${passSummary}。播放中按 Ctrl+J 开关统计总览、按数字 2 查看完整处理页，或按 Ctrl+Shift+J 直接显示完整页。GPU-Next 模式会把 mpv 子窗口绑定到客户端窗口；兼容模式则锁定 vo=libmpv，防止 profile 另开播放窗口。`
             ));
         }
 
         const values = jmpInfo.settings[section];
         for (const setting of jmpInfo.settingsDescriptions[section]) {
+            if (section === 'mpv' && desktopMpvEditor && editorMpvSettings.has(setting.key)) continue;
             const row = element('div', 'tgs-setting');
             row.dataset.setting = `${section}.${setting.key}`;
             row.dataset.search = `${meta.title} ${setting.displayName || setting.key} ${setting.key} ${setting.help || ''}`.toLowerCase();
@@ -1384,9 +1382,6 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             labelTitle.appendChild(element('span', '', setting.displayName || setting.key));
             if (restartSettings.has(`${section}.${setting.key}`)) {
                 labelTitle.appendChild(element('span', 'tgs-restart', '需重启'));
-            }
-            if (section === 'mpv' && embeddedOnlyMpvSettings.has(setting.key)) {
-                labelTitle.appendChild(element('span', 'tgs-scope', '仅内置'));
             }
             const control = makeControl(section, setting, values[setting.key]);
             const input = control.matches('input,select,textarea') ? control : control.querySelector('input');
@@ -1403,6 +1398,13 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
                 row.appendChild(help);
             }
             group.appendChild(row);
+        }
+
+        if (section === 'mpv' && desktopMpvEditor) {
+            mpvConfEditor = window.tigerestCreateMpvConfEditor({element, player: window.api.player, settings: jmpInfo.settings.mpv,
+                saveSetting: (sectionName, key, value) => { jmpInfo.settings[sectionName][key] = value; },
+                notify: showSaved});
+            group.appendChild(mpvConfEditor.node);
         }
 
         if (section === 'home') {
@@ -1475,6 +1477,11 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     const resetAbort = new AbortController();
     const cleanup = () => {
         clearTimeout(showSaved.timer);
+        // Leaving through the Emby navigation cannot be held back; keep the
+        // draft and offer it once the page is gone.
+        if (mpvConfEditor?.pendingErrors()) setTimeout(() => window.tigerestOfferMpvConfDraft?.(window.api.player), 0);
+        mpvConfEditor?.dispose();
+        mpvConfEditor = null;
         rifeExtensionPanel?.dispose();
         homeLibraries?.dispose();
         document.removeEventListener('keydown', onKeyDown);
@@ -1490,8 +1497,13 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         cleanup();
         if (!host && returnFocus?.isConnected) returnFocus.focus({preventScroll: true});
     };
+    const leave = async () => {
+        if (mpvConfEditor?.pendingErrors() && await mpvConfEditor.confirmLeave() === 'stay') return false;
+        close();
+        return true;
+    };
     const onKeyDown = event => {
-        if (event.key === 'Escape') { event.preventDefault(); close(); }
+        if (event.key === 'Escape') { event.preventDefault(); leave(); }
         if (event.key === 'Tab' && !host) {
             const focusable = [...dialog.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])')]
                 .filter(node => node.tabIndex >= 0 && node.getClientRects().length);
@@ -1500,7 +1512,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
         }
     };
-    closeButton.addEventListener('click', () => { close(); if (host) onReturn?.(); });
+    closeButton.addEventListener('click', async () => { if (await leave() && host) onReturn?.(); });
     if (!host) {
         overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
         document.addEventListener('keydown', onKeyDown);
@@ -1945,6 +1957,10 @@ function installWindowModeEntry() {
 
 installMpvSettingsEntry();
 installWindowModeEntry();
+if (!window.tigerestAndroidApi && !window.tigerestIPadApi) {
+    window.initCompleted.then(() => window.tigerestShowMpvConfNotices?.(window.jmpInfo?.mpvConfNotices))
+        .catch(error => console.warn('Unable to show mpv.conf notices', error));
+}
 installHorizontalShelfDragging();
 
 // A loaded server page names its remembered-server record. The native

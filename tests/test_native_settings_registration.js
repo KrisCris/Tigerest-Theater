@@ -75,8 +75,9 @@ test('only supported categories appear once in native settings menus', () => {
     const {context,registrations}=modules();
     const plugin=new (registrations.get('tigerest/settings.js').factory())();
     const routes=menuRoutes(plugin.getRoutes());
+    // 2.9.4 merged the former "other" page into the mpv.conf editor.
     assert.deepEqual(Array.from(routes,route=>route.tigerestSettingsSection),
-        ['main','home','audio','video','subtitles','mpv','danmaku','other']);
+        ['main','home','audio','video','subtitles','mpv','danmaku']);
     for(const route of routes){
         assert.equal(route.type,'settings');
         assert.equal(route.settingsTheme,true);

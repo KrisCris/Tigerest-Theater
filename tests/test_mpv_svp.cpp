@@ -147,15 +147,25 @@ void TestMpvSvp::rifeSuppressesOnlyManagedDiscovery()
   QVERIFY(!config.readAll().contains("\ninput-ipc-server=/tmp/mpvsocket\n"));
   QVERIFY(MpvConfigManager::ownsDefaultSvpIpc());
   config.close();
-  QFile overrides(QDir(MpvConfigManager::activeConfigDir()).filePath("user-overrides.conf"));
-  QVERIFY(overrides.open(QIODevice::WriteOnly));
-  const QByteArray explicitEndpoint="input-ipc-server=/tmp/rife-user-explicit.sock\n";
-  QCOMPARE(overrides.write(explicitEndpoint),explicitEndpoint.size());overrides.close();
+  // An endpoint written into the user area (an external edit) is commented
+  // out at startup; the client keeps owning the managed endpoint.
+  QVERIFY(config.open(QIODevice::Append));
+  config.write("input-ipc-server=/tmp/rife-user-explicit.sock\n");
+  config.close();
+  QVERIFY(MpvConfigManager::prepare());
+  QVERIFY(MpvConfigManager::ownsDefaultSvpIpc());
+  QVERIFY(config.open(QIODevice::ReadOnly));
+  const QByteArray rewritten = config.readAll();
+  config.close();
+  QVERIFY2(rewritten.contains("#[已忽略:软件管理] input-ipc-server=/tmp/rife-user-explicit.sock"), rewritten.mid(qMax(0, int(rewritten.indexOf("rife-user")) - 300), 600).constData());
+  // Automated tests inject their private endpoint through the test hook,
+  // which the client does not treat as its own.
+  qputenv("TIGEREST_MPV_TEST_OPTIONS", "input-ipc-server=/tmp/rife-user-explicit.sock");
+  const auto unset = qScopeGuard([] { qunsetenv("TIGEREST_MPV_TEST_OPTIONS"); });
   QVERIFY(MpvConfigManager::prepare());
   QVERIFY(!MpvConfigManager::ownsDefaultSvpIpc());
-  QVERIFY(overrides.open(QIODevice::ReadOnly));QCOMPARE(overrides.readAll(),explicitEndpoint);overrides.close();
+  qunsetenv("TIGEREST_MPV_TEST_OPTIONS");
   settings.setValue(SETTINGS_SECTION_VIDEO,"aiRife",false);
-  QVERIFY(overrides.open(QIODevice::WriteOnly));overrides.close();
   QVERIFY(MpvConfigManager::prepare());
   QVERIFY(MpvConfigManager::ownsDefaultSvpIpc());
 }

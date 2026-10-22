@@ -25,6 +25,7 @@
 #include "MpvVideoItem.h"
 #include "PlaybackIdentity.h"
 #include "MpvConfigManager.h"
+#include "MpvConfEditor.h"
 #ifdef Q_OS_WIN
 #include "ui/WindowManager.h"
 #include "power/PowerComponent.h"
@@ -54,6 +55,9 @@
 #include <QLocalSocket>
 #include <QFileInfo>
 #include <QThread>
+#include <QDesktopServices>
+#include <QJsonDocument>
+#include <QUrl>
 
 #if !defined(Q_OS_WIN)
 #include <unistd.h>
@@ -535,8 +539,14 @@ void PlayerComponent::initializeMpv()
   setAudioConfiguration();
   setVideoConfiguration();
   setSubtitleConfiguration();
-  setOtherConfiguration();
   setMpvPreset();
+  publishProfileMenu();
+  if (qEnvironmentVariableIsSet("TIGEREST_MPV_CONFIG_FALLBACK_USED"))
+    MpvConfigManager::addNotice(QStringLiteral("fallback"), QStringLiteral("mpv 配置没能加载"),
+                                QStringLiteral("mpv 无法用你的 mpv.conf 启动，本次已改用默认配置。请到「设置 → MPV 画质与插件」检查编辑器里标红的行。"));
+  // The editor checks option names and values against this player's own
+  // option table; refresh the cached copy after the event loop starts.
+  QTimer::singleShot(0, this, &PlayerComponent::storeMpvOptionTable);
 
   // Preserve non-authentication headers supplied by the active mpv config.
   // Per-stream Emby credentials are appended at load time and never placed in
@@ -584,9 +594,6 @@ void PlayerComponent::initializeMpv()
 
   if (auto* s = SettingsComponent::Get().getSection(SETTINGS_SECTION_SUBTITLES))
     connect(s, &SettingsSection::valuesUpdated, this, &PlayerComponent::updateSubtitleConfiguration);
-
-  if (auto* s = SettingsComponent::Get().getSection(SETTINGS_SECTION_OTHER))
-    connect(s, &SettingsSection::valuesUpdated, this, &PlayerComponent::updateConfiguration);
 
   if (auto* s = SettingsComponent::Get().getSection(SETTINGS_SECTION_MPV))
     connect(s, &SettingsSection::valuesUpdated, this, &PlayerComponent::updateMpvConfiguration);
@@ -1573,6 +1580,11 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
         break;
       }
 #endif
+      if (msg->num_args == 2 && strcmp(msg->args[0], "tigerest-apply-profile") == 0)
+      {
+        applyQualityProfile(QString::fromUtf8(msg->args[1]), true);
+        break;
+      }
       if (msg->num_args == 2 && strcmp(msg->args[0], "tigerest-playlist-item") == 0)
       {
         const QString itemId = QString::fromUtf8(msg->args[1]);
@@ -1869,11 +1881,11 @@ void PlayerComponent::beginInterpolationItem()
 #ifdef Q_OS_WIN
   m_windowsRifeRuntime->select(SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRifeModel").toString(),
       SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO,"aiRifeTarget").toInt());
-  if(m_windowsRifePlayback)m_windowsRifePlayback->beginItem(enabled,MpvConfigManager::usingSystemConfig(),
+  if(m_windowsRifePlayback)m_windowsRifePlayback->beginItem(enabled,false,
       m_mpv->getProperty("speed").toDouble());
   if(m_windowsRifeReloaded)m_rife->bypassCurrentItem("filter-error");
 #else
-  m_rife->beginItem(enabled,MpvConfigManager::usingSystemConfig());
+  m_rife->beginItem(enabled,false);
 #endif
   const bool prepare=m_rife->state()==rife::State::Preparing&&
       m_mpv->getProperty("vid").toString()!="no";
@@ -2753,31 +2765,12 @@ QVariantMap PlayerComponent::mpvDiagnostics()
 #endif
   const QString configDir = MpvConfigManager::activeConfigDir();
   result["configDir"] = configDir;
-  result["configMode"] = MpvConfigManager::usingSystemConfig() ? "system" : "embedded";
+  result["configMode"] = "single";
   result["renderBackend"] = m_nativeVideoOutput ? "gpu-next-native" : "libmpv-render-api";
 
-  QString configuredProfile;
-  QFile config(QDir(configDir).filePath("mpv.conf"));
-  if (config.open(QIODevice::ReadOnly | QIODevice::Text))
-  {
-    QTextStream stream(&config);
-    const QRegularExpression profileLine("^profile\\s*=\\s*(.+)$",
-                                         QRegularExpression::CaseInsensitiveOption);
-    while (!stream.atEnd())
-    {
-      const QString line = stream.readLine().trimmed();
-      if (line.startsWith('['))
-        break;
-      if (line.isEmpty() || line.startsWith('#'))
-        continue;
-      const auto match = profileLine.match(line);
-      if (match.hasMatch())
-      {
-        configuredProfile = match.captured(1).trimmed();
-        break;
-      }
-    }
-  }
+  const QString configuredProfile = m_appliedProfile.isEmpty()
+      ? MpvConfigManager::profileName(SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "shaderPreset").toString())
+      : m_appliedProfile;
   result["configuredProfile"] = configuredProfile;
 
   QStringList shaderFiles;
@@ -2836,6 +2829,20 @@ QVariantMap PlayerComponent::mpvDiagnostics()
     result["redrawPassCount"] = redrawPassCount;
   }
   result["shaderFiles"] = shaderFiles;
+
+  // The video filter chain in order, e.g. user filters then @tigerest-rife.
+  QStringList videoFilters;
+  if (m_mpv)
+  {
+    for (const QVariant& entry : read("vf").toList())
+    {
+      const QVariantMap filter = entry.toMap();
+      const QString label = filter.value(QStringLiteral("label")).toString();
+      videoFilters << (label.isEmpty() ? QString() : QStringLiteral("@%1:").arg(label)) +
+                          filter.value(QStringLiteral("name")).toString();
+    }
+  }
+  result["videoFilters"] = videoFilters;
   result["shaderCount"] = shaderFiles.size();
   return result;
 }
@@ -2938,7 +2945,7 @@ void PlayerComponent::updateAudioDevice()
 void PlayerComponent::updateAudioConfiguration()
 {
   setAudioConfiguration();
-  setOtherConfiguration();
+  refreshMpvConf();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2949,51 +2956,21 @@ void PlayerComponent::setAudioConfiguration()
 #endif
   QString deviceType = SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "devicetype").toString();
 
-  m_mpv->setProperty( "audio-exclusive", SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "exclusive").toBool());
-
   updateAudioDevice();
 
-  bool normalize = SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "normalize").toBool();
-  m_mpv->setProperty( "audio-normalize-downmix", normalize ? "yes" : "no");
-
-  // Make downmix more similar to PHT.
-  m_mpv->setProperty( "audio-swresample-o", "surround_mix_level=1");
-
-  m_passthroughCodecs.clear();
-
-  // passthrough doesn't make sense with basic type
-  if (deviceType != AUDIO_DEVICE_TYPE_BASIC)
+  // The audio page decides these options; the managed tail of mpv.conf
+  // shows the same values.
+  QString passthroughCodecs;
+  QVariant layout;
+  for (const auto& option : MpvConfigManager::audioOptions())
   {
-    SettingsSection* audioSection = SettingsComponent::Get().getSection(SETTINGS_SECTION_AUDIO);
-
-    QStringList codecs;
-    if (deviceType == AUDIO_DEVICE_TYPE_SPDIF)
-      codecs = AudioCodecsSPDIF();
-    else if (deviceType == AUDIO_DEVICE_TYPE_HDMI)
-      codecs = AudioCodecsAll();
-
-    for(const QString& key : codecs)
-    {
-      if (audioSection->value("passthrough." + key).toBool())
-        m_passthroughCodecs << key;
-    }
-
-    // dts-hd includes dts, but listing dts before dts-hd may disable dts-hd.
-    if (m_passthroughCodecs.indexOf("dts-hd") != -1)
-      m_passthroughCodecs.removeAll("dts");
+    m_mpv->setProperty(option.key, option.value);
+    if (option.key == QStringLiteral("audio-spdif"))
+      passthroughCodecs = option.value.toString();
+    else if (option.key == QStringLiteral("audio-channels"))
+      layout = option.value;
   }
-
-  QString passthroughCodecs = m_passthroughCodecs.join(",");
-  m_mpv->setProperty( "audio-spdif", passthroughCodecs);
-
-  // set the channel layout
-  QVariant layout = SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "channels");
-
-  // always force either stereo or transcoding
-  if (deviceType == AUDIO_DEVICE_TYPE_SPDIF)
-    layout = "2.0";
-
-  m_mpv->setProperty( "audio-channels", layout);
+  m_passthroughCodecs = passthroughCodecs.split(',', Qt::SkipEmptyParts);
 
   // if the user has indicated that PCM only works for stereo, and that
   // the receiver supports AC3, set this extra option that allows us to transcode
@@ -3031,7 +3008,7 @@ void PlayerComponent::setAudioConfiguration()
 void PlayerComponent::updateSubtitleConfiguration()
 {
   setSubtitleConfiguration();
-  setOtherConfiguration();
+  refreshMpvConf();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3040,61 +3017,10 @@ void PlayerComponent::setSubtitleConfiguration()
 #ifdef Q_OS_WIN
   if (m_shuttingDown) return;
 #endif
-  bool assScaleBorderAndShadow = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "ass_scale_border_and_shadow").toBool();
-  m_mpv->setProperty( "sub-ass-style-overrides", assScaleBorderAndShadow ? "ScaledBorderAndShadow=yes" : "ScaledBorderAndShadow=no");
-
-  QString assStyleOverride = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "ass_style_override").toString();
-  if (!assStyleOverride.isEmpty())
-  {
-    m_mpv->setProperty( "sub-ass-override", assStyleOverride);
-  }
-
-  QVariant size = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "size");
-  if (size != -1)
-  {
-    m_mpv->setProperty( "sub-scale", size.toInt() / 32.0);
-  }
-
-  QString font = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "font").toString();
-  if (!font.isEmpty())
-  {
-    m_mpv->setProperty( "sub-font", font);
-  }
-
-  QString color = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "color").toString();
-  if (!color.isEmpty())
-  {
-    m_mpv->setProperty( "sub-color", color);
-  }
-
-  QString borderColor = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "border_color").toString();
-  if (!borderColor.isEmpty())
-  {
-    m_mpv->setProperty( "sub-border-color", borderColor);
-  }
-
-  QVariant borderSize = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "border_size");
-  if (borderSize != -1)
-  {
-    m_mpv->setProperty( "sub-border-size", borderSize.toInt());
-  }
-
-  QString backgroundColor = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "background_color").toString();
-  QString backgroundTransparency = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "background_transparency").toString();
-  if (!backgroundColor.isEmpty() && !backgroundTransparency.isEmpty())
-  {
-    // Color is #RRGGBB or #AARRGGBB, insert Alpha after # (at position 1)
-    backgroundColor.insert(1, backgroundTransparency);
-    m_mpv->setProperty( "sub-back-color", backgroundColor);
-  }
-
-  QVariant subposString = SettingsComponent::Get().value(SETTINGS_SECTION_SUBTITLES, "placement");
-  auto subpos = subposString.toString().split(",");
-  if (subpos.length() == 2)
-  {
-    m_mpv->setProperty( "sub-align-x", subpos[0]);
-    m_mpv->setProperty( "sub-pos", subpos[1] == "bottom" ? 100 : 10);
-  }
+  // The subtitles page decides these options; the managed tail of mpv.conf
+  // shows the same values.
+  for (const auto& option : MpvConfigManager::subtitleOptions())
+    m_mpv->setProperty(option.key, option.value);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3149,7 +3075,7 @@ void PlayerComponent::updateVideoAspectSettings()
 void PlayerComponent::updateVideoConfiguration()
 {
   setVideoConfiguration();
-  setOtherConfiguration();
+  refreshMpvConf();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3161,43 +3087,23 @@ void PlayerComponent::setVideoConfiguration()
   if (!m_mpv)
     return;
 
-  // System mode means the user's mpv.conf is authoritative. Do not claim to
-  // preserve it and then overwrite hwdec/video-sync/cache during every load.
-  if (!MpvConfigManager::usingSystemConfig())
+  // The video page decides these options; the managed tail of mpv.conf
+  // shows the same values. RIFE owns video-sync and hwdec while active.
+  for (const auto& option : MpvConfigManager::videoOptions())
   {
-    QVariant syncMode = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "sync_mode");
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
-    if(m_rife)m_rife->configureVideoSync(syncMode.toString());
-    else
-#endif
-      m_mpv->setProperty("video-sync",syncMode);
-
-    QString hardwareDecodingMode = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "hardwareDecoding").toString();
-    QString hwdecMode = "no";
-    QString hwdecVTFormat = "no";
-    if (hardwareDecodingMode == "enabled")
-      hwdecMode = "auto";
-    else if (hardwareDecodingMode == "safe")
-      hwdecMode = "auto-safe";
-    else if (hardwareDecodingMode == "osx_compat")
+    if (m_rife && option.key == QStringLiteral("video-sync"))
     {
-      hwdecMode = "auto";
-      hwdecVTFormat = "uyvy422";
+      m_rife->configureVideoSync(option.value.toString());
+      continue;
     }
-    else if (hardwareDecodingMode == "copy")
-      hwdecMode = "auto-copy";
-#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
-    if(m_rife)m_rife->configureHardwareDecoding(hwdecMode);
-    else
+    if (m_rife && option.key == QStringLiteral("hwdec"))
+    {
+      m_rife->configureHardwareDecoding(option.value.toString());
+      continue;
+    }
 #endif
-      m_mpv->setProperty("hwdec",hwdecMode);
-    m_mpv->setProperty( "hwdec-image-format", hwdecVTFormat);
-
-    QVariant deinterlace = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "deinterlace");
-    m_mpv->setProperty( "deinterlace", deinterlace.toBool() ? "yes" : "no");
-
-    QVariant cache = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "cache");
-    m_mpv->setProperty( "demuxer-max-bytes", cache.toInt() * 1024 * 1024);
+    m_mpv->setProperty(option.key, option.value);
   }
 
 #ifndef TARGET_RPI
@@ -3208,34 +3114,8 @@ void PlayerComponent::setVideoConfiguration()
   setAudioDelay(m_playbackAudioDelay);
 
   updateVideoAspectSettings();
-  setOtherConfiguration();
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-void PlayerComponent::setOtherConfiguration()
-{
-#ifdef Q_OS_WIN
-  if (m_shuttingDown) return;
-#endif
-  if (!m_mpv) return;
-
-  QString otherConfiguration = SettingsComponent::Get().value(SETTINGS_SECTION_OTHER, "other_conf").toString();
-  qDebug() << "Parsing other configuration: "+otherConfiguration;
-  QStringList configurationList = otherConfiguration.split(QRegularExpression("[\r\n]"), Qt::SkipEmptyParts);
-
-  for(const QString& configuration : configurationList)
-  {
-    qsizetype splitIndex = configuration.indexOf("=");
-    qsizetype configurationLength = configuration.length();
-    if (splitIndex > 0 && splitIndex < configurationLength - 1)
-    {
-      QString configurationKey = configuration.left(splitIndex).remove(QRegularExpression("^([\"]+)")).remove(QRegularExpression("([\"]+)$"));
-      QString configurationValue = configuration.right(configurationLength - splitIndex - 1).remove(QRegularExpression("^([\"]+)")).remove(QRegularExpression("([\"]+)$"));
-      m_mpv->setProperty( configurationKey, configurationValue);
-    }
-  }
-}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setMpvPreset()
@@ -3244,67 +3124,311 @@ void PlayerComponent::setMpvPreset()
   if (m_shuttingDown) return;
 #endif
   if (!m_mpv) return;
-
-  // System mode consumes the user's mpv.conf, profiles and shader list without
-  // silently replacing them with Tigerest's bundled defaults. On macOS only,
-  // executable scripts are isolated by the generated companion so a menu
-  // quit cannot destroy the application-owned libmpv core.
-  if (MpvConfigManager::usingSystemConfig())
-  {
-    qInfo() << "Preserving user MPV profile and shaders from"
-            << MpvConfigManager::activeConfigDir();
-    return;
-  }
-
   const QString preset = SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "shaderPreset").toString();
   const QString profile = MpvConfigManager::profileName(preset);
-  // Runtime-applied list options can accumulate. Clear the shader list before
-  // applying one of the three complete profiles now that the old off/safe
-  // profiles have intentionally been removed.
-  m_mpv->command(QStringList() << "change-list" << "glsl-shaders" << "clr" << "");
-  m_mpv->command(QStringList() << "apply-profile" << profile);
-  m_mpv->setProperty("user-data/profile_menu/current", profile);
+  // Settings changes unrelated to the preset must not re-run the profile.
+  if (profile != m_appliedProfile)
+    applyQualityProfile(profile, false);
+}
 
-  // Profile-owned properties are only overridden when the user explicitly
-  // enables advanced overrides. Otherwise the three advertised profiles must
-  // remain exact, particularly the aggressive diagnostic shader chain.
-  const auto apply = [this](const char* name, const QVariant& value) {
-    const int result = m_mpv->setProperty(QString::fromLatin1(name), value);
-    if (result < 0)
-      qWarning() << "MPV option is unavailable:" << name << mpv_error_string(result);
+///////////////////////////////////////////////////////////////////////////////////////////////////
+bool PlayerComponent::applyQualityProfile(const QString& profile, bool announce)
+{
+  if (!m_mpv)
+    return false;
+  const QList<MpvConf::Line> lines = MpvConf::parse(MpvConfigManager::readConfig().user);
+  QString error;
+  const QList<MpvConf::ProfileStep> steps = MpvConf::resolveProfile(lines, profile, &error);
+  QString title = profile;
+  for (const MpvConf::ProfileInfo& info : MpvConf::profiles(lines))
+    if (info.name == profile && !info.description.isEmpty())
+      title = info.description;
+  if (!error.isEmpty())
+  {
+    qWarning() << "Unable to apply MPV profile" << profile << error;
+    if (announce)
+      m_mpv->commandAsync(QStringList{QStringLiteral("show-text"), QStringLiteral("滤镜切换失败: %1").arg(error),
+                                      QStringLiteral("3200")});
+    return false;
+  }
+
+  // The profile comes from the current mpv.conf, so edits made in the
+  // settings page apply without restarting. List-valued options accumulate
+  // across runtime switches; start from an empty shader list.
+  QStringList failed;
+  m_mpv->command(QStringList() << "change-list" << "glsl-shaders" << "clr" << "");
+  for (const MpvConf::ProfileStep& step : steps)
+  {
+    if (!applyMpvConfOption(step.builtin ? QStringLiteral("profile") : step.key, step.value))
+      failed << step.key;
+  }
+  int actual = 0;
+  for (const QVariant& shader : m_mpv->getProperty("glsl-shaders").toList())
+    if (!shader.toString().trimmed().isEmpty())
+      ++actual;
+  const int expected = MpvConf::shaderCount(steps);
+  m_appliedProfile = profile;
+  m_mpv->setProperty("user-data/profile_menu/current", profile);
+  if (!failed.isEmpty())
+    qWarning() << "MPV profile" << profile << "options were rejected:" << failed;
+
+  // Switching in the player (uosc menu, Alt+1..3) also moves the settings
+  // page's preset, so the page always edits the profile that is playing.
+  const QString preset = MpvConfigManager::presetForProfile(profile);
+  if (SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "shaderPreset").toString() != preset)
+    SettingsComponent::Get().setValue(SETTINGS_SECTION_MPV, "shaderPreset", preset);
+
+  if (announce)
+  {
+    const bool ok = actual == expected;
+    const QString message = ok
+        ? QStringLiteral("已切换滤镜: %1（%2 个 shader）").arg(title).arg(actual)
+        : QStringLiteral("滤镜切换失败: %1（预期 %2，实际 %3 个 shader）").arg(title).arg(expected).arg(actual);
+    m_mpv->commandAsync(QStringList{QStringLiteral("show-text"), message,
+                                    ok ? QStringLiteral("2400") : QStringLiteral("3200")});
+  }
+  return actual == expected && failed.isEmpty();
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+bool PlayerComponent::applyMpvConfOption(const QString& key, const QString& value)
+{
+  static const QStringList listSuffixes = {
+    QStringLiteral("-append"), QStringLiteral("-add"), QStringLiteral("-pre"), QStringLiteral("-set"),
+    QStringLiteral("-clr"), QStringLiteral("-remove"), QStringLiteral("-del"), QStringLiteral("-toggle")};
+  const auto succeeded = [](const QVariant& result) {
+    return result.metaType() != QMetaType::fromType<ErrorReturn>();
+  };
+  if (key == QStringLiteral("profile"))
+    return succeeded(m_mpv->command(QStringList() << "apply-profile" << value));
+  if (key == QStringLiteral("glsl-shader"))
+    return succeeded(m_mpv->command(QStringList() << "change-list" << "glsl-shaders" << "append" << value));
+  const QString base = MpvConfigManager::rules().baseKey(key);
+  if (base != key)
+  {
+    if (key == QStringLiteral("no-") + base)
+      return m_mpv->setProperty(base, QStringLiteral("no")) >= 0;
+    for (const QString& suffix : listSuffixes)
+      if (key == base + suffix)
+        return succeeded(m_mpv->command(QStringList() << "change-list" << base << suffix.mid(1) << value));
+  }
+  return m_mpv->setProperty(key, value) >= 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void PlayerComponent::resetMpvConfOption(const QString& key, const QList<MpvConf::Line>& lines)
+{
+  const QString base = MpvConfigManager::rules().baseKey(key);
+  const MpvConf::ResolvedValue global = MpvConf::resolveValue(lines, QStringLiteral("default"), base);
+  if (global.found)
+  {
+    applyMpvConfOption(base, global.value);
+    return;
+  }
+  const QVariant fallback = m_mpv->getProperty(QStringLiteral("option-info/%1/default-value").arg(base));
+  if (fallback.isValid() && fallback.metaType() != QMetaType::fromType<ErrorReturn>())
+    m_mpv->setProperty(base, fallback);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void PlayerComponent::applyUserConfLive(const QString& previous, const QString& current)
+{
+  if (!m_mpv || previous == current)
+    return;
+  const QList<MpvConf::Line> oldLines = MpvConf::parse(previous);
+  const QList<MpvConf::Line> newLines = MpvConf::parse(current);
+  const MpvConf::Rules& rules = MpvConfigManager::rules();
+  const auto globals = [&rules](const QList<MpvConf::Line>& lines) {
+    QMap<QString, QString> values;
+    for (const MpvConf::Line& line : lines)
+    {
+      if (line.kind != MpvConf::Line::Option || line.section != QStringLiteral("default"))
+        continue;
+      const QString base = rules.baseKey(line.key);
+      const bool listOperation = base != line.key && !line.key.startsWith(QStringLiteral("no-"));
+      if (MpvConf::isFilterKey(base) || base == QStringLiteral("glsl-shaders") || listOperation)
+        continue;
+      values.insert(line.key, line.hasValue ? line.value : QStringLiteral("yes"));
+    }
+    return values;
   };
 
-  if (SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "advancedProfileOverrides").toBool())
+  // Global options: set what changed, reset what was removed.
+  const QMap<QString, QString> before = globals(oldLines);
+  const QMap<QString, QString> after = globals(newLines);
+  for (auto it = after.begin(); it != after.end(); ++it)
+    if (!before.contains(it.key()) || before.value(it.key()) != it.value())
+      applyMpvConfOption(it.key(), it.value());
+  for (auto it = before.begin(); it != before.end(); ++it)
+    if (!after.contains(it.key()))
+      resetMpvConfOption(it.key(), newLines);
+
+  // User filters: rebuild the @user- entries at the front of the chain, so
+  // they stay ahead of @tigerest-rife and SVP.
+  QStringList filters;
+  for (const MpvConf::Line& line : newLines)
+    if (line.kind == MpvConf::Line::Option && line.section == QStringLiteral("default") &&
+        MpvConf::isFilterKey(rules.baseKey(line.key)) && !line.key.endsWith(QStringLiteral("-remove")))
+      for (const MpvConf::FilterEntry& filter : MpvConf::parseFilters(line.value))
+        filters << filter.text;
+  for (const QVariant& entry : m_mpv->getProperty("vf").toList())
   {
-    apply("scale", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "scale"));
-    apply("cscale", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "cscale"));
-    apply("dscale", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "dscale"));
-    apply("interpolation", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "interpolation").toBool());
-    apply("tscale", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "tscale"));
-    apply("deband", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "deband").toBool());
-    apply("deband-iterations", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "debandIterations"));
-    apply("deband-threshold", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "debandThreshold"));
-    apply("deband-range", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "debandRange"));
-    apply("deband-grain", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "debandGrain"));
-    apply("sigmoid-upscaling", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "sigmoidUpscaling").toBool());
-    apply("correct-downscaling", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "correctDownscaling").toBool());
-    apply("scale-antiring", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "scaleAntiring"));
-    apply("cscale-antiring", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "cscaleAntiring"));
-    apply("target-colorspace-hint", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "targetColorspaceHint").toBool());
-    apply("icc-profile-auto", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "iccProfileAuto").toBool());
-    apply("tone-mapping", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "toneMapping"));
-    apply("gamut-mapping-mode", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "gamutMappingMode"));
-    apply("hdr-compute-peak", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "hdrComputePeak").toBool());
-    apply("dither-depth", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "ditherDepth"));
-    apply("blend-subtitles", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "blendSubtitles"));
+    const QString label = entry.toMap().value(QStringLiteral("label")).toString();
+    if (label.startsWith(QStringLiteral("user-")))
+      m_mpv->command(QStringList() << "vf" << "remove" << QStringLiteral("@") + label);
   }
-  apply("alang", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "audioLanguage"));
-  apply("slang", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "subtitleLanguage"));
-  apply("cache-pause", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "cachePause").toBool());
-  apply("demuxer-max-back-bytes",
-        SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "demuxerMaxBackBytes").toInt() * 1024 * 1024);
-  apply("screenshot-format", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "screenshotFormat"));
-  apply("screenshot-directory", SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "screenshotDirectory"));
+  for (auto it = filters.crbegin(); it != filters.crend(); ++it)
+    m_mpv->command(QStringList() << "change-list" << "vf" << "pre" << *it);
+
+  // The active profile: options it no longer sets fall back to the global
+  // value, then the profile runs again from the new text.
+  if (!m_appliedProfile.isEmpty())
+  {
+    QSet<QString> previousKeys;
+    for (const MpvConf::ProfileStep& step : MpvConf::resolveProfile(oldLines, m_appliedProfile))
+      if (!step.builtin)
+        previousKeys.insert(rules.baseKey(step.key));
+    QSet<QString> currentKeys;
+    for (const MpvConf::ProfileStep& step : MpvConf::resolveProfile(newLines, m_appliedProfile))
+      if (!step.builtin)
+        currentKeys.insert(rules.baseKey(step.key));
+    for (const QString& key : previousKeys - currentKeys)
+      if (key != QStringLiteral("glsl-shaders"))
+        resetMpvConfOption(key, newLines);
+    bool exists = false;
+    for (const MpvConf::ProfileInfo& info : MpvConf::profiles(newLines))
+      exists = exists || info.name == m_appliedProfile;
+    applyQualityProfile(exists ? m_appliedProfile : QStringLiteral("tigerest-default"), false);
+  }
+  publishProfileMenu();
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void PlayerComponent::refreshMpvConf()
+{
+  const QString before = MpvConfigManager::readConfig().user;
+  const MpvConfigManager::WriteResult result = MpvConfigManager::refresh();
+  if (!result.ok)
+    return;
+  applyUserConfLive(before, result.user);
+  if (!result.suspended.isEmpty())
+    emit SystemComponent::Get().settingsMessage(
+        "MPV", QStringLiteral("RIFE 已开启：你在 mpv.conf 里写的 %1 行冲突配置已暂停执行，关闭 RIFE 后自动恢复。")
+                   .arg(result.suspended.size()));
+  if (!result.restored.isEmpty())
+    emit SystemComponent::Get().settingsMessage(
+        "MPV", QStringLiteral("RIFE 已关闭：mpv.conf 里暂停的 %1 行配置已恢复执行。").arg(result.restored.size()));
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void PlayerComponent::publishProfileMenu()
+{
+  if (!m_mpv)
+    return;
+  const QList<MpvConf::Line> lines = MpvConf::parse(MpvConfigManager::readConfig().user);
+  QVariantList items;
+  for (const MpvConf::ProfileInfo& info : MpvConf::profiles(lines))
+  {
+    // The shared base is an inheritance helper, not a choice.
+    if (info.name == QStringLiteral("tigerest-quality-base"))
+      continue;
+    const int shaders = MpvConf::shaderCount(MpvConf::resolveProfile(lines, info.name));
+    items << QVariantMap{{QStringLiteral("profile"), info.name},
+                         {QStringLiteral("title"), info.description.isEmpty() ? info.name : info.description},
+                         {QStringLiteral("hint"), QStringLiteral("%1 个着色器").arg(shaders)}};
+  }
+  m_mpv->setProperty("user-data/profile_menu/profiles",
+                     QString::fromUtf8(QJsonDocument::fromVariant(items).toJson(QJsonDocument::Compact)));
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void PlayerComponent::storeMpvOptionTable()
+{
+  if (!m_mpv)
+    return;
+  const QString version = m_mpv->getProperty("mpv-version").toString();
+  if (version.isEmpty() || MpvConfigManager::cachedOptionTableVersion() == version)
+    return;
+  // Reading option-info of a renamed option logs a deprecation warning for
+  // each alias; keep those out of the user's log during the scan.
+  m_mpv->setProperty("msg-level", "all=v,cplayer=error");
+  const auto restoreLog = qScopeGuard([this] { m_mpv->setProperty("msg-level", "all=v"); });
+  QJsonObject options;
+  for (const QString& name : m_mpv->getProperty("options").toStringList())
+  {
+    const QVariantMap info = m_mpv->getProperty(QStringLiteral("option-info/%1").arg(name)).toMap();
+    QJsonObject entry{{QStringLiteral("type"), info.value(QStringLiteral("type")).toString()}};
+    for (const char* fieldName : {"choices", "min", "max"})
+    {
+      const QString field = QString::fromLatin1(fieldName);
+      if (info.contains(field))
+        entry.insert(field, QJsonValue::fromVariant(info.value(field)));
+    }
+    options.insert(name, entry);
+  }
+  MpvConfigManager::storeOptionTable(QJsonObject{{QStringLiteral("mpvVersion"), version},
+                                                 {QStringLiteral("options"), options}});
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+QVariantMap PlayerComponent::mpvConfState()
+{
+  QString profile = m_appliedProfile;
+  if (profile.isEmpty())
+    profile = MpvConfigManager::profileName(SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "shaderPreset").toString());
+  return MpvConfEditor::state(profile);
+}
+
+QVariantMap PlayerComponent::mpvConfAnalyze(const QString& user, const QString& section)
+{
+  return MpvConfEditor::analyze(user, section);
+}
+
+QVariantMap PlayerComponent::mpvConfEdit(const QString& user, const QVariantMap& operation)
+{
+  return MpvConfEditor::edit(user, operation);
+}
+
+QVariantMap PlayerComponent::mpvConfPaste(const QString& text)
+{
+  return MpvConfEditor::paste(text);
+}
+
+QVariantMap PlayerComponent::mpvConfSave(const QString& user, bool force)
+{
+  const QString section = m_appliedProfile.isEmpty() ? QStringLiteral("tigerest-default") : m_appliedProfile;
+  const QVariantMap analysis = MpvConfEditor::analyze(user, section);
+  if (!force && analysis.value(QStringLiteral("errors")).toInt() > 0)
+    return {{QStringLiteral("saved"), false}, {QStringLiteral("analysis"), analysis}};
+  const QString before = MpvConfigManager::readConfig().user;
+  const MpvConfigManager::WriteResult result = MpvConfigManager::saveUser(user);
+  if (result.ok)
+    applyUserConfLive(before, result.user);
+  return {{QStringLiteral("saved"), result.ok},
+          {QStringLiteral("user"), result.user},
+          {QStringLiteral("suspended"), result.suspended.size()},
+          {QStringLiteral("ignored"), result.ignored.size()},
+          {QStringLiteral("analysis"), MpvConfEditor::analyze(result.user, section)}};
+}
+
+QVariantMap PlayerComponent::mpvConfRestoreDefault()
+{
+  const QString before = MpvConfigManager::readConfig().user;
+  const MpvConfigManager::WriteResult result = MpvConfigManager::restoreDefault();
+  if (result.ok)
+    applyUserConfLive(before, result.user);
+  return mpvConfState();
+}
+
+void PlayerComponent::mpvConfAcknowledgeDefault()
+{
+  MpvConfigManager::acknowledgeDefaultUpdate();
+}
+
+bool PlayerComponent::mpvConfOpenShaderFolder()
+{
+  QDir().mkpath(MpvConfigManager::userShaderDir());
+  return QDesktopServices::openUrl(QUrl::fromLocalFile(MpvConfigManager::userShaderDir()));
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3314,12 +3438,10 @@ void PlayerComponent::updateMpvConfiguration()
   if (m_shuttingDown) return;
 #endif
   setMpvPreset();
-  const QString message = MpvConfigManager::usingSystemConfig()
-    ? "当前直接使用系统 MPV 配置；用户 profile、脚本与 shader 保持不变。配置模式修改将在重启后生效"
-    : "画质档位及已启用的高级覆盖、缓存与语言配置已应用；配置模式、uosc 与弹幕插件将在重启后生效";
+  refreshMpvConf();
   emit SystemComponent::Get().settingsMessage(
     "MPV",
-    message);
+    "画质档位已应用；uosc、弹幕与控制台开关将在重启后生效");
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3328,7 +3450,6 @@ void PlayerComponent::updateConfiguration()
   setAudioConfiguration();
   setVideoConfiguration();
   setSubtitleConfiguration();
-  setOtherConfiguration();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

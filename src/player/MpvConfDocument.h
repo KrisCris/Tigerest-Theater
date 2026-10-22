@@ -147,6 +147,8 @@ namespace MpvConf
   QString setOption(const QString& user, const QString& section, const QString& key,
                     const QString& value, const QString& comment = QString());
   QString removeOption(const QString& user, const QString& section, const QString& key);
+  // Adds lines after the last option of `section` (creating it if needed).
+  QString appendLines(const QString& user, const QString& section, const QStringList& lines);
   QString insertLines(const QString& user, int afterLine, const QStringList& lines);
 
   struct ResolvedValue

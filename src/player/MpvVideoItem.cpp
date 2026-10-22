@@ -673,55 +673,15 @@ void MpvVideoItem::keyPressEvent(QKeyEvent* event)
         return;
     }
 
-    // System mpv roots frequently ship their own profile-menu script. Route
-    // the three user-facing Tigerest shortcuts directly to namespaced
-    // companion profiles so they work in both embedded and system mode.
+    // Alt+1..3 select the three bundled quality profiles. The player applies
+    // them from the current mpv.conf, as the uosc menu and the settings page do.
     if (event->modifiers() == Qt::AltModifier &&
         event->key() >= Qt::Key_1 && event->key() <= Qt::Key_3) {
-        QString profile;
-        QString displayName;
-        int expectedShaders = 0;
-        switch (event->key()) {
-        case Qt::Key_1:
-            profile = QStringLiteral("tigerest-default");
-            displayName = QStringLiteral("默认");
-            expectedShaders = 3;
-            break;
-        case Qt::Key_2:
-            profile = QStringLiteral("tigerest-liveaction");
-            displayName = QStringLiteral("真人");
-            expectedShaders = 2;
-            break;
-        case Qt::Key_3:
-            profile = QStringLiteral("tigerest-aggressive-test");
-            displayName = QStringLiteral("激进测试");
-            expectedShaders = 4;
-            break;
-        default:
-            break;
-        }
-
-        // List-valued options in runtime-applied mpv profiles are additive. Use
-        // mpv's list operation so repeated Alt switches cannot accumulate
-        // shaders from the previously selected profile.
-        const QVariant clearResult = commandBlocking(QStringList{
-            QStringLiteral("change-list"), QStringLiteral("glsl-shaders"),
-            QStringLiteral("clr"), QString()});
-        const QVariant result = commandBlocking(QStringList{QStringLiteral("apply-profile"), profile});
-        const bool commandOk = clearResult.metaType() != QMetaType::fromType<ErrorReturn>() &&
-            result.metaType() != QMetaType::fromType<ErrorReturn>();
-        const QVariant shaders = getProperty(QStringLiteral("glsl-shaders"));
-        int shaderCount = 0;
-        for (const QVariant& shader : shaders.toList()) {
-            if (!shader.toString().trimmed().isEmpty())
-                ++shaderCount;
-        }
-        const bool shaderStateOk = shaderCount == expectedShaders;
-        const QString message = commandOk && shaderStateOk
-            ? QStringLiteral("已切换滤镜: %1（%2 个 shader）").arg(displayName).arg(shaderCount)
-            : QStringLiteral("滤镜切换失败: %1（实际 %2 个 shader）").arg(displayName).arg(shaderCount);
-        setPropertyBlocking(QStringLiteral("user-data/profile_menu/current"), profile);
-        commandAsync({QStringLiteral("show-text"), message, QStringLiteral("2400")});
+        static const QStringList profiles = {QStringLiteral("tigerest-default"),
+                                             QStringLiteral("tigerest-liveaction"),
+                                             QStringLiteral("tigerest-aggressive-test")};
+        if (m_player)
+            m_player->applyQualityProfile(profiles.at(event->key() - Qt::Key_1), true);
         m_profileHandledLocally = true;
         event->accept();
         return;

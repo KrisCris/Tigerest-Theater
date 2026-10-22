@@ -176,49 +176,42 @@ void MpvController::init()
     // requires the LC_NUMERIC category to be set to "C", so change it back.
     std::setlocale(LC_NUMERIC, "C");
 
-    d_ptr->m_mpv = mpv_create();
-    if (!d_ptr->m_mpv) {
-        qFatal("could not create mpv context");
-    }
-
-    // macOS native gpu-next shares this libmpv core with the Emby host. A user
-    // UOSC script can call `quit`, permanently terminating the core while the
-    // web UI remains alive. Apply script isolation at host-option priority,
-    // before configuration parsing and mpv initialization, then load only the
-    // bundled scripts whose exit actions are mapped to `stop`.
-    const QByteArray tigerestSafeScripts = qgetenv("TIGEREST_MPV_SAFE_SCRIPTS");
-    if (!tigerestSafeScripts.isEmpty()) {
-        const int autoScriptResult = mpv_set_option_string(d_ptr->m_mpv, "load-scripts", "no");
-        const int safeScriptResult = mpv_set_option_string(d_ptr->m_mpv, "scripts", tigerestSafeScripts.constData());
-        if (autoScriptResult < 0 || safeScriptResult < 0) {
-            qWarning() << "Unable to isolate Tigerest MPV scripts";
-        } else {
-            qInfo() << "Tigerest MPV user scripts disabled; loading quit-safe bundled scripts";
-        }
-    }
-
     // libmpv does not load configuration when embedded unless the host opts in.
-    // Tigerest Theater resolves an isolated built-in root or the user's real mpv
-    // root before this controller is constructed.
+    // Tigerest Theater prepares its single mpv.conf before this controller is
+    // constructed. If mpv cannot initialize with it, start again from the
+    // complete default configuration rather than leaving the client without
+    // a player; the host tells the user afterwards.
     const QByteArray tigerestConfigDir = qgetenv("TIGEREST_MPV_CONFIG_DIR");
-    if (!tigerestConfigDir.isEmpty()) {
-        if (mpv_set_option_string(d_ptr->m_mpv, "config", "yes") < 0 ||
-            mpv_set_option_string(d_ptr->m_mpv, "config-dir", tigerestConfigDir.constData()) < 0) {
+    const QByteArray tigerestFallback = qgetenv("TIGEREST_MPV_FALLBACK_CONFIG");
+    const auto create = [&](bool fallback) {
+        d_ptr->m_mpv = mpv_create();
+        if (!d_ptr->m_mpv) {
+            qFatal("could not create mpv context");
+        }
+        if (tigerestConfigDir.isEmpty())
+            return;
+        const bool configured = mpv_set_option_string(d_ptr->m_mpv, "config-dir", tigerestConfigDir.constData()) >= 0 &&
+            (fallback ? mpv_set_option_string(d_ptr->m_mpv, "config", "no") >= 0 &&
+                            mpv_set_option_string(d_ptr->m_mpv, "include", tigerestFallback.constData()) >= 0
+                      : mpv_set_option_string(d_ptr->m_mpv, "config", "yes") >= 0);
+        if (!configured) {
             qWarning() << "Unable to configure Tigerest MPV root" << tigerestConfigDir;
         } else {
-            qInfo() << "Tigerest MPV root:" << tigerestConfigDir;
+            qInfo() << "Tigerest MPV root:" << tigerestConfigDir << (fallback ? "(default fallback)" : "");
         }
-    }
-    // Parse the managed Tigerest profiles after the user's default files.
-    // The companion contains only namespaced profiles, absolute shader paths,
-    // and missing legacy aliases; it never replaces the user's global options.
-    const QByteArray tigerestInclude = qgetenv("TIGEREST_MPV_INCLUDE");
-    if (!tigerestInclude.isEmpty() &&
-        mpv_set_option_string(d_ptr->m_mpv, "include", tigerestInclude.constData()) < 0) {
-        qWarning() << "Unable to load Tigerest MPV companion profiles" << tigerestInclude;
-    }
+    };
+    create(false);
     if (mpv_initialize(d_ptr->m_mpv) < 0) {
-        qFatal("could not initialize mpv context");
+        if (tigerestConfigDir.isEmpty() || tigerestFallback.isEmpty()) {
+            qFatal("could not initialize mpv context");
+        }
+        qCritical() << "mpv could not initialize with the user mpv.conf; retrying with the default configuration";
+        mpv_terminate_destroy(d_ptr->m_mpv);
+        create(true);
+        if (mpv_initialize(d_ptr->m_mpv) < 0) {
+            qFatal("could not initialize mpv context");
+        }
+        qputenv("TIGEREST_MPV_CONFIG_FALLBACK_USED", "1");
     }
     // Initialization reads mpv.conf after pre-init options. Apply the saved
     // selection after that read, before exposing the controller to the UI.

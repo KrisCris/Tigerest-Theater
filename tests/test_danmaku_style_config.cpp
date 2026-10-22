@@ -12,7 +12,6 @@ class TestDanmakuStyleConfig : public QObject
 
 private slots:
   void rendersPluginCompatibleOptions();
-  void rendersMpvScriptOptionsForTheMacCompanionConfig();
   void writesOptionsIntoTheManagedScriptOptsDirectory();
   void selectsRelayForTheInitialServer();
 };
@@ -45,20 +44,6 @@ const QString expectedConfig = QStringLiteral(
 void TestDanmakuStyleConfig::rendersPluginCompatibleOptions()
 {
   QCOMPARE(MpvConfigManager::danmakuStyleConfigText(styleValues()), expectedConfig);
-}
-
-void TestDanmakuStyleConfig::rendersMpvScriptOptionsForTheMacCompanionConfig()
-{
-  const QString expected = QStringLiteral(
-    "script-opt=uosc_danmaku-bold=no\n"
-    "script-opt=uosc_danmaku-fontsize=60\n"
-    "script-opt=uosc_danmaku-outline=1.5\n"
-    "script-opt=uosc_danmaku-shadow=2\n"
-    "script-opt=uosc_danmaku-scrolltime=12\n"
-    "script-opt=uosc_danmaku-opacity=0.8\n"
-    "script-opt=uosc_danmaku-displayarea=0.2\n");
-
-  QCOMPARE(MpvConfigManager::danmakuStyleMpvOptionsText(styleValues()), expected);
 }
 
 void TestDanmakuStyleConfig::writesOptionsIntoTheManagedScriptOptsDirectory()

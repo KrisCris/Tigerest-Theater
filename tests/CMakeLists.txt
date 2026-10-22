@@ -168,7 +168,9 @@ add_test(NAME test_mpv_console COMMAND test_mpv_console)
 add_executable(test_emby_uosc_playlist test_emby_uosc_playlist.cpp)
 qt_add_resources(test_emby_uosc_playlist "test_emby_uosc_playlist_resources"
   PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
-  FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
+  FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.default.conf"
+          "${CMAKE_SOURCE_DIR}/resources/mpvconf/options.json"
+          "${CMAKE_SOURCE_DIR}/resources/mpvconf/mpv-options.json"
         "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
 target_link_libraries(test_emby_uosc_playlist jmp_core Qt6::Test)
 target_include_directories(test_emby_uosc_playlist PRIVATE ${TEST_INCLUDE_DIRS})
@@ -192,14 +194,18 @@ if(WIN32)
   target_include_directories(test_rife_windows_ipc PRIVATE ${TEST_INCLUDE_DIRS})
   qt_add_resources(test_rife_windows_ipc "test_rife_windows_ipc_resources"
     PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
-    FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
+    FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.default.conf"
+          "${CMAKE_SOURCE_DIR}/resources/mpvconf/options.json"
+          "${CMAKE_SOURCE_DIR}/resources/mpvconf/mpv-options.json"
           "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
   add_test(NAME test_rife_windows_ipc COMMAND test_rife_windows_ipc)
   if(USE_STATIC_MPVQT)
     add_executable(test_rife_player_playback test_rife_player_playback.cpp)
     qt_add_resources(test_rife_player_playback "test_rife_player_playback_resources"
       PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
-      FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
+      FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.default.conf"
+          "${CMAKE_SOURCE_DIR}/resources/mpvconf/options.json"
+          "${CMAKE_SOURCE_DIR}/resources/mpvconf/mpv-options.json"
             "${CMAKE_SOURCE_DIR}/resources/mpv/input.conf"
             "${CMAKE_SOURCE_DIR}/resources/mpv/plugins/stats.lua"
             "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
@@ -271,7 +277,8 @@ if(WIN32 AND Python3_Interpreter_FOUND)
   target_link_libraries(rife_player_benchmark PRIVATE jmp_core dbghelp)
   target_include_directories(rife_player_benchmark PRIVATE ${TEST_INCLUDE_DIRS})
   target_compile_definitions(rife_player_benchmark PRIVATE ${TEST_COMPILE_DEFS})
-  file(GLOB_RECURSE RIFE_BENCH_MPV_RESOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/resources/mpv/*")
+  file(GLOB_RECURSE RIFE_BENCH_MPV_RESOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/resources/mpv/*"
+       "${CMAKE_SOURCE_DIR}/resources/mpvconf/*")
   qt_add_resources(rife_player_benchmark "rife_player_benchmark_resources"
     PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
     FILES ${RIFE_BENCH_MPV_RESOURCES} "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
@@ -472,7 +479,9 @@ if(APPLE)
   qt_add_resources(test_mpv_svp "test_mpv_svp_resources"
     PREFIX "/"
     BASE "${CMAKE_SOURCE_DIR}/resources"
-    FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.conf.in"
+    FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.default.conf"
+          "${CMAKE_SOURCE_DIR}/resources/mpvconf/options.json"
+          "${CMAKE_SOURCE_DIR}/resources/mpvconf/mpv-options.json"
           "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
   add_test(NAME test_mpv_svp COMMAND test_mpv_svp)
   add_executable(test_macos_pause test_macos_pause.mm)
@@ -527,6 +536,11 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_home_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  # The mpv.conf editor against the real native bridge, parser and files.
+  add_test(NAME test_mpvconf_editor_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_mpvconf_editor_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_mpvconf_editor_webengine PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
   add_test(NAME test_library_incoming_settled_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_library_incoming_settled_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)

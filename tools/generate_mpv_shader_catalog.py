@@ -229,7 +229,12 @@ def build():
         "measuredOn": timings.get("device"),
         "shaders": entries,
     }
-    manifest_doc = {"version": 1, "files": manifest}
+    # Bundles before 2.9.4 also shipped a byte-identical copy of every Anime4K
+    # shader at the library root, without a manifest. Listing those copies
+    # with their hashes lets the client delete them when they are unchanged.
+    retired = {path.split("/", 1)[1]: digest for path, digest in manifest.items()
+               if path.startswith("Anime4K/")}
+    manifest_doc = {"version": 1, "files": manifest, "retired": retired}
     return (json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
             json.dumps(manifest_doc, ensure_ascii=False, indent=2) + "\n")
 

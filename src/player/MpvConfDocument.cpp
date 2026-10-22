@@ -115,19 +115,27 @@ Parts split(const QString& text)
   const int headEnd = headBegin >= 0 ? lines.indexOf(HeadEnd, headBegin) : -1;
   const int tailBegin = lines.indexOf(TailBegin, headEnd >= 0 ? headEnd : 0);
   const int tailEnd = tailBegin >= 0 ? lines.indexOf(TailEnd, tailBegin) : -1;
-  if (headBegin != 0 || headEnd < 0 || tailBegin < 0 || tailEnd < 0)
+  if (headBegin < 0 || headEnd < 0 || tailBegin < 0 || tailEnd < 0)
   {
     parts.user = joinLines(lines);
     return parts;
   }
   parts.structured = true;
-  parts.head = joinLines(lines.mid(0, headEnd + 1));
-  QStringList user = lines.mid(headEnd + 1, tailBegin - headEnd - 1);
+  parts.head = joinLines(lines.mid(headBegin, headEnd - headBegin + 1));
+  // Text an external editor put outside the managed blocks belongs to the
+  // user area: before the head goes first, after the tail goes last.
+  QStringList user = lines.mid(0, headBegin) + lines.mid(headEnd + 1, tailBegin - headEnd - 1);
+  const QStringList trailing = lines.mid(tailEnd + 1);
   // compose() separates the blocks with one blank line on each side.
   if (!user.isEmpty() && user.first().isEmpty())
     user.removeFirst();
   if (!user.isEmpty() && user.last().isEmpty())
     user.removeLast();
+  bool hasTrailing = false;
+  for (const QString& line : trailing)
+    hasTrailing = hasTrailing || !line.trimmed().isEmpty();
+  if (hasTrailing)
+    user << trailing;
   parts.user = joinLines(user);
   parts.tail = joinLines(lines.mid(tailBegin, tailEnd - tailBegin + 1));
   return parts;
@@ -1009,25 +1017,11 @@ LockResult neutralizeLocked(const QString& user, const Rules& rules, const QVari
   return result;
 }
 
-QString setOption(const QString& user, const QString& section, const QString& key,
-                  const QString& value, const QString& comment)
+QString appendLines(const QString& user, const QString& section, const QStringList& added)
 {
   QStringList output = splitLines(user);
   const QList<Line> lines = parse(user);
-  const QString text = formatOption(key, value);
-  for (int i = lines.size() - 1; i >= 0; --i)
-  {
-    if (lines[i].kind == Line::Option && lines[i].section == section && sameKey(lines[i].key, key))
-    {
-      output[i] = text;
-      return joinLines(output);
-    }
-  }
-  QStringList inserted;
-  if (!comment.isEmpty())
-    inserted << QStringLiteral("# ") + comment;
-  inserted << text;
-
+  QStringList inserted = added;
   int insertAt = -1;
   if (section == QStringLiteral("default"))
   {
@@ -1084,6 +1078,27 @@ QString setOption(const QString& user, const QString& section, const QString& ke
   for (int i = 0; i < inserted.size(); ++i)
     output.insert(insertAt + i, inserted[i]);
   return joinLines(output);
+}
+
+QString setOption(const QString& user, const QString& section, const QString& key,
+                  const QString& value, const QString& comment)
+{
+  QStringList output = splitLines(user);
+  const QList<Line> lines = parse(user);
+  const QString text = formatOption(key, value);
+  for (int i = lines.size() - 1; i >= 0; --i)
+  {
+    if (lines[i].kind == Line::Option && lines[i].section == section && sameKey(lines[i].key, key))
+    {
+      output[i] = text;
+      return joinLines(output);
+    }
+  }
+  QStringList inserted;
+  if (!comment.isEmpty())
+    inserted << QStringLiteral("# ") + comment;
+  inserted << text;
+  return appendLines(user, section, inserted);
 }
 
 QString removeOption(const QString& user, const QString& section, const QString& key)

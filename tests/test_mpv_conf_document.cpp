@@ -81,6 +81,11 @@ void TestMpvConfDocument::splitsAndComposesWithoutLosingText()
   QString crlf = file;
   crlf.replace("\n", "\r\n");
   QCOMPARE(split(crlf).user, m_default);
+  // Lines appended after the tail by another program stay in the user area.
+  const Parts appended = split(file + QStringLiteral("deband=no\n"));
+  QVERIFY(appended.structured);
+  QVERIFY(appended.user.endsWith(QStringLiteral("deband=no\n")));
+  QCOMPARE(appended.tail, tail);
 }
 
 void TestMpvConfDocument::unstructuredTextIsAllUser()
