@@ -97,13 +97,15 @@ async function devtools(url) {
     mp.set_property_native('user-data/test-hook-ready',true)`);
     fs.writeFileSync(path.join(profile,'profile.json'),JSON.stringify({name:id}));
     fs.writeFileSync(path.join(profile,'Tigerest Theater.conf'),JSON.stringify({version:configVersion,sections:{
-        video:{aiRife:!baseline,hardwareDecoding:'safe'},mpv:{configMode:'embedded',renderBackend,shaderPreset:'default'},
-        other:{other_conf:`input-ipc-server=${ipcPath}\ngeometry=2560x1440\nhidpi-window-scale=no\nfullscreen=no\nmute=yes`}
+        video:{aiRife:!baseline,hardwareDecoding:'safe'},mpv:{renderBackend,shaderPreset:'default'}
     }}));
     const reservation=net.createServer();const port=await listen(reservation);
     await new Promise(resolve=>reservation.close(resolve));
     const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!k.startsWith('PYTHON')&&!k.startsWith('DYLD_')&&!k.startsWith('VSSCRIPT')&&!k.startsWith('TIGEREST_')&&!k.startsWith('QT_')&&!k.startsWith('QML_')&&!k.startsWith('VK_')));
     env.PATH='/usr/bin:/bin:/usr/sbin:/sbin';
+    // The private endpoint and window options go into the managed tail of
+    // mpv.conf through the client's test hook.
+    env.TIGEREST_MPV_TEST_OPTIONS=`input-ipc-server=${ipcPath}\ngeometry=2560x1440\nhidpi-window-scale=no\nfullscreen=no\nmute=yes`;
     if(externalRuntime)env.VSSCRIPT_PATH=process.env.VSSCRIPT_PATH || '/external/vapoursynth/libvsscript.dylib';
     env.DYLD_PRINT_LIBRARIES='1';
     const log=fs.openSync(output+'.app.log','w');

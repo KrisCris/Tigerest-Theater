@@ -166,17 +166,19 @@ QString ipcEndpoint(bool rife)
 #endif
 }
 
-QString renderTail()
+QString renderTail(const QString& user, const QString& endpoint)
 {
   auto& settings = SettingsComponent::Get();
-  const bool rife = settings.value(SETTINGS_SECTION_VIDEO, "aiRife").toBool();
   QStringList lines;
   lines << MpvConf::TailBegin;
   lines << QStringLiteral("# 下面的配置由软件或其他设置页决定，写在用户区之后，保证最终以这里为准；修改请到对应的设置页。");
   lines << QStringLiteral("# 回到全局段，保证下面的配置不落入上面的某个档位。");
   lines << QStringLiteral("[default]");
-  appendOption(lines, QStringLiteral("启动时使用「MPV 画质与插件 → 画质预设」选中的档位。"), QStringLiteral("profile"),
-               MpvConfigManager::profileName(settings.value(SETTINGS_SECTION_MPV, "shaderPreset").toString()));
+  const QString profile = MpvConfigManager::startupProfile(user);
+  if (profile.isEmpty())
+    lines << QStringLiteral("# 用户区里没有可用的画质档位，启动时不应用档位。");
+  else
+    appendOption(lines, QStringLiteral("启动时使用「MPV 画质与插件 → 画质预设」选中的档位。"), QStringLiteral("profile"), profile);
   appendOption(lines, QStringLiteral("关闭 mpv 原生 OSC，避免与 uosc 同时显示两套播放器控件。"), QStringLiteral("osc"), false);
   appendOption(lines, QStringLiteral("启用 mpv 默认快捷键；同名按键由下一行的大河 input.conf 覆盖。"),
                QStringLiteral("input-default-bindings"), true);
@@ -205,7 +207,6 @@ QString renderTail()
                QStringLiteral("save-position-on-quit"), false);
   appendOption(lines, QStringLiteral("换集时恢复暂停、倍速、平移和缩放，避免上一集的临时操作带到下一集。"),
                QStringLiteral("reset-on-next-file"), QStringLiteral("pause,speed,video-pan-x,video-pan-y,video-zoom"));
-  const QString endpoint = ipcEndpoint(rife);
   if (endpoint.isEmpty())
     lines << QStringLiteral("# SVP 连接接口未开放：RIFE 开启中、接口已被其他程序占用，或当前平台不使用它。");
   else
@@ -362,11 +363,12 @@ MpvConfigManager::WriteResult writeConfig(QString user, const QString& defaultHa
   result.restored = suspension.restored;
   result.user = suspension.user;
   const QString head = renderHead(defaultHash);
-  const QString tail = renderTail();
+  const QString endpoint = ipcEndpoint(SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "aiRife").toBool());
+  const QString tail = renderTail(result.user, endpoint);
   const QString text = MpvConf::compose(head, result.user, tail);
   // A complete default configuration for the controller's fallback when
   // mpv cannot initialize with the user's file.
-  const QString fallback = MpvConf::compose(head, defaultUserText(), tail);
+  const QString fallback = MpvConf::compose(head, defaultUserText(), renderTail(defaultUserText(), endpoint));
   const QString fallbackPath = QDir(g_activeConfigDir).filePath(FallbackConfName);
   if (QString::fromUtf8(readBytes(fallbackPath)) != fallback)
     writeText(fallbackPath, fallback);
@@ -452,6 +454,19 @@ QString MpvConfigManager::profileName(const QString& preset)
   // Map every retired preset to the new user-confirmed default. This keeps
   // upgrades from older settings files valid after removing the old profiles.
   return "tigerest-default";
+}
+
+QString MpvConfigManager::startupProfile(const QString& user)
+{
+  // The preset's profile when the user area still defines it, otherwise the
+  // bundled default, otherwise none.
+  const QString wanted = profileName(SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "shaderPreset").toString());
+  QStringList defined;
+  for (const MpvConf::ProfileInfo& info : MpvConf::profiles(MpvConf::parse(user)))
+    defined << info.name;
+  if (defined.contains(wanted))
+    return wanted;
+  return defined.contains(QStringLiteral("tigerest-default")) ? QStringLiteral("tigerest-default") : QString();
 }
 
 QString MpvConfigManager::presetForProfile(const QString& profile)

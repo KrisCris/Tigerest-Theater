@@ -1182,6 +1182,17 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         }, 2200);
     };
 
+    // Messages from the player about the user's mpv.conf (RIFE pausing or
+    // restoring conflicting lines) stay visible longer than a plain save.
+    const showMpvConfMessage = message => {
+        showSaved(message);
+        clearTimeout(showSaved.timer);
+        showSaved.timer = setTimeout(() => {
+            status.textContent = '设置保存在当前客户端配置中，不会包含媒体服务器密码或令牌。';
+        }, 8000);
+    };
+    window.api.player?.mpvConfMessage?.connect?.(showMpvConfMessage);
+
     const settingControls = new Map();
     let rifeExtensionPanel = null, homeLibraries = null;
     const saveSetting = (section, key, value) => {
@@ -1482,6 +1493,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         if (mpvConfEditor?.pendingErrors()) setTimeout(() => window.tigerestOfferMpvConfDraft?.(window.api.player), 0);
         mpvConfEditor?.dispose();
         mpvConfEditor = null;
+        window.api.player?.mpvConfMessage?.disconnect?.(showMpvConfMessage);
         rifeExtensionPanel?.dispose();
         homeLibraries?.dispose();
         document.removeEventListener('keydown', onKeyDown);

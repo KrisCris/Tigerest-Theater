@@ -107,12 +107,12 @@ async function until(fn,label,limit=300){
       await until(async()=>await prop('video-sync')==='audio','stop restores selected audio');
       result.checks.push('Pause, seek, stats page navigation and stop passed');result.completed=true;
   }finally{ipc.end();fs.writeFileSync(output,JSON.stringify(result,null,2));}
- },{gpu:true,visible:true,startupTimeout:120000,settings:{video:{sync_mode:'display-resample',highRefreshCompatibility:true,aiRife:!!extension,aiRifeModel:'rife-4.25-lite',aiRifeTarget:0,'refreshrate.auto_switch':false},mpv:{configMode:'embedded',renderBackend:'gpu-next',shaderPreset:'default'},other:{other_conf:'input-ipc-server='+pipe+'\nmute=yes'}},
+ },{gpu:true,visible:true,startupTimeout:120000,settings:{video:{sync_mode:'display-resample',highRefreshCompatibility:true,aiRife:!!extension,aiRifeModel:'rife-4.25-lite',aiRifeTarget:0,'refreshrate.auto_switch':false},mpv:{renderBackend:'gpu-next',shaderPreset:'default'}},
  prepareProfile:async(root,folder)=>{
-     // Set the private endpoint before mpv initializes: other_conf is applied
-     // later, leaving a brief default mpvpipe window for a running SVP Manager.
-     const config=path.join(folder,'mpv');fs.mkdirSync(config,{recursive:true});
-     fs.writeFileSync(path.join(config,'user-overrides.conf'),'input-ipc-server='+pipe+'\n');
+     // The private endpoint reaches mpv.conf's managed tail through the
+     // client's test hook before mpv initializes, so a running SVP Manager
+     // never sees the default mpvpipe.
+     process.env.TIGEREST_MPV_TEST_OPTIONS='input-ipc-server='+pipe+'\nmute=yes';
      clip=path.join(root,'danmaku-acceptance.mp4');fs.copyFileSync(source,clip);
      fs.writeFileSync(clip.replace(/\.mp4$/,'.xml'),'<i>'+Array.from({length:120},(_,i)=>`<d p="${i*.5},1,25,16777215,0,0,0,${i}">高刷弹幕验证 ${i}</d>`).join('')+'</i>');
      if(extension){

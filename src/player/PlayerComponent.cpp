@@ -3124,10 +3124,9 @@ void PlayerComponent::setMpvPreset()
   if (m_shuttingDown) return;
 #endif
   if (!m_mpv) return;
-  const QString preset = SettingsComponent::Get().value(SETTINGS_SECTION_MPV, "shaderPreset").toString();
-  const QString profile = MpvConfigManager::profileName(preset);
+  const QString profile = MpvConfigManager::startupProfile(MpvConfigManager::readConfig().user);
   // Settings changes unrelated to the preset must not re-run the profile.
-  if (profile != m_appliedProfile)
+  if (!profile.isEmpty() && profile != m_appliedProfile)
     applyQualityProfile(profile, false);
 }
 
@@ -3312,12 +3311,10 @@ void PlayerComponent::refreshMpvConf()
     return;
   applyUserConfLive(before, result.user);
   if (!result.suspended.isEmpty())
-    emit SystemComponent::Get().settingsMessage(
-        "MPV", QStringLiteral("RIFE 已开启：你在 mpv.conf 里写的 %1 行冲突配置已暂停执行，关闭 RIFE 后自动恢复。")
-                   .arg(result.suspended.size()));
+    emit mpvConfMessage(QStringLiteral("RIFE 已开启：你在 mpv.conf 里写的 %1 行冲突配置已暂停执行，关闭 RIFE 后自动恢复。")
+                            .arg(result.suspended.size()));
   if (!result.restored.isEmpty())
-    emit SystemComponent::Get().settingsMessage(
-        "MPV", QStringLiteral("RIFE 已关闭：mpv.conf 里暂停的 %1 行配置已恢复执行。").arg(result.restored.size()));
+    emit mpvConfMessage(QStringLiteral("RIFE 已关闭：mpv.conf 里暂停的 %1 行配置已恢复执行。").arg(result.restored.size()));
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

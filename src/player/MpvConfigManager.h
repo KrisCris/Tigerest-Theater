@@ -27,6 +27,8 @@ namespace MpvConfigManager
   // profiles (tigerest-user-*) are stored by their own name.
   QString profileName(const QString& preset);
   QString presetForProfile(const QString& profile);
+  // The profile mpv starts with: the preset's, falling back to the default.
+  QString startupProfile(const QString& user);
   QString danmakuApiServer(const QString& serverUrl, const QString& connectionMode);
   QString danmakuStyleConfigText(const QVariantMap& values);
   bool writeDanmakuStyleConfig(const QString& configDir,

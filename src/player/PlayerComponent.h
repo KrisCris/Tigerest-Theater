@@ -262,6 +262,9 @@ Q_SIGNALS:
   // Raised by the bundled UOSC quality menu. JavaScript deliberately performs
   // the switch through Emby Web so position, track choices and session survive.
   void streamingBitrateRequested(qint64 bitrate);
+  // A setting change paused or restored lines of the user's mpv.conf (for
+  // example RIFE conflicts); the settings page shows the message.
+  void mpvConfMessage(const QString& message);
   // emitted as soon as the duration of the current file is known
   void updateDuration(qint64 milliseconds);
   void playbackRateChanged(double rate);

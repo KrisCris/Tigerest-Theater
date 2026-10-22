@@ -159,6 +159,20 @@ target_include_directories(test_mpv_conf_document PRIVATE ${TEST_INCLUDE_DIRS})
 target_compile_definitions(test_mpv_conf_document PRIVATE ${TEST_COMPILE_DEFS})
 add_test(NAME test_mpv_conf_document COMMAND test_mpv_conf_document)
 
+add_executable(test_mpv_conf_manager test_mpv_conf_manager.cpp)
+qt_add_resources(test_mpv_conf_manager "test_mpv_conf_manager_resources"
+  PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/resources"
+  FILES "${CMAKE_SOURCE_DIR}/resources/mpv/mpv.default.conf"
+        "${CMAKE_SOURCE_DIR}/resources/mpv/shaders/manifest.json"
+        "${CMAKE_SOURCE_DIR}/resources/mpvconf/options.json"
+        "${CMAKE_SOURCE_DIR}/resources/mpvconf/mpv-options.json"
+        "${CMAKE_SOURCE_DIR}/resources/mpvconf/shaders.json"
+        "${CMAKE_SOURCE_DIR}/resources/settings/settings_description.json")
+target_link_libraries(test_mpv_conf_manager jmp_core Qt6::Test)
+target_include_directories(test_mpv_conf_manager PRIVATE ${TEST_INCLUDE_DIRS})
+target_compile_definitions(test_mpv_conf_manager PRIVATE ${TEST_COMPILE_DEFS})
+add_test(NAME test_mpv_conf_manager COMMAND test_mpv_conf_manager)
+
 add_executable(test_mpv_console test_mpv_console.cpp)
 target_link_libraries(test_mpv_console jmp_core Qt6::Test)
 target_include_directories(test_mpv_console PRIVATE ${TEST_INCLUDE_DIRS})

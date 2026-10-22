@@ -110,6 +110,7 @@ withBrowser({
  const suspendedLine='#[暂停执行:RIFE] vf-append=@user-2:fps=60';
  for(let i=0;i<80&&!fs.readFileSync(conf,'utf8').includes(suspendedLine);i++)await delay(100);
  assert.ok(fs.readFileSync(conf,'utf8').includes(suspendedLine),'RIFE did not suspend the frame-rate filter');
+ await until(evaluate,'document.querySelector(".tgs-status").textContent.includes("RIFE 已开启")','the page did not report the paused line');
  assert.ok(fs.readFileSync(conf,'utf8').includes('\nvf-append=@user-1:hflip\n'),'RIFE must leave other filters alone');
  assert.equal(await filters(),'@user-1:hflip');
  await evaluate('jmpInfo.settings.video.aiRife=false');
