@@ -6,8 +6,8 @@ android {
         applicationId = "top.tigerest.theater"
         minSdk = 35
         targetSdk = 36
-        versionCode = 2090300
-        versionName = "2.9.3"
+        versionCode = 2090400
+        versionName = "2.9.4"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
