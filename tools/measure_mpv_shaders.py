@@ -42,8 +42,12 @@ local function report()
   local fresh = passes.fresh or {}
   local total, samples = 0, nil
   for _, pass in ipairs(fresh) do
-    total = total + median(pass.samples or {})
-    samples = math.min(samples or pass.count or 0, pass.count or 0)
+    -- Passes whose //!WHEN condition never holds at this scale stay at
+    -- zero samples; they cost nothing and must not hold the measurement.
+    if (pass.count or 0) > 0 then
+      total = total + median(pass.samples or {})
+      samples = math.min(samples or pass.count, pass.count)
+    end
   end
   return total, samples or 0, #fresh
 end
@@ -97,6 +101,7 @@ def main():
     parser.add_argument("--mpv", default="mpv")
     parser.add_argument("--only", default="")
     parser.add_argument("--samples", type=int, default=120)
+    parser.add_argument("--missing", action="store_true", help="only re-measure shaders without a result")
     args = parser.parse_args()
     catalog = json.loads((ROOT / "resources/mpvconf/shaders.json").read_text())
     with tempfile.TemporaryDirectory() as folder:
@@ -105,9 +110,12 @@ def main():
         sizes = {"up": (1066, 600), "down": (3840, 2160)}
         baselines = {kind: run(args.mpv, script, None, size, args.samples) for kind, size in sizes.items()}
         print("baseline", baselines, flush=True)
-        results = json.loads(OUTPUT.read_text()).get("results", {}) if OUTPUT.exists() and args.only else {}
+        keep = OUTPUT.exists() and (args.only or args.missing)
+        results = json.loads(OUTPUT.read_text()).get("results", {}) if keep else {}
         for shader in catalog["shaders"]:
             if args.only and not shader["path"].startswith(args.only):
+                continue
+            if args.missing and results.get(shader["path"]) is not None:
                 continue
             kind = "down" if shader["trigger"] == "只在缩小时运行" else "up"
             measured = run(args.mpv, script, SHADERS / shader["path"], sizes[kind], args.samples)

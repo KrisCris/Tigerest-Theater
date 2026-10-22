@@ -165,9 +165,13 @@ function createMpvConfEditor({element, player, settings, saveSetting, notify}) {
     const toolbar = element('div', 'tgs-conf-toolbar');
     const editor = element('div', 'tgs-conf-editor');
     const headDetails = element('details', 'tgs-conf-managed');
-    headDetails.append(element('summary', '', '头部管理区（只读，由软件维护）'), element('pre'));
+    headDetails.append(element('summary', '', '头部管理区（只读，由软件维护；点击折叠）'), element('pre'));
+    // Shown open: the whole chain, including what the client decides, is
+    // part of the file the user (or their AI) reads.
+    headDetails.open = true;
     const tailDetails = element('details', 'tgs-conf-managed');
-    tailDetails.append(element('summary', '', '尾部管理区（只读：由软件和其他设置页决定的配置，及播放时软件执行的动作）'), element('pre'));
+    tailDetails.open = true;
+    tailDetails.append(element('summary', '', '尾部管理区（只读：由软件和其他设置页决定的配置，及播放时软件执行的动作；点击折叠）'), element('pre'));
     const scroll = element('div', 'tgs-conf-scroll');
     const grid = element('div', 'tgs-conf-grid');
     const gutter = element('div', 'tgs-conf-gutter');

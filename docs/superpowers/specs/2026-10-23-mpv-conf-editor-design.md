@@ -252,7 +252,7 @@ MPV 页上方保留的设置项直接编辑用户区对应行：画质参数（�
 | RAISR | 2 | RAVU 放大（lite 与 zoom） |
 | SSim | 2 | 高质量缩小（Downscaler）与放大后锐化（SuperRes） |
 
-性能档位先按模型规模给出相对顺序（S < M < L < VL < UL < UUL；F8 < F16 < F32），清单中标注「相对档位，未实测」。之后用诊断页的逐步耗时数据（`vo-passes`）在一台 M 系列 Mac 和一台 Windows 独显机上实测，再填入毫秒数并注明测试设备。
+性能档位先按模型规模给出相对顺序（S < M < L < VL < UL < UUL；F8 < F16 < F32）。实测由 `tools/measure_mpv_shaders.py` 完成：mpv gpu-next 渲染 1920×1080 窗口，放大类用 1066×600 的 4:2:0 测试图（约 1.8 倍），缩小类用 3840×2160；等每个处理步骤都有 120 帧计时后，取最近 48 帧 `vo-passes` 计时的中位数求和，再减去不加着色器时的耗时。结果写在 `resources/mpvconf/shader-timings.json`，由 `tools/generate_mpv_shader_catalog.py` 合并进清单。目前只在 Apple M4 Pro 上测过；Windows 独显机的数据待 PC 端补测。1 ms 以下的差异受显卡自动降频影响，不能用来排序。
 
 ## 11. 统一数据源
 
