@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "categories": [
+    { "id": "quality", "title": "画质参数" },
+    { "id": "shader", "title": "着色器" },
+    { "id": "vf", "title": "vf 视频滤镜" },
+    { "id": "subtitle", "title": "字幕" },
+    { "id": "playback", "title": "播放与缓存" },
+    { "id": "profile", "title": "自定义档位" }
+  ],
+  "locked": [
+    { "keys": ["vo", "wid", "gpu-context", "gpu-api"], "reason": "渲染输出由客户端窗口和「视频渲染后端」设置管理" },
+    { "keys": ["config", "config-dir", "include"], "reason": "客户端只读取这一份 mpv.conf，不允许再引入其他配置文件" },
+    { "keys": ["input-conf", "input-default-bindings"], "reason": "快捷键由客户端内置的 input.conf 管理" },
+    { "keys": ["input-ipc-server"], "reason": "SVP 连接接口由客户端按 RIFE 设置自动开关" },
+    { "keys": ["load-scripts", "script", "scripts", "script-opts", "script-opt"], "reason": "脚本与脚本参数由客户端按 uosc、弹幕设置加载" },
+    { "keys": ["osc", "load-stats-overlay", "load-console", "load-commands", "load-osd-console"], "reason": "播放界面、统计页和控制台由客户端管理" },
+    { "keys": ["idle", "keep-open", "force-window", "save-position-on-quit", "reset-on-next-file", "log-file"], "reason": "播放器生命周期由客户端与 Emby 播放会话管理" },
+    { "keys": ["volume", "mute", "audio-delay", "sub-delay"], "reason": "音量与延迟由播放界面实时调整并由客户端保存" }
+  ],
+  "pageOwned": [
+    { "page": "视频", "section": "video", "keys": ["video-sync", "hwdec", "hwdec-image-format", "deinterlace", "demuxer-max-bytes", "display-fps-override"] },
+    { "page": "视频", "section": "video", "keys": ["video-unscaled", "video-aspect-override", "keepaspect", "panscan"], "unlessSetting": ["video", "aspect", "custom"] },
+    { "page": "字幕", "section": "subtitles", "keys": ["sub-ass-style-overrides", "sub-ass-override", "sub-scale", "sub-font", "sub-color", "sub-border-color", "sub-border-size", "sub-back-color", "sub-align-x", "sub-pos"] },
+    { "page": "音频", "section": "audio", "keys": ["audio-exclusive", "audio-normalize-downmix", "audio-swresample-o", "audio-spdif", "audio-channels", "audio-device"] }
+  ],
+  "conditional": [
+    {
+      "id": "RIFE",
+      "title": "RIFE 补帧",
+      "setting": ["video", "aiRife"],
+      "reason": "RIFE 需要独占帧率与插帧处理",
+      "rules": [
+        { "key": "vf", "filters": ["fps", "framerate", "minterpolate", "vapoursynth"], "contains": ["svp", "rife"] },
+        { "key": "interpolation", "values": ["yes", ""] }
+      ]
+    }
+  ],
+  "options": [
+    { "key": "scale", "category": "quality", "scope": "profile", "form": true, "type": "choice", "title": "亮度缩放算法（scale）", "help": "视频放大时的缩放算法。ewa_lanczossharp 画质较高；spline36 更均衡；bilinear 适合低性能设备。", "choices": [["ewa_lanczossharp", "EWA Lanczos 锐化型（高画质）"], ["ewa_lanczos", "EWA Lanczos"], ["spline36", "36 阶样条（均衡）"], ["lanczos", "Lanczos 窗函数"], ["bicubic", "双三次插值"], ["bilinear", "双线性插值（低负载）"]] },
+    { "key": "cscale", "category": "quality", "scope": "profile", "form": true, "type": "choice", "title": "色度缩放算法（cscale）", "help": "色度平面的缩放算法，通常与亮度缩放保持一致。", "choices": [["ewa_lanczossharp", "EWA Lanczos 锐化型（高画质）"], ["ewa_lanczos", "EWA Lanczos"], ["spline36", "36 阶样条（均衡）"], ["lanczos", "Lanczos 窗函数"], ["bicubic", "双三次插值"], ["bilinear", "双线性插值（低负载）"]] },
+    { "key": "dscale", "category": "quality", "scope": "profile", "form": true, "type": "choice", "title": "缩小算法（dscale）", "help": "视频分辨率高于窗口或屏幕时使用。米切尔算法清晰且不易产生振铃。", "choices": [["mitchell", "米切尔（推荐）"], ["hermite", "埃尔米特"], ["bicubic", "双三次插值"], ["bilinear", "双线性插值（低负载）"]] },
+    { "key": "scale-antiring", "category": "quality", "scope": "profile", "form": true, "type": "float", "min": 0, "max": 1, "title": "亮度缩放抗振铃强度", "help": "范围 0 到 1；数值越高，越能抑制高反差边缘的白边与光晕。" },
+    { "key": "cscale-antiring", "category": "quality", "scope": "profile", "form": true, "type": "float", "min": 0, "max": 1, "title": "色度缩放抗振铃强度", "help": "范围 0 到 1；数值越高，越能抑制彩色边缘附近的假色与光晕。" },
+    { "key": "sigmoid-upscaling", "category": "quality", "scope": "profile", "form": true, "type": "flag", "title": "放大前使用 S 型亮度处理", "help": "放大前执行 sigmoid 处理，减少高锐度缩放造成的边缘过冲。" },
+    { "key": "correct-downscaling", "category": "quality", "scope": "profile", "form": true, "type": "flag", "title": "修正缩小采样", "help": "缩小画面时修正采样误差，尽量保留真实纹理。" },
+    { "key": "deband", "category": "quality", "scope": "profile", "form": true, "type": "flag", "title": "色带抑制（deband）", "help": "减轻渐变天空、暗部等区域的色阶断层，会增加少量 GPU 负载。" },
+    { "key": "deband-iterations", "category": "quality", "scope": "profile", "form": true, "type": "int", "min": 0, "max": 16, "title": "色带抑制迭代次数", "help": "迭代次数越高处理越细致，负载也越高。", "choices": [["1", "1 次（低负载）"], ["2", "2 次"], ["3", "3 次"], ["4", "4 次"]] },
+    { "key": "deband-threshold", "category": "quality", "scope": "profile", "form": true, "type": "int", "min": 0, "max": 4096, "title": "色带识别阈值", "help": "数值越高，越容易把轻微色带纳入处理；过高可能损失细小纹理。" },
+    { "key": "deband-range", "category": "quality", "scope": "profile", "form": true, "type": "int", "min": 1, "max": 64, "title": "色带抑制作用范围", "help": "控制平滑处理的采样半径；范围越大，处理大面积渐变的能力越强。" },
+    { "key": "deband-grain", "category": "quality", "scope": "profile", "form": true, "type": "int", "min": 0, "max": 4096, "title": "去色带后补充颗粒", "help": "补回少量颗粒以减轻塑料感和平涂感。" },
+    { "key": "dither-depth", "category": "quality", "scope": "profile", "form": true, "type": "choice", "title": "抖动输出位深", "help": "自动模式根据输出设备选择位深；关闭抖动可能在渐变区域出现色带。", "choices": [["auto", "自动选择（推荐）"], ["8", "8 位"], ["10", "10 位"], ["no", "关闭"]] },
+    { "key": "target-colorspace-hint", "category": "quality", "scope": "profile", "form": true, "type": "flag", "title": "自动提示目标色彩空间", "help": "根据显示设备能力自动选择目标色域与输出色彩空间。" },
+    { "key": "icc-profile-auto", "category": "quality", "scope": "profile", "form": true, "type": "flag", "title": "自动读取显示器 ICC 色彩配置", "help": "读取系统显示器 ICC 配置，使色彩管理更准确。" },
+    { "key": "tone-mapping", "category": "quality", "scope": "profile", "form": true, "type": "choice", "title": "HDR 色调映射", "help": "HDR 输出到 SDR 显示器时的亮度映射算法；内置默认使用 BT.2446A。", "choices": [["bt.2446a", "BT.2446A（默认，自然耐看）"], ["auto", "自动选择"], ["bt.2390", "BT.2390（高光保留）"], ["mobius", "莫比乌斯曲线"], ["reinhard", "莱因哈德曲线"], ["hable", "Hable 电影曲线"], ["clip", "直接裁切高光"]] },
+    { "key": "gamut-mapping-mode", "category": "quality", "scope": "profile", "form": true, "type": "choice", "title": "广色域压缩方式", "help": "把超出显示器色域的颜色映射到可显示范围；感知模式优先保持主观层次。", "choices": [["perceptual", "感知映射（推荐）"], ["relative", "相对色度"], ["saturation", "优先保持饱和度"], ["desaturate", "逐步降低饱和度"], ["clip", "直接裁切越界颜色"], ["auto", "自动选择"]] },
+    { "key": "hdr-compute-peak", "category": "quality", "scope": "profile", "form": true, "type": "flag", "title": "动态计算 HDR 峰值", "help": "按画面内容动态估算峰值亮度，以改善 HDR 到 SDR 的高光保留。" },
+    { "key": "blend-subtitles", "category": "quality", "scope": "profile", "form": true, "type": "choice", "title": "字幕混合阶段", "help": "默认不把字幕混入视频 shader 链，保持字幕清晰度、颜色和 ASS 排版。", "choices": [["no", "不参与视频混合（默认）"], ["video", "随视频混合"], ["yes", "在所有视频滤镜后混合"]] },
+    { "key": "interpolation", "category": "quality", "scope": "profile", "form": true, "type": "flag", "title": "插帧平滑（interpolation）", "help": "在显示刷新率与视频帧率不整除时减少抖动；需配合“显示重采样”同步模式。开启 RIFE 时会被暂停执行。" },
+    { "key": "tscale", "category": "quality", "scope": "profile", "form": true, "type": "choice", "title": "时间缩放算法（tscale）", "help": "只在开启插帧平滑时起作用。", "choices": [["oversample", "超采样（推荐）"], ["linear", "线性插值"], ["catmull_rom", "Catmull-Rom 样条"]] },
+    { "key": "glsl-shader", "category": "shader", "scope": "profile", "type": "shader", "title": "追加着色器", "help": "从滤镜清单选择一个着色器，追加到这一段的着色器链末尾。" },
+    { "key": "glsl-shaders", "category": "shader", "scope": "profile", "type": "text", "title": "清空着色器列表", "help": "写成 glsl-shaders= 表示先清空，再由下面的 glsl-shader= 逐个追加。" },
+    { "key": "vf-append", "category": "vf", "scope": "global", "type": "vf", "title": "追加 vf 滤镜", "help": "按顺序加入视频滤镜链。软件会自动加上 @user- 标签，RIFE 会追加在你的滤镜之后。" },
+    { "key": "sub-shadow-offset", "category": "subtitle", "scope": "global", "form": true, "type": "float", "min": 0, "max": 10, "title": "字幕阴影偏移", "help": "阴影离文字的距离；0 表示没有阴影。" },
+    { "key": "sub-margin-y", "category": "subtitle", "scope": "global", "form": true, "type": "int", "min": 0, "max": 600, "title": "字幕底部边距", "help": "文本字幕离屏幕底边的距离（像素）。" },
+    { "key": "alang", "category": "playback", "scope": "global", "form": true, "type": "text", "title": "首选音轨语言", "help": "使用 mpv 的 alang 语法，例如 jpn,ja,chi,zh,eng。删除这一行表示跟随 Emby 选择。" },
+    { "key": "slang", "category": "playback", "scope": "global", "form": true, "type": "text", "title": "首选字幕语言", "help": "使用 mpv 的 slang 语法，例如 chi,zh,chs,sc,eng。删除这一行表示跟随 Emby 选择。" },
+    { "key": "cache-pause", "category": "playback", "scope": "global", "form": true, "type": "flag", "title": "缓存不足时自动暂停", "help": "网络缓存不足时等待缓冲，降低高码率串流反复卡顿的概率。" },
+    { "key": "demuxer-max-back-bytes", "category": "playback", "scope": "global", "form": true, "type": "bytes", "title": "回退缓存", "help": "允许 mpv 保留用于向后跳转的缓存大小。数值越大占用内存越多。", "choices": [["10MiB", "10 MB"], ["50MiB", "50 MB（推荐）"], ["100MiB", "100 MB"], ["250MiB", "250 MB"]] },
+    { "key": "screenshot-format", "category": "playback", "scope": "global", "form": true, "type": "choice", "title": "截图格式", "help": "供 mpv/uosc 的截图命令使用。PNG 无损，JPG 文件较小。", "choices": [["png", "PNG（无损）"], ["jpg", "JPG"], ["webp", "WebP"]] },
+    { "key": "screenshot-directory", "category": "playback", "scope": "global", "form": true, "type": "text", "title": "截图目录", "help": "留空或删除这一行使用 mpv 默认位置；可填写 Windows 或 macOS 绝对路径。" },
+    { "key": "cursor-autohide", "category": "playback", "scope": "global", "type": "text", "title": "鼠标自动隐藏", "help": "鼠标停止移动多少毫秒后隐藏；写 no 表示不隐藏，always 表示始终隐藏。" },
+    { "key": "osd-level", "category": "playback", "scope": "global", "type": "choice", "title": "OSD 信息级别", "help": "0 关闭，1 只显示音量等临时提示，2 额外显示播放时间。", "choices": [["0", "关闭"], ["1", "临时提示（默认）"], ["2", "临时提示 + 播放时间"], ["3", "临时提示 + 时间与总时长"]] },
+    { "key": "hr-seek-framedrop", "category": "playback", "scope": "global", "type": "flag", "title": "精确定位时丢帧", "help": "关闭可保留送入补帧滤镜的帧，避免 SVP 音画不同步。" }
+  ]
+}

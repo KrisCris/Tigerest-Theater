@@ -1,0 +1,1432 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "id": "Anime4K",
+      "title": "动画修复、放大与线条处理（bloc97/Anime4K）"
+    },
+    {
+      "id": "ArtCNN",
+      "title": "动画向卷积神经网络放大（Artoriuz/ArtCNN）"
+    },
+    {
+      "id": "CfL",
+      "title": "色度重建：用亮度信息恢复被压缩的颜色细节"
+    },
+    {
+      "id": "FSRCNNX",
+      "title": "通用卷积神经网络放大（igv/FSRCNN-TensorFlow）"
+    },
+    {
+      "id": "RAISR",
+      "title": "RAVU 边缘自适应放大（bjin/mpv-prescalers）"
+    },
+    {
+      "id": "SSim",
+      "title": "基于结构相似度的高质量缩放（igv）"
+    }
+  ],
+  "costNote": "性能开销为相对档位（低 / 中 / 高 / 极高），按模型规模排序；measuredMs 为实测的每帧耗时（毫秒），未实测时为 null。",
+  "measuredOn": null,
+  "shaders": [
+    {
+      "path": "Anime4K/Anime4K_3DGraphics_AA_Upscale_x2_US.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 3D 画面抗锯齿放大 ×2",
+      "purpose": "放大",
+      "content": "3D 动画 / 游戏画面",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 4,
+      "cost": "低",
+      "strength": "轻",
+      "note": "针对 3D CG 画面的两倍放大，同时减轻锯齿",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_3DGraphics_Upscale_x2_US.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 3D 画面放大 ×2",
+      "purpose": "放大",
+      "content": "3D 动画 / 游戏画面",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 4,
+      "cost": "低",
+      "strength": "轻",
+      "note": "针对 3D CG 画面的两倍放大",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_AIO_optQ.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 一体化链（optQ）",
+      "purpose": "修复 + 放大",
+      "content": "动画",
+      "trigger": "只在放大倍数约 1.2–2 倍时运行",
+      "hooks": [
+        "MAIN",
+        "PREKERNEL"
+      ],
+      "passes": 49,
+      "cost": "高",
+      "strength": "强",
+      "note": "单个文件里包含钳制高光、修复和两级放大，不要再和其他 Anime4K 修复或放大着色器叠加",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_AutoDownscalePre_x2.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 放大前预缩小（x2）",
+      "purpose": "缩小",
+      "content": "动画",
+      "trigger": "只在放大倍数约 1.2–2 倍时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 1,
+      "cost": "低",
+      "strength": "轻",
+      "note": "多级放大链中间使用：先缩回目标尺寸附近，避免第二级放大过度；放在两个放大着色器之间",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_AutoDownscalePre_x4.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 放大前预缩小（x4）",
+      "purpose": "缩小",
+      "content": "动画",
+      "trigger": "只在放大倍数约 2.4–4 倍时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 1,
+      "cost": "低",
+      "strength": "轻",
+      "note": "多级放大链中间使用：先缩回目标尺寸附近，避免第二级放大过度；放在两个放大着色器之间",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Clamp_Highlights.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 高光钳制",
+      "purpose": "高光处理",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN",
+        "PREKERNEL"
+      ],
+      "passes": 3,
+      "cost": "低",
+      "strength": "轻",
+      "note": "限制后续着色器造成的高光过冲和亮边；放在整条链最前面",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Darken_Fast.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 线条加深",
+      "purpose": "线条处理",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 6,
+      "cost": "低",
+      "strength": "轻",
+      "note": "让线条更黑更实，可能让画面变暗；与 Thin 搭配时放在 Thin 之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Darken_HQ.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 线条加深",
+      "purpose": "线条处理",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 5,
+      "cost": "中",
+      "strength": "中",
+      "note": "让线条更黑更实，可能让画面变暗；与 Thin 搭配时放在 Thin 之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Darken_VeryFast.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 线条加深",
+      "purpose": "线条处理",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 6,
+      "cost": "低",
+      "strength": "轻",
+      "note": "让线条更黑更实，可能让画面变暗；与 Thin 搭配时放在 Thin 之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Deblur_DoG.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 去模糊",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 4,
+      "cost": "低",
+      "strength": "轻",
+      "note": "旧版去模糊；新链路建议改用 Restore",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Deblur_Original.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 去模糊",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 7,
+      "cost": "低",
+      "strength": "中",
+      "note": "旧版去模糊；新链路建议改用 Restore",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Denoise_Bilateral_Mean.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 双边滤波降噪（均值）",
+      "purpose": "降噪",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 1,
+      "cost": "低",
+      "strength": "轻",
+      "note": "轻度降噪，会损失细小纹理",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Denoise_Bilateral_Median.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 双边滤波降噪（中值）",
+      "purpose": "降噪",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 2,
+      "cost": "低",
+      "strength": "轻",
+      "note": "轻度降噪，会损失细小纹理",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Denoise_Bilateral_Mode.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 双边滤波降噪（众数）",
+      "purpose": "降噪",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 2,
+      "cost": "低",
+      "strength": "轻",
+      "note": "轻度降噪，会损失细小纹理",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_CNN_L.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 修复",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 9,
+      "cost": "中",
+      "strength": "中",
+      "note": "去除压缩伪影与模糊并恢复线条；放在放大着色器之前，常见顺序为 修复 → 放大 → 预缩小 → 放大",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_CNN_M.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 修复",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 8,
+      "cost": "中",
+      "strength": "中",
+      "note": "去除压缩伪影与模糊并恢复线条；放在放大着色器之前，常见顺序为 修复 → 放大 → 预缩小 → 放大",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_CNN_S.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 修复",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 4,
+      "cost": "低",
+      "strength": "轻",
+      "note": "去除压缩伪影与模糊并恢复线条；放在放大着色器之前，常见顺序为 修复 → 放大 → 预缩小 → 放大",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_CNN_Soft_L.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 修复（柔和）",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 9,
+      "cost": "中",
+      "strength": "中",
+      "note": "比普通 Restore 更保守，减少过锐与振铃；放在放大着色器之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_CNN_Soft_M.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 修复（柔和）",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 8,
+      "cost": "中",
+      "strength": "中",
+      "note": "比普通 Restore 更保守，减少过锐与振铃；放在放大着色器之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_CNN_Soft_S.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 修复（柔和）",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 4,
+      "cost": "低",
+      "strength": "轻",
+      "note": "比普通 Restore 更保守，减少过锐与振铃；放在放大着色器之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_CNN_Soft_UL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 修复（柔和）",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 25,
+      "cost": "高",
+      "strength": "中",
+      "note": "比普通 Restore 更保守，减少过锐与振铃；放在放大着色器之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_CNN_Soft_VL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 修复（柔和）",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 17,
+      "cost": "高",
+      "strength": "中",
+      "note": "比普通 Restore 更保守，减少过锐与振铃；放在放大着色器之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_CNN_UL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 修复",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 25,
+      "cost": "高",
+      "strength": "强",
+      "note": "去除压缩伪影与模糊并恢复线条；放在放大着色器之前，常见顺序为 修复 → 放大 → 预缩小 → 放大",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_CNN_VL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 修复",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 17,
+      "cost": "高",
+      "strength": "强",
+      "note": "去除压缩伪影与模糊并恢复线条；放在放大着色器之前，常见顺序为 修复 → 放大 → 预缩小 → 放大",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_GAN_UL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K GAN 修复",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 18,
+      "cost": "高",
+      "strength": "强",
+      "note": "用 GAN 模型去除压缩与模糊、重建线条，效果最明显，也最可能产生伪细节；放在放大着色器之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_GAN_UL_R2.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K GAN 修复",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 24,
+      "cost": "高",
+      "strength": "强",
+      "note": "用 GAN 模型去除压缩与模糊、重建线条，效果最明显，也最可能产生伪细节；放在放大着色器之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Restore_GAN_UUL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K GAN 修复",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 18,
+      "cost": "极高",
+      "strength": "强",
+      "note": "用 GAN 模型去除压缩与模糊、重建线条，效果最明显，也最可能产生伪细节；放在放大着色器之前",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Thin_Fast.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 线条收细",
+      "purpose": "线条处理",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 8,
+      "cost": "低",
+      "strength": "轻",
+      "note": "把粗线条收细，过强会让线条断续；放在放大之后",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Thin_HQ.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 线条收细",
+      "purpose": "线条处理",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 8,
+      "cost": "中",
+      "strength": "中",
+      "note": "把粗线条收细，过强会让线条断续；放在放大之后",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Thin_VeryFast.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 线条收细",
+      "purpose": "线条处理",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 8,
+      "cost": "低",
+      "strength": "轻",
+      "note": "把粗线条收细，过强会让线条断续；放在放大之后",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_CNN_x2_L.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 10,
+      "cost": "中",
+      "strength": "中",
+      "note": "线条锐利、平涂干净的两倍放大；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_CNN_x2_M.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 9,
+      "cost": "中",
+      "strength": "中",
+      "note": "线条锐利、平涂干净的两倍放大；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_CNN_x2_S.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 5,
+      "cost": "低",
+      "strength": "轻",
+      "note": "线条锐利、平涂干净的两倍放大；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_CNN_x2_UL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 25,
+      "cost": "高",
+      "strength": "强",
+      "note": "线条锐利、平涂干净的两倍放大；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_CNN_x2_VL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 18,
+      "cost": "高",
+      "strength": "强",
+      "note": "线条锐利、平涂干净的两倍放大；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_DTD_x2.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 旧版放大 ×2（DTD）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 18,
+      "cost": "中",
+      "strength": "中",
+      "note": "旧版带去模糊的放大，新链路建议改用 CNN 放大",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_Deblur_DoG_x2.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 旧版放大 ×2（DoG）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 4,
+      "cost": "低",
+      "strength": "轻",
+      "note": "旧版非神经网络放大，开销很低，效果较轻",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_Deblur_Original_x2.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 旧版放大 ×2（Original）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 6,
+      "cost": "低",
+      "strength": "轻",
+      "note": "最早期的 Anime4K 放大算法，主要用于对比",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_Denoise_CNN_x2_L.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 降噪放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 10,
+      "cost": "中",
+      "strength": "中",
+      "note": "两倍放大同时降噪，适合噪点或压缩较重的片源；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_Denoise_CNN_x2_M.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 降噪放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 9,
+      "cost": "中",
+      "strength": "中",
+      "note": "两倍放大同时降噪，适合噪点或压缩较重的片源；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_Denoise_CNN_x2_S.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 降噪放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 5,
+      "cost": "低",
+      "strength": "轻",
+      "note": "两倍放大同时降噪，适合噪点或压缩较重的片源；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_Denoise_CNN_x2_UL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 降噪放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 25,
+      "cost": "高",
+      "strength": "强",
+      "note": "两倍放大同时降噪，适合噪点或压缩较重的片源；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_Denoise_CNN_x2_VL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K CNN 降噪放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 18,
+      "cost": "高",
+      "strength": "强",
+      "note": "两倍放大同时降噪，适合噪点或压缩较重的片源；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_DoG_x2.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 旧版放大 ×2（DoG）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 4,
+      "cost": "低",
+      "strength": "轻",
+      "note": "旧版非神经网络放大，开销很低，效果较轻",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_GAN_x2_M.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K GAN 放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 23,
+      "cost": "高",
+      "strength": "强",
+      "note": "比 CNN 放大更锐利，可能产生伪细节；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_GAN_x2_S.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K GAN 放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 17,
+      "cost": "高",
+      "strength": "强",
+      "note": "比 CNN 放大更锐利，可能产生伪细节；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_GAN_x2_UL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K GAN 放大 ×2",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 22,
+      "cost": "极高",
+      "strength": "强",
+      "note": "比 CNN 放大更锐利，可能产生伪细节；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_GAN_x3_L.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K GAN 放大 ×3",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 30,
+      "cost": "极高",
+      "strength": "强",
+      "note": "一次放大到三倍，锐利但易出现伪细节；与其他放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_GAN_x3_VL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K GAN 放大 ×3",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 47,
+      "cost": "极高",
+      "strength": "强",
+      "note": "一次放大到三倍，锐利但易出现伪细节；与其他放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_GAN_x4_UL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K GAN 放大 ×4",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 67,
+      "cost": "极高",
+      "strength": "强",
+      "note": "一次放大到四倍，锐利但易出现伪细节；只适合低分辨率片源配高分辨率屏幕",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_GAN_x4_UUL.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K GAN 放大 ×4",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 84,
+      "cost": "极高",
+      "strength": "强",
+      "note": "一次放大到四倍，锐利但易出现伪细节；只适合低分辨率片源配高分辨率屏幕",
+      "measuredMs": null
+    },
+    {
+      "path": "Anime4K/Anime4K_Upscale_Original_x2.glsl",
+      "group": "Anime4K",
+      "title": "Anime4K 旧版放大 ×2（Original）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 6,
+      "cost": "低",
+      "strength": "轻",
+      "note": "最早期的 Anime4K 放大算法，主要用于对比",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_C4F16.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN F16 放大 ×2（标准）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 8,
+      "cost": "中",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_C4F16_DN.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN F16 放大 ×2（降噪）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 8,
+      "cost": "中",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_C4F16_DS.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN F16 放大 ×2（降噪 + 锐化）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 8,
+      "cost": "中",
+      "strength": "强",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_C4F32.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN F32 放大 ×2（标准）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 8,
+      "cost": "高",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_C4F32_DN.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN F32 放大 ×2（降噪）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 8,
+      "cost": "高",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_C4F32_DS.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN F32 放大 ×2（降噪 + 锐化）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 8,
+      "cost": "高",
+      "strength": "强",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_Legacy_C4F16_DS_YCbCr.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN 旧版 F16 放大 ×2（降噪 + 锐化）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "CHROMA",
+        "NATIVE"
+      ],
+      "passes": 29,
+      "cost": "中",
+      "strength": "强",
+      "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_Legacy_C4F16_RGB.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN 旧版 F16 放大 ×2（标准）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 28,
+      "cost": "中",
+      "strength": "中",
+      "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_Legacy_C4F16_YCbCr.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN 旧版 F16 放大 ×2（标准）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "CHROMA",
+        "NATIVE"
+      ],
+      "passes": 29,
+      "cost": "中",
+      "strength": "中",
+      "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_Legacy_C4F32_Chroma.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN 色度重建",
+      "purpose": "色度重建",
+      "content": "动画",
+      "trigger": "只在色度被下采样（4:2:0 / 4:2:2）时运行",
+      "hooks": [
+        "CHROMA",
+        "NATIVE"
+      ],
+      "passes": 51,
+      "cost": "高",
+      "strength": "中",
+      "note": "用神经网络重建 4:2:0 色度；与其他色度重建着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_Legacy_C4F32_DS_YCbCr.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN 旧版 F32 放大 ×2（降噪 + 锐化）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "CHROMA",
+        "NATIVE"
+      ],
+      "passes": 53,
+      "cost": "高",
+      "strength": "强",
+      "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_Legacy_C4F32_RGB.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN 旧版 F32 放大 ×2（标准）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "MAIN"
+      ],
+      "passes": 52,
+      "cost": "高",
+      "strength": "中",
+      "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_Legacy_C4F32_YCbCr.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN 旧版 F32 放大 ×2（标准）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "CHROMA",
+        "NATIVE"
+      ],
+      "passes": 53,
+      "cost": "高",
+      "strength": "中",
+      "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_v0_C4F8.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN v0 F8 放大 ×2（标准）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 14,
+      "cost": "低",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_v0_C4F8_CMP.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN v0 F8 放大 ×2（标准）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 8,
+      "cost": "低",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一；计算着色器版本，在部分显卡上更快",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_v0_C4F8_DS.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN v0 F8 放大 ×2（降噪 + 锐化）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 14,
+      "cost": "低",
+      "strength": "强",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "ArtCNN/ArtCNN_v0_C4F8_DS_CMP.glsl",
+      "group": "ArtCNN",
+      "title": "ArtCNN v0 F8 放大 ×2（降噪 + 锐化）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 8,
+      "cost": "低",
+      "strength": "强",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一；计算着色器版本，在部分显卡上更快",
+      "measuredMs": null
+    },
+    {
+      "path": "CfL/CfL_Prediction_Lite.glsl",
+      "group": "CfL",
+      "title": "CfL 色度预测（轻量版）",
+      "purpose": "色度重建",
+      "content": "通用",
+      "trigger": "只在色度被下采样（4:2:0 / 4:2:2）时运行",
+      "hooks": [
+        "CHROMA"
+      ],
+      "passes": 2,
+      "cost": "低",
+      "strength": "轻",
+      "note": "开销更低的色度预测；色度重建着色器之间二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "CfL/CfL_Prediction_RT.glsl",
+      "group": "CfL",
+      "title": "CfL 色度预测（实时版）",
+      "purpose": "色度重建",
+      "content": "通用",
+      "trigger": "只在色度被下采样（4:2:0 / 4:2:2）时运行",
+      "hooks": [
+        "CHROMA"
+      ],
+      "passes": 4,
+      "cost": "中",
+      "strength": "中",
+      "note": "根据亮度预测色度细节；色度重建着色器之间二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "CfL/FastBilateral_RT.glsl",
+      "group": "CfL",
+      "title": "快速双边色度重建",
+      "purpose": "色度重建",
+      "content": "通用",
+      "trigger": "只在色度被下采样（4:2:0 / 4:2:2）时运行",
+      "hooks": [
+        "CHROMA"
+      ],
+      "passes": 2,
+      "cost": "低",
+      "strength": "轻",
+      "note": "开销最低的色度重建；色度重建着色器之间二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "CfL/JointBilateral_RT.glsl",
+      "group": "CfL",
+      "title": "联合双边色度重建（实时版）",
+      "purpose": "色度重建",
+      "content": "通用",
+      "trigger": "只在色度被下采样（4:2:0 / 4:2:2）时运行",
+      "hooks": [
+        "CHROMA"
+      ],
+      "passes": 3,
+      "cost": "低",
+      "strength": "轻",
+      "note": "用亮度做引导的双边色度放大；色度重建着色器之间二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "CfL/KrigBilateral.glsl",
+      "group": "CfL",
+      "title": "KrigBilateral 色度重建",
+      "purpose": "色度重建",
+      "content": "通用",
+      "trigger": "只在色度被下采样（4:2:0 / 4:2:2）时运行",
+      "hooks": [
+        "CHROMA"
+      ],
+      "passes": 3,
+      "cost": "中",
+      "strength": "中",
+      "note": "用亮度结构引导 4:2:0 色度放大，改善彩色线条和边缘；色度重建着色器之间二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "CfL/kACfL_RT.glsl",
+      "group": "CfL",
+      "title": "kACfL 自适应色度预测（实时版）",
+      "purpose": "色度重建",
+      "content": "通用",
+      "trigger": "只在色度被下采样（4:2:0 / 4:2:2）时运行",
+      "hooks": [
+        "CHROMA"
+      ],
+      "passes": 2,
+      "cost": "中",
+      "strength": "中",
+      "note": "自适应的亮度引导色度预测；色度重建着色器之间二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "FSRCNNX/FSRCNNX_x1_16_0_4_1_anime_distort.glsl",
+      "group": "FSRCNNX",
+      "title": "FSRCNNX 原尺寸修复（动画）",
+      "purpose": "修复",
+      "content": "动画",
+      "trigger": "始终运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 25,
+      "cost": "中",
+      "strength": "中",
+      "note": "不改变尺寸，只修复压缩失真；可放在放大着色器之前",
+      "measuredMs": null
+    },
+    {
+      "path": "FSRCNNX/FSRCNNX_x1_16_0_4_1_distort.glsl",
+      "group": "FSRCNNX",
+      "title": "FSRCNNX 原尺寸修复（通用）",
+      "purpose": "修复",
+      "content": "通用",
+      "trigger": "始终运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 25,
+      "cost": "中",
+      "strength": "中",
+      "note": "不改变尺寸，只修复压缩失真；可放在放大着色器之前",
+      "measuredMs": null
+    },
+    {
+      "path": "FSRCNNX/FSRCNNX_x2_16_0_4_1.glsl",
+      "group": "FSRCNNX",
+      "title": "FSRCNNX 放大 ×2（16 通道）",
+      "purpose": "放大",
+      "content": "通用",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 26,
+      "cost": "中",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "FSRCNNX/FSRCNNX_x2_16_0_4_1_anime_distort.glsl",
+      "group": "FSRCNNX",
+      "title": "FSRCNNX 放大 ×2（16 通道，针对压缩失真训练）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 26,
+      "cost": "中",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "FSRCNNX/FSRCNNX_x2_16_0_4_1_distort.glsl",
+      "group": "FSRCNNX",
+      "title": "FSRCNNX 放大 ×2（16 通道，针对压缩失真训练）",
+      "purpose": "放大",
+      "content": "通用",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 26,
+      "cost": "中",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "FSRCNNX/FSRCNNX_x2_56_16_4_1.glsl",
+      "group": "FSRCNNX",
+      "title": "FSRCNNX 放大 ×2（56 通道）",
+      "purpose": "放大",
+      "content": "通用",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 54,
+      "cost": "高",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "FSRCNNX/FSRCNNX_x2_8_0_4_1.glsl",
+      "group": "FSRCNNX",
+      "title": "FSRCNNX 放大 ×2（8 通道）",
+      "purpose": "放大",
+      "content": "通用",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 14,
+      "cost": "低",
+      "strength": "中",
+      "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "FSRCNNX/FSRCNNX_x2_8_0_4_1_LineArt.glsl",
+      "group": "FSRCNNX",
+      "title": "FSRCNNX 放大 ×2（线稿）",
+      "purpose": "放大",
+      "content": "动画",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 14,
+      "cost": "低",
+      "strength": "中",
+      "note": "为线稿训练的两倍放大；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "RAISR/ravu_lite_ar_r3.glsl",
+      "group": "RAISR",
+      "title": "RAVU Lite 放大 ×2（R3，抗振铃）",
+      "purpose": "放大",
+      "content": "通用",
+      "trigger": "只在输出比片源大约 1.2 倍以上时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 1,
+      "cost": "低",
+      "strength": "中",
+      "note": "开销较低的两倍放大；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "RAISR/ravu_zoom_ar_r3.glsl",
+      "group": "RAISR",
+      "title": "RAVU Zoom 放大（R3，抗振铃）",
+      "purpose": "放大",
+      "content": "通用",
+      "trigger": "只在放大时运行",
+      "hooks": [
+        "LUMA"
+      ],
+      "passes": 1,
+      "cost": "中",
+      "strength": "中",
+      "note": "任意倍率的边缘自适应放大；与其他亮度放大着色器二选一",
+      "measuredMs": null
+    },
+    {
+      "path": "SSim/SSimDownscaler_RT.glsl",
+      "group": "SSim",
+      "title": "SSimDownscaler 高质量缩小",
+      "purpose": "缩小",
+      "content": "通用",
+      "trigger": "只在缩小时运行",
+      "hooks": [
+        "POSTKERNEL"
+      ],
+      "passes": 4,
+      "cost": "低",
+      "strength": "轻",
+      "note": "高分辨率视频缩小到较小窗口时保持锐度；与 dscale 搭配",
+      "measuredMs": null
+    },
+    {
+      "path": "SSim/SSimSuperRes_RT.glsl",
+      "group": "SSim",
+      "title": "SSimSuperRes 放大后修正",
+      "purpose": "放大后处理",
+      "content": "通用",
+      "trigger": "只在放大时运行",
+      "hooks": [
+        "POSTKERNEL"
+      ],
+      "passes": 4,
+      "cost": "低",
+      "strength": "轻",
+      "note": "放大之后修正锐度与振铃；放在放大着色器之后",
+      "measuredMs": null
+    }
+  ]
+}

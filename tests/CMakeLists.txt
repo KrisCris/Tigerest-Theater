@@ -153,6 +153,12 @@ target_compile_definitions(test_audio_device_dispatch PRIVATE ${TEST_COMPILE_DEF
 add_test(NAME test_audio_device_dispatch COMMAND test_audio_device_dispatch)
 set_tests_properties(test_audio_device_dispatch PROPERTIES TIMEOUT 15)
 
+add_executable(test_mpv_conf_document test_mpv_conf_document.cpp)
+target_link_libraries(test_mpv_conf_document jmp_core Qt6::Test)
+target_include_directories(test_mpv_conf_document PRIVATE ${TEST_INCLUDE_DIRS})
+target_compile_definitions(test_mpv_conf_document PRIVATE ${TEST_COMPILE_DEFS})
+add_test(NAME test_mpv_conf_document COMMAND test_mpv_conf_document)
+
 add_executable(test_mpv_console test_mpv_console.cpp)
 target_link_libraries(test_mpv_console jmp_core Qt6::Test)
 target_include_directories(test_mpv_console PRIVATE ${TEST_INCLUDE_DIRS})
