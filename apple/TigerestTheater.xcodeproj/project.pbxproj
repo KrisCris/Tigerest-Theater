@@ -154,6 +154,24 @@
 			<key>fileRef</key>
 			<string>0C4D95626A8D4403FDCA11D5</string>
 		</dict>
+		<key>27F0255A474334E097A04ED5</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+			<key>path</key>
+			<string>App/Diagnostics/DeviceTour.swift</string>
+			<key>sourceTree</key>
+			<string>&lt;group&gt;</string>
+		</dict>
+		<key>47627D6C393F99595BFF5B55</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>27F0255A474334E097A04ED5</string>
+		</dict>
 		<key>5E0BBEDB106D372BF7638CD6</key>
 		<dict>
 			<key>isa</key>
@@ -760,6 +778,7 @@
 				<string>F35B8428AB8CF5333EDC45AC</string>
 				<string>59A02E8293F46082DCCB9EF2</string>
 				<string>4FF14AB47E8FF63019A29F17</string>
+				<string>47627D6C393F99595BFF5B55</string>
 				<string>8AB57540CC74CF1B3A8BF882</string>
 				<string>E434A7C6E5A680ECB9039E62</string>
 				<string>ACB8C038708492595ED6EED6</string>
@@ -866,7 +885,7 @@
 				<key>IPHONEOS_DEPLOYMENT_TARGET</key>
 				<string>26.0</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
-				<string>2</string>
+				<string>1,2</string>
 				<key>CODE_SIGN_STYLE</key>
 				<string>Automatic</string>
 				<key>SDKROOT</key>
@@ -953,7 +972,7 @@
 				<key>IPHONEOS_DEPLOYMENT_TARGET</key>
 				<string>26.0</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
-				<string>2</string>
+				<string>1,2</string>
 				<key>CODE_SIGN_STYLE</key>
 				<string>Automatic</string>
 				<key>SDKROOT</key>
@@ -1079,24 +1098,6 @@
 			<key>fileRef</key>
 			<string>B8BD42B6C7B245B11D7EE4D1</string>
 		</dict>
-		<key>8E19572866D3855368E3BC51</key>
-		<dict>
-			<key>isa</key>
-			<string>PBXFileReference</string>
-			<key>lastKnownFileType</key>
-			<string>sourcecode.swift</string>
-			<key>path</key>
-			<string>UITests/ScreenTourTests.swift</string>
-			<key>sourceTree</key>
-			<string>&lt;group&gt;</string>
-		</dict>
-		<key>1C13E84EF58C4E43C08FAED3</key>
-		<dict>
-			<key>isa</key>
-			<string>PBXBuildFile</string>
-			<key>fileRef</key>
-			<string>8E19572866D3855368E3BC51</string>
-		</dict>
 		<key>E3C3E8FB911DB112998F819A</key>
 		<dict>
 			<key>isa</key>
@@ -1214,7 +1215,7 @@
 				<key>IPHONEOS_DEPLOYMENT_TARGET</key>
 				<string>26.0</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
-				<string>2</string>
+				<string>1,2</string>
 				<key>CODE_SIGN_STYLE</key>
 				<string>Automatic</string>
 				<key>SDKROOT</key>
@@ -1299,7 +1300,7 @@
 				<key>IPHONEOS_DEPLOYMENT_TARGET</key>
 				<string>26.0</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
-				<string>2</string>
+				<string>1,2</string>
 				<key>CODE_SIGN_STYLE</key>
 				<string>Automatic</string>
 				<key>SDKROOT</key>
@@ -1386,7 +1387,6 @@
 			<key>files</key>
 			<array>
 				<string>BFDAF04B8FDCD3CE0DB88AFD</string>
-				<string>1C13E84EF58C4E43C08FAED3</string>
 				<string>179A5352D02788DA66205050</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
@@ -1485,6 +1485,7 @@
 				<string>F13420CA2800057A9942A1A6</string>
 				<string>B720C2534DD211E708420136</string>
 				<string>0C4D95626A8D4403FDCA11D5</string>
+				<string>27F0255A474334E097A04ED5</string>
 				<string>5E0BBEDB106D372BF7638CD6</string>
 				<string>B5802583348E8EAAD41A7B72</string>
 				<string>1EDCF891804CEB66FE3F631F</string>
@@ -1516,7 +1517,6 @@
 				<string>6CD29CB503CA703D25BF51D9</string>
 				<string>3AF843C0B03FD9397EF6752C</string>
 				<string>B8BD42B6C7B245B11D7EE4D1</string>
-				<string>8E19572866D3855368E3BC51</string>
 				<string>E3C3E8FB911DB112998F819A</string>
 				<string>91DE35C6EEF4CDE2A1A6432E</string>
 				<string>EDA46B2626E48A558095C2ED</string>

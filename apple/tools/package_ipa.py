@@ -83,7 +83,7 @@ def package(app, output, version, platform="ipad", minimum_installation_os=None)
     television = platform == "tvos"
     require(info.get("CFBundleIdentifier") == f"top.tigerest.theater.{'tv' if television else 'ipad'}", "Unexpected application identifier")
     require(info.get("CFBundleSupportedPlatforms") == ["AppleTVOS" if television else "iPhoneOS"], "Only matching device builds can be packaged")
-    require(info.get("UIDeviceFamily") == [3 if television else 2], "Unexpected device family")
+    require(info.get("UIDeviceFamily") == ([3] if television else [1, 2]), "Unexpected device family")
     require(info.get("MinimumOSVersion") == "26.0", "Expected input deployment target 26.0")
     require(minimum_installation_os in {None, "15.0"} and not (television and minimum_installation_os), "Installation metadata override applies only to iPad")
     require((app / "Assets.car").is_file() and info.get("CFBundleIcons", {}).get("CFBundlePrimaryIcon"), "Application icon missing")

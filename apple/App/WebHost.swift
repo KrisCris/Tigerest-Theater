@@ -89,7 +89,15 @@ import AppleCore
             for file in manifest["scripts"].array ?? [] { script += "\n;(function(){\n" + (try resource(file.string!)) + "\n}).call(window);" }
             let css = String(decoding: try JSONEncoder().encode(resource("ipadResponsive.css")), as: UTF8.self)
             script += "\ndocument.addEventListener('DOMContentLoaded',()=>{const style=document.createElement('style');style.textContent=\(css);document.head.appendChild(style);});"
-            script += try resource("ipadResponsive.js") + "\n})();"
+            script += try resource("ipadResponsive.js")
+            if UIDevice.current.userInterfaceIdiom == .phone {
+                // Phone widths: the Android layer condenses the header into a 更多 menu,
+                // keeps the measured header height for page offsets and enlarges touch targets.
+                let phoneCSS = String(decoding: try JSONEncoder().encode(resource("androidResponsive.css") + "\n" + resource("iphoneResponsive.css")), as: UTF8.self)
+                script += "\ndocument.addEventListener('DOMContentLoaded',()=>{const style=document.createElement('style');style.textContent=\(phoneCSS);document.head.appendChild(style);document.documentElement.dataset.tigerestDevice='phone';});"
+                script += "\n;(function(){\n" + (try resource("androidResponsive.js")) + "\n}).call(window);"
+            }
+            script += "\n})();"
             view.configuration.userContentController.removeAllUserScripts()
             view.configuration.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
             view.load(URLRequest(url: target ?? address.endpoint("web/index.html")))

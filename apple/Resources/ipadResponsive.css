@@ -2,7 +2,7 @@ html { -webkit-text-size-adjust:100%; }
 body { overscroll-behavior:none; }
 .mainDrawer { padding-bottom:env(safe-area-inset-bottom); }
 .headerTop { padding-top:env(safe-area-inset-top); }
-.tgs-dialog { max-height:calc(100dvh - 32px); }
+#tigerest-settings-overlay .tgs-dialog { max-height:calc(100dvh - 32px); }
 button,input,select { touch-action:manipulation; }
 @media(max-width:700px){ .tgs-layout{display:block!important} .tgs-sidebar{display:flex;overflow:auto;width:100%!important} .tgs-main{min-width:0} }
 

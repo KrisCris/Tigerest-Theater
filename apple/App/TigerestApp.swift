@@ -35,7 +35,12 @@ struct RootView: View {
         .overlay { PlayerPresentation(player: model.player) }
         .statusBarHidden(playbackActive)
         .onReceive(model.player.$active.removeDuplicates()) { playbackActive = $0 }
-        .onAppear { model.start() }
+        .onAppear {
+            model.start()
+            #if DEBUG
+            DeviceTour.startIfRequested(model)
+            #endif
+        }
         #if PLAYBACK_VALIDATION
         .task { if ProcessInfo.processInfo.arguments.contains("--device-quality-probe") { await PlaybackValidation.run(model) } }
         #endif

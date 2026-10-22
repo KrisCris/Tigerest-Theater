@@ -185,6 +185,18 @@ struct PlayerView: View {
                 }.presentationDetents([.large])
             }
             .sheet(isPresented:$showDanmaku) { DanmakuControls(repository:player.model.danmaku) }
+            #if DEBUG
+            .onReceive(NotificationCenter.default.publisher(for: .tigerestTourPlayer)) { note in
+                switch note.object as? String {
+                case "controls": controls = true; hideTask?.cancel()
+                case "danmaku": showDanmaku = true
+                case "queue": controls = true; hideTask?.cancel(); showQueue = true
+                case "tutorial": showTutorial = true
+                case "none": showDanmaku = false; showQueue = false; showTutorial = false
+                default: break
+                }
+            }
+            #endif
             .fileImporter(isPresented: $importSubtitle, allowedContentTypes: [.data]) { result in
                 do {
                     let source = try result.get(), granted = source.startAccessingSecurityScopedResource(); defer { if granted { source.stopAccessingSecurityScopedResource() } }
