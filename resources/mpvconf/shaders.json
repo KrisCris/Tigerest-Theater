@@ -26,8 +26,8 @@
       "title": "基于结构相似度的高质量缩放（igv）"
     }
   ],
-  "costNote": "性能开销为相对档位（低 / 中 / 高 / 极高），按模型规模排序；measuredMs 为实测的每帧耗时（毫秒），未实测时为 null。",
-  "measuredOn": null,
+  "costNote": "开销档位（低 / 中 / 高 / 极高）按模型规模排序；括号里的毫秒数是在下面这台设备上实测的每帧 GPU 耗时，放大到 1920×1080 时测得，其他设备、分辨率会不同；1 ms 以下的差异受显卡自动降频影响，不能用来排序。",
+  "measuredOn": "Apple M4 Pro，macOS 27.2，mpv gpu-next",
   "shaders": [
     {
       "path": "Anime4K/Anime4K_3DGraphics_AA_Upscale_x2_US.glsl",
@@ -43,7 +43,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "针对 3D CG 画面的两倍放大，同时减轻锯齿",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "Anime4K/Anime4K_3DGraphics_Upscale_x2_US.glsl",
@@ -59,7 +59,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "针对 3D CG 画面的两倍放大",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "Anime4K/Anime4K_AIO_optQ.glsl",
@@ -76,7 +76,7 @@
       "cost": "高",
       "strength": "强",
       "note": "单个文件里包含钳制高光、修复和两级放大，不要再和其他 Anime4K 修复或放大着色器叠加",
-      "measuredMs": null
+      "measuredMs": 4.5
     },
     {
       "path": "Anime4K/Anime4K_AutoDownscalePre_x2.glsl",
@@ -92,7 +92,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "多级放大链中间使用：先缩回目标尺寸附近，避免第二级放大过度；放在两个放大着色器之间",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "Anime4K/Anime4K_AutoDownscalePre_x4.glsl",
@@ -108,7 +108,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "多级放大链中间使用：先缩回目标尺寸附近，避免第二级放大过度；放在两个放大着色器之间",
-      "measuredMs": null
+      "measuredMs": 0.1
     },
     {
       "path": "Anime4K/Anime4K_Clamp_Highlights.glsl",
@@ -125,7 +125,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "限制后续着色器造成的高光过冲和亮边；放在整条链最前面",
-      "measuredMs": null
+      "measuredMs": 0.3
     },
     {
       "path": "Anime4K/Anime4K_Darken_Fast.glsl",
@@ -141,7 +141,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "让线条更黑更实，可能让画面变暗；与 Thin 搭配时放在 Thin 之前",
-      "measuredMs": null
+      "measuredMs": 0.5
     },
     {
       "path": "Anime4K/Anime4K_Darken_HQ.glsl",
@@ -157,7 +157,7 @@
       "cost": "中",
       "strength": "中",
       "note": "让线条更黑更实，可能让画面变暗；与 Thin 搭配时放在 Thin 之前",
-      "measuredMs": null
+      "measuredMs": 0.6
     },
     {
       "path": "Anime4K/Anime4K_Darken_VeryFast.glsl",
@@ -173,7 +173,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "让线条更黑更实，可能让画面变暗；与 Thin 搭配时放在 Thin 之前",
-      "measuredMs": null
+      "measuredMs": 0.3
     },
     {
       "path": "Anime4K/Anime4K_Deblur_DoG.glsl",
@@ -189,7 +189,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "旧版去模糊；新链路建议改用 Restore",
-      "measuredMs": null
+      "measuredMs": 0.4
     },
     {
       "path": "Anime4K/Anime4K_Deblur_Original.glsl",
@@ -205,7 +205,7 @@
       "cost": "低",
       "strength": "中",
       "note": "旧版去模糊；新链路建议改用 Restore",
-      "measuredMs": null
+      "measuredMs": 1.2
     },
     {
       "path": "Anime4K/Anime4K_Denoise_Bilateral_Mean.glsl",
@@ -221,7 +221,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "轻度降噪，会损失细小纹理",
-      "measuredMs": null
+      "measuredMs": 0.9
     },
     {
       "path": "Anime4K/Anime4K_Denoise_Bilateral_Median.glsl",
@@ -237,7 +237,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "轻度降噪，会损失细小纹理",
-      "measuredMs": null
+      "measuredMs": 0.6
     },
     {
       "path": "Anime4K/Anime4K_Denoise_Bilateral_Mode.glsl",
@@ -253,7 +253,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "轻度降噪，会损失细小纹理",
-      "measuredMs": null
+      "measuredMs": 1.5
     },
     {
       "path": "Anime4K/Anime4K_Restore_CNN_L.glsl",
@@ -269,7 +269,7 @@
       "cost": "中",
       "strength": "中",
       "note": "去除压缩伪影与模糊并恢复线条；放在放大着色器之前，常见顺序为 修复 → 放大 → 预缩小 → 放大",
-      "measuredMs": null
+      "measuredMs": 2.9
     },
     {
       "path": "Anime4K/Anime4K_Restore_CNN_M.glsl",
@@ -285,7 +285,7 @@
       "cost": "中",
       "strength": "中",
       "note": "去除压缩伪影与模糊并恢复线条；放在放大着色器之前，常见顺序为 修复 → 放大 → 预缩小 → 放大",
-      "measuredMs": null
+      "measuredMs": 1.0
     },
     {
       "path": "Anime4K/Anime4K_Restore_CNN_S.glsl",
@@ -301,7 +301,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "去除压缩伪影与模糊并恢复线条；放在放大着色器之前，常见顺序为 修复 → 放大 → 预缩小 → 放大",
-      "measuredMs": null
+      "measuredMs": 1.1
     },
     {
       "path": "Anime4K/Anime4K_Restore_CNN_Soft_L.glsl",
@@ -317,7 +317,7 @@
       "cost": "中",
       "strength": "中",
       "note": "比普通 Restore 更保守，减少过锐与振铃；放在放大着色器之前",
-      "measuredMs": null
+      "measuredMs": 2.1
     },
     {
       "path": "Anime4K/Anime4K_Restore_CNN_Soft_M.glsl",
@@ -333,7 +333,7 @@
       "cost": "中",
       "strength": "中",
       "note": "比普通 Restore 更保守，减少过锐与振铃；放在放大着色器之前",
-      "measuredMs": null
+      "measuredMs": 0.8
     },
     {
       "path": "Anime4K/Anime4K_Restore_CNN_Soft_S.glsl",
@@ -349,7 +349,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "比普通 Restore 更保守，减少过锐与振铃；放在放大着色器之前",
-      "measuredMs": null
+      "measuredMs": 1.2
     },
     {
       "path": "Anime4K/Anime4K_Restore_CNN_Soft_UL.glsl",
@@ -365,7 +365,7 @@
       "cost": "高",
       "strength": "中",
       "note": "比普通 Restore 更保守，减少过锐与振铃；放在放大着色器之前",
-      "measuredMs": null
+      "measuredMs": 15.6
     },
     {
       "path": "Anime4K/Anime4K_Restore_CNN_Soft_VL.glsl",
@@ -381,7 +381,7 @@
       "cost": "高",
       "strength": "中",
       "note": "比普通 Restore 更保守，减少过锐与振铃；放在放大着色器之前",
-      "measuredMs": null
+      "measuredMs": 3.5
     },
     {
       "path": "Anime4K/Anime4K_Restore_CNN_UL.glsl",
@@ -397,7 +397,7 @@
       "cost": "高",
       "strength": "强",
       "note": "去除压缩伪影与模糊并恢复线条；放在放大着色器之前，常见顺序为 修复 → 放大 → 预缩小 → 放大",
-      "measuredMs": null
+      "measuredMs": 15.6
     },
     {
       "path": "Anime4K/Anime4K_Restore_CNN_VL.glsl",
@@ -413,7 +413,7 @@
       "cost": "高",
       "strength": "强",
       "note": "去除压缩伪影与模糊并恢复线条；放在放大着色器之前，常见顺序为 修复 → 放大 → 预缩小 → 放大",
-      "measuredMs": null
+      "measuredMs": 4.0
     },
     {
       "path": "Anime4K/Anime4K_Restore_GAN_UL.glsl",
@@ -429,7 +429,7 @@
       "cost": "高",
       "strength": "强",
       "note": "用 GAN 模型去除压缩与模糊、重建线条，效果最明显，也最可能产生伪细节；放在放大着色器之前",
-      "measuredMs": null
+      "measuredMs": 13.2
     },
     {
       "path": "Anime4K/Anime4K_Restore_GAN_UL_R2.glsl",
@@ -445,7 +445,7 @@
       "cost": "高",
       "strength": "强",
       "note": "用 GAN 模型去除压缩与模糊、重建线条，效果最明显，也最可能产生伪细节；放在放大着色器之前",
-      "measuredMs": null
+      "measuredMs": 13.6
     },
     {
       "path": "Anime4K/Anime4K_Restore_GAN_UUL.glsl",
@@ -461,7 +461,7 @@
       "cost": "极高",
       "strength": "强",
       "note": "用 GAN 模型去除压缩与模糊、重建线条，效果最明显，也最可能产生伪细节；放在放大着色器之前",
-      "measuredMs": null
+      "measuredMs": 13.1
     },
     {
       "path": "Anime4K/Anime4K_Thin_Fast.glsl",
@@ -477,7 +477,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "把粗线条收细，过强会让线条断续；放在放大之后",
-      "measuredMs": null
+      "measuredMs": 0.5
     },
     {
       "path": "Anime4K/Anime4K_Thin_HQ.glsl",
@@ -493,7 +493,7 @@
       "cost": "中",
       "strength": "中",
       "note": "把粗线条收细，过强会让线条断续；放在放大之后",
-      "measuredMs": null
+      "measuredMs": 0.8
     },
     {
       "path": "Anime4K/Anime4K_Thin_VeryFast.glsl",
@@ -509,7 +509,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "把粗线条收细，过强会让线条断续；放在放大之后",
-      "measuredMs": null
+      "measuredMs": 0.4
     },
     {
       "path": "Anime4K/Anime4K_Upscale_CNN_x2_L.glsl",
@@ -525,7 +525,7 @@
       "cost": "中",
       "strength": "中",
       "note": "线条锐利、平涂干净的两倍放大；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 2.1
     },
     {
       "path": "Anime4K/Anime4K_Upscale_CNN_x2_M.glsl",
@@ -541,7 +541,7 @@
       "cost": "中",
       "strength": "中",
       "note": "线条锐利、平涂干净的两倍放大；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 1.0
     },
     {
       "path": "Anime4K/Anime4K_Upscale_CNN_x2_S.glsl",
@@ -557,7 +557,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "线条锐利、平涂干净的两倍放大；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "Anime4K/Anime4K_Upscale_CNN_x2_UL.glsl",
@@ -573,7 +573,7 @@
       "cost": "高",
       "strength": "强",
       "note": "线条锐利、平涂干净的两倍放大；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 14.0
     },
     {
       "path": "Anime4K/Anime4K_Upscale_CNN_x2_VL.glsl",
@@ -589,7 +589,7 @@
       "cost": "高",
       "strength": "强",
       "note": "线条锐利、平涂干净的两倍放大；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 3.9
     },
     {
       "path": "Anime4K/Anime4K_Upscale_DTD_x2.glsl",
@@ -605,7 +605,7 @@
       "cost": "中",
       "strength": "中",
       "note": "旧版带去模糊的放大，新链路建议改用 CNN 放大",
-      "measuredMs": null
+      "measuredMs": 0.3
     },
     {
       "path": "Anime4K/Anime4K_Upscale_Deblur_DoG_x2.glsl",
@@ -621,7 +621,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "旧版非神经网络放大，开销很低，效果较轻",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "Anime4K/Anime4K_Upscale_Deblur_Original_x2.glsl",
@@ -637,7 +637,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "最早期的 Anime4K 放大算法，主要用于对比",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "Anime4K/Anime4K_Upscale_Denoise_CNN_x2_L.glsl",
@@ -653,7 +653,7 @@
       "cost": "中",
       "strength": "中",
       "note": "两倍放大同时降噪，适合噪点或压缩较重的片源；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 2.1
     },
     {
       "path": "Anime4K/Anime4K_Upscale_Denoise_CNN_x2_M.glsl",
@@ -669,7 +669,7 @@
       "cost": "中",
       "strength": "中",
       "note": "两倍放大同时降噪，适合噪点或压缩较重的片源；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 0.5
     },
     {
       "path": "Anime4K/Anime4K_Upscale_Denoise_CNN_x2_S.glsl",
@@ -685,7 +685,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "两倍放大同时降噪，适合噪点或压缩较重的片源；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "Anime4K/Anime4K_Upscale_Denoise_CNN_x2_UL.glsl",
@@ -701,7 +701,7 @@
       "cost": "高",
       "strength": "强",
       "note": "两倍放大同时降噪，适合噪点或压缩较重的片源；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 14.1
     },
     {
       "path": "Anime4K/Anime4K_Upscale_Denoise_CNN_x2_VL.glsl",
@@ -717,7 +717,7 @@
       "cost": "高",
       "strength": "强",
       "note": "两倍放大同时降噪，适合噪点或压缩较重的片源；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 4.2
     },
     {
       "path": "Anime4K/Anime4K_Upscale_DoG_x2.glsl",
@@ -733,7 +733,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "旧版非神经网络放大，开销很低，效果较轻",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "Anime4K/Anime4K_Upscale_GAN_x2_M.glsl",
@@ -749,7 +749,7 @@
       "cost": "高",
       "strength": "强",
       "note": "比 CNN 放大更锐利，可能产生伪细节；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 5.8
     },
     {
       "path": "Anime4K/Anime4K_Upscale_GAN_x2_S.glsl",
@@ -765,7 +765,7 @@
       "cost": "高",
       "strength": "强",
       "note": "比 CNN 放大更锐利，可能产生伪细节；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 2.5
     },
     {
       "path": "Anime4K/Anime4K_Upscale_GAN_x2_UL.glsl",
@@ -781,7 +781,7 @@
       "cost": "极高",
       "strength": "强",
       "note": "比 CNN 放大更锐利，可能产生伪细节；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 24.5
     },
     {
       "path": "Anime4K/Anime4K_Upscale_GAN_x3_L.glsl",
@@ -797,7 +797,7 @@
       "cost": "极高",
       "strength": "强",
       "note": "一次放大到三倍，锐利但易出现伪细节；与其他放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 23.0
     },
     {
       "path": "Anime4K/Anime4K_Upscale_GAN_x3_VL.glsl",
@@ -813,7 +813,7 @@
       "cost": "极高",
       "strength": "强",
       "note": "一次放大到三倍，锐利但易出现伪细节；与其他放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 10.2
     },
     {
       "path": "Anime4K/Anime4K_Upscale_GAN_x4_UL.glsl",
@@ -829,7 +829,7 @@
       "cost": "极高",
       "strength": "强",
       "note": "一次放大到四倍，锐利但易出现伪细节；只适合低分辨率片源配高分辨率屏幕",
-      "measuredMs": null
+      "measuredMs": 13.7
     },
     {
       "path": "Anime4K/Anime4K_Upscale_GAN_x4_UUL.glsl",
@@ -861,7 +861,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "最早期的 Anime4K 放大算法，主要用于对比",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "ArtCNN/ArtCNN_C4F16.glsl",
@@ -877,7 +877,7 @@
       "cost": "中",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "ArtCNN/ArtCNN_C4F16_DN.glsl",
@@ -893,7 +893,7 @@
       "cost": "中",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "ArtCNN/ArtCNN_C4F16_DS.glsl",
@@ -909,7 +909,7 @@
       "cost": "中",
       "strength": "强",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "ArtCNN/ArtCNN_C4F32.glsl",
@@ -925,7 +925,7 @@
       "cost": "高",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 2.7
     },
     {
       "path": "ArtCNN/ArtCNN_C4F32_DN.glsl",
@@ -941,7 +941,7 @@
       "cost": "高",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 4.2
     },
     {
       "path": "ArtCNN/ArtCNN_C4F32_DS.glsl",
@@ -957,7 +957,7 @@
       "cost": "高",
       "strength": "强",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 1.8
     },
     {
       "path": "ArtCNN/ArtCNN_Legacy_C4F16_DS_YCbCr.glsl",
@@ -974,7 +974,7 @@
       "cost": "中",
       "strength": "强",
       "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
-      "measuredMs": null
+      "measuredMs": 4.2
     },
     {
       "path": "ArtCNN/ArtCNN_Legacy_C4F16_RGB.glsl",
@@ -990,7 +990,7 @@
       "cost": "中",
       "strength": "中",
       "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
-      "measuredMs": null
+      "measuredMs": 4.0
     },
     {
       "path": "ArtCNN/ArtCNN_Legacy_C4F16_YCbCr.glsl",
@@ -1007,7 +1007,7 @@
       "cost": "中",
       "strength": "中",
       "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
-      "measuredMs": null
+      "measuredMs": 5.2
     },
     {
       "path": "ArtCNN/ArtCNN_Legacy_C4F32_Chroma.glsl",
@@ -1024,7 +1024,7 @@
       "cost": "高",
       "strength": "中",
       "note": "用神经网络重建 4:2:0 色度；与其他色度重建着色器二选一",
-      "measuredMs": null
+      "measuredMs": 4.9
     },
     {
       "path": "ArtCNN/ArtCNN_Legacy_C4F32_DS_YCbCr.glsl",
@@ -1041,7 +1041,7 @@
       "cost": "高",
       "strength": "强",
       "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
-      "measuredMs": null
+      "measuredMs": 5.0
     },
     {
       "path": "ArtCNN/ArtCNN_Legacy_C4F32_RGB.glsl",
@@ -1057,7 +1057,7 @@
       "cost": "高",
       "strength": "中",
       "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
-      "measuredMs": null
+      "measuredMs": 5.4
     },
     {
       "path": "ArtCNN/ArtCNN_Legacy_C4F32_YCbCr.glsl",
@@ -1074,7 +1074,7 @@
       "cost": "高",
       "strength": "中",
       "note": "旧版全彩放大，同时处理色度；不要再叠加色度重建着色器",
-      "measuredMs": null
+      "measuredMs": 5.0
     },
     {
       "path": "ArtCNN/ArtCNN_v0_C4F8.glsl",
@@ -1090,7 +1090,7 @@
       "cost": "低",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 1.4
     },
     {
       "path": "ArtCNN/ArtCNN_v0_C4F8_CMP.glsl",
@@ -1106,7 +1106,7 @@
       "cost": "低",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一；计算着色器版本，在部分显卡上更快",
-      "measuredMs": null
+      "measuredMs": 0.4
     },
     {
       "path": "ArtCNN/ArtCNN_v0_C4F8_DS.glsl",
@@ -1122,7 +1122,7 @@
       "cost": "低",
       "strength": "强",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 1.8
     },
     {
       "path": "ArtCNN/ArtCNN_v0_C4F8_DS_CMP.glsl",
@@ -1138,7 +1138,7 @@
       "cost": "低",
       "strength": "强",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一；计算着色器版本，在部分显卡上更快",
-      "measuredMs": null
+      "measuredMs": 0.9
     },
     {
       "path": "CfL/CfL_Prediction_Lite.glsl",
@@ -1154,7 +1154,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "开销更低的色度预测；色度重建着色器之间二选一",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "CfL/CfL_Prediction_RT.glsl",
@@ -1170,7 +1170,7 @@
       "cost": "中",
       "strength": "中",
       "note": "根据亮度预测色度细节；色度重建着色器之间二选一",
-      "measuredMs": null
+      "measuredMs": 0.4
     },
     {
       "path": "CfL/FastBilateral_RT.glsl",
@@ -1186,7 +1186,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "开销最低的色度重建；色度重建着色器之间二选一",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "CfL/JointBilateral_RT.glsl",
@@ -1202,7 +1202,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "用亮度做引导的双边色度放大；色度重建着色器之间二选一",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "CfL/KrigBilateral.glsl",
@@ -1218,7 +1218,7 @@
       "cost": "中",
       "strength": "中",
       "note": "用亮度结构引导 4:2:0 色度放大，改善彩色线条和边缘；色度重建着色器之间二选一",
-      "measuredMs": null
+      "measuredMs": 0.4
     },
     {
       "path": "CfL/kACfL_RT.glsl",
@@ -1234,7 +1234,7 @@
       "cost": "中",
       "strength": "中",
       "note": "自适应的亮度引导色度预测；色度重建着色器之间二选一",
-      "measuredMs": null
+      "measuredMs": 0.0
     },
     {
       "path": "FSRCNNX/FSRCNNX_x1_16_0_4_1_anime_distort.glsl",
@@ -1250,7 +1250,7 @@
       "cost": "中",
       "strength": "中",
       "note": "不改变尺寸，只修复压缩失真；可放在放大着色器之前",
-      "measuredMs": null
+      "measuredMs": 3.9
     },
     {
       "path": "FSRCNNX/FSRCNNX_x1_16_0_4_1_distort.glsl",
@@ -1266,7 +1266,7 @@
       "cost": "中",
       "strength": "中",
       "note": "不改变尺寸，只修复压缩失真；可放在放大着色器之前",
-      "measuredMs": null
+      "measuredMs": 3.9
     },
     {
       "path": "FSRCNNX/FSRCNNX_x2_16_0_4_1.glsl",
@@ -1282,7 +1282,7 @@
       "cost": "中",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 4.7
     },
     {
       "path": "FSRCNNX/FSRCNNX_x2_16_0_4_1_anime_distort.glsl",
@@ -1298,7 +1298,7 @@
       "cost": "中",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 4.2
     },
     {
       "path": "FSRCNNX/FSRCNNX_x2_16_0_4_1_distort.glsl",
@@ -1314,7 +1314,7 @@
       "cost": "中",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 4.2
     },
     {
       "path": "FSRCNNX/FSRCNNX_x2_56_16_4_1.glsl",
@@ -1330,7 +1330,7 @@
       "cost": "高",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 1.6
     },
     {
       "path": "FSRCNNX/FSRCNNX_x2_8_0_4_1.glsl",
@@ -1346,7 +1346,7 @@
       "cost": "低",
       "strength": "中",
       "note": "两倍放大亮度通道；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 1.9
     },
     {
       "path": "FSRCNNX/FSRCNNX_x2_8_0_4_1_LineArt.glsl",
@@ -1362,7 +1362,7 @@
       "cost": "低",
       "strength": "中",
       "note": "为线稿训练的两倍放大；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 1.2
     },
     {
       "path": "RAISR/ravu_lite_ar_r3.glsl",
@@ -1378,7 +1378,7 @@
       "cost": "低",
       "strength": "中",
       "note": "开销较低的两倍放大；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 0.9
     },
     {
       "path": "RAISR/ravu_zoom_ar_r3.glsl",
@@ -1394,7 +1394,7 @@
       "cost": "中",
       "strength": "中",
       "note": "任意倍率的边缘自适应放大；与其他亮度放大着色器二选一",
-      "measuredMs": null
+      "measuredMs": 1.2
     },
     {
       "path": "SSim/SSimDownscaler_RT.glsl",
@@ -1410,7 +1410,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "高分辨率视频缩小到较小窗口时保持锐度；与 dscale 搭配",
-      "measuredMs": null
+      "measuredMs": 1.1
     },
     {
       "path": "SSim/SSimSuperRes_RT.glsl",
@@ -1426,7 +1426,7 @@
       "cost": "低",
       "strength": "轻",
       "note": "放大之后修正锐度与振铃；放在放大着色器之后",
-      "measuredMs": null
+      "measuredMs": 2.3
     }
   ]
 }
