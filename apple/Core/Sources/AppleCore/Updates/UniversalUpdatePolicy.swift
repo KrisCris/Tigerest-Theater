@@ -2,7 +2,7 @@ import Foundation
 
 /// Shares PC's stable-release/package identity rules, but only offers release
 /// information. A Personal Team build must be signed and installed by Xcode.
-public enum IPadUpdatePolicy {
+public enum UniversalUpdatePolicy {
     private static let repository="https://github.com/Tigerest/Tigerest-Theater"
     private struct Version {
         let numbers:[Int]
@@ -15,7 +15,7 @@ public enum IPadUpdatePolicy {
         }
     }
     public static func state(releases:[JSONValue],currentVersion:String) -> JSONValue {
-        var state:[String:JSONValue]=["currentVersion":.string(currentVersion),"version":.string(""),"checkOnly":.bool(true),"status":.string("unpublished"),"message":.string("当前发布列表中没有 iPad 正式版。当前开发版请通过 Mac 上的 Xcode 更新。"),"releaseUrl":.string(repository+"/releases")]
+        var state:[String:JSONValue]=["currentVersion":.string(currentVersion),"version":.string(""),"checkOnly":.bool(true),"status":.string("unpublished"),"message":.string("当前发布列表中没有 iPad / iPhone 正式版。当前开发版请通过 Mac 上的 Xcode 更新。"),"releaseUrl":.string(repository+"/releases")]
         guard let current=Version(currentVersion,stable:false) else {
             state["status"] = .string("error");state["error"] = .string("无法读取当前版本，请重新安装开发版。");return .object(state)
         }
@@ -26,26 +26,28 @@ public enum IPadUpdatePolicy {
         if let project=stable.first {
             let tag=project.0["tag_name"].string!
             state["projectVersion"] = .string(String(tag.dropFirst()))
-            state["notes"] = .string("项目更新说明（不代表此版本已发布 iPad 包）\n\n"+String((project.0["body"].string ?? "").prefix(20000)))
+            state["notes"] = .string("项目更新说明（不代表此版本已发布 iPad / iPhone 包）\n\n"+String((project.0["body"].string ?? "").prefix(20000)))
             state["releaseUrl"] = .string(repository+"/releases/tag/"+tag)
         }
-        let ipad=stable.first { release,_ in
-            let tag=release["tag_name"].string!,name="TigerestTheater-"+String(tag.dropFirst())+"-ipad.ipa"
+        // Releases up to 2.9.3 named the package -ipad.ipa; from 2.9.4 it is -universal.ipa.
+        let universal=stable.first { release,_ in
+            let tag=release["tag_name"].string!,version=String(tag.dropFirst())
+            let names=["universal","ipad"].map{"TigerestTheater-"+version+"-"+$0+".ipa"}
             return (release["assets"].array ?? []).contains {
-                guard $0["name"].string==name,$0["browser_download_url"].string==repository+"/releases/download/"+tag+"/"+name,
+                guard let name=$0["name"].string,names.contains(name),$0["browser_download_url"].string==repository+"/releases/download/"+tag+"/"+name,
                       let size=$0["size"].number,size>0,size<=2*1024*1024*1024,size.rounded()==size,
                       let digest=$0["digest"].string else {return false}
                 return digest.range(of:#"^sha256:[0-9a-fA-F]{64}$"#,options:.regularExpression) != nil
             }
         }
-        guard let ipad else {return .object(state)}
-        let tag=ipad.0["tag_name"].string!
-        let newer=current.numbers.lexicographicallyPrecedes(ipad.1.numbers) || (current.numbers==ipad.1.numbers && current.prerelease)
+        guard let universal else {return .object(state)}
+        let tag=universal.0["tag_name"].string!
+        let newer=current.numbers.lexicographicallyPrecedes(universal.1.numbers) || (current.numbers==universal.1.numbers && current.prerelease)
         state["status"] = .string(newer ? "available" : "current")
         state["version"] = .string(newer ? String(tag.dropFirst()) : "")
         state["releaseUrl"] = .string(repository+"/releases/tag/"+tag)
-        state["notes"] = .string(String((ipad.0["body"].string ?? "").prefix(20000)))
-        state["message"] = .string(newer ? "发现新的 iPad 版本。当前是开发签名版，请在 Mac 上更新源码并通过 Xcode 重新构建安装。" : "当前没有更新的 iPad 正式版。开发签名版通过 Mac 上的 Xcode 更新。")
+        state["notes"] = .string(String((universal.0["body"].string ?? "").prefix(20000)))
+        state["message"] = .string(newer ? "发现新的 iPad / iPhone 版本。当前是开发签名版，请在 Mac 上更新源码并通过 Xcode 重新构建安装。" : "当前没有更新的 iPad / iPhone 正式版。开发签名版通过 Mac 上的 Xcode 更新。")
         return .object(state)
     }
 }

@@ -10,7 +10,7 @@ private final class UpdateFixtureProtocol:URLProtocol {
     override func startLoading() {
         Self.lock.lock();Self.requests+=1;let code=Self.code,large=Self.tooLarge,delay=Self.delay;Self.lock.unlock()
         if delay>0 {Thread.sleep(forTimeInterval:delay)}
-        let version="99.0.0",name="TigerestTheater-99.0.0-ipad.ipa"
+        let version="99.0.0",name="TigerestTheater-99.0.0-universal.ipa"
         let release:[String:Any]=["tag_name":"v"+version,"draft":false,"prerelease":false,"body":"fixture release notes","assets":[["name":name,"browser_download_url":"https://github.com/Tigerest/Tigerest-Theater/releases/download/v"+version+"/"+name,"size":100,"digest":"sha256:"+String(repeating:"a",count:64)]]]
         let data=try! JSONSerialization.data(withJSONObject:[release])
         client?.urlProtocol(self,didReceive:HTTPURLResponse(url:request.url!,statusCode:code,httpVersion:nil,headerFields:["Content-Type":"application/json","Content-Length":String(large ? 3*1024*1024 : data.count)])!,cacheStoragePolicy:.notAllowed)

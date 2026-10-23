@@ -37,6 +37,7 @@
 **iPad 与 iPhone**
 
 - iPad 版改为 iPhone／iPad 通用：iPhone 上网页按窄屏排版，竖屏播放器的控制栏分成时间和按钮两行，在 iPhone 上不再自称 iPad。
+- 安装包改名为 `universal.ipa`，应用标识改为 `top.tigerest.theater.universal`：会作为新应用安装，不覆盖旧的 iPad 版，登录、设置和离线媒体需要重新来；旧版可在确认新版正常后手动删除。
 - 转屏后画面正确铺满（iPad 也一样）。
 - 开着 RIFE 持续掉帧时按桌面规则提示，画质设置里能看到丢帧数和推理 p95。
 - 播放中打开「硬件解码」不会再偶尔退回软解。
