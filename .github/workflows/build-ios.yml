@@ -1,8 +1,10 @@
-name: build-ipad
+name: build-ios
 
-# Unsigned iPad IPA, packaged like the release attachment: recipients sign it
-# with their own Apple identity. Native RIFE needs the compiled Core ML model
-# that the macOS arm64 build produces in the same workflow run.
+# Unsigned universal iOS IPA (iPhone and iPad; the project, bundle ID and
+# release file keep their "ipad" names), packaged like the release
+# attachment: recipients sign it with their own Apple identity. Native RIFE
+# needs the compiled Core ML model the macOS arm64 build produces in the
+# same workflow run.
 on:
   workflow_call:
     inputs:
@@ -12,7 +14,7 @@ on:
         default: rife-model-compiled
 
 jobs:
-  ipad:
+  ios:
     runs-on: macos-26
     env:
       # Pinned by apple/tools/prepare_native_rife.py.
@@ -64,7 +66,7 @@ jobs:
     - name: Archive IPA
       uses: actions/upload-artifact@v7
       with:
-        name: ipad-unsigned
+        name: ios-universal-unsigned
         path: |
           dist/*.ipa
           dist/*.validation.json
