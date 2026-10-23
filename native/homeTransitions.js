@@ -5,9 +5,10 @@
     const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     // Desktop pages render a batch well inside a frame: the poster flies once
     // its target exists, late sections load during the flight and its rejoin
-    // absorbs layout shifts. Phones stalled mid-flight on those batches and
-    // still wait for a steady target and a quiet page; the iPad flies as the desktop does.
-    const settles = () => window.matchMedia('(pointer: coarse)').matches && !(window.jmpInfo?.platform === 'ipad' && window.jmpInfo?.deviceName === 'iPad');
+    // absorbs layout shifts. Android phones stalled mid-flight on those batches
+    // and still wait for a steady target and a quiet page; WebKit on iPad and
+    // iPhone flies as the desktop does.
+    const settles = () => window.matchMedia('(pointer: coarse)').matches && window.jmpInfo?.platform !== 'ipad';
     const box = node => node?.getBoundingClientRect();
     const usable = node => { const b = box(node); return node?.isConnected && b?.width > 1 && b.height > 1; };
     const page = () => Array.from(document.querySelectorAll('.mainAnimatedPage,.page')).filter(node =>
@@ -610,7 +611,7 @@
                 aim={x:from.x-from.width*(scale-1)/2,y:from.y-from.height*(scale-1)/2,width:from.width*scale,height:from.height*scale};
                 fly(job,flight,'base',from,aim,{duration:LIFT_MS,easing:'cubic-bezier(.2,.6,.3,1)'});
             }
-            const hot=cacheReady(), cover=layer(job), veil=document.createElement('div'), fromScene={group:document.createElement('div'),bitmap:null};
+            const hot=cacheReady()&&!nativeGlass(), cover=layer(job), veil=document.createElement('div'), fromScene={group:document.createElement('div'),bitmap:null};
             veil.className='tigerest-motion-veil';fromScene.group.className='tigerest-motion-scene';veil.append(fromScene.group);cover.append(veil);
             // Without a prepared bitmap, blur the live page at once and show the
             // opaque veil only when the old page's raster is ready to cover it.
@@ -629,9 +630,10 @@
                         // No worker raster (or it failed): cover with the blurred DOM copy instead.
                         job.metric.domFallback=true;fromScene.group.append(frozen(job));sync(job);
                     }
-                    // A fresh tablet scene is drawn a few frames after it is added; fading
-                    // the veil in sooner showed its dark background over the whole page.
-                    if(!hot&&nativeGlass()&&!job.signal.aborted){await primed(job,veil);veil.style.opacity='0';}
+                    // A tablet scene, fresh or warm, is drawn a few frames after it is
+                    // added; fading the veil in sooner showed its dark background over the
+                    // whole page. Its warm copy also faded in with the veil, dimming it.
+                    if(nativeGlass()&&!job.signal.aborted){await primed(job,veil);veil.style.opacity='0';}
                     await animate(job,hot?fromScene.bitmap:veil,[{opacity:0},{opacity:1}],{duration:Math.max(80,COVER_MS-(performance.now()-job.start)),easing:soft});
                 })()]);
             if (job.signal.aborted && job.signal.reason !== 'resize') return;
@@ -772,6 +774,9 @@
         homeReturn({navigate,findGallery}) { return run('homeReturn',async job => {
             if (reduced()) return simple(job,navigate);
             const {cover,copy}=outgoing(job);
+            // The tablet's copy is drawn a few frames after it is added; until then
+            // the opaque cover showed only its dark background.
+            if(nativeGlass()&&!job.signal.aborted){await primed(job,cover);cover.style.opacity='1';}
             await animate(job,copy,[{opacity:1,transform:'none'},{opacity:0,transform:'scale(.82)'}],{duration:320,easing:'cubic-bezier(.6,0,.8,.4)'});
             if (job.signal.aborted && job.signal.reason !== 'resize') return;
             cover.style.background='#0b0d12';const result=await navigate();

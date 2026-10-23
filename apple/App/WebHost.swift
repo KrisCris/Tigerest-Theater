@@ -11,6 +11,7 @@ import AppleCore
     private var queuedRequests: [BridgeRequest] = []
     private var selectionCompletion: CheckedContinuation<Void, Error>?
     private var selectionTimeout: Task<Void, Never>?
+    private var keyboardObserver: NSObjectProtocol?
     init(model: AppModel, active: Bool = true) {
         self.active = active
         self.model = model
@@ -25,7 +26,22 @@ import AppleCore
         config.userContentController.add(self, name: "tigerestNative")
         view.navigationDelegate = self; view.uiDelegate = self
         view.isOpaque = false; view.backgroundColor = .clear
-        view.allowsBackForwardNavigationGestures = true
+        // WebKit's own swipe rewound the page's history underneath Emby's router;
+        // a swipe from the left edge is the client's back instead. The strip owns
+        // those touches, so the page never takes the start of a swipe as a tap.
+        view.allowsBackForwardNavigationGestures = false
+        let edge = UIView(frame: CGRect(x: 0, y: 0, width: 16, height: view.bounds.height))
+        edge.autoresizingMask = [.flexibleHeight, .flexibleRightMargin]
+        edge.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(swipeBack(_:))))
+        view.addSubview(edge)
+        // iOS zooms into a focused field whose text is under 16 px and leaves the
+        // page zoomed after the keyboard closes; return to the page's own scale.
+        keyboardObserver = NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let scroll = self?.view.scrollView, scroll.zoomScale > scroll.minimumZoomScale + 0.001 else { return }
+                scroll.setZoomScale(scroll.minimumZoomScale, animated: true)
+            }
+        }
         view.customUserAgent = "Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X) AppleWebKit/605.1.15 Version/26.0 Mobile/15E148 Safari/604.1 TigerestTheater/\(version)"
         #if DEBUG
         view.isInspectable = true
@@ -43,6 +59,28 @@ import AppleCore
         let setter = unsafeBitCast(preferences.method(for: setSelector), to: Setter.self)
         for feature in features where feature.value(forKey: "key") as? String == "PreferPageRenderingUpdatesNear60FPSEnabled" {
             setter(preferences, setSelector, false, feature)
+        }
+    }
+    /// Page-owned back first (server choice, client menu, the poster flight back),
+    /// then an open dialog, then Emby's router, which stops at the home page;
+    /// the page's raw history was the app's own start page behind home.
+    private static let backScript = """
+    (() => {
+        if (window.tigerestServerSelectionBack?.() || window.tigerestClientMenuBack?.() || window.TigerestHomeMotion?.handleNativeBack()) return true;
+        if (document.querySelector('.dialogContainer .dialog')) { history.back(); return true; }
+        const router = window.Emby?.Page;
+        if (typeof router?.canGoBack !== 'function') return false;
+        if (router.canGoBack()) router.back();
+        return true;
+    })()
+    """
+    @objc private func swipeBack(_ gesture: UIPanGestureRecognizer) {
+        guard gesture.state == .ended, let host = gesture.view?.superview else { return }
+        let moved = gesture.translation(in: host), speed = gesture.velocity(in: host)
+        guard moved.x > abs(moved.y), moved.x > 60 || speed.x > 500 else { return }
+        view.evaluateJavaScript(Self.backScript) { [weak self] handled, _ in
+            guard (handled as? Bool) != true, let view = self?.view, view.canGoBack else { return }
+            view.goBack()
         }
     }
     func activate() {
@@ -125,7 +163,7 @@ import AppleCore
         policy?.advancePage(); queuedRequests.removeAll()
         tasks.values.forEach { $0.cancel() }; tasks.removeAll()
     }
-    func close() { completeSelection(.failure(CancellationError())); resetPage(); view.stopLoading(); view.configuration.userContentController.removeScriptMessageHandler(forName:"tigerestNative"); view.navigationDelegate=nil }
+    func close() { completeSelection(.failure(CancellationError())); resetPage(); view.stopLoading(); view.configuration.userContentController.removeScriptMessageHandler(forName:"tigerestNative"); view.navigationDelegate=nil; keyboardObserver.map(NotificationCenter.default.removeObserver); keyboardObserver=nil }
     func emit(_ value: JSONValue) {
         guard let policy, let url = view.url, Self.origin(url) == policy.origin else { return }
         view.callAsyncJavaScript("window.__tigerestReceive?.(message)", arguments: ["message": value.foundation], in: nil, in: .page, completionHandler: nil)

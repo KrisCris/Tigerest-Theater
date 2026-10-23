@@ -22,8 +22,7 @@ window.settingsRouter = {
         await new Promise(resolve => setTimeout(resolve, 40));
     }
 };
-window.renderSettingsDrawer = () => {
-    const container = document.querySelector('.navDrawerItemsContainer');
+window.renderSettingsRows = container => {
     container.replaceChildren();
     // This is the shared filter in Emby's getAppSettingsMenuItems(), also used
     // by getSettingsDrawerHtml() for the full settings overview.
@@ -52,6 +51,18 @@ window.renderSettingsDrawer = () => {
         content.append(image, label); button.append(content); container.append(button);
         button.addEventListener('click', () => settingsRouter.show(item.href));
     });
+};
+window.renderSettingsDrawer = () => renderSettingsRows(document.querySelector('.mainDrawer .navDrawerItemsContainer'));
+// Emby's settings page (settings/settings.js) renders the same menu without
+// collapsible sections: a header row, then its items container.
+window.renderSettingsPage = () => {
+    const page = document.createElement('div');
+    page.className = 'dynamicRoutes';
+    page.innerHTML = '<div class="navMenuHeader secondaryText navMenuHeader-settings navMenuHeader-first flex align-items-center">'
+        + '<h3 class="flex-shrink-zero" style="margin:0;">Tigerest Theater 设置</h3><div>版本 2.9.4</div></div>'
+        + '<div class="navDrawerItemsContainer itemsContainer vertical-list focuscontainer-x"></div>';
+    document.body.append(page);
+    renderSettingsRows(page.querySelector('.itemsContainer'));
 };
 window.openSettingsCategory = async section => {
     document.querySelector(`[data-settings-category="${section}"]`).click();
