@@ -47,10 +47,10 @@ def build(destination,meson,runtime_python=None):
     sdk=subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],text=True).strip()
     arguments=['-Dbuildtype=release','-Dlibmpv=true','-Djavascript=enabled','-Dlua=luajit',
         '-Dlibarchive=enabled','-Duchardet=enabled','-Dvulkan=enabled','-Dvapoursynth=enabled',
-        '-Dmanpage-build=disabled',f'-Dswift-flags=-target {architecture}-apple-macos15.0',
-        '-Dc_args=-mmacosx-version-min=15.0','-Dc_link_args=-mmacosx-version-min=15.0',
-        '-Dobjc_args=-mmacosx-version-min=15.0','-Dobjc_link_args=-mmacosx-version-min=15.0']
-    env=dict(os.environ,MACOSX_DEPLOYMENT_TARGET='15.0',SDKROOT=sdk)
+        '-Dmanpage-build=disabled',f'-Dswift-flags=-target {architecture}-apple-macos26.0',
+        '-Dc_args=-mmacosx-version-min=26.0','-Dc_link_args=-mmacosx-version-min=26.0',
+        '-Dobjc_args=-mmacosx-version-min=26.0','-Dobjc_link_args=-mmacosx-version-min=26.0']
+    env=dict(os.environ,MACOSX_DEPLOYMENT_TARGET='26.0',SDKROOT=sdk)
     brew=Path(subprocess.check_output(['brew','--prefix'],text=True).strip())
     pkg_paths=[str(brew/'opt'/name/'lib/pkgconfig') for name in ('libarchive','luajit','vapoursynth','libplacebo')]
     runtime = inspect_runtime(runtime_python) if runtime_python else None
@@ -60,7 +60,7 @@ def build(destination,meson,runtime_python=None):
     setup_meson(meson,out,source,arguments,env)
     subprocess.run([meson,'compile','-C',str(out),'-j',str(min(os.cpu_count() or 4,8))],env=env,check=True)
     (destination/'mpv-provenance.json').write_text(json.dumps({
-        'version':VERSION,'archive_sha256':SHA256,'patches':hashes,'deployment_target':'15.0',
+        'version':VERSION,'archive_sha256':SHA256,'patches':hashes,'deployment_target':'26.0',
         'architecture':architecture,'vapoursynthVersion':runtime['vapoursynthVersion'] if runtime else None,
         'vapoursynthPkgConfig':runtime['pkgconfig'] if runtime else None},indent=2)+'\n')
     return out/'libmpv.dylib'

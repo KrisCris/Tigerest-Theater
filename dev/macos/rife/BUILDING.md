@@ -35,7 +35,7 @@ scale reductions cannot be combined.
 build/rife/venv/bin/python dev/macos/rife/convert_model.py \
   --source build/rife/source --output build/rife/models/1080-grid-half-fp32 \
   --width 1920 --height 1080 --grid-scale 0.5
-clang++ -std=c++17 -O3 -fobjc-arc -mmacosx-version-min=15.0 \
+clang++ -std=c++17 -O3 -fobjc-arc -mmacosx-version-min=26.0 \
   -framework Foundation -framework CoreML dev/macos/rife/benchmark.mm \
   -o build/rife/rife-benchmark
 build/rife/venv/bin/python dev/macos/rife/benchmark.py \
@@ -78,7 +78,7 @@ build/rife/venv/bin/python dev/macos/rife/split_model.py \
   --source build/rife/source --output build/rife/models/1080-split-refine \
   --width 1920 --height 1080 --grid-scale 0.5 --offload-refine
 RIFE_TEST_MODEL=build/rife/source build/rife/venv/bin/python tests/test_rife_split_conversion.py
-xcrun clang++ -std=c++17 -O3 -fobjc-arc -mmacosx-version-min=15.0 \
+xcrun clang++ -std=c++17 -O3 -fobjc-arc -mmacosx-version-min=26.0 \
   -framework Foundation -framework CoreML dev/macos/rife/benchmark_split.mm \
   -o build/rife/rife-split-benchmark
 build/rife/venv/bin/python dev/macos/rife/benchmark_split.py \
@@ -125,7 +125,7 @@ build/rife/venv/bin/python dev/macos/rife/coarse_model.py \
 ```
 
 ```sh
-xcrun clang++ -std=c++17 -O3 -fobjc-arc -mmacosx-version-min=15.0 \
+xcrun clang++ -std=c++17 -O3 -fobjc-arc -mmacosx-version-min=26.0 \
   -I src/player/interpolation -L "$RIFE_BUILD_DIR/src/player/interpolation" \
   -Wl,-rpath,"$RIFE_BUILD_DIR/src/player/interpolation" -ltigerest-rife \
   -framework Foundation dev/macos/rife/benchmark_engine.mm \

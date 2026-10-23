@@ -30,7 +30,7 @@ QT_SHOW_EXTRA_IDE_SOURCES=OFF
 
 Ensure `xcrun metal --version` succeeds with the selected Xcode. If Xcode reports a missing Metal Toolchain, install its matching component with `xcodebuild -downloadComponent MetalToolchain`.
 
-The **dependency** deployment target matches the official Qt 6.9.3 framework's `LC_BUILD_VERSION` (12.0). Building that old engine with a newer minimum causes Xcode 27 to reject legacy WebRTC capture interfaces that were obsoleted in 15.0. The Tigerest application itself declares a macOS 15.0 minimum.
+The **dependency** deployment target matches the official Qt 6.9.3 framework's `LC_BUILD_VERSION` (12.0). Building that old engine with a 26.0 minimum causes Xcode 27 to reject legacy WebRTC capture interfaces that were obsoleted in 15.0. The Tigerest application itself retains its 26.0 minimum; this does not add support for older macOS versions.
 
 Place `<qt-sdk>/libexec` on PATH during the build as well: the GN generation subprocess locates GN independently of the configure cache. The first probe only needs `WebEngineCore`, `WebEngineQuick`, `QtWebEngineProcess`; build the complete module before installing, so the WebEngine QML plugin and delegates match too. The standalone QtPdf module is omitted; WebEngine's printing/PDF support remains enabled.
 
