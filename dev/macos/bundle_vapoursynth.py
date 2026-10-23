@@ -63,7 +63,7 @@ def stage_runtime(app: Path, brew: Path, runtime_python: Path | None = None) -> 
                 subprocess.run(["install_name_tool", "-change", dependency,
                                 f"@loader_path/{adjacent.name}", str(binary)], check=True)
     wrapper = contents / "MacOS/vapoursynth"
-    subprocess.run(['xcrun','clang','-mmacosx-version-min=26.0',
+    subprocess.run(['xcrun','clang','-mmacosx-version-min=15.0',
                     '-DTIGEREST_PYTHON_VERSION="'+version+'"',
                     str(Path(__file__).with_name('vapoursynth_launcher.c')),
                     '-o',str(wrapper)],check=True)
