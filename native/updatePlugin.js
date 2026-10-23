@@ -158,7 +158,7 @@
         const status = state.status;
         if (!detailsOpen) return;
         create();
-        title.textContent = ({available:'发现新版本',checking:'检查更新',downloading:'正在下载更新',ready:'更新已准备好',installing:state.autoRestart?'正在安装更新':'正在打开安装程序',current:'检查完成',unpublished:'iPad 版本发布情况',error:'更新未完成'})[status] || '客户端更新';
+        title.textContent = ({available:'发现新版本',checking:'检查更新',downloading:'正在下载更新',ready:'更新已准备好',installing:state.autoRestart?'正在安装更新':'正在打开安装程序',current:'检查完成',unpublished:'iPad / iPhone 版本发布情况',error:'更新未完成'})[status] || '客户端更新';
         const version = state.version ? `当前版本 ${state.currentVersion || '—'} → ${state.version}` : `当前版本 ${state.currentVersion || '—'}`;
         const percent = state.size>0 ? Math.min(100,Math.max(0,Math.round((state.received||0)*100/state.size))) : 0;
         const bytes = value => Number(value)>=1048576 ? `${(Number(value)/1048576).toFixed(1)} MB` : `${(Math.max(0,Number(value)||0)/1024).toFixed(1)} KB`;

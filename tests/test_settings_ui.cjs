@@ -105,6 +105,20 @@ withBrowser({
  await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings .navDrawerCollapseButton").click()');
  assert.equal(await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings-items").style.height'),'auto','player group expands again');
  assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'audio');
+ // The phone layout reaches settings through Emby's settings page, which renders the same rows.
+ await evaluate('renderSettingsPage()');
+ await new Promise(resolve=>setTimeout(resolve,50));
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".dynamicRoutes .navMenuHeader h3")].map(node=>node.textContent)'),
+  ['媒体库设置','播放器设置'],'settings page groups library and player settings');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".dynamicRoutes .tigerest-player-settings-page [data-settings-category]")].map(row=>row.dataset.settingsCategory)'),
+  ['main','video','audio','subtitles','mpv','danmaku'],'settings page player group holds the player categories in order');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".dynamicRoutes .listItemBodyText")].filter(node=>node.offsetParent).map(node=>node.textContent).slice(0,2)'),
+  ['General','首页设置'],'settings page library group keeps the library categories');
+ await evaluate('document.querySelector(".dynamicRoutes .tigerest-player-settings-page [data-settings-category=video]").click()');
+ await new Promise(resolve=>setTimeout(resolve,80));
+ assert.equal(await evaluate('document.querySelector("#tigerest-settings-inline .tgs-section.active")?.dataset.section'),'video','a grouped page row opens its category');
+ await evaluate('document.querySelector(".dynamicRoutes").remove()');
+ await evaluate('openSettingsCategory("audio")');
  const playbackCategoryTitle=await evaluate('window.tigerestAndroidApi ? "播放器" : "MPV 画质与插件"');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .listItemBodyText")].filter(node=>node.offsetParent).map(node=>node.textContent)'),
   ['General','首页设置','客户端','视频','音频','字幕',playbackCategoryTitle,'弹幕样式'],'native menu has categories without a redundant parent entry');

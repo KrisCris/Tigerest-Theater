@@ -5,9 +5,10 @@
     const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     // Desktop pages render a batch well inside a frame: the poster flies once
     // its target exists, late sections load during the flight and its rejoin
-    // absorbs layout shifts. Touch devices stalled mid-flight on those batches
-    // and still wait for a steady target and a quiet page.
-    const touch = () => window.matchMedia('(pointer: coarse)').matches;
+    // absorbs layout shifts. Android phones stalled mid-flight on those batches
+    // and still wait for a steady target and a quiet page; WebKit on iPad and
+    // iPhone flies as the desktop does.
+    const settles = () => window.matchMedia('(pointer: coarse)').matches && window.jmpInfo?.platform !== 'ipad';
     const box = node => node?.getBoundingClientRect();
     const usable = node => { const b = box(node); return node?.isConnected && b?.width > 1 && b.height > 1; };
     const page = () => Array.from(document.querySelectorAll('.mainAnimatedPage,.page')).filter(node =>
@@ -224,9 +225,9 @@
     }
     // The flying copy is drawn a frame or two after the frame that adds it;
     // hiding its card in that same frame left an empty slot until then. The
-    // tablet's DOM scene must leave the card out of its copy at once.
+    // tablet's DOM scene leaves the card out of its own copy instead (bitmap()).
     function holdDrawn(job, node) {
-        if (nativeGlass()) return hold(job, node);
+        job.leaving = node;
         requestAnimationFrame(() => requestAnimationFrame(() => { if (!job.done) hold(job, node); }));
     }
     const release = ({node, value}) => { node.style.visibility = value; node.removeAttribute('data-tigerest-poster-held'); };
@@ -488,11 +489,10 @@
                     const [x,y]=JSON.parse(n.getAttribute('data-tigerest-scroll'));
                     (job.syncs||=[]).push(()=>{n.scrollLeft=x;n.scrollTop=y;});
                 }
-                // The independently flying poster must not remain in the scene.
-                for(const h of job.held) {
-                    cached.copies?.get(h.node)?.style.setProperty('visibility','hidden');
-                }
             } else scene=frozen(job);
+            // The independently flying poster must not remain in the scene.
+            const copies=hit?cached.copies:job.copies;
+            for(const part of job.leaving?[job.leaving,...placeholders(job.leaving)]:[]) copies?.get(part)?.style.setProperty('visibility','hidden');
             job.metric.cacheHit=!!hit;job.metric.backgroundRenderer='dom-glass';
             view.bitmap=scene;view.group.append(scene);sync(job);return;
         }
@@ -590,7 +590,7 @@
         poster(options) { return run('poster',async job => {
             const source=options.source, artwork=url(source);
             if (reduced() || !usable(source) || !artwork) return simple(job,options.navigate);
-            const from=box(source), previous=page(), begin=performance.now(), returning=options.direction==='return', settle=touch();
+            const from=box(source), previous=page(), begin=performance.now(), returning=options.direction==='return', settle=settles();
             const flight=stack(job,from,artwork,getComputedStyle(source).borderRadius);holdDrawn(job,source);
             job.poster=flight.poster;job.posterFrom=from;
             // Fly at once to where this destination's poster landed last time, to
@@ -611,7 +611,7 @@
                 aim={x:from.x-from.width*(scale-1)/2,y:from.y-from.height*(scale-1)/2,width:from.width*scale,height:from.height*scale};
                 fly(job,flight,'base',from,aim,{duration:LIFT_MS,easing:'cubic-bezier(.2,.6,.3,1)'});
             }
-            const hot=cacheReady(), cover=layer(job), veil=document.createElement('div'), fromScene={group:document.createElement('div'),bitmap:null};
+            const hot=cacheReady()&&!nativeGlass(), cover=layer(job), veil=document.createElement('div'), fromScene={group:document.createElement('div'),bitmap:null};
             veil.className='tigerest-motion-veil';fromScene.group.className='tigerest-motion-scene';veil.append(fromScene.group);cover.append(veil);
             // Without a prepared bitmap, blur the live page at once and show the
             // opaque veil only when the old page's raster is ready to cover it.
@@ -630,6 +630,10 @@
                         // No worker raster (or it failed): cover with the blurred DOM copy instead.
                         job.metric.domFallback=true;fromScene.group.append(frozen(job));sync(job);
                     }
+                    // A tablet scene, fresh or warm, is drawn a few frames after it is
+                    // added; fading the veil in sooner showed its dark background over the
+                    // whole page. Its warm copy also faded in with the veil, dimming it.
+                    if(nativeGlass()&&!job.signal.aborted){await primed(job,veil);veil.style.opacity='0';}
                     await animate(job,hot?fromScene.bitmap:veil,[{opacity:0},{opacity:1}],{duration:Math.max(80,COVER_MS-(performance.now()-job.start)),easing:soft});
                 })()]);
             if (job.signal.aborted && job.signal.reason !== 'resize') return;
@@ -639,6 +643,7 @@
             const missing=async()=>{job.metric.fallback='missing-target';await Promise.all([cover,glass,flight.root].map(n=>animate(job,n,[{opacity:1},{opacity:0}],{duration:220,easing:soft})));return result;};
             if (options.prepareTarget) {
                 await wait(job,()=>page()!==previous && page());
+                if (!job.signal.aborted) options.restoreScroll?.();
                 if (!job.signal.aborted && !usable(options.findTarget())) await options.prepareTarget(job.signal);
             }
             let target=await wait(job,()=>{const n=options.findTarget();return page()!==previous && usable(n)?n:null;},2400,16);
@@ -769,6 +774,9 @@
         homeReturn({navigate,findGallery}) { return run('homeReturn',async job => {
             if (reduced()) return simple(job,navigate);
             const {cover,copy}=outgoing(job);
+            // The tablet's copy is drawn a few frames after it is added; until then
+            // the opaque cover showed only its dark background.
+            if(nativeGlass()&&!job.signal.aborted){await primed(job,cover);cover.style.opacity='1';}
             await animate(job,copy,[{opacity:1,transform:'none'},{opacity:0,transform:'scale(.82)'}],{duration:320,easing:'cubic-bezier(.6,0,.8,.4)'});
             if (job.signal.aborted && job.signal.reason !== 'resize') return;
             cover.style.background='#0b0d12';const result=await navigate();

@@ -142,9 +142,9 @@ iPad 与 Apple TV 的 IPA 均未签名，需使用自己的 Apple 身份签名�
 | Windows 安装版 | [2.9.4 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
 | Windows 便携版 | [2.9.4 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-x64.zip) | 同上；完整解压后运行 |
 | Android | [2.9.4 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-android.apk) | Android 15+，arm64-v8a / x86_64 |
-| Apple Silicon Mac | [2.9.3 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-arm64.dmg) | macOS 26+，M 系列芯片 |
-| iPad | [2.9.3 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-ipad.ipa) | iPadOS 26+，须自行签名安装 |
-| Apple TV | [2.9.3 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-tvos.ipa) | tvOS 26+，须为 Apple TV 签名安装 |
+| Apple Silicon Mac | [2.9.4 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-arm64.dmg) | macOS 26+，M 系列芯片 |
+| iPad / iPhone | [2.9.4 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-universal.ipa) | iPadOS / iOS 26+，须自行签名安装 |
+| Apple TV | [2.9.4 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-tvos.ipa) | tvOS 26+，须为 Apple TV 签名安装 |
 
 包内已包含 MPV 和基础运行库，无需另装播放器。Windows RIFE 大型组件是可选扩展；已有 NVIDIA 1.0.0 扩展可以继续使用。正式 Mac 下载仅提供 Apple Silicon 版本。
 

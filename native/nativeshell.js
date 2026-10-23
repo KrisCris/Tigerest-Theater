@@ -898,7 +898,6 @@ const TIGEREST_LIBRARY_SETTINGS_TITLE = '媒体库设置';
 const TIGEREST_PLAYER_SETTINGS_TITLE = '播放器设置';
 
 function tigerestSettingsGroupTitle(section) {
-    if (window.tigerestAndroidApi || window.tigerestIPadApi) return '客户端设置';
     return TIGEREST_PLAYER_SETTINGS.includes(section) ? TIGEREST_PLAYER_SETTINGS_TITLE : TIGEREST_LIBRARY_SETTINGS_TITLE;
 }
 
@@ -910,7 +909,7 @@ function installTigerestSettingsMenu() {
     if (!document.getElementById('tigerest-settings-menu-style')) {
         const style = document.createElement('style');
         style.id = 'tigerest-settings-menu-style';
-        style.textContent = '.mainDrawer .tigerest-moved-settings-row { display: none !important; }';
+        style.textContent = '.mainDrawer .tigerest-moved-settings-row, .dynamicRoutes .tigerest-moved-settings-row { display: none !important; }';
         document.head.appendChild(style);
     }
     // The visible player rows are copies; a click goes to the hidden native
@@ -983,11 +982,42 @@ function installTigerestSettingsMenu() {
         if (wanted.length !== list.children.length || wanted.some((row, index) => list.children[index] !== row))
             list.replaceChildren(...wanted);
     };
+    // Emby's settings page (the phone layout's way into settings) renders the
+    // same menu without collapsible sections: a header row, then its list.
+    const groupPagePlayerRows = rows => {
+        const container = rows.values().next().value?.closest('.itemsContainer');
+        const header = container?.previousElementSibling;
+        if (!header?.classList.contains('navMenuHeader')) return;
+        const heading = header.querySelector('h3');
+        if (heading) setText(heading, TIGEREST_LIBRARY_SETTINGS_TITLE);
+        let block = container.nextElementSibling?.classList.contains('tigerest-player-settings-page')
+            ? container.nextElementSibling : null;
+        if (!block) {
+            block = document.createElement('div');
+            block.className = 'tigerest-player-settings-page';
+            const title = header.cloneNode(false);
+            title.classList.remove('navMenuHeader-first');
+            const text = document.createElement('h3');
+            text.className = heading?.className || 'flex-shrink-zero';
+            text.style.margin = '0';
+            setText(text, TIGEREST_PLAYER_SETTINGS_TITLE);
+            title.append(text);
+            const list = document.createElement('div');
+            list.className = container.className + ' tigerest-player-settings-items';
+            block.append(title, list);
+            container.after(block);
+        }
+        const list = block.querySelector('.tigerest-player-settings-items');
+        const wanted = TIGEREST_PLAYER_SETTINGS.filter(key => rows.has(key)).map(key => copyRow(rows.get(key)));
+        if (wanted.length !== list.children.length || wanted.some((row, index) => list.children[index] !== row))
+            list.replaceChildren(...wanted);
+    };
     const refresh = () => {
         const active = document.querySelector('#tigerest-settings-inline .tgs-section.active')?.dataset.section;
-        const playerRows = new Map();
-        for (const row of document.querySelectorAll('.mainDrawer .navMenuOption')) {
-            if (row.closest('.tigerest-player-settings')) continue;
+        const playerRows = new Map(), pageRows = new Map();
+        for (const row of document.querySelectorAll('.mainDrawer .navMenuOption, .dynamicRoutes .navMenuOption')) {
+            if (row.closest('.tigerest-player-settings, .tigerest-player-settings-page')) continue;
+            const onPage = !row.closest('.mainDrawer');
             // Emby's custom-action list rows resolve their route via the native
             // items container, rather than an href on the rendered element.
             const container = row.closest('.itemsContainer');
@@ -995,13 +1025,13 @@ function installTigerestSettingsMenu() {
                 || container?.getItem?.(Number(row.dataset.index)) || container?.items?.[Number(row.dataset.index)];
             const href = item?.href || row.getAttribute('href') || '';
             const match = href.match(/\/plugins\/tigerest-native-settings\/settings\/([a-z]+)\.html(?:[?#]|$)/);
-            const grouped = match && TIGEREST_PLAYER_SETTINGS.includes(match[1]) && row.closest('.navDrawerCollapseSection');
+            const grouped = match && TIGEREST_PLAYER_SETTINGS.includes(match[1]) && (onPage || row.closest('.navDrawerCollapseSection'));
             row.classList.toggle('tigerest-moved-settings-row', Boolean(grouped));
             if (grouped) {
                 // The visible copy carries the category; the hidden native row
                 // only routes.
                 delete row.dataset.settingsCategory;
-                playerRows.set(match[1], row);
+                (onPage ? pageRows : playerRows).set(match[1], row);
                 const copy = copyRow(row);
                 copy.dataset.settingsCategory = match[1];
                 copy.classList.toggle('navMenuOption-selected', active ? match[1] === active : row.classList.contains('navMenuOption-selected'));
@@ -1019,14 +1049,17 @@ function installTigerestSettingsMenu() {
             }
         }
         if (playerRows.size) groupPlayerRows(playerRows);
+        if (pageRows.size) groupPagePlayerRows(pageRows);
     };
     installTigerestSettingsMenu.refresh = refresh;
-    // Drawer content is lazy on mobile and rebuilt when Emby changes context.
+    // Drawer content is lazy on mobile and rebuilt when Emby changes context;
+    // the settings page renders its menu when shown.
     // Observe insertions only; native focus and selected-class updates remain Emby's.
+    const menus = '.mainDrawer, .dynamicRoutes';
     const observer = new MutationObserver(mutations => {
-        if (mutations.some(mutation => mutation.target.closest?.('.mainDrawer')
+        if (mutations.some(mutation => mutation.target.closest?.(menus)
             || [...mutation.addedNodes].some(node => node.nodeType === 1
-                && (node.matches('.mainDrawer') || node.querySelector('.mainDrawer'))))) refresh();
+                && (node.matches(menus) || node.querySelector(menus))))) refresh();
     });
     observer.observe(document.documentElement, {childList: true, subtree: true});
     refresh();

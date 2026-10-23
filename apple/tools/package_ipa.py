@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package a production iPad/tvOS build for recipient-side signing.
+"""Package a production iPad/iPhone (universal) or tvOS build for recipient-side signing.
 
 Build Release for generic/platform=iOS with CODE_SIGNING_ALLOWED=NO first.
 This tool changes only a temporary copy and verifies platform-specific assets,
@@ -69,7 +69,7 @@ def verify_tv_resources(app):
     return checked
 
 
-def package(app, output, version, platform="ipad", minimum_installation_os=None):
+def package(app, output, version, platform="universal", minimum_installation_os=None):
     app = app.resolve()
     output = output.resolve()
     require(app.suffix == ".app" and app.is_dir(), "Expected an existing .app directory")
@@ -79,13 +79,13 @@ def package(app, output, version, platform="ipad", minimum_installation_os=None)
     require(subprocess.run(["git", "diff", "--quiet", "HEAD", "--"], cwd=ROOT).returncode == 0, "Commit tracked source changes before generating and building release resources")
     info = plistlib.loads((app / "Info.plist").read_bytes())
     require(info.get("CFBundleShortVersionString") == version, "Application version differs from release version")
-    require(platform in {"ipad", "tvos"}, "Unsupported platform")
+    require(platform in {"universal", "tvos"}, "Unsupported platform")
     television = platform == "tvos"
-    require(info.get("CFBundleIdentifier") == f"top.tigerest.theater.{'tv' if television else 'ipad'}", "Unexpected application identifier")
+    require(info.get("CFBundleIdentifier") == f"top.tigerest.theater.{'tv' if television else 'universal'}", "Unexpected application identifier")
     require(info.get("CFBundleSupportedPlatforms") == ["AppleTVOS" if television else "iPhoneOS"], "Only matching device builds can be packaged")
     require(info.get("UIDeviceFamily") == ([3] if television else [1, 2]), "Unexpected device family")
     require(info.get("MinimumOSVersion") == "26.0", "Expected input deployment target 26.0")
-    require(minimum_installation_os in {None, "15.0"} and not (television and minimum_installation_os), "Installation metadata override applies only to iPad")
+    require(minimum_installation_os in {None, "15.0"} and not (television and minimum_installation_os), "Installation metadata override applies only to the universal package")
     require((app / "Assets.car").is_file() and info.get("CFBundleIcons", {}).get("CFBundlePrimaryIcon"), "Application icon missing")
     if television:
         require(info.get("TVTopShelfImage", {}).get("TVTopShelfPrimaryImageWide"), "TV Top Shelf artwork missing")
@@ -103,7 +103,7 @@ def package(app, output, version, platform="ipad", minimum_installation_os=None)
     output.mkdir(parents=True, exist_ok=True)
     ipa = output / f"TigerestTheater-{version}-{platform}.ipa"
     require(not ipa.exists(), "Output already exists; choose a clean output directory")
-    with tempfile.TemporaryDirectory(prefix="tigerest-unsigned-ipad-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"tigerest-unsigned-{platform}-") as temporary:
         stage = Path(temporary)
         payload = stage / "Payload"
         copied = payload / app.name
@@ -218,8 +218,8 @@ if __name__ == "__main__":
     parser.add_argument("--app", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--version", default=(ROOT / "VERSION").read_text().strip())
-    parser.add_argument("--platform", choices=["ipad", "tvos"], default="ipad")
-    parser.add_argument("--minimum-installation-os", choices=["15.0"], help="iPad plist-only override; does not establish runtime compatibility")
+    parser.add_argument("--platform", choices=["universal", "tvos"], default="universal")
+    parser.add_argument("--minimum-installation-os", choices=["15.0"], help="Universal package plist-only override; does not establish runtime compatibility")
     arguments = parser.parse_args()
     try:
         package(arguments.app, arguments.output.resolve(), arguments.version, arguments.platform, arguments.minimum_installation_os)
