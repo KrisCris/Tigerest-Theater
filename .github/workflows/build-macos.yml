@@ -77,6 +77,36 @@ jobs:
           -DTIGEREST_RIFE_MODEL_DIR="${TIGEREST_RIFE_MODEL_DIR:-}" \
           -DTIGEREST_VAPOURSYNTH_PYTHON="$PWD/build/rife/venv/bin/python"
         cmake --build build --target install
+    - name: Archive compiled RIFE model for the iPad build
+      if: env.TIGEREST_RIFE_MODEL_DIR != ''
+      uses: actions/upload-artifact@v7
+      with:
+        name: rife-model-compiled
+        retention-days: 3
+        path: build/output/Tigerest Theater.app/Contents/Resources/rife/model/
+    - name: Sign and create dmg
+      run: |
+        python3 dev/macos/sign_bundle.py "./build/output/Tigerest Theater.app"
+        python3 tests/test_macos_bundle.py "build/output/Tigerest Theater.app"
+        brew install create-dmg
+        VERSION=$(cat VERSION)
+        ARCH=$(uname -m)
+        DMG_NAME="TigerestTheater-${VERSION}-${ARCH}.dmg"
+        create-dmg \
+          --volname "Tigerest Theater v${VERSION}" \
+          --no-internet-enable \
+          --window-size 500 300 \
+          --icon-size 100 \
+          --icon "Tigerest Theater.app" 125 150 \
+          --app-drop-link 375 150 \
+          "${DMG_NAME}" "./build/output/Tigerest Theater.app"
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ matrix.artifact }}
+        path: ${{ github.workspace }}/TigerestTheater-*.dmg
+    # The DMG is archived before the unit tests so every build yields one;
+    # a failing test still fails the job.
     - name: Run unit tests
       run: |
         # Release builds outside Applications show LetsMove's modal install
@@ -108,25 +138,3 @@ jobs:
           build/Testing/Temporary/
           build/CTestTestfile.cmake
           build/tests/CTestTestfile.cmake
-
-    - name: Sign and create dmg
-      run: |
-        python3 dev/macos/sign_bundle.py "./build/output/Tigerest Theater.app"
-        python3 tests/test_macos_bundle.py "build/output/Tigerest Theater.app"
-        brew install create-dmg
-        VERSION=$(cat VERSION)
-        ARCH=$(uname -m)
-        DMG_NAME="TigerestTheater-${VERSION}-${ARCH}.dmg"
-        create-dmg \
-          --volname "Tigerest Theater v${VERSION}" \
-          --no-internet-enable \
-          --window-size 500 300 \
-          --icon-size 100 \
-          --icon "Tigerest Theater.app" 125 150 \
-          --app-drop-link 375 150 \
-          "${DMG_NAME}" "./build/output/Tigerest Theater.app"
-    - name: Archive production artifacts
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ matrix.artifact }}
-        path: ${{ github.workspace }}/TigerestTheater-*.dmg
