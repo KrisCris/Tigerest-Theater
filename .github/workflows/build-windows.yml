@@ -4,8 +4,8 @@ env:
   # using older version due to severe memory leak
   # https://qt-project.atlassian.net/browse/QTBUG-141377
   QT_VERSION: "6.9.3"
-  WEBENGINE_RUNTIME_TAG: "v2.9.0"
-  WEBENGINE_RUNTIME_SHA256: "61bd51ae147d7c75f182680732d3c2d50fcb7042aa49aa13a94963a378fff846"
+  WEBENGINE_RUNTIME_TAG: "v2.9.4"
+  WEBENGINE_RUNTIME_SHA256: "6a9ffdf1131f93c1cfdb77a9ff3cea6ecd5597163c7176b61d14b1eff53011d8"
 
 on:
   workflow_call:

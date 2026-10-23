@@ -1,6 +1,6 @@
 # 120 帧与 700 ms 转场（2026-10-23 验收）
 
-工作树 `claude/transition-no-waits`（基于 2.9.4 / 71528ef，**未提交、未合并**），构建目录 `D:\CodexDeps\TigerestTheater\build-transition`。所有测量都用隔离配置，不碰已安装的播放器和它的设置；服务器上的用户与媒体库设置没有改动。
+工作树 `claude/transition-no-waits`（基于 2.9.4 / 71528ef，提交 161bc42，随 2.9.4 发布），构建目录 `D:\CodexDeps\TigerestTheater\build-transition`。所有测量都用隔离配置，不碰已安装的播放器和它的设置；服务器上的用户与媒体库设置没有改动。
 
 ## 七项要求
 

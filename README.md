@@ -6,9 +6,9 @@
 
 [下载正式版](https://github.com/Tigerest/Tigerest-Theater/releases/latest) · [使用教程](https://github.com/Tigerest/Tigerest-Theater/wiki) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/Tigerest/Tigerest-Theater/issues) · [作者 B站](https://space.bilibili.com/12562485)
 
-**当前版本：Windows、Android、Mac、iPad 与 Apple TV 均为 2.9.3。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
+**当前版本：Windows 与 Android 为 2.9.4；Mac、iPad 与 Apple TV 的 2.9.4 在 Mac 上构建验证后补充到同一发行页，在此之前仍为 2.9.3。** Wiki 源文档同步保存在 [docs/wiki](docs/wiki/Home.md)。
 
-**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.9.3 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
+**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.9.4 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
 客户端不包含影视资源。你需要已有的 Emby 或 Jellyfin 服务器地址和账号；媒体库、播放与下载权限由所连接的服务器提供。本项目是非官方客户端，与 Emby LLC 及 Jellyfin 项目无隶属关系。
 
@@ -72,10 +72,19 @@
     <td width="50%"><img src="screenshots/rife-settings.webp" alt="视频设置中的 AI 补帧开关、RIFE 模型与目标帧率"></td>
     <td width="50%">
       <b>可选 RIFE AI 补帧</b><br>
-      Windows NVIDIA 最高支持 4K / 60 fps 输入，可选模型并自定目标帧率；Apple Silicon Mac 与 iPad 使用 Core ML / Metal，为 1080p / 30 fps 级别的 SDR 片源输出两倍帧率。需要大河内置播放配置，默认关闭。
+      Windows NVIDIA 最高支持 4K / 60 fps 输入，可选模型并自定目标帧率；Apple Silicon Mac 与 iPad 使用 Core ML / Metal，为 1080p / 30 fps 级别的 SDR 片源输出两倍帧率。默认关闭。
     </td>
   </tr>
 </table>
+
+## 2.9.4 更新
+
+- **更新下载与安装：** 「直接下载」先走 GitHub 加速镜像（gh-proxy.com、ghproxy.net，最后才连 GitHub），下完仍按 GitHub 的 SHA-256 核对；夸克与百度网盘收进「备用下载」。Windows 安装版点「安装更新」后自动关闭、安装并重新打开；Android 下载后直接交给系统安装。检查更新改为先问社区服务器（服务器签名、客户端验签），连不上再问 GitHub。
+- **一份可以直接改的 mpv.conf（Windows 与 Mac）：** 客户端只读取自己配置目录里的一份 `mpv.conf`，在「设置 → 播放器设置 → MPV 画质与插件」下方的编辑器里修改：逐行检查、恢复默认、粘贴前看差异、「复制给 AI」，保存后立即生效。原来的三种配置模式、「高级」页和 `user-overrides.conf` 不再使用，升级时旧内容备份到「旧版自定义配置备份.txt」。设置菜单分成「播放器设置」和「媒体库设置」两组（Android 也一样）。
+- **海报转场（Windows 与 Mac）：** 点海报后直接飞向详情页的落点，不再停在半空等页面，页面按时出现时约 0.6–0.7 秒落地；返回海报墙时提前请求数据，不再出现空行；修复进入详情页偶尔闪白。Windows 的修补版 QtWebEngine 会保存 GPU 着色器缓存，重启后第一次转场不用再等编译。
+- **弹幕不遮字幕：** 底部弹幕改为滚动显示，画面底部 20% 留给字幕（Windows、Mac、iPad 与 Apple TV）。
+- **iPad 与 iPhone：** iPad 版改为 iPhone／iPad 通用，转屏后画面正确铺满，开着 RIFE 持续掉帧时会提示。
+- **Apple TV：** 返回键先收起控制栏；海报墙可以排序和搜索，并显示观看进度；文字字幕放大约 15%。见 [2.9.4 发布说明](docs/releases/2026-10-23-v2.9.4.md)。
 
 ## 2.9.3 更新
 
@@ -130,9 +139,9 @@ iPad 与 Apple TV 的 IPA 均未签名，需使用自己的 Apple 身份签名�
 
 | 平台 | 安装包 | 系统要求 |
 | --- | --- | --- |
-| Windows 安装版 | [2.9.3 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
-| Windows 便携版 | [2.9.3 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-x64.zip) | 同上；完整解压后运行 |
-| Android | [2.9.3 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-android.apk) | Android 15+，arm64-v8a / x86_64 |
+| Windows 安装版 | [2.9.4 EXE](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-x64.exe) | Windows 10 1903+ / Windows 11，x64 |
+| Windows 便携版 | [2.9.4 ZIP](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-x64.zip) | 同上；完整解压后运行 |
+| Android | [2.9.4 APK](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-android.apk) | Android 15+，arm64-v8a / x86_64 |
 | Apple Silicon Mac | [2.9.3 DMG](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-arm64.dmg) | macOS 26+，M 系列芯片 |
 | iPad | [2.9.3 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-ipad.ipa) | iPadOS 26+，须自行签名安装 |
 | Apple TV | [2.9.3 IPA](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-tvos.ipa) | tvOS 26+，须为 Apple TV 签名安装 |
@@ -141,7 +150,7 @@ iPad 与 Apple TV 的 IPA 均未签名，需使用自己的 Apple 身份签名�
 
 无法访问 GitHub 时，可从[夸克网盘](https://pan.quark.cn/s/88e6f7a795b4)或[百度网盘](https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig)下载 Windows／Android 安装包，每个版本一个文件夹，内容与发行页附件相同；Mac、iPad 与 Apple TV 的安装包目前只在 GitHub 发行页提供。
 
-Windows／Android 使用 [2.9.3 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-SHA256SUMS.txt)；Mac／iPad／Apple TV 使用 [2.9.3 Apple 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-APPLE-SHA256SUMS.txt)。来源与验证记录见发行页的 `RELEASE-MANIFEST.json` 和 `APPLE-RELEASE-MANIFEST.json` 附件。
+Windows／Android 使用 [2.9.4 SHA-256 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-SHA256SUMS.txt)；Mac／iPad／Apple TV 使用 [2.9.3 Apple 校验清单](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-APPLE-SHA256SUMS.txt)。来源与验证记录见发行页的 `RELEASE-MANIFEST.json` 和 `APPLE-RELEASE-MANIFEST.json` 附件。
 
 ### 第一次使用
 
@@ -173,7 +182,7 @@ iPad 应用内仅检查和提示更新，不自动替换安装；Apple TV 暂无
 
 首页海报用红点标记尚有未观看内容的作品；剧集显示「观看进度：8/12」，表示已看 8 集、当前服务器共有 12 集。观看进度在首页显示后加载，播放返回时刷新。
 
-桌面默认使用 GPU-Next，并提供 Render API 兼容模式。Windows 播放画面嵌入主窗口，Mac 使用独立播放窗口。设置按客户端、首页、音频、视频、字幕、MPV 画质与插件、弹幕样式和高级分类，支持搜索、即时保存与分类恢复默认值。
+桌面默认使用 GPU-Next，并提供 Render API 兼容模式。Windows 播放画面嵌入主窗口，Mac 使用独立播放窗口。设置分「播放器设置」（客户端、视频、音频、字幕、MPV 画质与插件、弹幕样式）和「媒体库设置」两组，支持搜索、即时保存与分类恢复默认值；高级用户可以在 MPV 画质与插件页直接编辑 mpv.conf。
 
 Android 提供双击暂停、横滑跳转、左右侧亮度／音量调节、长按临时倍速、防误触锁及选集。系统关闭自动旋转时保留当前方向。详见 [播放与设置](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback)。
 
@@ -280,7 +289,7 @@ Apple TV 的轻量增强会在高帧率视频或持续渲染掉帧时暂时降�
 - [iPad 安装与构建](docs/apple/INSTALL.md)
 - [Apple TV 安装与构建](apple/TV/README.md)
 - [Windows 测试环境要求](dev/windows/TESTING.md)
-- [版本变化](CHANGELOG.md)与本次发布说明（[2.9.3](docs/releases/2026-10-21-v2.9.3.md)、[2.9.1](docs/releases/2026-10-20-v2.9.1.md)、[2.9.0](docs/releases/2026-10-19-v2.9.0.md)、[2.8.0](docs/releases/2026-10-16-v2.8.0.md)）
+- [版本变化](CHANGELOG.md)与本次发布说明（[2.9.4](docs/releases/2026-10-23-v2.9.4.md)、[2.9.3](docs/releases/2026-10-21-v2.9.3.md)、[2.9.1](docs/releases/2026-10-20-v2.9.1.md)、[2.9.0](docs/releases/2026-10-19-v2.9.0.md)、[2.8.0](docs/releases/2026-10-16-v2.8.0.md)）
 
 Windows 每次运行原生测试前，都必须在同一个 PowerShell 调用中加载测试环境脚本并完成运行库预检。测试、包启动检查、生产 API 联调和真实媒体播放的覆盖范围分别记录，不能互相替代。
 

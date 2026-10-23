@@ -1,6 +1,6 @@
 # Tigerest Theater 使用教程
 
-这里是 EMBY 大河版的中文使用说明，对应 2.9.3（Windows、Android、Mac、iPad 与 Apple TV 均为 2.9.3）。客户端支持 Windows、Apple Silicon Mac、Android、iPad 和 Apple TV；播放内容和访问权限来自你连接的 Emby 或 Jellyfin 服务器。
+这里是 EMBY 大河版的中文使用说明，对应 2.9.4（Windows 与 Android 为 2.9.4；Mac、iPad 与 Apple TV 的 2.9.4 在 Mac 上构建验证后补充到同一发行页）。客户端支持 Windows、Apple Silicon Mac、Android、iPad 和 Apple TV；播放内容和访问权限来自你连接的 Emby 或 Jellyfin 服务器。
 
 ## 第一次使用
 
@@ -28,6 +28,16 @@
 | [故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting) | 按现象定位问题、日志目录、提交有效反馈 |
 | [常见问题](https://github.com/Tigerest/Tigerest-Theater/wiki/FAQ) | 平台区别、账号范围、补帧与共享功能的常见疑问 |
 | [技术原理](https://github.com/Tigerest/Tigerest-Theater/wiki/Architecture) | 各客户端的实现与架构、播放链路、一起看同步、评论和弹幕的数据流 |
+
+## 2.9.4 更新了什么
+
+- **更新下载与安装：** 「直接下载」先走 GitHub 加速镜像，下完仍按 GitHub 的 SHA-256 核对；Windows 安装版点「安装更新」后自动关闭、安装并重新打开；Android 下载后直接交给系统安装。检查更新改为先问社区服务器（签名验证），连不上再问 GitHub。见[安装与更新](https://github.com/Tigerest/Tigerest-Theater/wiki/Installation#应用内更新)。
+- **一份可以直接改的 mpv.conf（Windows 与 Mac）：** 在「设置 → 播放器设置 → MPV 画质与插件」下方的编辑器里修改，保存后立即生效；原来的配置模式、「高级」页和 `user-overrides.conf` 不再使用，升级时旧内容备份到「旧版自定义配置备份.txt」。见[自定义 mpv.conf](https://github.com/Tigerest/Tigerest-Theater/wiki/Playback#自定义-mpvconfwindows-与-mac)。
+- **设置菜单：** 左侧菜单分成「播放器设置」和「媒体库设置」两组（Windows、Mac 与 Android）。
+- **海报转场（Windows 与 Mac）：** 点海报后直接飞向详情页，页面按时出现时约 0.6–0.7 秒落地；返回海报墙时不再出现空行。Windows 重启后第一次转场也不用再等着色器编译。
+- **弹幕不遮字幕：** 底部弹幕改为滚动显示，画面底部 20% 留给字幕（Windows、Mac、iPad 与 Apple TV）。
+- **iPad 与 iPhone：** iPad 版改为 iPhone／iPad 通用；转屏后画面正确铺满；开着 RIFE 持续掉帧时会提示。
+- **Apple TV：** 返回键先收起控制栏；海报墙可以排序和搜索，并显示观看进度；文字字幕放大约 15%。
 
 ## 2.9.3 更新了什么
 
@@ -65,7 +75,7 @@
 
 2.6.1 起 Windows 网页界面按屏幕刷新率运行，并新增 iPad 客户端；2.7.0 起首页「继续观看」按观看记录排序，兼容 Emby 4.8–4.10 和 .strm 媒体库，并补充了 Apple TV 首版。完整记录见[更新记录](https://github.com/Tigerest/Tigerest-Theater/blob/main/CHANGELOG.md)。
 
-**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.9.3 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
+**已知问题：** 部分 Windows 高刷新率环境下，窗口播放可能持续卡顿、增加输出丢帧，而全屏正常。2.9.4 仍未修复；遇到此现象请先使用全屏播放。详见[故障排查](https://github.com/Tigerest/Tigerest-Theater/wiki/Troubleshooting)。
 
 ## 各平台功能范围
 
