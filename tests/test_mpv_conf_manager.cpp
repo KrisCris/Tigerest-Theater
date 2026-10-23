@@ -174,10 +174,16 @@ void TestMpvConfManager::shaderLibraryKeepsUserFiles()
   QVERIFY(!bundled.isEmpty());
   // An unchanged root copy from a pre-2.9.4 bundle goes; an edited one stays.
   write(path("shaders/Anime4K_Clamp_Highlights.glsl"), bundled);
+  // Windows builds of those bundles shipped the same file with CRLF.
+  QByteArray crlf = read(QStringLiteral(SOURCE_ROOT "/resources/mpv/shaders/Anime4K/Anime4K_Darken_HQ.glsl"));
+  QVERIFY(!crlf.contains('\r'));
+  crlf.replace("\n", "\r\n");
+  write(path("shaders/Anime4K_Darken_HQ.glsl"), crlf);
   write(path("shaders/Anime4K_Thin_HQ.glsl"), "// edited by the user\n");
   write(path("shaders/user/mine.glsl"), "// mine\n");
   QVERIFY(MpvConfigManager::prepare());
   QVERIFY(!QFile::exists(path("shaders/Anime4K_Clamp_Highlights.glsl")));
+  QVERIFY(!QFile::exists(path("shaders/Anime4K_Darken_HQ.glsl")));
   QVERIFY(QFile::exists(path("shaders/Anime4K_Thin_HQ.glsl")));
   QCOMPARE(read(path("shaders/user/mine.glsl")), QByteArray("// mine\n"));
   QVERIFY(QFile::exists(path("shaders/user/说明.txt")));

@@ -279,6 +279,9 @@ void pruneRetiredShaders(const QString& bundleDir, const QJsonObject& previousMa
   const QJsonObject retired = current.value(QStringLiteral("retired")).toObject();
   for (auto it = retired.begin(); it != retired.end(); ++it)
     candidates.insert(it.key(), it.value());
+  const auto sha256 = [](const QByteArray& data) {
+    return QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
+  };
   for (auto it = candidates.begin(); it != candidates.end(); ++it)
   {
     const QString relative = it.key();
@@ -288,8 +291,12 @@ void pruneRetiredShaders(const QString& bundleDir, const QJsonObject& previousMa
     const QByteArray data = readBytes(path);
     if (data.isEmpty())
       continue;
-    const QString hash = QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
-    if (hash == it.value().toString() && QFile::remove(path))
+    // The manifest records LF bytes; Windows builds checked out with CRLF
+    // line endings shipped the same shaders with CRLF.
+    QByteArray lf = data;
+    lf.replace("\r\n", "\n");
+    const QString expected = it.value().toString();
+    if ((sha256(data) == expected || sha256(lf) == expected) && QFile::remove(path))
       qInfo() << "Removed retired bundled shader" << relative;
   }
 }

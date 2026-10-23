@@ -22,3 +22,5 @@ CMakeLists.txt text eol=lf
 *.conf text eol=lf
 *.in text eol=lf
 *.plist text eol=lf
+# Bundled shaders are hashed in resources/mpv/shaders/manifest.json.
+*.glsl text eol=lf
