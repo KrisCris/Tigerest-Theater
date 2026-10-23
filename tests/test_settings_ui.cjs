@@ -23,7 +23,7 @@ withBrowser({
  ${iconFont?'@font-face{font-family:"Material Symbols Rounded";font-style:normal;font-weight:400;src:url(/emby-material-icons.woff2) format("woff2")}':''}
  .md-icon{font-family:'Material Symbols Rounded'!important;font-weight:400;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;overflow-wrap:normal;-webkit-font-smoothing:antialiased;text-rendering:optimizelegibility;font-feature-settings:'liga';font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24;overflow:hidden;vertical-align:middle}
  @media(max-width:760px){.mainDrawer{display:none;z-index:1000;box-shadow:0 0 0 100vmax #0008}.mainDrawer.drawer-open{display:block}.view{margin-left:0}}
- </style><script src="/homeData.js"></script><body><aside class="mainDrawer"><div class="mainDrawerScrollSlider"><div class="navDrawerItemsContainer itemsContainer" data-listindex="0"></div></div></aside><div class="view"><button id="origin">设置</button><div id="host" class="readOnlyContent"></div></div><script>
+ </style><script src="/homeData.js"></script><body><aside class="mainDrawer"><div class="mainDrawerScrollSlider"><div class="navDrawerCollapseSection"><button class="navDrawerCollapseButton"><h3 class="navMenuHeader">Tigerest Theater 设置</h3></button><div class="navDrawerItemsContainer itemsContainer" data-listindex="0"></div></div></div></aside><div class="view"><button id="origin">设置</button><div id="host" class="readOnlyContent"></div></div><script>
  // The injected Qt shell must finish wiring native settings before this fixture replaces its boundary.
  window.fixtureReady=Promise.resolve(window.initCompleted).then(()=>{
  window.saves=[];window.resets=[];window.confirm=()=>true;window.initCompleted=Promise.resolve();
@@ -92,13 +92,24 @@ withBrowser({
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-inline .tgs-tabs, #tigerest-settings-inline [role=tablist]").length'),0,
   'content has no duplicate category navigation');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category]")].map(row=>row.dataset.settingsCategory)'),
-  ['main','home','audio','video','subtitles','mpv','danmaku'],'all supported categories are in Emby left navigation');
+  ['home','main','video','audio','subtitles','mpv','danmaku'],'all supported categories are in Emby left navigation');
+ // Emby's app group becomes the library group; player categories get their own.
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .navMenuHeader")].map(node=>node.textContent)'),
+  ['媒体库设置','播放器设置'],'settings drawer groups library and player settings');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .tigerest-player-settings [data-settings-category]")].map(row=>row.dataset.settingsCategory)'),
+  ['main','video','audio','subtitles','mpv','danmaku'],'player settings group holds the player categories in order');
+ // Emby collapses .collapseContent unless it has an explicit height.
+ assert.equal(await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings-items").style.height'),'auto','player group starts expanded');
+ await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings .navDrawerCollapseButton").click()');
+ assert.equal(await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings-items").style.height'),'0px','player group collapses');
+ await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings .navDrawerCollapseButton").click()');
+ assert.equal(await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings-items").style.height'),'auto','player group expands again');
  assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'audio');
  const playbackCategoryTitle=await evaluate('window.tigerestAndroidApi ? "播放器" : "MPV 画质与插件"');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .listItemBodyText")].map(node=>node.textContent)'),
-  ['General','客户端','首页设置','音频','视频','字幕',playbackCategoryTitle,'弹幕样式'],'native menu has categories without a redundant parent entry');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .listItemBodyText")].filter(node=>node.offsetParent).map(node=>node.textContent)'),
+  ['General','首页设置','客户端','视频','音频','字幕',playbackCategoryTitle,'弹幕样式'],'native menu has categories without a redundant parent entry');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category] .md-icon")].map(node=>node.textContent.codePointAt(0))'),
-  [0xe30c,0xe88a,0xe050,0xe04b,0xe01c,0xe024,0xe0b7],'native rows render each semantic category icon instead of arrows');
+  [0xe88a,0xe30c,0xe04b,0xe050,0xe01c,0xe024,0xe0b7],'native rows render each semantic category icon instead of arrows');
  await assertDrawerAlignment('desktop');
  await evaluate(`document.querySelectorAll('.mainDrawer .listItem-content').forEach(node=>node.classList.replace('navMenuOption-listItem-content','navMenuOption-listItem-content-reduceleftpadding'))`);
  await assertDrawerAlignment('TV wrapper');

@@ -890,14 +890,104 @@ function getTigerestSettingsCategories() {
         .map(entry => ({...entry, ...sectionMeta[entry.key]}));
 }
 
+// Settings categories that configure the player. Emby's drawer only knows
+// the app and user groups, so these rows get a group of their own and the
+// app group becomes the library group.
+const TIGEREST_PLAYER_SETTINGS = ['main', 'video', 'audio', 'subtitles', 'mpv', 'danmaku'];
+const TIGEREST_LIBRARY_SETTINGS_TITLE = '媒体库设置';
+const TIGEREST_PLAYER_SETTINGS_TITLE = '播放器设置';
+
+function tigerestSettingsGroupTitle(section) {
+    if (window.tigerestAndroidApi || window.tigerestIPadApi) return '客户端设置';
+    return TIGEREST_PLAYER_SETTINGS.includes(section) ? TIGEREST_PLAYER_SETTINGS_TITLE : TIGEREST_LIBRARY_SETTINGS_TITLE;
+}
+
 function installTigerestSettingsMenu() {
     if (installTigerestSettingsMenu.refresh) {
         installTigerestSettingsMenu.refresh();
         return;
     }
+    if (!document.getElementById('tigerest-settings-menu-style')) {
+        const style = document.createElement('style');
+        style.id = 'tigerest-settings-menu-style';
+        style.textContent = '.mainDrawer .tigerest-moved-settings-row { display: none !important; }';
+        document.head.appendChild(style);
+    }
+    // The visible player rows are copies; a click goes to the hidden native
+    // row so Emby still routes, closes the drawer and keeps its history.
+    const copies = new WeakMap();
+    const copyRow = original => {
+        let copy = copies.get(original);
+        if (copy) return copy;
+        copy = original.cloneNode(true);
+        copy.removeAttribute('data-index');
+        copy.removeAttribute('data-action');
+        copy.classList.remove('navMenuOption-selected', 'tigerest-moved-settings-row');
+        copy.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            original.click();
+        });
+        copies.set(original, copy);
+        return copy;
+    };
+    const setText = (node, text) => {
+        if (node.textContent !== text) node.textContent = text;
+        if (node.getAttribute('title') !== text) node.setAttribute('title', text);
+        if (node.getAttribute('aria-label') !== text) node.setAttribute('aria-label', text);
+    };
+    const groupPlayerRows = rows => {
+        const anchor = rows.values().next().value;
+        const appSection = anchor?.closest('.navDrawerCollapseSection');
+        if (!appSection) return;
+        const header = appSection.querySelector('.navMenuHeader');
+        if (header) setText(header, TIGEREST_LIBRARY_SETTINGS_TITLE);
+        let section = appSection.nextElementSibling?.classList.contains('tigerest-player-settings')
+            ? appSection.nextElementSibling : null;
+        if (!section) {
+            section = document.createElement('div');
+            section.className = 'navDrawerCollapseSection focuscontainer-x tigerest-player-settings';
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'navDrawerCollapseButton noautofocus emby-collapsible-button emby-button emby-button-focusscale';
+            toggle.setAttribute('aria-expanded', 'true');
+            const title = document.createElement('h3');
+            title.className = 'navMenuHeader secondaryText emby-collapsible-title';
+            setText(title, TIGEREST_PLAYER_SETTINGS_TITLE);
+            const icon = document.createElement('i');
+            icon.className = 'navDrawerCollapseIcon md-icon emby-collapse-expandIcon emby-collapse-expandIconExpanded';
+            icon.textContent = 'expand_more';
+            toggle.append(title, icon);
+            const list = document.createElement('div');
+            list.className = 'navDrawerItemsContainer vertical-list collapseContent navDrawerCollapseContent expanded tigerest-player-settings-items';
+            // Emby's collapse styles keep .collapseContent at zero height
+            // unless the element carries an explicit height, as its own
+            // emby-collapse sets.
+            list.style.height = 'auto';
+            toggle.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+                toggle.setAttribute('aria-expanded', String(expanded));
+                icon.classList.toggle('emby-collapse-expandIconExpanded', expanded);
+                list.classList.toggle('expanded', expanded);
+                list.style.height = expanded ? 'auto' : '0px';
+            });
+            section.append(toggle, list);
+            appSection.after(section);
+        }
+        const list = section.querySelector('.tigerest-player-settings-items');
+        const wanted = TIGEREST_PLAYER_SETTINGS.filter(key => rows.has(key)).map(key => copyRow(rows.get(key)));
+        // Only touch the DOM when the rows changed: this runs from a
+        // MutationObserver on the drawer.
+        if (wanted.length !== list.children.length || wanted.some((row, index) => list.children[index] !== row))
+            list.replaceChildren(...wanted);
+    };
     const refresh = () => {
         const active = document.querySelector('#tigerest-settings-inline .tgs-section.active')?.dataset.section;
+        const playerRows = new Map();
         for (const row of document.querySelectorAll('.mainDrawer .navMenuOption')) {
+            if (row.closest('.tigerest-player-settings')) continue;
             // Emby's custom-action list rows resolve their route via the native
             // items container, rather than an href on the rendered element.
             const container = row.closest('.itemsContainer');
@@ -905,7 +995,19 @@ function installTigerestSettingsMenu() {
                 || container?.getItem?.(Number(row.dataset.index)) || container?.items?.[Number(row.dataset.index)];
             const href = item?.href || row.getAttribute('href') || '';
             const match = href.match(/\/plugins\/tigerest-native-settings\/settings\/([a-z]+)\.html(?:[?#]|$)/);
-            if (match) {
+            const grouped = match && TIGEREST_PLAYER_SETTINGS.includes(match[1]) && row.closest('.navDrawerCollapseSection');
+            row.classList.toggle('tigerest-moved-settings-row', Boolean(grouped));
+            if (grouped) {
+                // The visible copy carries the category; the hidden native row
+                // only routes.
+                delete row.dataset.settingsCategory;
+                playerRows.set(match[1], row);
+                const copy = copyRow(row);
+                copy.dataset.settingsCategory = match[1];
+                copy.classList.toggle('navMenuOption-selected', active ? match[1] === active : row.classList.contains('navMenuOption-selected'));
+                if (active === match[1]) copy.setAttribute('aria-current', 'page');
+                else copy.removeAttribute('aria-current');
+            } else if (match) {
                 row.dataset.settingsCategory = match[1];
                 if (active) row.classList.toggle('navMenuOption-selected', match[1] === active);
                 if (active === match[1]) row.setAttribute('aria-current', 'page');
@@ -916,6 +1018,7 @@ function installTigerestSettingsMenu() {
                 row.removeAttribute('aria-current');
             }
         }
+        if (playerRows.size) groupPlayerRows(playerRows);
     };
     installTigerestSettingsMenu.refresh = refresh;
     // Drawer content is lazy on mobile and rebuilt when Emby changes context.
@@ -1130,7 +1233,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
 
     const header = element('div', 'tgs-header');
     const heading = element('div');
-    const headingTitle = element('h2', 'tgs-title', (window.tigerestAndroidApi || window.tigerestIPadApi) ? '客户端设置' : 'MPV 播放设置');
+    const headingTitle = element('h2', 'tgs-title', tigerestSettingsGroupTitle(initialSection || 'mpv'));
     headingTitle.id = 'tgs-settings-title';
     heading.appendChild(headingTitle);
     heading.appendChild(element('div', 'tgs-subtitle', '常规配置即时应用；带“需重启”标记的项目在下次启动生效'));
@@ -1269,6 +1372,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             }
         }
         activeSection = section;
+        headingTitle.textContent = tigerestSettingsGroupTitle(section);
         sessionStorage.setItem('tigerestSettingsTab', section);
         if (categorySelect) categorySelect.value = section;
         for (const [key, group] of groups) {
@@ -1600,6 +1704,7 @@ async function openTigerestSettings(section = 'mpv') {
     return mountTigerestSettings(null, section, null, null, {apiProvider: currentSessionApiClient});
 }
 window.tigerestMountSettings = mountTigerestSettings;
+window.tigerestSettingsGroupTitle = tigerestSettingsGroupTitle;
 window.tigerestSettingsCategories = getTigerestSettingsCategories;
 window.tigerestInstallSettingsMenu = installTigerestSettingsMenu;
 window.tigerestOpenMpvSettings = openTigerestSettings;

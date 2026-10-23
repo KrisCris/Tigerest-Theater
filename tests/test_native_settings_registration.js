@@ -34,7 +34,7 @@ test('legacy settings URL remains routable without adding a menu entry', () => {
     assert.equal(route.contentPath,'none');
     assert.equal(route.templateType,'settings');
     assert.equal(route.settingsTheme,true,'the integrated page retains the Emby settings drawer');
-    assert.equal(route.title,'MPV 播放设置');
+    assert.equal(route.title,'播放器设置');
     assert.ok(registrations.has(route.controller));
 });
 
