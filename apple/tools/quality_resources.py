@@ -3,7 +3,7 @@ import hashlib,json,shutil
 from pathlib import Path
 def sync_quality(root,output,manifest):
     sections={};current=None
-    for raw in (root/'resources/mpv/mpv.conf.in').read_text().splitlines():
+    for raw in (root/'resources/mpv/mpv.default.conf').read_text().splitlines():
         line=raw.strip()
         if not line or line.startswith('#'):continue
         if line.startswith('['):current=line[1:-1];sections[current]=[]

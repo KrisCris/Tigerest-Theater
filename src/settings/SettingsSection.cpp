@@ -168,12 +168,16 @@ void SettingsSection::resetValue(const QString &key)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void SettingsSection::resetValues()
+void SettingsSection::resetValues(bool keepHidden)
 {
   QVariantMap updatedValues;
 
   for (auto key : m_values.keys())
+  {
+    if (keepHidden && m_values[key]->isHidden())
+      continue;
     resetValueNoNotify(key, updatedValues);
+  }
 
   if (updatedValues.size() > 0)
     emit valuesUpdated(updatedValues);

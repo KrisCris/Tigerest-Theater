@@ -12,6 +12,8 @@ def sync(output):
     files += sorted((ROOT/'native'/'home-art').rglob('*'))
     files += list((ROOT/'apple'/'Resources').glob('*'))
     files += [ROOT/'resources/settings/settings_description.json']
+    # Phone-width header and safe-area handling shared with Android; WebHost adds it on iPhone only.
+    files += [ROOT/'android/app/src/main/assets'/name for name in ('androidResponsive.js','androidResponsive.css')]
     manifest = {'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),'scripts':[f'{x}.js' for x in SCRIPTS], 'files':{}}
     for source in files:
         if not source.is_file(): continue

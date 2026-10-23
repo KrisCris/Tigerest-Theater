@@ -28,6 +28,7 @@ class WindowsHdrSwitch;
 
 #include "ComponentManager.h"
 #include "QtHelper.h"
+#include "MpvConfDocument.h"
 
 #include <mpv/client.h>
 
@@ -172,6 +173,20 @@ public:
   Q_INVOKABLE qint64 getDuration();
   Q_INVOKABLE QVariantMap mpvDiagnostics();
 
+  // Settings-page mpv.conf editor.
+  Q_INVOKABLE QVariantMap mpvConfState();
+  Q_INVOKABLE QVariantMap mpvConfAnalyze(const QString& user, const QString& section);
+  Q_INVOKABLE QVariantMap mpvConfEdit(const QString& user, const QVariantMap& operation);
+  Q_INVOKABLE QVariantMap mpvConfPaste(const QString& text);
+  Q_INVOKABLE QVariantMap mpvConfSave(const QString& user, bool force);
+  Q_INVOKABLE QVariantMap mpvConfRestoreDefault();
+  Q_INVOKABLE void mpvConfAcknowledgeDefault();
+  Q_INVOKABLE bool mpvConfOpenShaderFolder();
+
+  // Applies a quality profile from the current mpv.conf (settings page,
+  // uosc menu and Alt+1..3). Returns false when it did not apply fully.
+  bool applyQualityProfile(const QString& profile, bool announce);
+
   Q_INVOKABLE QVariantList getWebPlaylist() const;
   Q_INVOKABLE QString getCurrentWebPlaylistItemId() const;
   Q_INVOKABLE void setWebPlaylist(const QVariantList& playlist, const QString& currentItemId);
@@ -214,7 +229,6 @@ public Q_SLOTS:
   void setAudioConfiguration();
   void setSubtitleConfiguration();
   void setVideoConfiguration();
-  void setOtherConfiguration();
   void setMpvPreset();
   void updateAudioConfiguration();
   void updateSubtitleConfiguration();
@@ -248,6 +262,9 @@ Q_SIGNALS:
   // Raised by the bundled UOSC quality menu. JavaScript deliberately performs
   // the switch through Emby Web so position, track choices and session survive.
   void streamingBitrateRequested(qint64 bitrate);
+  // A setting change paused or restored lines of the user's mpv.conf (for
+  // example RIFE conflicts); the settings page shows the message.
+  void mpvConfMessage(const QString& message);
   // emitted as soon as the duration of the current file is known
   void updateDuration(qint64 milliseconds);
   void playbackRateChanged(double rate);
@@ -287,6 +304,16 @@ Q_SIGNALS:
   // Buffered ranges from demuxer-cache-state, as list of {start, end} in ticks
   void bufferedRangesUpdated(const QVariantList& ranges);
   void fullscreenRequested(bool fullscreen);
+
+private:
+  bool applyMpvConfOption(const QString& key, const QString& value);
+  void resetMpvConfOption(const QString& key, const QList<MpvConf::Line>& lines);
+  // Applies the difference between two user areas to the running player.
+  void applyUserConfLive(const QString& previous, const QString& current);
+  // Re-renders the managed parts of mpv.conf after a deciding setting changed.
+  void refreshMpvConf();
+  void publishProfileMenu();
+  void storeMpvOptionTable();
 
 private:
   friend class RifePlayerPlayback;
@@ -373,6 +400,7 @@ private:
   void applyMediaAccessToken(const QString& token);
 
   MpvController* m_mpv = nullptr;
+  QString m_appliedProfile;
   bool m_nativeVideoOutput = false;
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
   bool m_shuttingDown = false;

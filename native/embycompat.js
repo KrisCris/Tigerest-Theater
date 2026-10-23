@@ -217,7 +217,7 @@
                     // Keep old links routable, but only category routes belong
                     // to Emby's shared settings drawer/overview menu filter.
                     return [settingsContent({...base, path: 'settings.html', order: 25,
-                        title: (window.tigerestAndroidApi || window.tigerestIPadApi) ? '客户端设置' : 'MPV 播放设置',
+                        title: (window.tigerestAndroidApi || window.tigerestIPadApi) ? '客户端设置' : '播放器设置',
                         controller: 'tigerest/settings-view.js'}),
                         ...(window.tigerestSettingsCategories?.() || []).map((section, index) => settingsContent({
                             ...base, type: 'settings', settingsType: 'app',
@@ -246,7 +246,8 @@
             SettingsView.prototype.onResume = function () {
                 BaseView.prototype.onResume.apply(this, arguments);
                 const generation = ++this.mountGeneration;
-                router.setTitle?.((window.tigerestAndroidApi || window.tigerestIPadApi) ? '客户端设置' : 'MPV 播放设置');
+                router.setTitle?.(window.tigerestSettingsGroupTitle?.(this.settingsSection || 'mpv')
+                    || ((window.tigerestAndroidApi || window.tigerestIPadApi) ? '客户端设置' : '播放器设置'));
                 this.settingsMount?.dispose();
                 this.mountAbort?.abort();
                 this.mountAbort = new AbortController();

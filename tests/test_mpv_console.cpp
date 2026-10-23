@@ -134,20 +134,16 @@ void TestMpvConsole::qualityProfilesPreserveInterpolation()
   QFETCH(bool, enabled);
   QTemporaryDir root;
   QVERIFY(root.isValid());
-  QFile source(QStringLiteral(SOURCE_ROOT "/resources/mpv/mpv.conf.in"));
+  // The default user area plus the managed tail's startup lines that matter
+  // here: the display-resample clock and the startup profile.
+  QFile source(QStringLiteral(SOURCE_ROOT "/resources/mpv/mpv.default.conf"));
   QVERIFY(source.open(QIODevice::ReadOnly));
   QString config = QString::fromUtf8(source.readAll());
-  config.replace("@TIGEREST_PROFILE@", "tigerest-default");
-  config.replace("@TIGEREST_IPC_SERVER@", "");
-  config.replace("@TIGEREST_SCRIPTS@", "");
-  config.replace("script=~~/plugins/stats.lua", "");
-  config.replace("input-conf=~~/input.conf", "");
+  config += QStringLiteral("\n[default]\nvideo-sync=display-resample\nprofile=tigerest-default\n");
   config.replace("~~/shaders/", QStringLiteral(SOURCE_ROOT "/resources/mpv/shaders/"));
   QFile output(root.filePath("mpv.conf"));
   QVERIFY(output.open(QIODevice::WriteOnly));
   output.write(config.toUtf8()); output.close();
-  QFile overrides(root.filePath("user-overrides.conf"));
-  QVERIFY(overrides.open(QIODevice::WriteOnly)); overrides.close();
   const auto oldRoot = qgetenv("TIGEREST_MPV_CONFIG_DIR");
   const auto restore = qScopeGuard([&] {
     if (oldRoot.isNull()) qunsetenv("TIGEREST_MPV_CONFIG_DIR");
@@ -177,11 +173,18 @@ void TestMpvConsole::qualityProfilesPreserveInterpolation()
   QVERIFY(controller->setProperty("user-data/tigerest/rife-clock-owned", enabled) >= 0);
   const auto filters = controller->getProperty("vf");
   const auto sync = controller->getProperty("video-sync");
-  const auto loaded = controller->command(QVariantList{QStringLiteral("load-script"),
-      QStringLiteral(SOURCE_ROOT "/resources/mpv/plugins/profile_menu.lua")});
-  QVERIFY(!loaded.canConvert<ErrorReturn>());
-  QTRY_COMPARE_WITH_TIMEOUT(controller->getProperty("user-data/profile_menu/current").toString(),
-                           QStringLiteral("tigerest-default"), 5000);
+  // The uosc menu asks the client to switch; a stand-in records the request
+  // the way PlayerComponent receives it.
+  QFile recorder(root.filePath("recorder.lua"));
+  QVERIFY(recorder.open(QIODevice::WriteOnly));
+  recorder.write("mp.register_script_message('tigerest-apply-profile', function(name)\n"
+                 "  mp.set_property('user-data/test/requested', name)\nend)\n");
+  recorder.close();
+  for (const QString& script : {root.filePath("recorder.lua"),
+                                QStringLiteral(SOURCE_ROOT "/resources/mpv/plugins/profile_menu.lua")}) {
+    const auto loaded = controller->command(QVariantList{QStringLiteral("load-script"), script});
+    QVERIFY(!loaded.canConvert<ErrorReturn>());
+  }
   for (const bool luaMenu : {false, true}) {
     const auto apply = [&](const QString& profile) {
       controller->command(QStringList{"change-list", "glsl-shaders", "clr", ""});
@@ -190,14 +193,13 @@ void TestMpvConsole::qualityProfilesPreserveInterpolation()
     QVERIFY(!apply("tigerest-aggressive-test").canConvert<ErrorReturn>());
     QCOMPARE(shaders().size(), 4);
     if (luaMenu) {
-      controller->setProperty("user-data/profile_menu/current", "pending");
+      controller->setProperty("user-data/test/requested", "");
       const auto result = controller->command(QStringList{"script-binding", "profile_menu/apply-default"});
       QVERIFY(!result.canConvert<ErrorReturn>());
-      QTRY_COMPARE_WITH_TIMEOUT(controller->getProperty("user-data/profile_menu/current").toString(),
+      QTRY_COMPARE_WITH_TIMEOUT(controller->getProperty("user-data/test/requested").toString(),
                                QStringLiteral("tigerest-default"), 5000);
-    } else {
-      QVERIFY(!apply("tigerest-default").canConvert<ErrorReturn>());
     }
+    QVERIFY(!apply("tigerest-default").canConvert<ErrorReturn>());
     QCOMPARE(shaders(), defaultShaders);
     QCOMPARE(controller->getProperty("vf"), filters);
     QCOMPARE(controller->getProperty("video-sync"), sync);

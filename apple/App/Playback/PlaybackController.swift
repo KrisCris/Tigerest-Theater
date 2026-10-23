@@ -29,6 +29,9 @@ import AppleCore
     /// Shown once per media when the VO reports its target colorspace.
     @Published var dynamicRangeNotice = ""
     private var dynamicRangeReported = false
+    /// Shown once per media when RIFE cannot keep up (the desktop rule); interpolation stays on.
+    @Published var performanceNotice = ""
+    private var rifeGuard = RifePerformanceGuard(), rifeWarned = false, rifePolledAt = 0.0
     @Published var tracks: [JSONValue] = []
     @Published var queue: [JSONValue] = []
     var currentID = "", metadata: JSONValue = .null
@@ -36,6 +39,7 @@ import AppleCore
     init(model: AppModel) {
         self.model = model
         super.init()
+        surface.onDrawableSizeChange = { [weak self] _ in self?.surfaceResized() }
         NotificationCenter.default.addObserver(self, selector: #selector(interruption(_:)), name: AVAudioSession.interruptionNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(routeChanged(_:)), name: AVAudioSession.routeChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(suspendInteraction), name: UIApplication.willResignActiveNotification, object: nil)
@@ -106,7 +110,7 @@ import AppleCore
                 if !headers.isEmpty { try next.set("http-header-fields", headers.joined(separator: ",")) }
                 try next.command(["loadfile", url, "replace"])
             } catch { next.close(); engine = nil; throw error }
-            model.diagnostics.record("info", "Player load requested"); state.begin(); active = true; locked = false; loaded = false; dynamicRangeReported = false; resetValidationTimeline(); dynamicRangeNotice = ""; position = 0; duration = 0; watchdog = PlaybackWatchdog()
+            model.diagnostics.record("info", "Player load requested"); state.begin(); active = true; locked = false; loaded = false; dynamicRangeReported = false; resetValidationTimeline(); dynamicRangeNotice = ""; performanceNotice = ""; rifeGuard.reset(); rifeWarned = false; position = 0; duration = 0; watchdog = PlaybackWatchdog()
             UIApplication.shared.isIdleTimerDisabled = true
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
             model.danmaku.autoMatch(metadata["metadata"],mediaURL:URL(string:url)); emit("windowVisible", [.bool(true)]); emit("onMetaData", [metadata, .string(url)])
@@ -138,7 +142,7 @@ import AppleCore
         case "setSubtitleStream": try track("sid", arg(0))
         case "setAudioDelay": try engine?.set("audio-delay", String((arg(0).number ?? 0) / 1000))
         case "setSubtitleDelay": try engine?.set("sub-delay", String((arg(0).number ?? 0) / 1000))
-        case "getAudioDeviceList": return .array([.object(["name": .string("auto"), "description": .string("iPad 系统音频输出")])])
+        case "getAudioDeviceList": return .array([.object(["name": .string("auto"), "description": .string(UIDevice.current.model + " 系统音频输出")])])
         case "setAudioDevice": guard arg(0).string == "auto" else { throw CoreError.invalidRequest }
         case "getWebPlaylist": return .array(queue)
         case "getCurrentWebPlaylistItemId": return .string(currentID)
@@ -200,8 +204,28 @@ import AppleCore
                 model.diagnostics.record("info", "Dynamic range: " + text.replacingOccurrences(of: "\n", with: " | "))
             }
         }
+        if loaded { pollRifePerformance(engine) }
         if watchdog.stalled(position: position, now: ProcessInfo.processInfo.systemUptime, paused: paused) { fail("播放超过 30 秒没有进展，请检查网络后重试"); return }
         updateNowPlaying()
+    }
+    /// Once a second, the desktop CoreML guard over the filter's counters. Like
+    /// the desktop, a sustained shortfall only shows a hint: a presentation
+    /// drop is not proof that inference is too slow, so the user decides.
+    private func pollRifePerformance(_ engine: MPVEngine) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard !rifeWarned, now - rifePolledAt >= 1 else { return }
+        rifePolledAt = now
+        let rife = engine.json("vf-metadata/tigerest-rife")
+        guard case .object = rife else { rifeGuard.reset(); return }
+        func count(_ key: String) -> UInt64 { UInt64(rife[key].string ?? "") ?? 0 }
+        let drops = UInt64(max(0, engine.number("frame-drop-count"))) + UInt64(max(0, engine.number("decoder-frame-drop-count")))
+        let suspended = paused || buffering || engine.flag("seeking") || rife["status"].string != "active"
+        let fps = engine.number("container-fps"), p95 = Double(rife["inferenceP95Ms"].string ?? "") ?? 0
+        guard rifeGuard.update(nowMs: Int64(now * 1000), predictions: count("generated"), pairs: count("inputs"), p95Ms: p95,
+                               drops: drops, fps: fps, suspended: suspended) else { return }
+        rifeWarned = true
+        performanceNotice = "检测到持续丢帧，可在「画质设置」查看播放诊断，并考虑降低性能开销"
+        model.diagnostics.record("warning", "RIFE playback warning (interpolation retained): drops=\(drops) generated=\(count("generated")) inputs=\(count("inputs")) p95Ms=\(p95) sourceFps=\(fps)")
     }
     private func finish(_ generation: UInt64) {
         model.diagnostics.record("info", "Player reached end of file")
@@ -274,6 +298,59 @@ import AppleCore
             interruptionIntent = nil
         }
     }
+    private var fallbackTask: Task<Void, Never>?, fallbackLimit: String?
+    /// Switching hwdec mid-file restarts the decoder at the current packet, without
+    /// the frames it refers back to. VideoToolbox rejects those, and after three
+    /// failed frames mpv decodes the rest of the file in software. Allow more
+    /// failures while the caller restarts from the preceding keyframe, then put the
+    /// limit back so a format VideoToolbox cannot decode still falls back quickly.
+    private func allowDecoderRestart(_ engine: MPVEngine) {
+        if fallbackLimit == nil { fallbackLimit = engine.string("hwdec-software-fallback") }
+        try? engine.set("hwdec-software-fallback", "60")
+        fallbackTask?.cancel()
+        fallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled, let self else { return }
+            if let limit = self.fallbackLimit, !limit.isEmpty { try? self.engine?.set("hwdec-software-fallback", limit) }
+            self.fallbackLimit = nil
+        }
+    }
+    private var resizeTask: Task<Void, Never>?
+    private func surfaceResized() {
+        resizeTask?.cancel()
+        resizeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            // The drawable can still be settling after the first try; check and try again.
+            for _ in 0..<3 {
+                guard !Task.isCancelled, let self, self.active, let engine = self.engine, self.outputMismatched(engine) else { return }
+                await self.reconfigureVideoOutput(engine)
+                try? await Task.sleep(for: .milliseconds(700))
+            }
+        }
+    }
+    /// Only an open output can be the wrong size: before the first frame the
+    /// VO is configured for the drawable as it is then, so there is nothing to do.
+    private func outputMismatched(_ engine: MPVEngine) -> Bool {
+        let drawable = surface.metal.drawableSize
+        guard loaded, drawable.width > 1, drawable.height > 1, case .object(let osd) = engine.json("osd-dimensions"),
+              let width = osd["w"]?.number, let height = osd["h"]?.number, width > 0, height > 0 else { return false }
+        return width != drawable.width || height != drawable.height
+    }
+    /// mpv's MoltenVK context sizes its swapchain only when the video output is
+    /// configured, so after a rotation the picture stays at the old size in a corner.
+    /// A momentary aspect change reconfigures the output on the next frame and keeps
+    /// the decoder (reopening the output would drop VideoToolbox). While paused,
+    /// redecode the shown frame so there is a next frame.
+    private func reconfigureVideoOutput(_ engine: MPVEngine) async {
+        let aspect = engine.string("video-aspect-override"), paused = engine.flag("pause")
+        let refresh = { if paused { try? engine.command(["seek", String(engine.number("time-pos")), "absolute+exact"]) } }
+        try? engine.set("video-aspect-override", aspect == "1.000000" ? "2" : "1"); refresh()
+        // Restore only once a frame with the changed aspect has reached the VO;
+        // a filter such as RIFE may need a few frames after a seek to output one.
+        var waited = 0
+        while waited < 30, outputMismatched(engine) { try? await Task.sleep(for: .milliseconds(50)); waited += 1 }
+        try? engine.set("video-aspect-override", aspect); refresh()
+    }
     @objc private func routeChanged(_ note: Notification) {
         let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
         if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { _ = try? dispatch("pause", []) }
@@ -338,7 +415,7 @@ import AppleCore
     #else
     private func resetValidationTimeline() {}
     #endif
-    func diagnostics() -> JSONValue { .object(["nativeRife": engine?.json("vf-metadata/tigerest-rife") ?? .null,"qualityPreset": .string(qualitySelection.preset), "shaderPaths": engine?.json("glsl-shaders") ?? .array([]), "renderPasses": engine?.json("vo-passes") ?? .null, "brightness": .number(brightness), "systemVolume": .number(systemVolume.value), "version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false), "channels": .string(engine?.string("audio-out-params/channels") ?? ""), "sourceChannels": .string(engine?.string("audio-params/channels") ?? ""), "sessionOutputChannels": .number(Double(AVAudioSession.sharedInstance().outputNumberOfChannels)), "sessionMaximumOutputChannels": .number(Double(AVAudioSession.sharedInstance().maximumOutputNumberOfChannels)), "supportsMultichannel": .bool(AVAudioSession.sharedInstance().supportsMultichannelContent), "route": .array(AVAudioSession.sharedInstance().currentRoute.outputs.map { .object(["type": .string($0.portType.rawValue), "channels": .number(Double($0.channels?.count ?? 0)), "spatialAudio": .bool($0.isSpatialAudioEnabled)]) })]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos", "sub-font", "sub-fonts-dir"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "videoParams": engine?.json("video-params") ?? .null, "videoOutParams": engine?.json("video-out-params") ?? .null, "edrHeadroom": .object(["current": .number(Double(surface.window?.screen.currentEDRHeadroom ?? 0)), "potential": .number(Double(surface.window?.screen.potentialEDRHeadroom ?? 0)), "brightness": .number(Double(surface.window?.screen.brightness ?? -1))]), "colorOutput": .object(Dictionary(uniqueKeysWithValues: ["target-colorspace-hint", "tone-mapping", "target-trc", "target-prim", "target-peak"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
+    func diagnostics() -> JSONValue { .object(["nativeRife": engine?.json("vf-metadata/tigerest-rife") ?? .null,"qualityPreset": .string(qualitySelection.preset), "shaderPaths": engine?.json("glsl-shaders") ?? .array([]), "renderPasses": engine?.json("vo-passes") ?? .null, "brightness": .number(brightness), "systemVolume": .number(systemVolume.value), "version": .string(engine?.string("mpv-version") ?? ""), "renderBackend": .string("Metal / Vulkan (MoltenVK)"), "currentVo": .string(engine?.string("current-vo") ?? ""), "audioOutput": .object(["driver": .string(engine?.string("current-ao") ?? ""), "sampleRate": .number(engine?.number("audio-out-params/samplerate") ?? 0), "normalizeDownmix": .bool(engine?.flag("audio-normalize-downmix") ?? false), "channels": .string(engine?.string("audio-out-params/channels") ?? ""), "sourceChannels": .string(engine?.string("audio-params/channels") ?? ""), "sessionOutputChannels": .number(Double(AVAudioSession.sharedInstance().outputNumberOfChannels)), "sessionMaximumOutputChannels": .number(Double(AVAudioSession.sharedInstance().maximumOutputNumberOfChannels)), "supportsMultichannel": .bool(AVAudioSession.sharedInstance().supportsMultichannelContent), "route": .array(AVAudioSession.sharedInstance().currentRoute.outputs.map { .object(["type": .string($0.portType.rawValue), "channels": .number(Double($0.channels?.count ?? 0)), "spatialAudio": .bool($0.isSpatialAudioEnabled)]) })]), "hwdec": .string(engine?.string("hwdec-current") ?? ""), "voDrops": .number(engine?.number("frame-drop-count") ?? 0), "decoderDrops": .number(engine?.number("decoder-frame-drop-count") ?? 0), "tracks": .array(tracks), "subtitleSettings": .object(Dictionary(uniqueKeysWithValues: ["sub-scale", "sub-border-size", "sub-align-x", "sub-pos", "sub-font", "sub-fonts-dir"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "videoParams": engine?.json("video-params") ?? .null, "videoOutParams": engine?.json("video-out-params") ?? .null, "edrHeadroom": .object(["current": .number(Double(surface.window?.screen.currentEDRHeadroom ?? 0)), "potential": .number(Double(surface.window?.screen.potentialEDRHeadroom ?? 0)), "brightness": .number(Double(surface.window?.screen.brightness ?? -1))]), "colorOutput": .object(Dictionary(uniqueKeysWithValues: ["target-colorspace-hint", "tone-mapping", "target-trc", "target-prim", "target-peak"].map { ($0, JSONValue.string(engine?.string($0) ?? "")) })), "sourceWidth": .number(engine?.number("video-params/w") ?? 0), "sourceHeight": .number(engine?.number("video-params/h") ?? 0)]) }
     func applySettings() throws {
         guard let engine else { return }
         try engine.resetQuality()
@@ -353,7 +430,10 @@ import AppleCore
         let screen = surface.window?.screen ?? UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
         let hdrDisplay = (screen?.potentialEDRHeadroom ?? 1) > 1
         let mapping = ["hwdec": hardware == "disabled" ? "no" : hardware == "copy" ? "videotoolbox-copy" : "videotoolbox", "demuxer-max-bytes": String(Int((settings.get("video", "cache").number ?? 100) * 1048576)), "video-sync": text("video", "sync_mode"), "alang": text("mpv", "audioLanguage"), "slang": text("mpv", "subtitleLanguage"), "cache-pause": text("mpv", "cachePause"), "deband": text("mpv", "deband"), "tone-mapping": text("mpv", "toneMapping"), "target-colorspace-hint": hdrDisplay ? text("mpv", "targetColorspaceHint") : "no", "audio-channels": text("audio", "channels"), "deinterlace": text("video", "deinterlace"), "audio-delay": String((settings.get("video", "audio_delay.normal").number ?? 0) / 1000), "sub-font": nativeSubtitleFont, "sub-ass-override": text("subtitles", "ass_style_override")]
+        let decoderChanged = loaded && mapping["hwdec"] != engine.string("hwdec")
+        if decoderChanged { allowDecoderRestart(engine) }
         for (key, value) in mapping { try engine.setting(key, value.isEmpty ? nil : value) }
+        if decoderChanged { try engine.command(["seek", String(engine.number("time-pos")), "absolute+exact"]) }
         try applySubtitles()
         try applyAspect()
         // Match PlayerComponent::setAudioConfiguration. The iOS FFmpeg build

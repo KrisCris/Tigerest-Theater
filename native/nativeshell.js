@@ -870,17 +870,12 @@ function getTigerestSettingsCategories() {
         mpv: {
             title: 'MPV 画质与插件',
             icon: '&#xe024;', // high_quality
-            subtitle: '渲染、HDR、缓存、uosc 与弹幕'
+            subtitle: '渲染后端、插件与 mpv.conf 编辑器'
         },
         danmaku: {
             title: '弹幕样式',
             icon: '&#xe0b7;', // chat
             subtitle: '内置 uosc_danmaku 的长期默认外观'
-        },
-        other: {
-            title: '高级',
-            icon: '&#xe429;', // tune
-            subtitle: '直接传入 mpv.conf 选项'
         }
     };
     if (window.tigerestAndroidApi || window.tigerestIPadApi) {
@@ -895,14 +890,104 @@ function getTigerestSettingsCategories() {
         .map(entry => ({...entry, ...sectionMeta[entry.key]}));
 }
 
+// Settings categories that configure the player. Emby's drawer only knows
+// the app and user groups, so these rows get a group of their own and the
+// app group becomes the library group.
+const TIGEREST_PLAYER_SETTINGS = ['main', 'video', 'audio', 'subtitles', 'mpv', 'danmaku'];
+const TIGEREST_LIBRARY_SETTINGS_TITLE = '媒体库设置';
+const TIGEREST_PLAYER_SETTINGS_TITLE = '播放器设置';
+
+function tigerestSettingsGroupTitle(section) {
+    if (window.tigerestAndroidApi || window.tigerestIPadApi) return '客户端设置';
+    return TIGEREST_PLAYER_SETTINGS.includes(section) ? TIGEREST_PLAYER_SETTINGS_TITLE : TIGEREST_LIBRARY_SETTINGS_TITLE;
+}
+
 function installTigerestSettingsMenu() {
     if (installTigerestSettingsMenu.refresh) {
         installTigerestSettingsMenu.refresh();
         return;
     }
+    if (!document.getElementById('tigerest-settings-menu-style')) {
+        const style = document.createElement('style');
+        style.id = 'tigerest-settings-menu-style';
+        style.textContent = '.mainDrawer .tigerest-moved-settings-row { display: none !important; }';
+        document.head.appendChild(style);
+    }
+    // The visible player rows are copies; a click goes to the hidden native
+    // row so Emby still routes, closes the drawer and keeps its history.
+    const copies = new WeakMap();
+    const copyRow = original => {
+        let copy = copies.get(original);
+        if (copy) return copy;
+        copy = original.cloneNode(true);
+        copy.removeAttribute('data-index');
+        copy.removeAttribute('data-action');
+        copy.classList.remove('navMenuOption-selected', 'tigerest-moved-settings-row');
+        copy.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            original.click();
+        });
+        copies.set(original, copy);
+        return copy;
+    };
+    const setText = (node, text) => {
+        if (node.textContent !== text) node.textContent = text;
+        if (node.getAttribute('title') !== text) node.setAttribute('title', text);
+        if (node.getAttribute('aria-label') !== text) node.setAttribute('aria-label', text);
+    };
+    const groupPlayerRows = rows => {
+        const anchor = rows.values().next().value;
+        const appSection = anchor?.closest('.navDrawerCollapseSection');
+        if (!appSection) return;
+        const header = appSection.querySelector('.navMenuHeader');
+        if (header) setText(header, TIGEREST_LIBRARY_SETTINGS_TITLE);
+        let section = appSection.nextElementSibling?.classList.contains('tigerest-player-settings')
+            ? appSection.nextElementSibling : null;
+        if (!section) {
+            section = document.createElement('div');
+            section.className = 'navDrawerCollapseSection focuscontainer-x tigerest-player-settings';
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'navDrawerCollapseButton noautofocus emby-collapsible-button emby-button emby-button-focusscale';
+            toggle.setAttribute('aria-expanded', 'true');
+            const title = document.createElement('h3');
+            title.className = 'navMenuHeader secondaryText emby-collapsible-title';
+            setText(title, TIGEREST_PLAYER_SETTINGS_TITLE);
+            const icon = document.createElement('i');
+            icon.className = 'navDrawerCollapseIcon md-icon emby-collapse-expandIcon emby-collapse-expandIconExpanded';
+            icon.textContent = 'expand_more';
+            toggle.append(title, icon);
+            const list = document.createElement('div');
+            list.className = 'navDrawerItemsContainer vertical-list collapseContent navDrawerCollapseContent expanded tigerest-player-settings-items';
+            // Emby's collapse styles keep .collapseContent at zero height
+            // unless the element carries an explicit height, as its own
+            // emby-collapse sets.
+            list.style.height = 'auto';
+            toggle.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+                toggle.setAttribute('aria-expanded', String(expanded));
+                icon.classList.toggle('emby-collapse-expandIconExpanded', expanded);
+                list.classList.toggle('expanded', expanded);
+                list.style.height = expanded ? 'auto' : '0px';
+            });
+            section.append(toggle, list);
+            appSection.after(section);
+        }
+        const list = section.querySelector('.tigerest-player-settings-items');
+        const wanted = TIGEREST_PLAYER_SETTINGS.filter(key => rows.has(key)).map(key => copyRow(rows.get(key)));
+        // Only touch the DOM when the rows changed: this runs from a
+        // MutationObserver on the drawer.
+        if (wanted.length !== list.children.length || wanted.some((row, index) => list.children[index] !== row))
+            list.replaceChildren(...wanted);
+    };
     const refresh = () => {
         const active = document.querySelector('#tigerest-settings-inline .tgs-section.active')?.dataset.section;
+        const playerRows = new Map();
         for (const row of document.querySelectorAll('.mainDrawer .navMenuOption')) {
+            if (row.closest('.tigerest-player-settings')) continue;
             // Emby's custom-action list rows resolve their route via the native
             // items container, rather than an href on the rendered element.
             const container = row.closest('.itemsContainer');
@@ -910,7 +995,19 @@ function installTigerestSettingsMenu() {
                 || container?.getItem?.(Number(row.dataset.index)) || container?.items?.[Number(row.dataset.index)];
             const href = item?.href || row.getAttribute('href') || '';
             const match = href.match(/\/plugins\/tigerest-native-settings\/settings\/([a-z]+)\.html(?:[?#]|$)/);
-            if (match) {
+            const grouped = match && TIGEREST_PLAYER_SETTINGS.includes(match[1]) && row.closest('.navDrawerCollapseSection');
+            row.classList.toggle('tigerest-moved-settings-row', Boolean(grouped));
+            if (grouped) {
+                // The visible copy carries the category; the hidden native row
+                // only routes.
+                delete row.dataset.settingsCategory;
+                playerRows.set(match[1], row);
+                const copy = copyRow(row);
+                copy.dataset.settingsCategory = match[1];
+                copy.classList.toggle('navMenuOption-selected', active ? match[1] === active : row.classList.contains('navMenuOption-selected'));
+                if (active === match[1]) copy.setAttribute('aria-current', 'page');
+                else copy.removeAttribute('aria-current');
+            } else if (match) {
                 row.dataset.settingsCategory = match[1];
                 if (active) row.classList.toggle('navMenuOption-selected', match[1] === active);
                 if (active === match[1]) row.setAttribute('aria-current', 'page');
@@ -921,6 +1018,7 @@ function installTigerestSettingsMenu() {
                 row.removeAttribute('aria-current');
             }
         }
+        if (playerRows.size) groupPlayerRows(playerRows);
     };
     installTigerestSettingsMenu.refresh = refresh;
     // Drawer content is lazy on mobile and rebuilt when Emby changes context.
@@ -954,9 +1052,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     const restartSettings = new Set([
         'home.startupFullscreen',
         'main.enableMPV',
-        'mpv.configMode',
         'mpv.renderBackend',
-        'mpv.systemConfigDir',
         'mpv.enableUosc',
         'mpv.enableConsole',
         'mpv.enableDanmaku',
@@ -968,10 +1064,16 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         'danmaku.opacity',
         'danmaku.displayarea'
     ]);
-    const embeddedOnlyMpvSettings = new Set([
+    // On the desktop the mpv.conf editor owns these: the quality preset, the
+    // profile parameters and the playback options are lines of that file.
+    // Android and iPad keep the plain settings, which they apply themselves.
+    const desktopMpvEditor = !window.tigerestAndroidApi && !window.tigerestIPadApi &&
+        typeof window.tigerestCreateMpvConfEditor === 'function' && typeof window.api?.player?.mpvConfState === 'function';
+    const editorMpvSettings = new Set([
+        'configMode',
+        'systemConfigDir',
+        'advancedProfileOverrides',
         'shaderPreset',
-        'enableUosc',
-        'enableDanmaku',
         'scale',
         'cscale',
         'dscale',
@@ -1000,6 +1102,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         'screenshotFormat',
         'screenshotDirectory'
     ]);
+    let mpvConfEditor = null;
 
     const css = document.createElement('style');
     css.id = 'tigerest-settings-style';
@@ -1130,7 +1233,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
 
     const header = element('div', 'tgs-header');
     const heading = element('div');
-    const headingTitle = element('h2', 'tgs-title', (window.tigerestAndroidApi || window.tigerestIPadApi) ? '客户端设置' : 'MPV 播放设置');
+    const headingTitle = element('h2', 'tgs-title', tigerestSettingsGroupTitle(initialSection || 'mpv'));
     headingTitle.id = 'tgs-settings-title';
     heading.appendChild(headingTitle);
     heading.appendChild(element('div', 'tgs-subtitle', '常规配置即时应用；带“需重启”标记的项目在下次启动生效'));
@@ -1182,6 +1285,51 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         }, 2200);
     };
 
+    // Messages from the player about the user's mpv.conf (RIFE pausing or
+    // restoring conflicting lines) stay visible longer than a plain save.
+    const showMpvConfMessage = message => {
+        showSaved(message);
+        clearTimeout(showSaved.timer);
+        showSaved.timer = setTimeout(() => {
+            status.textContent = '设置保存在当前客户端配置中，不会包含媒体服务器密码或令牌。';
+        }, 8000);
+    };
+    window.api.player?.mpvConfMessage?.connect?.(showMpvConfMessage);
+
+    // The page's own confirmation. A native confirm() blocks the page until
+    // its dialog closes, and the Qt dialog can open where the user cannot
+    // see it, which leaves the settings page frozen.
+    const confirmInPage = (title, message, okLabel) => new Promise(resolve => {
+        const modal = element('div', 'tgs-confirm-modal');
+        modal.style.cssText = 'position:fixed;inset:0;z-index:100002;display:flex;align-items:center;justify-content:center;background:#000a';
+        const box = element('div', 'tgs-confirm-dialog');
+        box.setAttribute('role', 'alertdialog');
+        box.setAttribute('aria-modal', 'true');
+        box.setAttribute('aria-label', title);
+        box.style.cssText = 'box-sizing:border-box;width:min(520px,calc(100vw - 32px));padding:20px 22px;color:#eee;background:#1d1d1d;border:1px solid #444;border-radius:4px;font-size:14px;line-height:1.6';
+        box.appendChild(element('div', '', title)).style.cssText = 'font-size:18px;margin-bottom:8px';
+        if (message) box.appendChild(element('div', '', message)).style.color = '#bbb';
+        const actions = element('div');
+        actions.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:18px';
+        const finish = value => { modal.remove(); document.removeEventListener('keydown', onKey, true); resolve(value); };
+        const onKey = event => {
+            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
+        };
+        const cancel = element('button', 'tgs-action', '取消');
+        const ok = element('button', 'tgs-action', okLabel);
+        ok.style.cssText = 'color:#171717;background:#ffbe38';
+        cancel.type = ok.type = 'button';
+        cancel.addEventListener('click', () => finish(false));
+        ok.addEventListener('click', () => finish(true));
+        actions.append(cancel, ok);
+        box.appendChild(actions);
+        modal.appendChild(box);
+        modal.addEventListener('click', event => { if (event.target === modal) finish(false); });
+        document.addEventListener('keydown', onKey, true);
+        document.body.appendChild(modal);
+        ok.focus();
+    });
+
     const settingControls = new Map();
     let rifeExtensionPanel = null, homeLibraries = null;
     const saveSetting = (section, key, value) => {
@@ -1202,9 +1350,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         if (!rifeCallout) return;
         const enabled = Boolean(jmpInfo.settings.video.aiRife);
         const rife = mpvDiagnostics.rife;
-        if (jmpInfo.mpvConfigMode === 'system') {
-            rifeCallout.textContent = 'AI 补帧需要使用内置播放配置。';
-        } else if (enabled && !rife.runtimeAvailable) {
+        if (enabled && !rife.runtimeAvailable) {
             rifeCallout.textContent = typeof window.api.player.rifeExtensionStatus === 'function'
                 ? 'AI 补帧已开启；请先安装 NVIDIA RIFE 扩展并完全退出、重新启动客户端。运行库检查失败时仍可正常播放原帧。'
                 : 'AI 补帧已开启，但内置组件尚未加载。请完全退出并重新启动客户端；若仍不可用，请检查安装包是否完整。';
@@ -1217,9 +1363,16 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         }
     };
 
-    const activate = section => {
+    const activate = async section => {
         if (!groups.has(section)) return;
+        if (activeSection === 'mpv' && section !== 'mpv' && mpvConfEditor?.pendingErrors()) {
+            if (await mpvConfEditor.confirmLeave() === 'stay') {
+                if (categorySelect) categorySelect.value = 'mpv';
+                return;
+            }
+        }
         activeSection = section;
+        headingTitle.textContent = tigerestSettingsGroupTitle(section);
         sessionStorage.setItem('tigerestSettingsTab', section);
         if (categorySelect) categorySelect.value = section;
         for (const [key, group] of groups) {
@@ -1300,7 +1453,10 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         const reset = element('button', 'tgs-reset', '恢复本页默认值');
         reset.type = 'button';
         reset.addEventListener('click', async () => {
-            if (!window.confirm(`确定恢复“${meta.title}”的默认设置吗？`)) return;
+            const note = section === 'mpv' && desktopMpvEditor
+                ? '只恢复本页的开关和渲染后端；mpv.conf 不会改动，要还原它请用下方编辑器里的「恢复默认配置」。'
+                : '';
+            if (!(await confirmInPage(`恢复“${meta.title}”的默认设置？`, note, '恢复默认'))) return;
             reset.disabled = true;
             await window.api.settings.resetToDefault(section);
             if (disposed || signal?.aborted) return;
@@ -1333,7 +1489,6 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             if (rifeExtensionPanel) group.appendChild(rifeExtensionPanel.node);
         }
         if (section === 'mpv' && !window.tigerestAndroidApi && !window.tigerestIPadApi) {
-            const activeMode = jmpInfo.mpvConfigMode === 'system' ? '系统用户配置' : '大河内置配置';
             const activeRoot = jmpInfo.mpvConfigDir || '尚未解析';
             const shaderFiles = Array.isArray(mpvDiagnostics.shaderFiles) ? mpvDiagnostics.shaderFiles : [];
             const shaderNames = shaderFiles
@@ -1365,18 +1520,13 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             group.appendChild(element(
                 'div',
                 'tgs-callout',
-                `当前实际使用：${activeMode} · ${activeRoot}。渲染后端：${rendererName}（当前 VO：${activeVo}）；默认配置档：${profileName}；视频 ${sourceSize} → 输出 ${outputSize}；实际缩放：${actualScale}；当前加载着色器：${shaderSummary}；完整帧流水线：${passSummary}。播放中按 Ctrl+J 开关统计总览、按数字 2 查看完整处理页，或按 Ctrl+Shift+J 直接显示完整页。自动模式优先读取你现有的 Windows/macOS 用户 mpv.conf；只有找不到用户配置时才部署内置配置。GPU-Next 模式会把 mpv 子窗口绑定到客户端窗口；兼容模式则锁定 vo=libmpv，防止 profile 另开播放窗口。标记“仅内置”的项可预先编辑，但只在切换为大河内置模式后生效，不会覆盖当前用户配置档与着色器。`
-            ));
-        } else if (section === 'other') {
-            group.appendChild(element(
-                'div',
-                'tgs-callout',
-                '这里接受标准 mpv.conf 的 key=value，每行一项，并在客户端选项之后应用。请不要填写 vo、wid 或 gpu-context；错误参数会记录为无敏感信息的警告。'
+                `当前播放器：配置目录 ${activeRoot}。渲染后端：${rendererName}（当前 VO：${activeVo}）；当前画质档：${profileName}；视频 ${sourceSize} → 输出 ${outputSize}；实际缩放：${actualScale}；当前加载着色器：${shaderSummary}；完整帧流水线：${passSummary}。播放中按 Ctrl+J 开关统计总览、按数字 2 查看完整处理页，或按 Ctrl+Shift+J 直接显示完整页。GPU-Next 模式会把 mpv 子窗口绑定到客户端窗口；兼容模式则锁定 vo=libmpv，防止 profile 另开播放窗口。`
             ));
         }
 
         const values = jmpInfo.settings[section];
         for (const setting of jmpInfo.settingsDescriptions[section]) {
+            if (section === 'mpv' && desktopMpvEditor && editorMpvSettings.has(setting.key)) continue;
             const row = element('div', 'tgs-setting');
             row.dataset.setting = `${section}.${setting.key}`;
             row.dataset.search = `${meta.title} ${setting.displayName || setting.key} ${setting.key} ${setting.help || ''}`.toLowerCase();
@@ -1384,9 +1534,6 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             labelTitle.appendChild(element('span', '', setting.displayName || setting.key));
             if (restartSettings.has(`${section}.${setting.key}`)) {
                 labelTitle.appendChild(element('span', 'tgs-restart', '需重启'));
-            }
-            if (section === 'mpv' && embeddedOnlyMpvSettings.has(setting.key)) {
-                labelTitle.appendChild(element('span', 'tgs-scope', '仅内置'));
             }
             const control = makeControl(section, setting, values[setting.key]);
             const input = control.matches('input,select,textarea') ? control : control.querySelector('input');
@@ -1403,6 +1550,13 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
                 row.appendChild(help);
             }
             group.appendChild(row);
+        }
+
+        if (section === 'mpv' && desktopMpvEditor) {
+            mpvConfEditor = window.tigerestCreateMpvConfEditor({element, player: window.api.player, settings: jmpInfo.settings.mpv,
+                saveSetting: (sectionName, key, value) => { jmpInfo.settings[sectionName][key] = value; },
+                notify: showSaved});
+            group.appendChild(mpvConfEditor.node);
         }
 
         if (section === 'home') {
@@ -1475,6 +1629,12 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     const resetAbort = new AbortController();
     const cleanup = () => {
         clearTimeout(showSaved.timer);
+        // Leaving through the Emby navigation cannot be held back; keep the
+        // draft and offer it once the page is gone.
+        if (mpvConfEditor?.pendingErrors()) setTimeout(() => window.tigerestOfferMpvConfDraft?.(window.api.player), 0);
+        mpvConfEditor?.dispose();
+        mpvConfEditor = null;
+        window.api.player?.mpvConfMessage?.disconnect?.(showMpvConfMessage);
         rifeExtensionPanel?.dispose();
         homeLibraries?.dispose();
         document.removeEventListener('keydown', onKeyDown);
@@ -1490,8 +1650,13 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         cleanup();
         if (!host && returnFocus?.isConnected) returnFocus.focus({preventScroll: true});
     };
+    const leave = async () => {
+        if (mpvConfEditor?.pendingErrors() && await mpvConfEditor.confirmLeave() === 'stay') return false;
+        close();
+        return true;
+    };
     const onKeyDown = event => {
-        if (event.key === 'Escape') { event.preventDefault(); close(); }
+        if (event.key === 'Escape') { event.preventDefault(); leave(); }
         if (event.key === 'Tab' && !host) {
             const focusable = [...dialog.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])')]
                 .filter(node => node.tabIndex >= 0 && node.getClientRects().length);
@@ -1500,7 +1665,7 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
             else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
         }
     };
-    closeButton.addEventListener('click', () => { close(); if (host) onReturn?.(); });
+    closeButton.addEventListener('click', async () => { if (await leave() && host) onReturn?.(); });
     if (!host) {
         overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
         document.addEventListener('keydown', onKeyDown);
@@ -1539,6 +1704,7 @@ async function openTigerestSettings(section = 'mpv') {
     return mountTigerestSettings(null, section, null, null, {apiProvider: currentSessionApiClient});
 }
 window.tigerestMountSettings = mountTigerestSettings;
+window.tigerestSettingsGroupTitle = tigerestSettingsGroupTitle;
 window.tigerestSettingsCategories = getTigerestSettingsCategories;
 window.tigerestInstallSettingsMenu = installTigerestSettingsMenu;
 window.tigerestOpenMpvSettings = openTigerestSettings;
@@ -1945,6 +2111,10 @@ function installWindowModeEntry() {
 
 installMpvSettingsEntry();
 installWindowModeEntry();
+if (!window.tigerestAndroidApi && !window.tigerestIPadApi) {
+    window.initCompleted.then(() => window.tigerestShowMpvConfNotices?.(window.jmpInfo?.mpvConfNotices))
+        .catch(error => console.warn('Unable to show mpv.conf notices', error));
+}
 installHorizontalShelfDragging();
 
 // A loaded server page names its remembered-server record. The native

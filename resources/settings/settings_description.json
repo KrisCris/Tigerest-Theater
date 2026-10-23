@@ -728,6 +728,11 @@
         "hidden": true
       },
       {
+        "value": "mpvConfEditorMigrated",
+        "default": false,
+        "hidden": true
+      },
+      {
         "value": "embeddedConfigDefaultMigrated",
         "default": false,
         "hidden": true
@@ -1209,7 +1214,7 @@
   },
   {
     "section": "other",
-    "order": 7,
+    "hidden": true,
     "values": [
       {
         "value": "other_conf",

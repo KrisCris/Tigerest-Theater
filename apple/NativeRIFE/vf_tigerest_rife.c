@@ -13,6 +13,8 @@
 #include "video/sws_utils.h"
 #include <libavutil/pixfmt.h>
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 #ifdef TIGEREST_RIFE_TIMING
 #include <time.h>
 static double trace_ms(void) {
@@ -38,6 +40,11 @@ struct priv {
     int64_t index, inputs, outputs, generated, bypassed, resets, failures;
     int recovery_frames;
     double last_ms;
+    // The desktop guard's window (RifeSessionMetrics.cpp): the last 180
+    // inference times after 30 warm-up predictions, reported as p95.
+    double timings[180];
+    int timing_count, timing_next;
+    int64_t predictions;
     const char *status;
     bool failed, speed_bypass;
 #ifdef TIGEREST_RIFE_TIMING
@@ -60,6 +67,8 @@ static void reset(struct mp_filter *f) {
     p->generation++;
     p->index = 0;
     p->recovery_frames = 0;
+    p->timing_count = p->timing_next = 0;
+    p->predictions = 0;
     p->resets++;
     tgrife_reset(p->engine);
 }
@@ -254,6 +263,12 @@ static void process(struct mp_filter *f) {
                 mid->pkt_duration = interval * 0.5;
                 mid->nominal_fps = img->nominal_fps * 2;
                 p->generated++;
+                if (++p->predictions > 30 && isfinite(p->last_ms) && p->last_ms >= 0) {
+                    p->timings[p->timing_next] = p->last_ms;
+                    p->timing_next = (p->timing_next + 1) % 180;
+                    if (p->timing_count < 180)
+                        p->timing_count++;
+                }
                 p->status = "active";
             }
         } else {
@@ -287,6 +302,18 @@ static void process(struct mp_filter *f) {
     } else
         send(f, img);
 }
+static int compare_ms(const void *a, const void *b) {
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+static double p95_ms(struct priv *p) {
+    if (!p->timing_count)
+        return 0;
+    double sorted[180];
+    memcpy(sorted, p->timings, sizeof(double) * p->timing_count);
+    qsort(sorted, p->timing_count, sizeof(double), compare_ms);
+    return sorted[(int)ceil(p->timing_count * .95) - 1];
+}
 static bool command(struct mp_filter *f, struct mp_filter_command *cmd) {
     if (cmd->type != MP_FILTER_COMMAND_GET_META)
         return false;
@@ -301,6 +328,7 @@ static bool command(struct mp_filter *f, struct mp_filter_command *cmd) {
     STAT(resets);
     STAT(failures);
     mp_tags_set_str(tags, "inferenceMs", mp_tprintf(64, "%.3f", p->last_ms));
+    mp_tags_set_str(tags, "inferenceP95Ms", mp_tprintf(64, "%.3f", p95_ms(p)));
     mp_tags_set_str(tags, "playbackSpeed", mp_tprintf(64, "%.6f", playback_speed(p)));
 #ifdef TIGEREST_RIFE_TIMING
 #define TIMING(key, member) mp_tags_set_str(tags, key, mp_tprintf(64, "%.3f", p->member))

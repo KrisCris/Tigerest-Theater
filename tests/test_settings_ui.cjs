@@ -23,7 +23,7 @@ withBrowser({
  ${iconFont?'@font-face{font-family:"Material Symbols Rounded";font-style:normal;font-weight:400;src:url(/emby-material-icons.woff2) format("woff2")}':''}
  .md-icon{font-family:'Material Symbols Rounded'!important;font-weight:400;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;overflow-wrap:normal;-webkit-font-smoothing:antialiased;text-rendering:optimizelegibility;font-feature-settings:'liga';font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24;overflow:hidden;vertical-align:middle}
  @media(max-width:760px){.mainDrawer{display:none;z-index:1000;box-shadow:0 0 0 100vmax #0008}.mainDrawer.drawer-open{display:block}.view{margin-left:0}}
- </style><script src="/homeData.js"></script><body><aside class="mainDrawer"><div class="mainDrawerScrollSlider"><div class="navDrawerItemsContainer itemsContainer" data-listindex="0"></div></div></aside><div class="view"><button id="origin">设置</button><div id="host" class="readOnlyContent"></div></div><script>
+ </style><script src="/homeData.js"></script><body><aside class="mainDrawer"><div class="mainDrawerScrollSlider"><div class="navDrawerCollapseSection"><button class="navDrawerCollapseButton"><h3 class="navMenuHeader">Tigerest Theater 设置</h3></button><div class="navDrawerItemsContainer itemsContainer" data-listindex="0"></div></div></div></aside><div class="view"><button id="origin">设置</button><div id="host" class="readOnlyContent"></div></div><script>
  // The injected Qt shell must finish wiring native settings before this fixture replaces its boundary.
  window.fixtureReady=Promise.resolve(window.initCompleted).then(()=>{
  window.saves=[];window.resets=[];window.confirm=()=>true;window.initCompleted=Promise.resolve();
@@ -39,7 +39,7 @@ withBrowser({
 },async({evaluate,call})=>{
  const assertDrawerAlignment = async layout => {
   const positions=await evaluate(`(()=>{const position=row=>({icon:row.querySelector('.navDrawerListItemIcon').getBoundingClientRect().left,text:row.querySelector('.listItemBodyText').getBoundingClientRect().left});return {native:position(document.querySelector('.mainDrawer .navMenuOption')),categories:[...document.querySelectorAll('.mainDrawer [data-settings-category]')].map(row=>({category:row.dataset.settingsCategory,...position(row)}))}})()`);
-  assert.equal(positions.categories.length,8);
+  assert.equal(positions.categories.length,7);
   for(const category of positions.categories){
    assert.ok(Math.abs(category.icon-positions.native.icon)<1,`${layout}: ${category.category} icon must align with native General (${JSON.stringify(positions)})`);
    assert.ok(Math.abs(category.text-positions.native.text)<1,`${layout}: ${category.category} text must align with native General (${JSON.stringify(positions)})`);
@@ -92,13 +92,24 @@ withBrowser({
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-inline .tgs-tabs, #tigerest-settings-inline [role=tablist]").length'),0,
   'content has no duplicate category navigation');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category]")].map(row=>row.dataset.settingsCategory)'),
-  ['main','home','audio','video','subtitles','mpv','danmaku','other'],'all supported categories are in Emby left navigation');
+  ['home','main','video','audio','subtitles','mpv','danmaku'],'all supported categories are in Emby left navigation');
+ // Emby's app group becomes the library group; player categories get their own.
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .navMenuHeader")].map(node=>node.textContent)'),
+  ['媒体库设置','播放器设置'],'settings drawer groups library and player settings');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .tigerest-player-settings [data-settings-category]")].map(row=>row.dataset.settingsCategory)'),
+  ['main','video','audio','subtitles','mpv','danmaku'],'player settings group holds the player categories in order');
+ // Emby collapses .collapseContent unless it has an explicit height.
+ assert.equal(await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings-items").style.height'),'auto','player group starts expanded');
+ await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings .navDrawerCollapseButton").click()');
+ assert.equal(await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings-items").style.height'),'0px','player group collapses');
+ await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings .navDrawerCollapseButton").click()');
+ assert.equal(await evaluate('document.querySelector(".mainDrawer .tigerest-player-settings-items").style.height'),'auto','player group expands again');
  assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'audio');
  const playbackCategoryTitle=await evaluate('window.tigerestAndroidApi ? "播放器" : "MPV 画质与插件"');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .listItemBodyText")].map(node=>node.textContent)'),
-  ['General','客户端','首页设置','音频','视频','字幕',playbackCategoryTitle,'弹幕样式','高级'],'native menu has categories without a redundant parent entry');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .listItemBodyText")].filter(node=>node.offsetParent).map(node=>node.textContent)'),
+  ['General','首页设置','客户端','视频','音频','字幕',playbackCategoryTitle,'弹幕样式'],'native menu has categories without a redundant parent entry');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category] .md-icon")].map(node=>node.textContent.codePointAt(0))'),
-  [0xe30c,0xe88a,0xe050,0xe04b,0xe01c,0xe024,0xe0b7,0xe429],'native rows render each semantic category icon instead of arrows');
+  [0xe88a,0xe30c,0xe04b,0xe050,0xe01c,0xe024,0xe0b7],'native rows render each semantic category icon instead of arrows');
  await assertDrawerAlignment('desktop');
  await evaluate(`document.querySelectorAll('.mainDrawer .listItem-content').forEach(node=>node.classList.replace('navMenuOption-listItem-content','navMenuOption-listItem-content-reduceleftpadding'))`);
  await assertDrawerAlignment('TV wrapper');
@@ -114,14 +125,17 @@ withBrowser({
  await evaluate(`const opacity=document.querySelector('[data-setting="danmaku.opacity"] select');opacity.value=String(jmpInfo.settingsDescriptions.danmaku.find(s=>s.key==='opacity').options.findIndex(o=>o.value===0.5));opacity.dispatchEvent(new Event('change'))`);
  assert.deepEqual(await evaluate('saves.at(-1)'),['danmaku','opacity',0.5],'selected values reach persistence immediately');
  await evaluate(`document.querySelector('[data-section="danmaku"] .tgs-reset').click();new Promise(resolve=>setTimeout(resolve,50))`);
+ // The page asks in its own dialog; a native confirm() could freeze the page.
+ assert.match(await evaluate('document.querySelector(".tgs-confirm-modal")?.textContent||""'),/恢复“弹幕样式”的默认设置/);
+ await evaluate(`[...document.querySelectorAll('.tgs-confirm-modal button')].find(b=>b.textContent==='恢复默认').click();new Promise(resolve=>setTimeout(resolve,50))`);
  assert.deepEqual(await evaluate('resets'),['danmaku']);
  assert.equal(await evaluate('jmpInfo.settings.danmaku.opacity'),0.7,'reset restores defaults');
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-style").length'),1,'reset releases prior style and controls');
  await evaluate('renderSettingsDrawer();new Promise(resolve=>setTimeout(resolve,20))');
- assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),8,'rerender does not duplicate native menu entries');
+ assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),7,'rerender does not duplicate native menu entries');
  assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'danmaku','reset/rerender preserve selected category');
  await evaluate(`(()=>{const container=document.querySelector('.navDrawerItemsContainer');const rowItems=new Map([...container.children].map((row,index)=>[row,container.items[index]]));container.getItemFromElement=row=>rowItems.get(row);container.items=null;container.getItem=()=>null;for(const row of container.children){delete row.dataset.index;row.querySelector('.listItemBodyText').textContent=rowItems.get(row).Name;}window.virtualRowItems=rowItems;})()`);
- assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),8,'virtualized native rows resolve through getItemFromElement');
+ assert.equal(await evaluate('document.querySelectorAll(".mainDrawer [data-settings-category]").length'),7,'virtualized native rows resolve through getItemFromElement');
  await call('Emulation.setDeviceMetricsOverride',{width:360,height:740,deviceScaleFactor:1,mobile:true});
  await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true,'phone has no document overflow');

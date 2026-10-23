@@ -1058,7 +1058,7 @@ QString SystemComponent::getNativeShellScript()
   }
   clientData.insert("mode", QJsonValue::fromVariant(defaultMode));
   clientData.insert("mpvConfigDir", QJsonValue::fromVariant(MpvConfigManager::activeConfigDir()));
-  clientData.insert("mpvConfigMode", MpvConfigManager::usingSystemConfig() ? "system" : "embedded");
+  clientData.insert("mpvConfNotices", QJsonValue::fromVariant(MpvConfigManager::notices()));
 
   QVariantList settingsDescriptionsList = SettingsComponent::Get().settingDescriptions();
   QVariantMap settingsDescriptions = QVariantMap();
@@ -1114,6 +1114,7 @@ QString SystemComponent::getNativeShellScript()
     ":/web-client/extension/updatePlugin.js",
     ":/web-client/extension/connectivityHelper.js",
     ":/web-client/extension/serverHistory.js",
+    ":/web-client/extension/mpvConfEditor.js",
     ":/web-client/extension/nativeshell.js",
     ":/web-client/extension/offline.js",
     ":/web-client/extension/homeData.js",

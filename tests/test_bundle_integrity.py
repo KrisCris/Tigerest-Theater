@@ -266,10 +266,9 @@ def test_settings() -> None:
 
 
 def test_mpv_bundle() -> None:
-    config = read("resources/mpv/mpv.conf.in")
-    require("load-stats-overlay=no" in config and
-            "script=~~/plugins/stats.lua" in config,
-            "embedded MPV must load only the shipped Chinese stats overlay")
+    # The default user area of the single editable mpv.conf. Options decided by
+    # the client or other settings pages live in the managed tail instead.
+    config = read("resources/mpv/mpv.default.conf")
     require("display-stats-toggle" in read("resources/mpv/plugins/stats.lua") and
             "display-page-" in read("resources/mpv/plugins/stats.lua"),
             "shipped stats must preserve the diagnostic script bindings")
@@ -279,17 +278,28 @@ def test_mpv_bundle() -> None:
     profiles = set(re.findall(r"^\[([^]]+)]$", config, re.MULTILINE))
     require(profiles == {
         "tigerest-quality-base", "tigerest-default",
-        "tigerest-liveaction", "tigerest-aggressive-test", "default",
+        "tigerest-liveaction", "tigerest-aggressive-test",
     }, "retired or unexpected MPV profiles remain in the bundle")
-    require(not re.search(r"^hwdec\s*=", config, re.MULTILINE),
-            "shader profiles must not override the application hardware-decoding policy")
-    require("safe" not in "\n".join(line for line in config.splitlines()
-                                     if line.startswith("[tigerest-")),
-            "safe profile must be removed")
-    require("@TIGEREST_IPC_SERVER@" in config,
-            "platform-specific SVP IPC placeholder is missing")
+    catalog = json.loads(read("resources/mpvconf/options.json"))
+    locked = {key for group in catalog["locked"] for key in group["keys"]}
+    page_owned = {key for group in catalog["pageOwned"] for key in group["keys"]}
+    for key in ("vo", "input-ipc-server", "load-scripts", "script", "osc", "idle", "include"):
+        require(key in locked, f"{key} must be locked to the client")
+    for key in ("hwdec", "video-sync", "sub-font", "sub-scale", "audio-channels"):
+        require(key in page_owned, f"{key} must be decided by its settings page")
+    active = [line.split("=", 1)[0].strip() for line in config.splitlines()
+              if line.strip() and not line.lstrip().startswith(("#", "["))]
+    require(not (set(active) & (locked | page_owned)),
+            "the default user area must not contain locked or page-owned options")
+    require(not re.search(r"^profile\s*=", config.split("[", 1)[0], re.MULTILINE),
+            "the startup profile belongs to the managed tail, not the user area")
+    rife = next(item for item in catalog["conditional"] if item["id"] == "RIFE")
+    require(rife["setting"] == ["video", "aiRife"] and
+            any("minterpolate" in rule.get("filters", []) for rule in rife["rules"]) and
+            any(rule.get("key") == "interpolation" for rule in rife["rules"]),
+            "RIFE must suspend frame-rate filters and mpv interpolation")
 
-    # Every active option in the user-facing template must have an immediately
+    # Every active option in the default user area must have an immediately
     # preceding Chinese comment so the generated mpv.conf is self-documenting.
     lines = config.splitlines()
     for index, line in enumerate(lines):
@@ -328,7 +338,7 @@ def test_mpv_bundle() -> None:
     require("plugins/uosc.lua" in manager, "uosc named loader is not wired")
     require("plugins/emby_quality.lua" in manager, "Emby quality bridge is not wired")
     require("plugins/uosc_danmaku.lua" in manager, "danmaku named loader is not wired")
-    require("input-ipc-server=mpvpipe" in manager and "#ifdef Q_OS_WIN" in manager,
+    require('QStringLiteral("mpvpipe")' in manager and "#ifdef Q_OS_WIN" in manager,
             "Windows SVP named pipe is not generated before libmpv startup")
     require("legacyPreset" in manager and 'QStringLiteral("aggressive")' in manager,
             "retired preset migration is missing")
@@ -343,45 +353,30 @@ def test_mpv_bundle() -> None:
     danmaku_options = read("resources/mpv/plugins/uosc_danmaku/modules/options.lua")
     require(re.search(r"^\s*displayarea\s*=\s*0\.2\s*,", danmaku_options, re.MULTILINE),
             "bundled danmaku display area must default to 0.2")
-    for comment in (
-        "# 加载 UOSC", "# 将 UOSC 码率选择交回 Emby Web",
-        "# 加载大河三档画质菜单", "# 加载 UOSC 弹幕",
-    ):
-        require(comment in manager, "generated script option lacks a Chinese comment")
-    require("mode == \"auto\" || mode == \"system\"" in manager,
-            "automatic user MPV config detection is not wired")
-    require('mode == QStringLiteral("auto")' in manager and
-            'mode = QStringLiteral("embedded")' in manager and
-            "embeddedConfigDefaultMigrated" in manager,
-            "legacy automatic mode is not migrated to the bundled default")
-    require("writeSystemCompanionConfig" in manager and
-            "TIGEREST_MPV_INCLUDE" in manager and
-            "tigerest-system-profiles.conf" in manager,
-            "system MPV mode does not receive bundled shader profiles")
-    companion = manager[
-        manager.index("bool writeSystemCompanionConfig"):
-        manager.index("QString MpvConfigManager::profileName")
-    ]
-    require("#if defined(Q_OS_MAC)" in companion and
-            "danmakuStyleMpvOptionsText" in companion and
-            "SETTINGS_SECTION_DANMAKU" in companion,
-            "macOS system mode does not receive the persistent bundled danmaku style")
-    require("TIGEREST_MPV_SAFE_SCRIPTS" in manager and
-            "safeMacScriptPaths" in manager and
-            "macOS host safety" in manager,
-            "macOS system mode can still autoload a user UOSC that destroys libmpv")
+    for marker in ("load-stats-overlay", "~~/plugins/stats.lua", "加载 uosc", "加载弹幕搜索"):
+        require(marker in manager, f"managed tail lacks {marker}")
+    require("mpvConfEditorMigrated" in manager and "旧版自定义配置备份" in manager and
+            "user-overrides.conf" in manager,
+            "2.9.4 migration must back up the retired customizations")
+    require("pruneRetiredShaders" in manager and "ensureUserShaderDir" in manager,
+            "shader library updates must keep shaders/user and drop retired bundled files")
+    manifest = json.loads(read("resources/mpv/shaders/manifest.json"))
+    shipped = {path.relative_to(ROOT / "resources/mpv/shaders").as_posix()
+               for path in (ROOT / "resources/mpv/shaders").rglob("*.glsl")}
+    require(set(manifest["files"]) == shipped, "shader manifest is stale; run tools/generate_mpv_shader_catalog.py")
+    shaders = json.loads(read("resources/mpvconf/shaders.json"))
+    require({item["path"] for item in shaders["shaders"]} == shipped,
+            "shader catalog is stale; run tools/generate_mpv_shader_catalog.py")
     controller = read("external/mpvqt/src/mpvcontroller.cpp")
-    require('mpv_set_option_string(d_ptr->m_mpv, "include"' in controller and
-            "TIGEREST_MPV_INCLUDE" in controller,
-            "libmpv does not parse the system-mode companion profile file")
-    require('mpv_set_option_string(d_ptr->m_mpv, "load-scripts", "no")' in controller and
-            'mpv_set_option_string(d_ptr->m_mpv, "scripts"' in controller and
-            "TIGEREST_MPV_SAFE_SCRIPTS" in controller,
-            "libmpv does not enforce macOS script isolation before initialization")
+    require("TIGEREST_MPV_FALLBACK_CONFIG" in controller and "TIGEREST_MPV_CONFIG_FALLBACK_USED" in controller,
+            "libmpv must fall back to the default configuration instead of aborting")
+    require("TIGEREST_MPV_SAFE_SCRIPTS" not in controller and "TIGEREST_MPV_INCLUDE" not in controller,
+            "the retired system-mode companion is still wired")
     player = read("src/player/PlayerComponent.cpp")
-    require("MpvConfigManager::usingSystemConfig()" in player and
-            "Preserving user MPV profile and shaders" in player,
-            "user MPV profiles and shaders are still overwritten")
+    require("setOtherConfiguration" not in player and "usingSystemConfig" not in player,
+            "the retired advanced options or system mode are still applied")
+    require("applyUserConfLive" in player and "MpvConfigManager::refresh()" in player,
+            "mpv.conf edits and setting changes must apply to the running player")
     require("mpvDiagnostics" in player and 'read("glsl-shaders")' in player and
             'mpv_observe_property(m_mpv->mpv(), 0, "glsl-shaders"' in player,
             "runtime shader diagnostics are missing")
@@ -533,19 +528,18 @@ def test_native_player_composition() -> None:
             "onFullscreenRequested" in qml,
             "uosc/native fullscreen routing is incomplete")
     require("tigerest-default" in mpv_item and "tigerest-aggressive-test" in mpv_item and
-            'getProperty(QStringLiteral("glsl-shaders"))' in mpv_item and
-            "滤镜切换失败" in mpv_item,
-            "profile shortcuts do not verify the runtime shader list")
-    require('QStringLiteral("change-list"), QStringLiteral("glsl-shaders")' in mpv_item and
-            'QStringLiteral("clr")' in mpv_item and
-            "shader.toString().trimmed().isEmpty()" in mpv_item and
-            "shaderCount == expectedShaders" in mpv_item,
-            "profile shortcuts do not clear and exactly verify list-valued shader state")
+            "m_player->applyQualityProfile" in mpv_item,
+            "Alt+1/2/3 must switch through the client's profile application")
+    require('<< "change-list" << "glsl-shaders" << "clr"' in player_component and
+            "MpvConf::shaderCount(steps)" in player_component and
+            "滤镜切换失败" in player_component,
+            "profile switches do not clear and exactly verify list-valued shader state")
     profile_menu = read("resources/mpv/plugins/profile_menu.lua")
-    require("mp.commandv('change-list', 'glsl-shaders', 'clr', '')" in profile_menu,
-            "uosc profile menu does not clear the previous shader list")
-    require('value(SETTINGS_SECTION_MPV, "advancedProfileOverrides").toBool()' in player_component,
-            "advanced settings still overwrite every profile by default")
+    require("'script-message', 'tigerest-apply-profile'" in profile_menu and
+            "user-data/profile_menu/profiles" in profile_menu,
+            "uosc profile menu must list mpv.conf profiles and switch through the client")
+    require('"tigerest-apply-profile"' in player_component,
+            "the client does not receive profile switches from the uosc menu")
 
     video_player = read("native/mpvVideoPlayer.js")
     for marker in (
@@ -653,7 +647,7 @@ def test_brand_assets() -> None:
 def test_settings_ui() -> None:
     shell = read("native/nativeshell.js")
     for marker in (
-        "MPV 播放设置", "MPV 画质与插件", "tgs-search",
+        "播放器设置", "媒体库设置", "MPV 画质与插件", "tgs-search",
         "typeof currentValue === 'boolean'", "tigerest-mpv-settings-button",
         "window.tigerestOpenMpvSettings", "event.key === ','", "当前加载着色器",
         "实际缩放", "完整帧流水线",
@@ -679,8 +673,11 @@ def test_settings_ui() -> None:
     system = read("src/system/SystemComponent.cpp")
     require("new TextDecoder('utf-8')" in system,
             "UTF-8 settings descriptions are not decoded correctly")
-    require("mpvConfigDir" in system and "mpvConfigMode" in system,
-            "settings UI cannot show the active MPV config root")
+    require("mpvConfigDir" in system and "mpvConfNotices" in system and "mpvConfEditor.js" in system,
+            "settings UI cannot show the MPV config root, startup notices or the mpv.conf editor")
+    editor = read("native/mpvConfEditor.js")
+    for marker in ("tgs-conf-plus", "强行使用", "复制给 AI", "恢复默认配置", "mpvConfSave", "window.tigerestCreateMpvConfEditor"):
+        require(marker in editor, f"mpv.conf editor marker missing: {marker}")
     player = read("src/player/PlayerComponent.cpp")
     require('mpv_observe_property(m_mpv->mpv(), 0, "current-ao"' in player and
             "Audio output fell back to null" in player and
