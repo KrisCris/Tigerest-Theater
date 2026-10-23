@@ -224,9 +224,9 @@
     }
     // The flying copy is drawn a frame or two after the frame that adds it;
     // hiding its card in that same frame left an empty slot until then. The
-    // tablet's DOM scene must leave the card out of its copy at once.
+    // tablet's DOM scene leaves the card out of its own copy instead (bitmap()).
     function holdDrawn(job, node) {
-        if (nativeGlass()) return hold(job, node);
+        job.leaving = node;
         requestAnimationFrame(() => requestAnimationFrame(() => { if (!job.done) hold(job, node); }));
     }
     const release = ({node, value}) => { node.style.visibility = value; node.removeAttribute('data-tigerest-poster-held'); };
@@ -488,11 +488,10 @@
                     const [x,y]=JSON.parse(n.getAttribute('data-tigerest-scroll'));
                     (job.syncs||=[]).push(()=>{n.scrollLeft=x;n.scrollTop=y;});
                 }
-                // The independently flying poster must not remain in the scene.
-                for(const h of job.held) {
-                    cached.copies?.get(h.node)?.style.setProperty('visibility','hidden');
-                }
             } else scene=frozen(job);
+            // The independently flying poster must not remain in the scene.
+            const copies=hit?cached.copies:job.copies;
+            for(const part of job.leaving?[job.leaving,...placeholders(job.leaving)]:[]) copies?.get(part)?.style.setProperty('visibility','hidden');
             job.metric.cacheHit=!!hit;job.metric.backgroundRenderer='dom-glass';
             view.bitmap=scene;view.group.append(scene);sync(job);return;
         }
@@ -630,6 +629,9 @@
                         // No worker raster (or it failed): cover with the blurred DOM copy instead.
                         job.metric.domFallback=true;fromScene.group.append(frozen(job));sync(job);
                     }
+                    // A fresh tablet scene is drawn a few frames after it is added; fading
+                    // the veil in sooner showed its dark background over the whole page.
+                    if(!hot&&nativeGlass()&&!job.signal.aborted){await primed(job,veil);veil.style.opacity='0';}
                     await animate(job,hot?fromScene.bitmap:veil,[{opacity:0},{opacity:1}],{duration:Math.max(80,COVER_MS-(performance.now()-job.start)),easing:soft});
                 })()]);
             if (job.signal.aborted && job.signal.reason !== 'resize') return;
@@ -639,6 +641,7 @@
             const missing=async()=>{job.metric.fallback='missing-target';await Promise.all([cover,glass,flight.root].map(n=>animate(job,n,[{opacity:1},{opacity:0}],{duration:220,easing:soft})));return result;};
             if (options.prepareTarget) {
                 await wait(job,()=>page()!==previous && page());
+                if (!job.signal.aborted) options.restoreScroll?.();
                 if (!job.signal.aborted && !usable(options.findTarget())) await options.prepareTarget(job.signal);
             }
             let target=await wait(job,()=>{const n=options.findTarget();return page()!==previous && usable(n)?n:null;},2400,16);

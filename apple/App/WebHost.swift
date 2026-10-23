@@ -19,6 +19,7 @@ import AppleCore
         config.setURLSchemeHandler(AssetSchemeHandler(), forURLScheme: "tigerest")
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
+        Self.allowFullRateRendering(config.preferences)
         view = WKWebView(frame: .zero, configuration: config)
         super.init()
         config.userContentController.add(self, name: "tigerestNative")
@@ -30,6 +31,19 @@ import AppleCore
         view.isInspectable = true
         #endif
         if active { activate() }
+    }
+    /// WebKit keeps page rendering updates near 60 fps by default, so script-driven
+    /// motion ran at 57 fps on a 120 Hz iPad. Its feature switch lifts that to the
+    /// display rate (113 fps measured). Not public API; without it the page stays at 60.
+    private static func allowFullRateRendering(_ preferences: WKPreferences) {
+        let featuresSelector = NSSelectorFromString("_features"), setSelector = NSSelectorFromString("_setEnabled:forFeature:")
+        guard let features = (WKPreferences.self as AnyObject).perform(featuresSelector)?.takeUnretainedValue() as? [NSObject],
+              preferences.responds(to: setSelector) else { return }
+        typealias Setter = @convention(c) (AnyObject, Selector, Bool, AnyObject) -> Void
+        let setter = unsafeBitCast(preferences.method(for: setSelector), to: Setter.self)
+        for feature in features where feature.value(forKey: "key") as? String == "PreferPageRenderingUpdatesNear60FPSEnabled" {
+            setter(preferences, setSelector, false, feature)
+        }
     }
     func activate() {
         active = true
