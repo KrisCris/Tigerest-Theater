@@ -96,9 +96,9 @@ withBrowser({
  assert.equal(await evaluate('document.querySelector(".mainDrawer [aria-current=page]").dataset.settingsCategory'),'audio');
  const playbackCategoryTitle=await evaluate('window.tigerestAndroidApi ? "播放器" : "MPV 画质与插件"');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer .listItemBodyText")].map(node=>node.textContent)'),
-  ['General','客户端','首页设置','音频','视频','字幕',playbackCategoryTitle,'弹幕样式','高级'],'native menu has categories without a redundant parent entry');
+  ['General','客户端','首页设置','音频','视频','字幕',playbackCategoryTitle,'弹幕样式'],'native menu has categories without a redundant parent entry');
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".mainDrawer [data-settings-category] .md-icon")].map(node=>node.textContent.codePointAt(0))'),
-  [0xe30c,0xe88a,0xe050,0xe04b,0xe01c,0xe024,0xe0b7,0xe429],'native rows render each semantic category icon instead of arrows');
+  [0xe30c,0xe88a,0xe050,0xe04b,0xe01c,0xe024,0xe0b7],'native rows render each semantic category icon instead of arrows');
  await assertDrawerAlignment('desktop');
  await evaluate(`document.querySelectorAll('.mainDrawer .listItem-content').forEach(node=>node.classList.replace('navMenuOption-listItem-content','navMenuOption-listItem-content-reduceleftpadding'))`);
  await assertDrawerAlignment('TV wrapper');
@@ -114,6 +114,9 @@ withBrowser({
  await evaluate(`const opacity=document.querySelector('[data-setting="danmaku.opacity"] select');opacity.value=String(jmpInfo.settingsDescriptions.danmaku.find(s=>s.key==='opacity').options.findIndex(o=>o.value===0.5));opacity.dispatchEvent(new Event('change'))`);
  assert.deepEqual(await evaluate('saves.at(-1)'),['danmaku','opacity',0.5],'selected values reach persistence immediately');
  await evaluate(`document.querySelector('[data-section="danmaku"] .tgs-reset').click();new Promise(resolve=>setTimeout(resolve,50))`);
+ // The page asks in its own dialog; a native confirm() could freeze the page.
+ assert.match(await evaluate('document.querySelector(".tgs-confirm-modal")?.textContent||""'),/恢复“弹幕样式”的默认设置/);
+ await evaluate(`[...document.querySelectorAll('.tgs-confirm-modal button')].find(b=>b.textContent==='恢复默认').click();new Promise(resolve=>setTimeout(resolve,50))`);
  assert.deepEqual(await evaluate('resets'),['danmaku']);
  assert.equal(await evaluate('jmpInfo.settings.danmaku.opacity'),0.7,'reset restores defaults');
  assert.equal(await evaluate('document.querySelectorAll("#tigerest-settings-style").length'),1,'reset releases prior style and controls');

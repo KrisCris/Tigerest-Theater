@@ -22,7 +22,9 @@ public:
   bool setValue(const QString& key, const QVariant& value);
   void setValueNoSave(const QString& key, const QVariant& value);
   void resetValue(const QString& key);
-  void resetValues();
+  // keepHidden leaves hidden values (migration markers and other internal
+  // state) alone, for the settings page's "restore this page" button.
+  void resetValues(bool keepHidden = false);
   void registerSetting(SettingsValue* value);
   bool isHidden() const;
 

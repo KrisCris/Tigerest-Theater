@@ -1193,6 +1193,40 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
     };
     window.api.player?.mpvConfMessage?.connect?.(showMpvConfMessage);
 
+    // The page's own confirmation. A native confirm() blocks the page until
+    // its dialog closes, and the Qt dialog can open where the user cannot
+    // see it, which leaves the settings page frozen.
+    const confirmInPage = (title, message, okLabel) => new Promise(resolve => {
+        const modal = element('div', 'tgs-confirm-modal');
+        modal.style.cssText = 'position:fixed;inset:0;z-index:100002;display:flex;align-items:center;justify-content:center;background:#000a';
+        const box = element('div', 'tgs-confirm-dialog');
+        box.setAttribute('role', 'alertdialog');
+        box.setAttribute('aria-modal', 'true');
+        box.setAttribute('aria-label', title);
+        box.style.cssText = 'box-sizing:border-box;width:min(520px,calc(100vw - 32px));padding:20px 22px;color:#eee;background:#1d1d1d;border:1px solid #444;border-radius:4px;font-size:14px;line-height:1.6';
+        box.appendChild(element('div', '', title)).style.cssText = 'font-size:18px;margin-bottom:8px';
+        if (message) box.appendChild(element('div', '', message)).style.color = '#bbb';
+        const actions = element('div');
+        actions.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:18px';
+        const finish = value => { modal.remove(); document.removeEventListener('keydown', onKey, true); resolve(value); };
+        const onKey = event => {
+            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
+        };
+        const cancel = element('button', 'tgs-action', '取消');
+        const ok = element('button', 'tgs-action', okLabel);
+        ok.style.cssText = 'color:#171717;background:#ffbe38';
+        cancel.type = ok.type = 'button';
+        cancel.addEventListener('click', () => finish(false));
+        ok.addEventListener('click', () => finish(true));
+        actions.append(cancel, ok);
+        box.appendChild(actions);
+        modal.appendChild(box);
+        modal.addEventListener('click', event => { if (event.target === modal) finish(false); });
+        document.addEventListener('keydown', onKey, true);
+        document.body.appendChild(modal);
+        ok.focus();
+    });
+
     const settingControls = new Map();
     let rifeExtensionPanel = null, homeLibraries = null;
     const saveSetting = (section, key, value) => {
@@ -1315,7 +1349,10 @@ async function mountTigerestSettings(host = null, initialSection = null, onRetur
         const reset = element('button', 'tgs-reset', '恢复本页默认值');
         reset.type = 'button';
         reset.addEventListener('click', async () => {
-            if (!window.confirm(`确定恢复“${meta.title}”的默认设置吗？`)) return;
+            const note = section === 'mpv' && desktopMpvEditor
+                ? '只恢复本页的开关和渲染后端；mpv.conf 不会改动，要还原它请用下方编辑器里的「恢复默认配置」。'
+                : '';
+            if (!(await confirmInPage(`恢复“${meta.title}”的默认设置？`, note, '恢复默认'))) return;
             reset.disabled = true;
             await window.api.settings.resetToDefault(section);
             if (disposed || signal?.aborted) return;

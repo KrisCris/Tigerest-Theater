@@ -65,6 +65,11 @@ function createMpvConfEditor({element, player, settings, saveSetting, notify}) {
         .tgs-mpvconf { display: grid; gap: 20px; margin-top: 8px; }
         .tgs-mpvconf h3 { margin: 8px 0 0; font-size: 18px; font-weight: 400; }
         .tgs-mpvconf .tgs-conf-note { color: #aaa; font-size: 13px; line-height: 1.6; }
+        .tgs-conf-help { padding: 4px 16px 10px; color: #bbb; font-size: 13px; line-height: 1.7; background: #1b1b1b; border: 1px solid #333; border-radius: 3px; }
+        .tgs-conf-help summary { padding: 8px 0; color: #ddd; font-size: 14px; cursor: pointer; }
+        .tgs-conf-help h4 { margin: 12px 0 4px; color: #e6c27a; font-size: 14px; font-weight: 500; }
+        .tgs-conf-help ul { margin: 0; padding-left: 20px; }
+        .tgs-conf-help li { margin: 3px 0; overflow-wrap: anywhere; }
         .tgs-conf-form { display: grid; gap: 18px; }
         .tgs-conf-field { display: grid; gap: 6px; }
         .tgs-conf-field-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; font-size: 15px; }
@@ -161,7 +166,8 @@ function createMpvConfEditor({element, player, settings, saveSetting, notify}) {
     const globalForm = element('div', 'tgs-conf-form');
 
     const editorTitle = element('h3', '', 'mpv.conf');
-    const editorNote = element('div', 'tgs-conf-note');
+    const editorNote = element('details', 'tgs-conf-help');
+    editorNote.open = true;
     const toolbar = element('div', 'tgs-conf-toolbar');
     const editor = element('div', 'tgs-conf-editor');
     const headDetails = element('details', 'tgs-conf-managed');
@@ -745,6 +751,50 @@ function createMpvConfEditor({element, player, settings, saveSetting, notify}) {
         analyze().then(() => describeSaveState());
     });
 
+    // ---- usage notes ----
+    const renderHelp = fresh => {
+        editorNote.replaceChildren(element('summary', '', '使用说明（点击收起）'));
+        const sections = [
+            ['这份文件是什么', [
+                '客户端只读取这一份 mpv.conf，编辑器显示的就是它的全部内容。',
+                '灰色的头部和尾部是管理区：写着由软件和「视频」「字幕」「音频」等设置页决定的配置，以及播放时软件会执行的动作。它们只读，要改请到对应的设置页。',
+                '中间可编辑的部分是用户区：开头是所有档位共用的全局选项，后面每个 [名称] 是一个画质档位。'
+            ]],
+            ['怎么修改', [
+                '上方表单和下方文本是同一份内容，改哪边都行，另一边会立即跟着变。表单里的画质参数改的是上面「画质预设」选中的那一档；显示「继承自 …」的项点「定位」可以找到来源行。',
+                '左侧每两行之间的「+」可以在那个位置插入配置：画质参数、着色器、vf 滤镜，或新建自己的档位。面板会写明插入到哪一段，已经有的项会让你直接跳过去改。',
+                '每行写成 key=value，上一行用 # 写中文说明。值里有 # 或首尾空格时要加双引号，例如 sub-color="#FFFFFF"。',
+                '没有错误时自动保存并立即应用，不用重启；删除的配置项恢复为 mpv 默认值。',
+                '写错的行会标红，下方列出原因，点击可跳到那一行；有错误时不会保存。离开设置页时如果还有错误，可以选「强行使用」（mpv 会跳过它不认识的行）或「返回修改」。'
+            ]],
+            ['档位、着色器和滤镜', [
+                '切档时客户端先清空着色器，再按顺序执行该档位的内容（profile= 表示继承另一档）。自建档位名以 tigerest-user- 开头并写 profile-desc，会出现在「画质预设」和播放时 uosc 的「滤镜」菜单里。',
+                '着色器写在档位里：先写 glsl-shaders= 清空，再用 glsl-shader= 逐个追加。下方「内置滤镜库清单」写了每个内置着色器的作用、触发条件、开销和强度。',
+                `自己的 .glsl 放进「打开我的着色器目录」打开的文件夹（${fresh.userShaderDir}），写成 glsl-shader=~~/shaders/user/文件名.glsl；升级不会改动这个文件夹。`,
+                'vf 滤镜只能写在全局部分，用 vf-append=@user-编号:滤镜名=参数；RIFE 总在你的滤镜之后执行。大多数滤镜需要「视频 → 硬件解码」选回读模式。',
+                '标黄的行与已开启的功能冲突（例如开启 RIFE 时改变帧率的滤镜和 interpolation=yes），已暂停执行，关闭该功能后自动恢复，不用自己改。'
+            ]],
+            ['让 AI 帮你改', [
+                '1. 点「复制给 AI」。复制的内容包括一份修改规则说明（哪些能改、哪些不能改、可用的着色器和写法）和你当前完整的 mpv.conf。',
+                '2. 把它整段粘贴给 AI（ChatGPT、Claude 等），在后面写下你的需求，例如：「帮我新建一个适合老动画的档位，降噪强一点、线条细一点」。',
+                '3. 请 AI 只返回修改后的完整 mpv.conf 文本，不要让它直接改你电脑上的文件。',
+                '4. 复制 AI 返回的全文，点进下方编辑区粘贴。编辑器会先显示用户区的逐行变化，确认后才替换；AI 改动了灰色管理区的话，这些改动会被忽略。',
+                '5. 有标红的行时，把下方的报错原文发给 AI，让它按报错修改后再给你一份完整文本。',
+                `规则说明也保存在 ${fresh.aiGuidePath}，可以作为附件直接交给 AI。`
+            ]],
+            ['写坏了怎么办', [
+                '点「恢复默认配置」把用户区换回默认内容，原来的内容会备份为 mpv.conf.before-restore。上方「恢复本页默认值」只恢复本页的开关和渲染后端，不会改动 mpv.conf。',
+                'mpv 无法用你的配置启动时，客户端会自动改用默认配置并提示你回来检查。'
+            ]]
+        ];
+        for (const [title, items] of sections) {
+            editorNote.appendChild(element('h4', '', title));
+            const list = element('ul');
+            for (const item of items) list.appendChild(element('li', '', item));
+            editorNote.appendChild(list);
+        }
+    };
+
     // ---- loading ----
     // Only reopening the page resumes an unsaved draft; a restore replaces it.
     const load = (fresh, resumeDraft = false) => {
@@ -766,7 +816,7 @@ function createMpvConfEditor({element, player, settings, saveSetting, notify}) {
             element('div', '', '2.9.4 起 mpv 配置方式已更新：客户端只使用下面这一份 mpv.conf，旧版的「高级 → 直接传入 mpv.conf 选项」、user-overrides.conf 和配置模式都不再生效，请在这里重新设置自定义配置。'),
             element('div', '', fresh.backupPath ? `旧版的自定义内容已备份到：${fresh.backupPath}` : ''),
             element('div', '', `配置文件：${fresh.configPath}`));
-        editorNote.textContent = '灰色的头部和尾部由软件维护，只能修改中间的用户区。左侧「+」可以在任意位置插入配置；没有错误时自动保存并立即应用，删除的配置项会恢复为默认值。被标黄的行与已开启的功能（如 RIFE）冲突，已暂停执行，关闭该功能后自动恢复。';
+        renderHelp(fresh);
         updateButton.hidden = !fresh.defaultUpdated;
         if (fresh.defaultUpdated && !toolbar.contains(updateButton)) toolbar.appendChild(updateButton);
         renderManaged();

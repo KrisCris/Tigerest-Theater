@@ -67,7 +67,8 @@ async function run(){
    await delay(200);
    await evaluate(`(async()=>{settingsMount.dispose();settingsMount=await tigerestMountSettings(document.querySelector('#settingsHost'),'video');})()`);
    assert.equal(await evaluate(`document.querySelector('[data-setting="${setting}"] input').checked`),!original,'inline settings save through the actual native API');
-   await evaluate(`(()=>{const original=api.settings.resetToDefault;window.confirm=()=>true;api.settings.resetToDefault=section=>new Promise(resolve=>{window.finishReset=async()=>{await original(section);resolve();};});document.querySelector('#tigerest-settings-inline .tgs-section.active .tgs-reset').click();settingsMount.dispose();finishReset();})()`);
+   await evaluate(`(()=>{const original=api.settings.resetToDefault;window.confirm=()=>true;api.settings.resetToDefault=section=>new Promise(resolve=>{window.finishReset=async()=>{await original(section);resolve();};});document.querySelector('#tigerest-settings-inline .tgs-section.active .tgs-reset').click();})()`);
+   await evaluate(`new Promise(resolve=>setTimeout(resolve,50)).then(()=>{[...document.querySelectorAll('.tgs-confirm-modal button')].find(b=>b.textContent==='恢复默认').click();return new Promise(resolve=>setTimeout(resolve,0));}).then(()=>{settingsMount.dispose();finishReset();})`);
    await delay(400);
    assert.equal(await evaluate('!!document.querySelector("#tigerest-settings-inline")'),false,'navigation disposes the inline settings page');
    await evaluate(`(async()=>{const original=api.player.mpvDiagnostics;api.player.mpvDiagnostics=()=>new Promise(resolve=>window.finishDiagnostics=async()=>resolve(await original()));const abort=new AbortController();window.pendingMount=tigerestMountSettings(document.querySelector('#settingsHost'),'video',null,abort.signal);await new Promise(r=>setTimeout(r,30));abort.abort();finishDiagnostics();await pendingMount;api.player.mpvDiagnostics=original;})()`);

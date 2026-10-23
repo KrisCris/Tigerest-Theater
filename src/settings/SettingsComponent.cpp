@@ -456,7 +456,9 @@ void SettingsComponent::resetToDefault(const QString &sectionID)
 
   if (section)
   {
-    section->resetValues();
+    // The page's "restore defaults" must not undo one-time migrations such
+    // as mpvConfEditorMigrated, which would overwrite the user's mpv.conf.
+    section->resetValues(true);
     saveSection(section);
   }
 }

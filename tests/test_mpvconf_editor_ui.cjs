@@ -117,7 +117,19 @@ withBrowser({
  for(let i=0;i<80&&fs.readFileSync(conf,'utf8').includes(suspendedLine);i++)await delay(100);
  assert.ok(fs.readFileSync(conf,'utf8').includes('\nvf-append=@user-2:fps=60\n'),'disabling RIFE did not restore the line');
  assert.equal(await filters(),'@user-1:hflip,@user-2:fps');
- console.log('mpv.conf editor: form, validation, leave guard, "+" insert, lock, restore and RIFE suspension verified');
+ // "Restore this page" resets the page's switches only: it asks in the page
+ // (a native confirm() can freeze it), keeps mpv.conf and the migration marker.
+ assert.match(await evaluate('document.querySelector(".tgs-conf-help").textContent'),/让 AI 帮你改/);
+ const beforeReset=fs.readFileSync(conf,'utf8');
+ await evaluate('[...document.querySelectorAll(".tgs-section.active .tgs-reset")].find(b=>b.textContent.includes("恢复本页默认值")).click()');
+ await until(evaluate,'!!document.querySelector(".tgs-confirm-modal")','page reset did not ask in the page');
+ assert.match(await evaluate('document.querySelector(".tgs-confirm-modal").textContent'),/mpv.conf 不会改动/);
+ await evaluate('[...document.querySelectorAll(".tgs-confirm-modal button")].find(b=>b.textContent==="恢复默认").click()');
+ await until(evaluate,'!!document.querySelector(".tgs-conf-text")?.value&&!document.querySelector(".tgs-confirm-modal")','settings page did not come back after the reset');
+ const userOf=text=>text.slice(text.indexOf('==== 头部结束 ===='),text.indexOf('==== 大河影院管理区·尾部'));
+ assert.equal(userOf(fs.readFileSync(conf,'utf8')),userOf(beforeReset),'page reset must not touch the user area');
+ assert.equal(await evaluate('jmpInfo.settings.mpv.mpvConfEditorMigrated'),true,'page reset must keep the migration marker');
+ console.log('mpv.conf editor: form, validation, leave guard, "+" insert, lock, restore, RIFE suspension and page reset verified');
 },{startupTimeout:30000}).then(()=>withBrowser({
  '/':{type:'text/html',body:'<!doctype html><meta charset="utf-8"><title>mpv.conf notice fixture</title><body style="background:#141414;color:#eee"></body>'}
 },async({evaluate})=>{

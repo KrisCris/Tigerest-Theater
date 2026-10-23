@@ -28,6 +28,7 @@ private slots:
   void testResetValueDescribedSetting();
   void testResetValueDynamicSetting();
   void testResetValuesResetsAll();
+  void testPageResetKeepsHiddenValues();
   void testSectionIsHiddenPlatform();
   void testSectionOrder();
   void testValuesUpdatedSignalOnReset();
@@ -274,6 +275,29 @@ void TestSettings::testResetValuesResetsAll()
 
   // Dynamic setting is removed.
   QVERIFY(!section.value("dynamic").isValid());
+}
+
+void TestSettings::testPageResetKeepsHiddenValues()
+{
+  SettingsSection section("testSection", PLATFORM_ANY, 0);
+  auto* shown = new SettingsValue("shown", 1, PLATFORM_ANY);
+  shown->setHasDescription(true);
+  shown->setHidden(false);
+  section.registerSetting(shown);
+  auto* marker = new SettingsValue("migrated", false, PLATFORM_ANY);
+  marker->setHasDescription(true);
+  marker->setHidden(true);
+  section.registerSetting(marker);
+  shown->setValue(2);
+  marker->setValue(true);
+
+  // "Restore this page" resets what the page shows, not one-time markers.
+  section.resetValues(true);
+  QCOMPARE(section.value("shown"), QVariant(1));
+  QCOMPARE(section.value("migrated"), QVariant(true));
+
+  section.resetValues();
+  QCOMPARE(section.value("migrated"), QVariant(false));
 }
 
 void TestSettings::testSectionIsHiddenPlatform()
