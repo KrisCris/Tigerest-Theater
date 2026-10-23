@@ -8,12 +8,32 @@
 | `qtwebengine-6.9.3-begin-frame-vsync.patch` | 把窗口所在屏幕的刷新率交给网页合成器，解除 60 帧上限 | `TIGEREST_WEBENGINE_VSYNC=0` |
 | `qtwebengine-6.9.3-wheel-step.patch` | Windows 鼠标滚轮每行 50 px（默认三行即每格 150 px） | `TIGEREST_WEBENGINE_WHEEL_STEP=<每行像素>` |
 | `qtwebengine-6.9.3-d3d11-fence-sync.patch` | 用两个共享 D3D11 fence 双向排序共享纹理：Qt 采样前等 Chromium 写完，Chromium 重写前等 Qt 读完 | `TIGEREST_D3D11_FENCE_SYNC=0`（回到上面的 CPU 等待） |
+| `qtwebengine-6.9.3-begin-frame-cap.patch` | 可选的网页帧率上限：高刷屏上每 n 个 vblank 出一帧（240 Hz 设 120 即隔一个） | 默认不限；`TIGEREST_WEBENGINE_MAX_FPS=120` 打开 |
+| `qtwebengine-6.9.3-shader-disk-cache.patch` | 把 ANGLE 程序二进制和 Skia 着色器缓存写到磁盘，重启后首个转场不再现编译着色器 | 客户端默认放在当前配置的 `GPUCache`；`TIGEREST_WEBENGINE_SHADER_CACHE=<目录>` 覆盖 |
 
 ## 网页合成器刷新率
 
 QtWebEngine 把网页画到离屏纹理再交给 Qt Quick 合成。这条路径下 Chromium 的显示合成器使用按固定间隔触发的 BeginFrame 计时器，间隔需要外部提供，而 Qt 从未提供，于是一直是默认的 1/60 秒：无论显示器多少 Hz，CSS 动画、Web Animations、`requestAnimationFrame` 和滚动都只有 60 帧。
 
 补丁在 `RenderWidgetHostViewQt` 中每秒读取一次窗口所在屏幕的 vsync 参数，交给 `ui::Compositor::SetDisplayVSyncParameters`。Windows 使用 Chromium 自带的 `gl::VSyncProviderWin` 读取 DWM 的 vblank 时间和周期；若与窗口所在屏幕的 `QScreen::refreshRate` 相差超过 5%（多屏刷新率不同时），改用 `QScreen::refreshRate`。2026-10-14 在 4K 240 Hz / RTX 4090 上，同一 DLL 开关对照：rAF 从 60 到 240 帧，首页／媒体库／详情转场从 43–60 帧到 109–213 帧。
+
+### 120 帧上限
+
+`begin-frame-cap` 在上面的间隔上乘整数 n，使网页帧率不超过 `TIGEREST_WEBENGINE_MAX_FPS`。目的不是省电，而是让每帧预算相同：240 Hz 不限帧时，一帧赶不上就从 4.2 ms 变成 8.3 ms，帧间隔在一个和两个刷新之间来回跳；上限 120 时每帧都有 8.3 ms。
+
+2026-10-23 在真实 Emby／Jellyfin 服务器上测了三种转场（首页→详情、详情→海报墙、海报墙→详情），每种 3 次，不录屏、着色器缓存已预热，以 `TIGEREST_FRAME_TIMES` 记录的原生交换时刻计时。上限 120 时网页帧率 111–115，不限帧时 145–168；超过 17.7 ms 的帧，Emby 两种设置分别为 32 和 33 帧，Jellyfin 为 22 和 24 帧，最长帧都在 29–51 ms。长帧来自光栅化和主线程本身的耗时，上限不能减少它们，所以客户端默认不限帧，`TIGEREST_WEBENGINE_MAX_FPS` 只留作对比用。
+
+只改浏览器进程（`src/core`）。构建目录里的渲染进程仍是 Qt 自带的 `QtWebEngineProcess.exe`／`Qt6WebEngineCore.dll`（`qt.conf` 的 Prefix 指向原版 Qt），六个补丁都不涉及渲染进程，所以构建目录里的测量同样有效。
+
+### 着色器磁盘缓存
+
+QtWebEngine 默认不给 Chromium 的 GPU 程序缓存指定目录，每次启动都重新编译着色器；第一次画某种效果（模糊、圆角遮罩等）时，链接一个程序就占住 GPU 线程几十毫秒，表现为重启后第一次转场卡顿。补丁实现 `GetShaderDiskCacheDirectory`／`GetGrShaderDiskCacheDirectory`，客户端在 `main.cpp` 里默认指向当前配置的缓存目录 `GPUCache`。测试时请把 `TIGEREST_WEBENGINE_SHADER_CACHE` 指到临时目录，不要写进已安装播放器的配置。
+
+### 测量注意
+
+- **录屏本身会拖慢网页合成**。DXGI 桌面复制（ffmpeg `ddagrab`，240／480 轮询）录制时，Qt 每秒拿到的网页帧从约 214 掉到 130–180；同一个只放 CSS 动画的测试页在 Edge 里录制时也有 16–31 ms 的间隔。录屏数据适合看画面有没有突变，帧间隔应以不录屏时 `TIGEREST_FRAME_TIMES` 记录的原生交换时刻为准（见 `dev/windows/TESTING.md`）。不要用 Qt 渲染循环日志（`qt.scenegraph.time.renderloop.debug`）计时：开启它会顺带打开诊断日志，本身就会造成卡顿。
+- 新测试配置的着色器缓存是空的，第一次转场多约 65 ms。要模拟已安装客户端，把 `TIGEREST_WEBENGINE_SHADER_CACHE` 指到一个跨次运行保留的临时目录，并在结果里注明冷／热缓存。
+- 显示器睡眠后 WebEngine 不再出帧。长时间无人值守的测量要在测试进程里调用 `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)`，已经睡眠的屏幕用 `SC_MONITORPOWER`（`-1`）唤醒。
 
 ## 鼠标滚轮距离
 

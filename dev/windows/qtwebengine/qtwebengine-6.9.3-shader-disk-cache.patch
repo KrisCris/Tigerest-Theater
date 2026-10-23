@@ -1,0 +1,42 @@
+diff --git a/src/core/content_browser_client_qt.h b/src/core/content_browser_client_qt.h
+--- a/src/core/content_browser_client_qt.h
++++ b/src/core/content_browser_client_qt.h
+@@ -50,6 +50,8 @@ public:
+     std::string GetApplicationLocale() override;
+     std::string GetAcceptLangs(content::BrowserContext* context) override;
+     void AppendExtraCommandLineSwitches(base::CommandLine* command_line, int child_process_id) override;
++    base::FilePath GetShaderDiskCacheDirectory() override;
++    base::FilePath GetGrShaderDiskCacheDirectory() override;
+ 
+     void GetAdditionalViewSourceSchemes(std::vector<std::string>* additional_schemes) override;
+     void GetAdditionalWebUISchemes(std::vector<std::string>* additional_schemes) override;
+diff --git a/src/core/content_browser_client_qt.cpp b/src/core/content_browser_client_qt.cpp
+--- a/src/core/content_browser_client_qt.cpp
++++ b/src/core/content_browser_client_qt.cpp
+@@ -323,6 +323,26 @@ std::string ContentBrowserClientQt::GetApplicationLocale()
+     return WebEngineLibraryInfo::getApplicationLocale();
+ }
+ 
++// TIGEREST_WEBENGINE_SHADER_CACHE names a directory for Chromium's GPU program
++// caches (ANGLE program binaries and Skia shaders). Without one every start
++// compiles the shaders again, and each link holds the GPU thread for tens of
++// milliseconds the first time an effect is drawn.
++static base::FilePath shaderCacheDirectory(const char *name)
++{
++    const QString root = qEnvironmentVariable("TIGEREST_WEBENGINE_SHADER_CACHE");
++    return root.isEmpty() ? base::FilePath() : toFilePath(root).AppendASCII(name);
++}
++
++base::FilePath ContentBrowserClientQt::GetShaderDiskCacheDirectory()
++{
++    return shaderCacheDirectory("ShaderCache");
++}
++
++base::FilePath ContentBrowserClientQt::GetGrShaderDiskCacheDirectory()
++{
++    return shaderCacheDirectory("GrShaderCache");
++}
++
+ std::string ContentBrowserClientQt::GetAcceptLangs(content::BrowserContext *context)
+ {
+     return static_cast<ProfileQt*>(context)->profileAdapter()->httpAcceptLanguage().toStdString();

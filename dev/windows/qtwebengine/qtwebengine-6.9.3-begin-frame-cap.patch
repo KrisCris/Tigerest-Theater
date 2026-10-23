@@ -1,0 +1,18 @@
+--- a/src/core/render_widget_host_view_qt.cpp
++++ b/src/core/render_widget_host_view_qt.cpp
+@@ -934,6 +934,15 @@ void RenderWidgetHostViewQt::updateVSyncParameters()
+             return;
+         interval = base::Seconds(1.0 / hz);
+     }
++    // TIGEREST_WEBENGINE_MAX_FPS ticks BeginFrames on every n-th vblank of a
++    // faster display (240 Hz at 120 -> every 2nd), so each frame gets the same
++    // budget instead of alternating between one and two refreshes.
++    static const int maxFps = qEnvironmentVariableIntValue("TIGEREST_WEBENGINE_MAX_FPS");
++    if (maxFps > 0) {
++        const int n = int(std::floor(1.0 / (interval.InSecondsF() * maxFps) + 0.05));
++        if (n >= 2)
++            interval *= n;
++    }
+     m_uiCompositor->SetDisplayVSyncParameters(timebase, interval);
+ }
+ 

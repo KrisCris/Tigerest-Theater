@@ -25,12 +25,18 @@ $env:QT_QPA_PLATFORM = 'offscreen'
 Get-Content build/screen-policy.txt
 ```
 
-先按 `dev/windows/build.bat` 配置并编译，再测试；完整客户端检查前用 `cmake --install build` 更新暂存包。消息 UI 测试用隔离账号 fixture：
+先按 `dev/windows/build.bat` 配置并编译，再测试；完整客户端检查前用 `cmake --install build` 更新暂存包。另开的构建目录也必须先 `cmake --install`：未暂存时 PATH 会落到 Qt 自带的原版 `Qt6WebEngineCore.dll`，没有 D3D11 同步等补丁，窗口会花屏；`Enter-TestEnvironment.ps1` 发现暂存的 `Qt6WebEngineCore.dll` 缺失或与补丁运行库清单的 SHA256 不符时直接报错。消息 UI 测试用隔离账号 fixture：
 
 ```powershell
 . ./dev/windows/Enter-TestEnvironment.ps1
 node tests/test_community_messages_ui.cjs 'build/output/Tigerest Theater.exe' --webengine
 ```
+
+转场帧间隔：设 `TIGEREST_FRAME_TIMES=<文件>` 启动客户端，主窗口每次 `frameSwapped` 记一行墙钟毫秒（小数三位），由单独线程每 250 ms 写盘；不设置时不启动。这是屏幕实际换上新画面的时间，比页面里的 `requestAnimationFrame` 间隔可靠（页面主线程忙时 rAF 会拉长，合成器上的动画照常走）。不要再用 `QT_LOGGING_RULES=qt.scenegraph.time.renderloop.debug=true` 加 `--log-level debug` 的 "Frame prepared" 计时：调试日志会连带打开诊断上报的日志，日志本身就会拖出卡顿。也不要在录屏的同时测：DXGI 桌面复制会让网页合成掉到 130–180 帧，录屏只用来看画面有没有突变。
+
+着色器缓存：客户端默认把 GPU 程序缓存放在当前配置的 `GPUCache`，安装版重启后的第一次转场不需要编译。测试用的全新配置副本缓存是空的，第一次转场会多一次约 65 ms 的着色器编译卡顿；要模拟安装版，把 `TIGEREST_WEBENGINE_SHADER_CACHE` 指到临时目录并在多次运行之间保留它（不要指向已安装播放器的配置）。报告第一次转场的数字时注明缓存是冷还是热。
+
+转场卡顿诊断：设 `TIGEREST_THREAD_SAMPLES=<文件>` 启动客户端，`src/utils/win/ThreadSampler.cpp` 每毫秒采样 GUI、Qt 渲染、Chromium GPU／合成线程和页面渲染进程主线程的调用栈，写成 TSV（时间戳、线程、模块+偏移）；不设置时不启动。采样会略微拖慢页面，只用来找卡顿时各线程在做什么，不要拿采样运行的帧间隔当结论。
 
 播放测试使用独立配置目录，不复制真实认证凭据到 fixture，也不向生产评论服务写入测试评论或已读状态。屏幕刷新率如临时改变，结束时必须恢复。此前的两个启动错误分别来自遗漏 MPV DLL 路径和遗漏 Qt 平台插件路径；都属于测试环境，不代表播放器需要重装。
 

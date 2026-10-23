@@ -64,8 +64,9 @@ withBrowser(routes, async ({evaluate, call}) => {
         node.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
         appRouter.showItem({Id: 'work', Type: 'Movie', ServerId: 's'});
         return node.getBoundingClientRect().toJSON(); };
-      new MutationObserver(records => records.forEach(r => r.addedNodes.forEach(node => {
-        if (!node.classList?.contains('tigerest-motion-poster')) return;
+      // The poster is the innermost box of the flight stack added to the body.
+      new MutationObserver(records => records.forEach(r => r.addedNodes.forEach(added => {
+        const node = added.querySelector?.('.tigerest-motion-poster'); if (!node) return;
         const flight = {first: node.getBoundingClientRect().toJSON(), last: null}; flights.push(flight);
         const sample = () => { if (!node.isConnected) return; flight.last = node.getBoundingClientRect().toJSON(); requestAnimationFrame(sample); }; sample();
       }))).observe(document.body, {childList: true});

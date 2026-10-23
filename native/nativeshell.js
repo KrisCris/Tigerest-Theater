@@ -2059,7 +2059,7 @@ function installServerSwitchEntry() {
             const page = record.addedNodes.length ? record.target.closest?.(selector) : null;
             if (page) roots.add(page);
             for (const node of record.addedNodes) {
-                if (node.nodeType === 1 && !node.closest('.tigerest-motion-layer,.tigerest-motion-cache,.tigerest-motion-poster')) roots.add(node);
+                if (node.nodeType === 1 && !node.closest('.tigerest-motion-layer,.tigerest-motion-cache,.tigerest-motion-flight,.tigerest-motion-poster')) roots.add(node);
             }
         }
         for (const root of roots) if (root.isConnected) mount(root);

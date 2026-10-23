@@ -36,6 +36,21 @@ foreach ($taskDll in @('libmpv-2.dll', 'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Test.dll
         throw "Test dependency missing: $taskDll. Build the native targets and stage the configured runtime before testing."
     }
 }
+# Without the staged patched QtWebEngine, the PATH falls through to the stock
+# Qt DLL: no D3D11 fence/producer sync (half-drawn frames), refresh rate or
+# wheel patches. A build configured with the patched runtime must test it.
+$taskWebEngine = Get-TestCacheValue 'TIGEREST_WEBENGINE_RUNTIME'
+$taskManifest = if ($taskWebEngine) { Join-Path $taskWebEngine 'tigerest-webengine.json' } else { '' }
+if ($taskManifest -and (Test-Path -LiteralPath $taskManifest)) {
+    $taskCore = Join-Path $taskStage 'Qt6WebEngineCore.dll'
+    if (-not (Test-Path -LiteralPath $taskCore)) {
+        throw "Patched QtWebEngine not staged: $taskCore. Run cmake --install for this build before testing."
+    }
+    $taskExpected = (Get-Content -LiteralPath $taskManifest -Raw | ConvertFrom-Json).coreSha256
+    if ((Get-FileHash -LiteralPath $taskCore -Algorithm SHA256).Hash -ne $taskExpected) {
+        throw "Staged QtWebEngine differs from $taskManifest. Run cmake --install for this build before testing."
+    }
+}
 # Qt loads OpenSSL dynamically. Tool runtimes (for example Poppler) may ship a
 # different libssl under the same name; combining it with the staged libcrypto
 # can deadlock TLS initialization. Keep those directories out of this process.

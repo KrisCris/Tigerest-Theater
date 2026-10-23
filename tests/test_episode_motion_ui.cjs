@@ -23,7 +23,7 @@ withBrowser(routes,async({evaluate,call})=>{
   document.querySelectorAll('.itemsContainer').forEach(list=>list.getItemFromElement=card=>({Id:card.dataset.id,Type:'Episode'}));
   TigerestHomeMotion.attach({router,pageJs:{replace:()=>{}},manager:{currentApiClient:()=>({serverId:()=> 'fixture',getCurrentUserId:()=> 'one'})},viewManager:{currentViewInfo:()=>fixture.state}});
   // Record the floating poster's first and last rectangles of each flight.
-  window.flights=[];new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(node=>{if(!node.classList?.contains('tigerest-motion-poster'))return;
+  window.flights=[];new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(added=>{const node=added.querySelector?.('.tigerest-motion-poster');if(!node)return;
    const flight={first:node.getBoundingClientRect().toJSON(),last:null};flights.push(flight);
    const sample=()=>{if(!node.isConnected)return;flight.last=node.getBoundingClientRect().toJSON();requestAnimationFrame(sample);};sample();}))).observe(document.body,{childList:true});
   true`);

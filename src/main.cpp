@@ -16,6 +16,7 @@
 #ifdef Q_OS_WIN
 #include <QJsonDocument>
 #include "ui/RifeStartupDialog.h"
+#include "utils/win/ThreadSampler.h"
 #endif
 
 #include "shared/Names.h"
@@ -470,8 +471,16 @@ int main(int argc, char *argv[])
     if (parser.isSet("remote-debugging-port"))
       qputenv("QTWEBENGINE_REMOTE_DEBUGGING", parser.value("remote-debugging-port").toUtf8());
 
+    // The patched WebEngine keeps compiled GPU programs here, per profile, so
+    // the first transitions after a start do not wait for shader compilation.
+    if (!qEnvironmentVariableIsSet("TIGEREST_WEBENGINE_SHADER_CACHE"))
+      qputenv("TIGEREST_WEBENGINE_SHADER_CACHE", ProfileManager::activeProfile().cacheDir("GPUCache").toLocal8Bit());
+
     QtWebEngineQuick::initialize();
     QApplication app(newArgc, newArgv);
+#ifdef Q_OS_WIN
+    ThreadSampler::startFromEnvironment();
+#endif
 
 #if defined(Q_OS_WIN) 
     // Setting window icon on OSX will break user ability to change it
@@ -545,6 +554,9 @@ int main(int argc, char *argv[])
         throw FatalException(QObject::tr("Failed to parse application engine script."));
 
       QQuickWindow* window = Globals::MainWindow();
+#ifdef Q_OS_WIN
+      ThreadSampler::recordFramesFromEnvironment(window);
+#endif
 
       // Set window flags for proper popup handling (e.g., WebEngineView dropdowns)
       window->setFlags(window->flags() | Qt::WindowFullscreenButtonHint);

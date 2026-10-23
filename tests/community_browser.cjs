@@ -41,7 +41,7 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
     // QML parse errors are warnings; include them in captured startup failures.
     const args=webengine?['--config-dir',profile,'--profile','MessagesFixture','--log-level','warn',...(gpu?[]:['--disable-gpu']),...extraArgs,'--remote-debugging-port','127.0.0.1:'+port]
         :[...(visible?[]:['--headless']),...(gpu?[]:['--disable-gpu']),
-            '--no-first-run','--no-default-browser-check',
+            '--no-first-run','--no-default-browser-check',...extraArgs,
             '--remote-debugging-port=0','--user-data-dir='+profile,url];
     child=spawn(executable,args,{stdio:['ignore','pipe','pipe'],windowsHide:!visible,cwd:path.dirname(executable)});
     let startup='';child.stdout.on('data',d=>startup=(startup+d).slice(-2000));child.stderr.on('data',d=>startup=(startup+d).slice(-2000));
@@ -84,7 +84,7 @@ module.exports=async function withBrowser(routes,work,{settings={},gpu=false,vis
         // animation frames and short asynchronous bridge callbacks.
         await call('Page.bringToFront');
         await call('Emulation.setFocusEmulationEnabled',{enabled:true});
-        await work({url,call,evaluate,webengine,process:child,profile});
+        await work({url,call,evaluate,webengine,process:child,profile,port});
     }finally{
         socket?.close();
         if(child&&child.exitCode===null&&child.signalCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}

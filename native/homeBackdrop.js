@@ -122,7 +122,7 @@
         const width = Math.min(240,Math.round(innerWidth*scale)), height = Math.round(innerHeight*scale), records = [], images = [];
         // Skip motion layers, the held poster and Emby's hidden cached views as
         // whole subtrees instead of measuring each of their nodes.
-        const skipped='.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache,[data-tigerest-poster-held],.mainAnimatedPage.hide,.page.hide,.page.page-hidden';
+        const skipped='.tigerest-motion-layer,.tigerest-motion-flight,.tigerest-motion-poster,.tigerest-motion-cache,[data-tigerest-poster-held],.mainAnimatedPage.hide,.page.hide,.page.page-hidden';
         // A media card is a self-contained box: well off screen, none of its
         // contents can be, so long walls are measured only near the view. The
         // margin covers hover/focus lifts (webAppearance moves a card box up

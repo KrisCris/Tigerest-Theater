@@ -156,8 +156,9 @@ withBrowser(routes,async({evaluate,call,url})=>{
  await evaluate('pending');
  const hot=await evaluate('TigerestHomeTransitions.last');assert.equal(hot.kind,'poster','poster clicks in a directly opened library use the shared transition');assert.equal(hot.cacheHit,true);assert.equal(hot.domCopies,0,'neither the old nor the new page is copied for a poster transition');assert.equal(hot.syncRasterMs,0);assert.ok(hot.landingErrorPx<2);
  await evaluate('TigerestHomeTransitions.prewarm()');
- const returnClickVisibility=await evaluate(`window.returnGate=true;window.returning=router.back();window.returnShrinkFrame=motionFrame(()=>{const n=document.querySelector('.tigerest-motion-poster');return n&&n.getBoundingClientRect().width<239.9;});getComputedStyle(document.querySelector('#detail .detailImageContainer')).visibility`);
- assert.equal(returnClickVisibility,'hidden','CSS-background posters are hidden under their moving copy');
+ const returnClickVisibility=await evaluate(`window.returnGate=true;window.returning=router.back();window.returnShrinkFrame=motionFrame(()=>{const n=document.querySelector('.tigerest-motion-poster');return n&&n.getBoundingClientRect().width<239.9;});const card=document.querySelector('#detail .detailImageContainer'),first=getComputedStyle(card).visibility;let frames=0;motionFrame(()=>++frames&&getComputedStyle(card).visibility==='hidden'&&{first,frames})`);
+ // Hidden in the click frame, the card left an empty slot until its copy was drawn.
+ assert.ok(returnClickVisibility.first==='visible'&&returnClickVisibility.frames<=3,'CSS-background posters are hidden under their moving copy once it is drawn: '+JSON.stringify(returnClickVisibility));
  assert.ok(await evaluate('returnShrinkFrame'),'returning starts by shrinking the detail poster while its destination prepares');
  await evaluate('motionFrame(()=>!!window.releaseReturn)');assert.equal(await evaluate('state.params.id'),'work');
  await evaluate('returnGate=false;releaseReturn();true');

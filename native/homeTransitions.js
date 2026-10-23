@@ -3,6 +3,11 @@
     window.TigerestHomeTransitions?.dispose?.();
     let active = null, last = null;
     const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Desktop pages render a batch well inside a frame: the poster flies once
+    // its target exists, late sections load during the flight and its rejoin
+    // absorbs layout shifts. Touch devices stalled mid-flight on those batches
+    // and still wait for a steady target and a quiet page.
+    const touch = () => window.matchMedia('(pointer: coarse)').matches;
     const box = node => node?.getBoundingClientRect();
     const usable = node => { const b = box(node); return node?.isConnected && b?.width > 1 && b.height > 1; };
     const page = () => Array.from(document.querySelectorAll('.mainAnimatedPage,.page')).filter(node =>
@@ -28,7 +33,7 @@
         if(records.some(m=>{
             const node=m.target.nodeType===Node.ELEMENT_NODE?m.target:m.target.parentElement;
             return node&&!(m.type==='attributes'&&m.oldValue===m.target.getAttribute(m.attributeName))&&
-                !node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-cache')&&
+                !node.closest('.tigerest-motion-layer,.tigerest-motion-flight,.tigerest-motion-poster,.tigerest-motion-cache')&&
                 (!!node.closest(roots)||node.matches('.mainAnimatedPage,.page,.skinHeader,.backdropContainer,.backgroundContainer'));
         }))invalidate();
     }
@@ -113,7 +118,10 @@
       .tigerest-motion-frozen{filter:blur(var(--tigerest-motion-blur,7px))}
       .tigerest-motion-lens{-webkit-backdrop-filter:blur(var(--tigerest-motion-blur,7px));backdrop-filter:blur(var(--tigerest-motion-blur,7px))}
       .tigerest-motion-scene>canvas{position:absolute;inset:0;width:100%;height:100%}
-      .tigerest-motion-poster{position:fixed;z-index:2147483001;pointer-events:none;transform-origin:0 0;overflow:hidden;background-size:cover;background-position:center;will-change:transform}
+      .tigerest-motion-flight{position:fixed;left:0;top:0;z-index:2147483001;pointer-events:none!important}
+      .tigerest-motion-part,.tigerest-motion-poster{position:absolute;left:0;top:0;transform-origin:0 0}
+      .tigerest-motion-part{will-change:transform}
+      .tigerest-motion-poster{overflow:hidden;background-size:cover;background-position:center}
       @media(max-width:900px){
         .view-item-item .detailMainContainer:has(.detailImageContainer-main.detailImageContainer-portrait){display:grid!important;grid-template-columns:clamp(90px,18vw,130px) minmax(0,1fr);gap:12px 18px;align-items:center}
         .view-item-item .detailImageContainer-main.detailImageContainer-portrait{display:block!important;grid-column:1;grid-row:1/3;width:100%!important;max-width:none!important;margin:0!important;align-self:center}
@@ -140,11 +148,11 @@
         const a = node.animate(frames, {...options, fill: 'both'}); job.animations.push(a);
         return a.finished.catch(() => {});
     }
-    async function wait(job, predicate, timeout = 2400) {
+    async function wait(job, predicate, timeout = 2400, step = 32) {
         const until = performance.now() + timeout;
         while (!job.signal.aborted && performance.now() < until) {
             const result = predicate(); if (result) return result;
-            await sleep(job, 32);
+            await sleep(job, step);
         }
         return null;
     }
@@ -186,7 +194,7 @@
     // waiting until the page has stopped changing and frames are smooth.
     async function quiet(job, timeout = 700) {
         const begin = performance.now();
-        const ours = node => node?.nodeType === Node.ELEMENT_NODE && !!node.closest('.tigerest-motion-layer,.tigerest-motion-poster,.tigerest-motion-input,.tigerest-motion-cache');
+        const ours = node => node?.nodeType === Node.ELEMENT_NODE && !!node.closest('.tigerest-motion-layer,.tigerest-motion-flight,.tigerest-motion-input,.tigerest-motion-cache');
         let changed = begin;
         const observer = new MutationObserver(records => {
             if (records.some(m => m.type === 'childList' && m.target === document.body
@@ -203,10 +211,43 @@
         observer.disconnect();
         job.metric.quietWaitMs = performance.now() - begin;
     }
+    // Jellyfin draws a dark padder box with an icon and a blurhash canvas
+    // under lazy card artwork, at the poster's own rectangle. Hidden with the
+    // poster, or they show through the blur where it is about to land.
+    const placeholders = node => [...(node?.closest?.('.cardScalable')?.querySelectorAll('.cardPadder,.blurhash-canvas') || [])];
     function hold(job, node) {
-        if (!node || job.held.some(h => h.node === node)) return;
-        job.held.push({node, value: node.style.visibility});
-        node.style.visibility = 'hidden'; node.setAttribute('data-tigerest-poster-held', '');
+        for (const part of node ? [node, ...placeholders(node)] : []) {
+            if (job.held.some(h => h.node === part)) continue;
+            job.held.push({node: part, value: part.style.visibility, owner: node});
+            part.style.visibility = 'hidden'; part.setAttribute('data-tigerest-poster-held', '');
+        }
+    }
+    // The flying copy is drawn a frame or two after the frame that adds it;
+    // hiding its card in that same frame left an empty slot until then. The
+    // tablet's DOM scene must leave the card out of its copy at once.
+    function holdDrawn(job, node) {
+        if (nativeGlass()) return hold(job, node);
+        requestAnimationFrame(() => requestAnimationFrame(() => { if (!job.done) hold(job, node); }));
+    }
+    const release = ({node, value}) => { node.style.visibility = value; node.removeAttribute('data-tigerest-poster-held'); };
+    // Lazy artwork: Jellyfin keeps data-src until its image has loaded and
+    // then fades it in; Emby's lazy images have no src until then.
+    function artworkReady(node) {
+        if (!node?.isConnected) return true;
+        if (node.hasAttribute('data-src') || node.classList.contains('lazy-hidden')) return false;
+        return node.tagName !== 'IMG' || node.complete;
+    }
+    // Cards on screen in the landing's list whose artwork is still loading.
+    function cardsLoading(target) {
+        const root = target.closest('.itemsContainer,.virtualItemsContainer') || page() || document;
+        let loading = 0;
+        for (const card of root.querySelectorAll('.card')) {
+            const r = card.getBoundingClientRect();
+            if (r.width <= 0 || r.bottom <= 0 || r.top >= innerHeight) continue;
+            const art = card.querySelector('img.cardImage') || card.querySelector('.cardImageContainer');
+            if (art && !artworkReady(art)) loading++;
+        }
+        return loading;
     }
     function layer(job, below = null) {
         const node = document.createElement('div'); node.className = 'tigerest-motion-layer';
@@ -220,13 +261,43 @@
         job.done = true;
         if(!job.signal.aborted)job.controller.abort('complete');
         job.animations.forEach(a => a.cancel()); job.layers.forEach(n => n.remove());
-        job.held.forEach(({node,value}) => { node.style.visibility = value; node.removeAttribute('data-tigerest-poster-held'); });
+        job.held.forEach(release);
         job.canvases.forEach(n => { n.width = n.height = 1; });
         cancelAnimationFrame(job.frame);
         if (active === job) { active = null; document.body.classList.remove('tigerest-motion-busy'); }
     }
+    // A landed poster whose page artwork is still loading stays over it after
+    // the transition has released input, then fades into the loaded image.
+    // Scrolling, resizing, another transition or route hands over at once.
+    let tail = null;
+    function handOver(job, flight, target) {
+        dropTail();
+        const t = {root: flight.root, target, page: page(), held: job.held.filter(h => h.owner === target), until: performance.now() + 5000};
+        job.held = job.held.filter(h => h.owner !== target); job.layers = job.layers.filter(n => n !== flight.root);
+        t.cut = () => dropTail();
+        for (const type of ['scroll', 'wheel', 'resize']) addEventListener(type, t.cut, {capture: true, passive: true});
+        const poll = () => {
+            if (tail !== t) return;
+            if (page() !== t.page) return dropTail();
+            if (artworkReady(target) || performance.now() > t.until) return dropTail(true);
+            t.timer = setTimeout(poll, 32);
+        };
+        tail = t; t.timer = setTimeout(poll, 32);
+    }
+    function dropTail(fade = false) {
+        const t = tail; if (!t) return;
+        tail = null; clearTimeout(t.timer);
+        for (const type of ['scroll', 'wheel', 'resize']) removeEventListener(type, t.cut, {capture: true});
+        // The image is opaque under the copy: skip its own fade-in.
+        if (fade) for (const a of t.target.getAnimations?.() || []) if (Number.isFinite(a.effect?.getComputedTiming().endTime)) { try { a.finish(); } catch {} }
+        t.held.forEach(release);
+        if (!fade) return t.root.remove();
+        const out = t.root.animate([{opacity: 1}, {opacity: 0}], {duration: 120, fill: 'forwards'});
+        out.finished.catch(() => {}).finally(() => t.root.remove());
+    }
     async function run(kind, perform) {
         if (active) return;
+        dropTail();
         changes(observer?.takeRecords()||[]);
         ensureStyle();
         // Only poster transitions consume a pending raster. Other routes must
@@ -293,7 +364,7 @@
         // their controls and makes work grow with the navigation history.
         function copyTree(node) {
             if (node.nodeType !== Node.ELEMENT_NODE) return node.cloneNode(true);
-            if (node.matches('.mainAnimatedPage.hide,.page.hide,.page.page-hidden,.tigerest-motion-layer,.tigerest-motion-input,.tigerest-motion-poster,.tigerest-motion-cache,script,iframe,object,embed,audio,video')) return null;
+            if (node.matches('.mainAnimatedPage.hide,.page.hide,.page.page-hidden,.tigerest-motion-layer,.tigerest-motion-input,.tigerest-motion-flight,.tigerest-motion-poster,.tigerest-motion-cache,script,iframe,object,embed,audio,video')) return null;
             let clone;
             if (customizedBuiltin(node)) {
                 // cloneNode upgrades customized built-ins and reconnects Emby's
@@ -455,25 +526,91 @@
         if (target) await animate(job,target,[{opacity:0},{opacity:1}],{duration:110});
         job.metric.fallback=reduced()?'reduced-motion':'missing-poster';return result;
     }
+    // Desktop poster timing in ms from the press. The poster flies at once and
+    // lands by LAND_MS; the blur covers the old page before the route starts
+    // and the destination is revealed as soon as its poster exists.
+    // A wall that was never shown from home answers its item queries only
+    // after 520-630 ms on a remote server: its short flight and reveal are
+    // what still fits before DEADLINE_MS.
+    const COVER_MS=150,LAND_MS=600,DEADLINE_MS=700,LIFT_MS=260,FLIGHT_MS=320,SHORT_FLIGHT_MS=120,SHORT_REVEAL_MS=120,TOUCH_FLIGHT_MS=720,CORRECT_MS=160,LATE_MS=120,VEIL_MS=150,LENS_DELAY_MS=80,LENS_MS=180;
+    // Where a destination's poster landed before, per window size, so the next
+    // press can fly at once. Kept across restarts; a few dozen entries.
+    let landings=null;
+    const landingStore='tigerest-motion-landings';
+    function remembered(key){
+        if(!key)return null;
+        if(!landings){try{landings=JSON.parse(localStorage.getItem(landingStore)||'{}')||{};}catch{landings={};}}
+        const entry=landings[key];
+        return entry&&entry.w===innerWidth&&entry.h===innerHeight?entry.rect:null;
+    }
+    function remember(key,rect){
+        if(!key||!(rect?.width>1&&rect.height>1))return;
+        remembered(key);
+        landings[key]={w:innerWidth,h:innerHeight,at:Date.now(),rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height}};
+        const keys=Object.keys(landings).sort((a,b)=>landings[b].at-landings[a].at);
+        for(const old of keys.slice(48))delete landings[old];
+        try{localStorage.setItem(landingStore,JSON.stringify(landings));}catch{}
+    }
+    const differs=(a,b)=>Math.max(...['x','y','width','height'].map(k=>Math.abs(a[k]-b[k])))>.5;
+    // The flying poster is a stack: translations outside, scales inside, each
+    // a compositor transform animation. The base flight heads for a predicted
+    // landing; a correction stage starts at identity when the real target (or
+    // a late layout change) is known, so a retarget never restarts a running
+    // animation and the poster cannot jump.
+    function stack(job,from,artwork,radius){
+        const part=()=>{const n=document.createElement('div');n.className='tigerest-motion-part';return n;};
+        const root=document.createElement('div'),poster=document.createElement('div');
+        root.className='tigerest-motion-flight';poster.className='tigerest-motion-poster';root.setAttribute('aria-hidden','true');
+        const moveA=part(),moveB=part(),move=part(),size=part(),sizeB=part(),sizeA=part();
+        root.append(moveA);moveA.append(moveB);moveB.append(move);move.append(size);size.append(sizeB);sizeB.append(sizeA);sizeA.append(poster);
+        for(const n of [moveA,moveB,move,size,sizeB,sizeA,poster])Object.assign(n.style,{width:from.width+'px',height:from.height+'px'});
+        Object.assign(poster.style,{backgroundImage:'url('+JSON.stringify(artwork)+')',borderRadius:radius});
+        move.style.transform=`translate3d(${from.x}px,${from.y}px,0)`;
+        job.layers.push(root);document.body.append(root);
+        return {root,poster,from,final:new Map(),stages:{base:[move,size],A:[moveA,sizeA],B:[moveB,sizeB]}};
+    }
+    // Moves the stage's share of the poster from rectangle a to b. The base
+    // stage is absolute; correction stages are relative to the rectangle the
+    // stages outside them end at.
+    function fly(job,flight,stage,a,b,timing){
+        const [mover,sizer]=flight.stages[stage],base=stage==='base',{from}=flight;
+        const scale=r=>base?`scale(${r.width/from.width},${r.height/from.height})`:`scale(${r.width/a.width},${r.height/a.height})`;
+        const frames=base?[[`translate3d(${a.x}px,${a.y}px,0)`,`translate3d(${b.x}px,${b.y}px,0)`],[scale(a),scale(b)]]
+            :[['translate3d(0px,0px,0)',`translate3d(${b.x-a.x}px,${b.y-a.y}px,0)`],['scale(1,1)',scale(b)]];
+        return Promise.all([mover,sizer].map((node,i)=>{flight.final.set(node,frames[i][1]);return animate(job,node,frames[i].map(transform=>({transform})),timing);}));
+    }
+    // Keep the landed transforms when the animations are cancelled.
+    function freeze(flight){for(const [node,transform] of flight.final)node.style.transform=transform;}
     const transitions = {
         get busy() { return !!active; }, get last() { return last; },
         get cacheState(){changes(observer?.takeRecords()||[]);return {ready:cacheReady(),snapshot:cacheReady()&&!!cached.light,warming:!!warming,bytes:cacheReady()?cached.width*cached.height*4:0};},
         prewarm,invalidate,
-        cancel(reason = 'reset') { invalidate(false);if (active) { const job=active;job.controller.abort(reason);clean(job); } },
+        cancel(reason = 'reset') { invalidate(false);dropTail();if (active) { const job=active;job.controller.abort(reason);clean(job); } },
         dispose(){transitions.cancel();observer?.disconnect();window.removeEventListener('resize',onResize);document.removeEventListener('scroll',onScroll,true);document.removeEventListener('load',onLoad,true);document.removeEventListener('viewshow',onView,true);motionPreference.removeEventListener('change',onPreference);},
         poster(options) { return run('poster',async job => {
             const source=options.source, artwork=url(source);
             if (reduced() || !usable(source) || !artwork) return simple(job,options.navigate);
-            const from=box(source), previous=page(), begin=performance.now();
-            const floating=document.createElement('div');floating.className='tigerest-motion-poster';floating.setAttribute('aria-hidden','true');
-            Object.assign(floating.style,{left:from.x+'px',top:from.y+'px',width:from.width+'px',height:from.height+'px',backgroundImage:'url('+JSON.stringify(artwork)+')',borderRadius:getComputedStyle(source).borderRadius});
-            job.layers.push(floating);document.body.append(floating);hold(job,source);
-            job.poster=floating;job.posterFrom=from;
-            // Start at the exact source rectangle, then lift while the route and
-            // blurred backgrounds prepare. Continue from this transform below.
-            const initialScale=options.direction==='return'?.96:1.09,shift=(1-initialScale)/2;
-            const lift=floating.animate([{transform:'none'},{transform:`translate3d(${from.width*shift}px,${from.height*shift}px,0) scale(${initialScale})`}],{duration:700,easing:'cubic-bezier(.2,.6,.3,1)',fill:'both'});
-            job.animations.push(lift);lift.finished.catch(()=>{});
+            const from=box(source), previous=page(), begin=performance.now(), returning=options.direction==='return', settle=touch();
+            const flight=stack(job,from,artwork,getComputedStyle(source).borderRadius);holdDrawn(job,source);
+            job.poster=flight.poster;job.posterFrom=from;
+            // Fly at once to where this destination's poster landed last time, to
+            // the card that was left, or to where the page is known to draw it.
+            // Without any, lift in place and fly when the target exists. Phones keep the lift: their pages stalled
+            // the compositor while loading under a moving poster.
+            const key=options.landingKey&&`${options.landingKey}|${Math.round(from.width/from.height*10)}`;
+            const usableRect=rect=>rect?.width>1&&rect.height>1?rect:null;
+            const departure=usableRect(options.landingRect), preset=usableRect(options.presetRect);
+            let aim=settle?null:remembered(key)||departure||preset, landAt=null;
+            if (aim) {
+                job.metric.aim=remembered(key)?'remembered':departure?'departure':'preset';
+                landAt=job.start+LAND_MS;job.metric.posterFlightStartsMs=performance.now()-job.start;
+                fly(job,flight,'base',from,aim,{duration:LAND_MS,easing:'cubic-bezier(.3,.05,.18,1)'});
+            } else {
+                job.metric.aim='lift';
+                const scale=returning?.96:1.09;
+                aim={x:from.x-from.width*(scale-1)/2,y:from.y-from.height*(scale-1)/2,width:from.width*scale,height:from.height*scale};
+                fly(job,flight,'base',from,aim,{duration:LIFT_MS,easing:'cubic-bezier(.2,.6,.3,1)'});
+            }
             const hot=cacheReady(), cover=layer(job), veil=document.createElement('div'), fromScene={group:document.createElement('div'),bitmap:null};
             veil.className='tigerest-motion-veil';fromScene.group.className='tigerest-motion-scene';veil.append(fromScene.group);cover.append(veil);
             // Without a prepared bitmap, blur the live page at once and show the
@@ -482,71 +619,122 @@
             if(!hot){veil.style.opacity='0';glass=lens(job,cover);}
             job.metric.prepareMs=performance.now()-begin;
             const soft='cubic-bezier(.4,0,.6,1)';
-            // Reach an opaque blur before changing the real page. Slow routes stay covered.
-            await Promise.all([hot&&animate(job,veil,[{opacity:0},{opacity:1}],{duration:210,easing:soft}),
-                glass&&animate(job,glass,[{opacity:0},{opacity:1}],{duration:210,easing:soft}),
+            // Reach an opaque blur before changing the real page. Slow routes stay
+            // covered. Emby swaps a cached view at once, so a route started with
+            // the fade showed the sharp new page through the half-faded cover.
+            await Promise.all([hot&&animate(job,veil,[{opacity:0},{opacity:1}],{duration:COVER_MS,easing:soft}),
+                glass&&animate(job,glass,[{opacity:0},{opacity:1}],{duration:COVER_MS,easing:soft}),
                 (async()=>{
                     await bitmap(job,fromScene,true);
                     if(!fromScene.bitmap&&!job.signal.aborted){
                         // No worker raster (or it failed): cover with the blurred DOM copy instead.
                         job.metric.domFallback=true;fromScene.group.append(frozen(job));sync(job);
                     }
-                    await animate(job,hot?fromScene.bitmap:veil,[{opacity:0},{opacity:1}],{duration:Math.max(80,210-(performance.now()-job.start)),easing:soft});
+                    await animate(job,hot?fromScene.bitmap:veil,[{opacity:0},{opacity:1}],{duration:Math.max(80,COVER_MS-(performance.now()-job.start)),easing:soft});
                 })()]);
             if (job.signal.aborted && job.signal.reason !== 'resize') return;
+            job.metric.routeStartMs=performance.now()-job.start;
             const result=await options.navigate();
             if (job.signal.aborted) return result;
+            const missing=async()=>{job.metric.fallback='missing-target';await Promise.all([cover,glass,flight.root].map(n=>animate(job,n,[{opacity:1},{opacity:0}],{duration:220,easing:soft})));return result;};
             if (options.prepareTarget) {
                 await wait(job,()=>page()!==previous && page());
                 if (!job.signal.aborted && !usable(options.findTarget())) await options.prepareTarget(job.signal);
             }
-            let target=await wait(job,()=>{const n=options.findTarget();return page()!==previous && usable(n)?n:null;});
-            if (target && options.direction==='return') {target.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});await sleep(job,64);}
-            if (!usable(target)) { job.metric.fallback='missing-target';await Promise.all([cover,glass].map(n=>animate(job,n,[{opacity:1},{opacity:0}],{duration:220,easing:soft})));return result; }
-            // Allow image decoding and responsive layout to finish before reading the landing rectangle.
-            if (target.tagName==='IMG' && !target.complete) await wait(job,()=>target.complete,1200);
-            // The real page is fully covered; finish its competing entrance now
+            let target=await wait(job,()=>{const n=options.findTarget();return page()!==previous && usable(n)?n:null;},2400,16);
+            if (target && returning) {
+                // Keep a visible card where it was left, so the predicted landing
+                // holds; only bring a card outside the window into view.
+                const r=box(target);
+                if (r.top<64||r.bottom>innerHeight||r.left<0||r.right>innerWidth) {target.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});if(settle)await sleep(job,64);}
+            }
+            if (!usable(target)) return missing();
+            // The real page is still covered; finish its competing entrance now
             // so it cannot move the landing rectangle during our poster flight.
             for (const a of page()?.getAnimations?.()||[]) if (Number.isFinite(a.effect?.getComputedTiming().endTime)) {try{a.finish();}catch{}}
             let prior=box(target), steady=0;
-            for (let i=0;i<18 && steady<2 && !job.signal.aborted;i++) {
+            for (let i=0;settle && i<18 && steady<2 && !job.signal.aborted;i++) {
                 await sleep(job,32); const current=box(target);
                 steady=Math.max(...['x','y','width','height'].map(k=>Math.abs(current[k]-prior[k])))<.5 ? steady+1 : 0;prior=current;
             }
             if(job.signal.aborted)return result;
             // The destination is already rendered under the opaque veil. Blur it
             // live instead of copying and restyling the new page before the flight.
-            // Composite the lens and hide the landing poster while the veil still
-            // covers them: done as the flight starts, they cost its first frame.
             glass||=lens(job,cover);hold(job,target);
-            await quiet(job);
+            if (settle) await quiet(job);
             if(job.signal.aborted)return result;
             // A late section can re-render the poster itself.
             if(!usable(target)){target=options.findTarget();hold(job,target);}
-            if(!usable(target)){job.metric.fallback='missing-target';await Promise.all([cover,glass].map(n=>animate(job,n,[{opacity:1},{opacity:0}],{duration:220,easing:soft})));return result;}
-            const to=box(target);
-            const duration=720;
-            const transform = rect => `translate3d(${rect.x-from.x}px,${rect.y-from.y}px,0) scale(${rect.width/from.width},${rect.height/from.height})`;
-            const fly = async () => {
-                const lifted=getComputedStyle(floating).transform;floating.style.transform=lifted;lift.cancel();
-                job.metric.posterFlightStartsMs=performance.now()-job.start;
-                const a=floating.animate([{transform:lifted},{transform:transform(to)}],{duration,easing:'cubic-bezier(.32,.05,.2,1)',fill:'both'});
-                job.animations.push(a);a.finished.catch(()=>{});
-                await sleep(job,560);if(job.signal.aborted)return;
-                // Emby can finish responsive layout during the flight. Rejoin its final
-                // rectangle in the last 160 ms, without reading geometry every frame.
-                const at=getComputedStyle(floating).transform;floating.style.transform=at;a.cancel();
-                await animate(job,floating,[{transform:at},{transform:transform(box(target))}],{duration:160,easing:'cubic-bezier(.2,.6,.3,1)'});
-            };
+            if(!usable(target))return missing();
+            // An image without fixed dimensions changes size when it decodes.
+            if (target.tagName==='IMG' && !target.complete) await wait(job,()=>target.complete,Math.max(0,Math.min(200,(landAt?landAt-CORRECT_MS:job.start+DEADLINE_MS-SHORT_FLIGHT_MS)-performance.now())),16);
+            if(job.signal.aborted)return result;
+            let to=box(target),now=performance.now(),end=aim;
+            job.metric.targetMs=now-job.start;if(job.metric.aim!=='lift')job.metric.aimErrorPx=Math.max(...['x','y','width','height'].map(k=>Math.abs(aim[k]-to[k])));
+            if (!settle && now+SHORT_FLIGHT_MS>job.start+DEADLINE_MS && (job.metric.aim==='lift'||differs(aim,to))) {
+                // Too late for a flight that lands by DEADLINE_MS: the poster
+                // stays where it settled and fades out as the page is revealed
+                // under it, with the real card shown in its own place.
+                job.metric.fallback='late-target';
+                job.held.filter(h=>h.owner===target).forEach(release);job.held=job.held.filter(h=>h.owner!==target);
+                const pace=SHORT_REVEAL_MS/(LENS_DELAY_MS+LENS_MS);
+                job.metric.plannedEndMs=now+SHORT_REVEAL_MS-job.start;
+                await Promise.all([animate(job,veil,[{opacity:1},{opacity:0}],{duration:VEIL_MS*pace,easing:soft}),
+                    animate(job,glass,[{opacity:1},{opacity:0}],{delay:LENS_DELAY_MS*pace,duration:LENS_MS*pace,easing:soft}),
+                    animate(job,flight.root,[{opacity:1},{opacity:0}],{duration:SHORT_REVEAL_MS,easing:soft})]);
+                if(job.signal.aborted)return result;
+                job.metric.landedMs=performance.now()-job.start;
+                remember(key,box(target));
+                return result;
+            }
+            if (job.metric.aim==='lift') {
+                // The real flight starts now, from the lifted rectangle. A late
+                // target shortens it (not below SHORT_FLIGHT_MS) to land by DEADLINE_MS.
+                const flightMs=Math.min(FLIGHT_MS,Math.max(SHORT_FLIGHT_MS,job.start+DEADLINE_MS-now));
+                landAt=settle?now+TOUCH_FLIGHT_MS:Math.max(job.start+LAND_MS,now+flightMs);job.metric.posterFlightStartsMs=now-job.start;
+                fly(job,flight,'A',aim,to,{delay:Math.max(0,job.start+LIFT_MS-now),duration:landAt-Math.max(now,job.start+LIFT_MS),easing:'cubic-bezier(.32,.05,.2,1)'});end=to;
+            } else if (differs(aim,to)) {
+                landAt=Math.max(landAt,now+Math.max(SHORT_FLIGHT_MS,Math.min(CORRECT_MS,job.start+DEADLINE_MS-now)));job.metric.correctionPx=Math.round(Math.max(...['x','y','width','height'].map(k=>Math.abs(aim[k]-to[k]))));
+                fly(job,flight,'A',aim,to,{duration:landAt-now,easing:'cubic-bezier(.4,0,.2,1)'});end=to;
+            }
             // Old blur -> live destination blur (veil fades out), then the lens
-            // fades to reveal the sharp page, as the copied scenes did before.
-            await Promise.all([
-                fly(),
-                animate(job,veil,[{opacity:1,offset:0},{opacity:1,offset:.16},{opacity:0,offset:.48},{opacity:0,offset:1}],{duration,easing:'linear'}),
-                animate(job,glass,[{opacity:1,offset:0},{opacity:1,offset:.7,easing:soft},{opacity:0,offset:1}],{duration,easing:'linear'})
-            ]);
-            const landing=box(floating), actual=box(target);
+            // fades to reveal the sharp page, ending as the poster lands. A
+            // short final flight compresses the reveal instead of outlasting it.
+            // A wall shown for the first time waits for its cards' artwork, as
+            // long as the shortest reveal still ends with the landing, so it is
+            // not uncovered while its rows fill in.
+            const reveal=(async()=>{
+                if (options.revealCards && !settle) {
+                    await wait(job,()=>!cardsLoading(target),Math.max(0,landAt-SHORT_REVEAL_MS-performance.now()),16);
+                    if (job.signal.aborted) return;
+                    job.metric.cardsLoading=cardsLoading(target);
+                }
+                const at=performance.now(), span=Math.min(LENS_DELAY_MS+LENS_MS,Math.max(SHORT_REVEAL_MS,landAt-at)), pace=span/(LENS_DELAY_MS+LENS_MS), revealAt=Math.max(at,landAt-span);
+                job.metric.revealMs=revealAt-job.start;
+                await Promise.all([
+                    animate(job,veil,[{opacity:1},{opacity:0}],{delay:revealAt-at,duration:VEIL_MS*pace,easing:soft}),
+                    animate(job,glass,[{opacity:1},{opacity:0}],{delay:revealAt-at+LENS_DELAY_MS*pace,duration:LENS_MS*pace,easing:soft})]);
+            })();
+            job.metric.plannedEndMs=Math.max(landAt,now+Math.min(LENS_DELAY_MS+LENS_MS,Math.max(SHORT_REVEAL_MS,landAt-now)))-job.start;
+            // Emby can finish responsive layout during the flight. Rejoin a moved
+            // target over the last part, without reading geometry every frame.
+            await sleep(job,landAt-LATE_MS-performance.now());
+            if(job.signal.aborted)return result;
+            if(!usable(target)){const again=options.findTarget();if(usable(again)){target=again;hold(job,target);}}
+            const late=box(target);now=performance.now();
+            if (usable(target) && differs(late,end)) {
+                landAt=Math.max(landAt,now+Math.max(60,Math.min(LATE_MS,job.start+DEADLINE_MS-now)));job.metric.lateCorrection=true;job.metric.plannedEndMs=Math.max(job.metric.plannedEndMs,landAt-job.start);
+                fly(job,flight,'B',end,late,{duration:landAt-now,easing:'cubic-bezier(.4,0,.2,1)'});
+            }
+            await Promise.all([reveal,sleep(job,landAt-performance.now())]);
+            if(job.signal.aborted)return result;
+            const landing=box(flight.poster), actual=box(target);
+            job.metric.landedMs=performance.now()-job.start;
             job.metric.landingErrorPx=Math.max(...['x','y','width','height'].map(key=>Math.abs(landing[key]-actual[key])));
+            remember(key,actual);
+            freeze(flight);
+            job.metric.artworkPending=!artworkReady(target);
+            if (job.metric.artworkPending) handOver(job,flight,target);
             return result;
         }); },
         library({gallery,navigate,samePage = false}) { return run('library',async job => {
