@@ -37,4 +37,9 @@ jobs:
     uses: ./.github/workflows/build-ios.yml
 
   tvos:
+    # Queued next to the other macOS jobs, this macos-26 job was cancelled
+    # twice after 15 minutes without a runner; the iOS job, started once the
+    # macOS build had finished, got one at once. Run after it.
+    needs: ios
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/build-tvos.yml
