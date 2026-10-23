@@ -5,9 +5,9 @@
     const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     // Desktop pages render a batch well inside a frame: the poster flies once
     // its target exists, late sections load during the flight and its rejoin
-    // absorbs layout shifts. Touch devices stalled mid-flight on those batches
-    // and still wait for a steady target and a quiet page.
-    const touch = () => window.matchMedia('(pointer: coarse)').matches;
+    // absorbs layout shifts. Phones stalled mid-flight on those batches and
+    // still wait for a steady target and a quiet page; the iPad flies as the desktop does.
+    const settles = () => window.matchMedia('(pointer: coarse)').matches && !(window.jmpInfo?.platform === 'ipad' && window.jmpInfo?.deviceName === 'iPad');
     const box = node => node?.getBoundingClientRect();
     const usable = node => { const b = box(node); return node?.isConnected && b?.width > 1 && b.height > 1; };
     const page = () => Array.from(document.querySelectorAll('.mainAnimatedPage,.page')).filter(node =>
@@ -590,7 +590,7 @@
         poster(options) { return run('poster',async job => {
             const source=options.source, artwork=url(source);
             if (reduced() || !usable(source) || !artwork) return simple(job,options.navigate);
-            const from=box(source), previous=page(), begin=performance.now(), returning=options.direction==='return', settle=touch();
+            const from=box(source), previous=page(), begin=performance.now(), returning=options.direction==='return', settle=settles();
             const flight=stack(job,from,artwork,getComputedStyle(source).borderRadius);holdDrawn(job,source);
             job.poster=flight.poster;job.posterFrom=from;
             // Fly at once to where this destination's poster landed last time, to
