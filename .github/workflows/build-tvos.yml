@@ -19,6 +19,9 @@ jobs:
         xcodebuild -version
     - name: Generate project
       run: |
+        # Both projects use the ignored apple/Local.xcconfig for a personal
+        # team; only the iPad generator creates it. CI builds unsigned.
+        [ -f apple/Local.xcconfig ] || echo '// Unsigned CI build.' > apple/Local.xcconfig
         python3 apple/tools/generate_tv_project.py
         git diff --exit-code -- apple
     - name: Build Release for generic tvOS device

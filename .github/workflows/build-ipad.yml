@@ -34,6 +34,9 @@ jobs:
         path: ${{ runner.temp }}/rife-model
     - name: Resolve pinned MPVKit
       run: |
+        # generate_project.py creates this ignored personal-team file later;
+        # the committed project needs it before then. CI builds unsigned.
+        [ -f apple/Local.xcconfig ] || echo '// Unsigned CI build.' > apple/Local.xcconfig
         xcodebuild -resolvePackageDependencies -project apple/TigerestTheater.xcodeproj \
           -scheme TigerestTheater -derivedDataPath apple/DerivedData
     - name: Prepare native RIFE sources
