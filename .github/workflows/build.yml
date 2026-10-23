@@ -13,15 +13,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Intel Macs are not a shipped platform, and Homebrew has no Intel bottles
+  # since September 2026, so that build compiles the media stack for hours.
+  # Run build-macos manually for an x86_64 package.
   macos-arm64:
     uses: ./.github/workflows/build-macos.yml
     with:
       architecture: arm64
-
-  macos-x86_64:
-    uses: ./.github/workflows/build-macos.yml
-    with:
-      architecture: x86_64
 
   windows:
     permissions:
