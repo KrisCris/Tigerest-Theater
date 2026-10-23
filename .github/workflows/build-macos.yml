@@ -129,7 +129,8 @@ jobs:
         }
         trap restore_install_prompt EXIT
         defaults write "$DOMAIN" "$KEY" -bool true
-        ctest --test-dir build --output-on-failure
+        # Hosted runners have no GPU; see the gpu-hardware label in tests/CMakeLists.txt.
+        ctest --test-dir build --output-on-failure -LE gpu-hardware
 
     - name: Preserve failed-build diagnostics
       if: failure()

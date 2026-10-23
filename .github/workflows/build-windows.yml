@@ -169,7 +169,8 @@ jobs:
       run: |
         Get-Content dev/windows/TESTING.md | Out-Null
         . ./dev/windows/Enter-TestEnvironment.ps1
-        ctest --test-dir build --output-on-failure
+        # Hosted runners have no GPU; see the gpu-hardware label in tests/CMakeLists.txt.
+        ctest --test-dir build --output-on-failure -LE gpu-hardware
         if ($LASTEXITCODE -ne 0) { throw 'Windows tests failed' }
     - name: Verify packaged application startup
       run: node tests/smoke_windows_bundle.cjs "build/portable/Tigerest Theater.exe"
