@@ -6,8 +6,11 @@
     // Desktop pages render a batch well inside a frame: the poster flies once
     // its target exists, late sections load during the flight and its rejoin
     // absorbs layout shifts. Touch devices stalled mid-flight on those batches
-    // and still wait for a steady target and a quiet page.
+    // and still wait for a steady target and a quiet page. Android's WebView
+    // stalled 50-70 ms when the page rendered under a moving poster, so with a
+    // predicted landing it flies first and changes the route once landed.
     const touch = () => window.matchMedia('(pointer: coarse)').matches;
+    const android = () => !!(window.tigerestAndroidApi || window.api?.system?.isAndroid);
     const box = node => node?.getBoundingClientRect();
     const usable = node => { const b = box(node); return node?.isConnected && b?.width > 1 && b.height > 1; };
     const page = () => Array.from(document.querySelectorAll('.mainAnimatedPage,.page')).filter(node =>
@@ -590,17 +593,20 @@
         poster(options) { return run('poster',async job => {
             const source=options.source, artwork=url(source);
             if (reduced() || !usable(source) || !artwork) return simple(job,options.navigate);
-            const from=box(source), previous=page(), begin=performance.now(), returning=options.direction==='return', settle=touch();
+            const from=box(source), previous=page(), begin=performance.now(), returning=options.direction==='return';
             const flight=stack(job,from,artwork,getComputedStyle(source).borderRadius);holdDrawn(job,source);
             job.poster=flight.poster;job.posterFrom=from;
             // Fly at once to where this destination's poster landed last time, to
             // the card that was left, or to where the page is known to draw it.
-            // Without any, lift in place and fly when the target exists. Phones keep the lift: their pages stalled
+            // Without any, lift in place and fly when the target exists. Android
+            // keeps the old page until the poster lands there; other touch
+            // devices always lift and wait for a quiet page: their pages stalled
             // the compositor while loading under a moving poster.
             const key=options.landingKey&&`${options.landingKey}|${Math.round(from.width/from.height*10)}`;
             const usableRect=rect=>rect?.width>1&&rect.height>1?rect:null;
             const departure=usableRect(options.landingRect), preset=usableRect(options.presetRect);
-            let aim=settle?null:remembered(key)||departure||preset, landAt=null;
+            const predicted=remembered(key)||departure||preset, deferRoute=android()&&!!predicted, settle=!deferRoute&&touch();
+            let aim=settle?null:predicted, landAt=null;
             if (aim) {
                 job.metric.aim=remembered(key)?'remembered':departure?'departure':'preset';
                 landAt=job.start+LAND_MS;job.metric.posterFlightStartsMs=performance.now()-job.start;
@@ -633,6 +639,12 @@
                     await animate(job,hot?fromScene.bitmap:veil,[{opacity:0},{opacity:1}],{duration:Math.max(80,COVER_MS-(performance.now()-job.start)),easing:soft});
                 })()]);
             if (job.signal.aborted && job.signal.reason !== 'resize') return;
+            if (deferRoute) {
+                job.metric.deferRoute=true;
+                await sleep(job,landAt-performance.now());
+                if (job.signal.aborted && job.signal.reason !== 'resize') return;
+                job.metric.posterLandedMs=performance.now()-job.start;
+            }
             job.metric.routeStartMs=performance.now()-job.start;
             const result=await options.navigate();
             if (job.signal.aborted) return result;
@@ -667,11 +679,13 @@
             if(!usable(target)){target=options.findTarget();hold(job,target);}
             if(!usable(target))return missing();
             // An image without fixed dimensions changes size when it decodes.
-            if (target.tagName==='IMG' && !target.complete) await wait(job,()=>target.complete,Math.max(0,Math.min(200,(landAt?landAt-CORRECT_MS:job.start+DEADLINE_MS-SHORT_FLIGHT_MS)-performance.now())),16);
+            // A landed poster covers it while it does.
+            if (target.tagName==='IMG' && !target.complete) await wait(job,()=>target.complete,deferRoute?300:Math.max(0,Math.min(200,(landAt?landAt-CORRECT_MS:job.start+DEADLINE_MS-SHORT_FLIGHT_MS)-performance.now())),16);
             if(job.signal.aborted)return result;
             let to=box(target),now=performance.now(),end=aim;
             job.metric.targetMs=now-job.start;if(job.metric.aim!=='lift')job.metric.aimErrorPx=Math.max(...['x','y','width','height'].map(k=>Math.abs(aim[k]-to[k])));
-            if (!settle && now+SHORT_FLIGHT_MS>job.start+DEADLINE_MS && (job.metric.aim==='lift'||differs(aim,to))) {
+            // A poster that already landed is corrected instead.
+            if (!settle && !deferRoute && now+SHORT_FLIGHT_MS>job.start+DEADLINE_MS && (job.metric.aim==='lift'||differs(aim,to))) {
                 // Too late for a flight that lands by DEADLINE_MS: the poster
                 // stays where it settled and fades out as the page is revealed
                 // under it, with the real card shown in its own place.
@@ -709,7 +723,8 @@
                     if (job.signal.aborted) return;
                     job.metric.cardsLoading=cardsLoading(target);
                 }
-                const at=performance.now(), span=Math.min(LENS_DELAY_MS+LENS_MS,Math.max(SHORT_REVEAL_MS,landAt-at)), pace=span/(LENS_DELAY_MS+LENS_MS), revealAt=Math.max(at,landAt-span);
+                // After a deferred route the poster has landed: reveal at once, at full length.
+                const at=performance.now(), span=deferRoute?LENS_DELAY_MS+LENS_MS:Math.min(LENS_DELAY_MS+LENS_MS,Math.max(SHORT_REVEAL_MS,landAt-at)), pace=span/(LENS_DELAY_MS+LENS_MS), revealAt=deferRoute?at:Math.max(at,landAt-span);
                 job.metric.revealMs=revealAt-job.start;
                 await Promise.all([
                     animate(job,veil,[{opacity:1},{opacity:0}],{delay:revealAt-at,duration:VEIL_MS*pace,easing:soft}),
