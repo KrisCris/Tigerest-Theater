@@ -160,6 +160,10 @@ jobs:
         path: ${{ github.workspace }}/build/TigerestTheater-*.zip
     # Archived before the tests so every build yields packages; a failing test
     # or packaged-startup check still fails the job.
+    # Hosted runners have no audio endpoint, which leaves mpv only its OpenAL
+    # device; the libmpv tests crashed there. Runs after the packages are archived.
+    - name: Add a virtual audio device
+      uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
     - name: Run unit tests
       shell: pwsh
       run: |
