@@ -797,6 +797,9 @@ def test_macos_reproducibility_contract() -> None:
             workflow.count('"$MACOS_DEPLOYMENT_TARGET"') == 2 and
             "ctest --test-dir build" in workflow,
             "macOS CI matrix or test step is missing")
+    require("dev/macos/use_patched_webengine.py" in workflow and
+            re.search(r"WEBENGINE_SOURCE_SHA256: [0-9a-f]{64}\n", workflow),
+            "macOS CI does not install the pinned display-link WebEngine")
     deploy = read("CMakeModules/CompleteBundleMac.cmake.in")
     for unsupported_plugin in (
         "libqsqlmimer.dylib", "libqsqlodbc.dylib", "libqsqlpsql.dylib",

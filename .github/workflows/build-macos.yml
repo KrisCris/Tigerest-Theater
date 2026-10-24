@@ -30,6 +30,13 @@ jobs:
       # bundled as-is. Keep the runner on this version so a bottle built for a
       # newer macOS cannot reach the DMG (dyld "Symbol not found" at launch).
       MACOS_DEPLOYMENT_TARGET: '15.0'
+      # The display-link WebEngine (dev/macos/qt/README.md) is built by hand;
+      # releases copy it from the previous release bundle, and so does CI.
+      # It is arm64 only and built for macOS 12.0.
+      WEBENGINE_SOURCE_REPO: Tigerest/Tigerest-Theater
+      WEBENGINE_SOURCE_TAG: v2.9.4
+      WEBENGINE_SOURCE_DMG: TigerestTheater-2.9.4-arm64.dmg
+      WEBENGINE_SOURCE_SHA256: 461a28e676ee58f69ec144b1aa14ab9e9e12576a521f28ad7854e541d6efde03
     steps:
     - uses: actions/checkout@v7
       with:
@@ -101,6 +108,23 @@ jobs:
       with:
         key: rife-model-${{ github.run_id }}
         path: build/output/Tigerest Theater.app/Contents/Resources/rife/model
+    # As dev/macos/bundle.sh does with TIGEREST_PATCHED_WEBENGINE_SOURCE: the
+    # stock engine limits the web UI to 60 Hz. use_patched_webengine.py
+    # refuses a source whose QtWebEngineCore is not the patched build.
+    - name: Install the patched WebEngine from the pinned release
+      if: matrix.artifact == 'macos-arm64'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        source="$RUNNER_TEMP/webengine"
+        gh release download "$WEBENGINE_SOURCE_TAG" --repo "$WEBENGINE_SOURCE_REPO" \
+          --pattern "$WEBENGINE_SOURCE_DMG" --dir "$source"
+        echo "$WEBENGINE_SOURCE_SHA256  $source/$WEBENGINE_SOURCE_DMG" | shasum -a 256 -c -
+        mkdir "$source/mount"
+        hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$source/mount" "$source/$WEBENGINE_SOURCE_DMG"
+        python3 dev/macos/use_patched_webengine.py --source "$source/mount/Tigerest Theater.app" \
+          --bundle "build/output/Tigerest Theater.app"
+        hdiutil detach "$source/mount"
     - name: Sign and create dmg
       run: |
         python3 dev/macos/sign_bundle.py "./build/output/Tigerest Theater.app"
