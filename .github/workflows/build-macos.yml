@@ -47,6 +47,17 @@ jobs:
       run: |
         brew update
         brew install mpv molten-vk vapoursynth python@3.13 ninja
+    - name: Select Xcode 26
+      run: |
+        # Build with the newest SDK, as upstream does, while
+        # MACOS_DEPLOYMENT_TARGET still sets where the app runs. The runner's
+        # default Xcode 16.4 links our code (RIFE engine, mpv) against the
+        # macOS 15 SDK, so macOS 26 can run it with older-SDK behaviour.
+        xcode=$(printf '%s\n' /Applications/Xcode_26*.app | grep -v -i -E 'beta|release_candidate' | sort -V | tail -1)
+        if [ ! -d "$xcode" ]; then echo "No Xcode 26 on this runner" >&2; exit 1; fi
+        sudo xcode-select -s "$xcode"
+        xcodebuild -version
+        xcrun --sdk macosx --show-sdk-version
     - name: Build pinned playback runtime and RIFE model
       run: |
         "$(brew --prefix python@3.13)/bin/python3.13" -m venv build/rife/venv
