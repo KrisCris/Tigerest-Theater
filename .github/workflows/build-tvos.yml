@@ -38,7 +38,5 @@ jobs:
     - name: Archive IPA
       uses: actions/upload-artifact@v7
       with:
-        name: tvos-unsigned
-        path: |
-          dist/*.ipa
-          dist/*.validation.json
+        name: tigerest-theater-tvos
+        path: dist/*.ipa

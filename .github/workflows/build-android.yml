@@ -52,12 +52,12 @@ jobs:
     - name: Archive debug APK
       uses: actions/upload-artifact@v7
       with:
-        name: android-debug
+        name: tigerest-theater-android-debug
         path: dist/*-android-debug.apk
     - name: Archive unsigned release APK
       uses: actions/upload-artifact@v7
       with:
-        name: android-release-unsigned
+        name: tigerest-theater-android-release-unsigned
         path: dist/*-android-release-unsigned.apk
     - name: Run unit tests and lint
       working-directory: android

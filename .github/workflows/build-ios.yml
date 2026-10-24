@@ -7,11 +7,6 @@ name: build-ios
 # same workflow run.
 on:
   workflow_call:
-    inputs:
-      rife_model_artifact:
-        description: Artifact holding the compiled macOS RIFE model directory
-        type: string
-        default: rife-model-compiled
 
 jobs:
   ios:
@@ -29,11 +24,12 @@ jobs:
           if [ -n "$candidate" ]; then sudo xcode-select -s "$candidate"; fi
         fi
         xcodebuild -version
-    - name: Download compiled RIFE model
-      uses: actions/download-artifact@v7
+    - name: Restore compiled RIFE model
+      uses: actions/cache/restore@v6
       with:
-        name: ${{ inputs.rife_model_artifact }}
-        path: ${{ runner.temp }}/rife-model
+        key: rife-model-${{ github.run_id }}
+        path: build/output/Tigerest Theater.app/Contents/Resources/rife/model
+        fail-on-cache-miss: true
     - name: Resolve pinned MPVKit
       run: |
         # generate_project.py creates this ignored personal-team file later;
@@ -46,7 +42,7 @@ jobs:
         git init -q "$RUNNER_TEMP/mpv"
         git -C "$RUNNER_TEMP/mpv" fetch -q --depth 1 https://github.com/mpv-player/mpv "$MPV_REVISION"
         git -C "$RUNNER_TEMP/mpv" checkout -q FETCH_HEAD
-        python3 apple/tools/prepare_native_rife.py --mpv-source "$RUNNER_TEMP/mpv" --model "$RUNNER_TEMP/rife-model"
+        python3 apple/tools/prepare_native_rife.py --mpv-source "$RUNNER_TEMP/mpv" --model "build/output/Tigerest Theater.app/Contents/Resources/rife/model"
     - name: Generate project
       run: |
         python3 apple/tools/generate_project.py
@@ -66,7 +62,5 @@ jobs:
     - name: Archive IPA
       uses: actions/upload-artifact@v7
       with:
-        name: ios-universal-unsigned
-        path: |
-          dist/*.ipa
-          dist/*.validation.json
+        name: tigerest-theater-ios
+        path: dist/*.ipa

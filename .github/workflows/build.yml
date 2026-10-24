@@ -30,8 +30,8 @@ jobs:
     uses: ./.github/workflows/build-android.yml
 
   ios:
-    # Universal iPhone/iPad app. Waits for the compiled RIFE model from the
-    # macOS arm64 job, which is archived before that job's unit tests run.
+    # Universal iPhone/iPad app. Waits for the compiled RIFE model the macOS
+    # arm64 job saves to the Actions cache before its unit tests run.
     needs: macos-arm64
     if: ${{ !cancelled() }}
     uses: ./.github/workflows/build-ios.yml

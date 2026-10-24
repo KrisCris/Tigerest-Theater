@@ -151,12 +151,12 @@ jobs:
     - name: Archive installer
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-installer
+        name: tigerest-theater-${{ matrix.artifact }}-installer
         path: ${{ github.workspace }}/build/TigerestTheater-*.exe
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-portable
+        name: tigerest-theater-${{ matrix.artifact }}-portable
         path: ${{ github.workspace }}/build/TigerestTheater-*.zip
     # Archived before the tests so every build yields packages; a failing test
     # or packaged-startup check still fails the job.
