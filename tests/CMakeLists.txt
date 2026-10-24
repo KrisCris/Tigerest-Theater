@@ -549,12 +549,12 @@ if(Node_EXECUTABLE)
   add_test(NAME test_home_motion_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
-  set_tests_properties(test_home_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  set_tests_properties(test_home_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
   # Android's deferred poster route, simulated in the client's WebEngine.
   add_test(NAME test_android_poster_route_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_android_poster_route_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
-  set_tests_properties(test_android_poster_route_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+  set_tests_properties(test_android_poster_route_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
   # The mpv.conf editor against the real native bridge, parser and files.
   add_test(NAME test_mpvconf_editor_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_mpvconf_editor_ui.cjs
@@ -591,7 +591,7 @@ if(Node_EXECUTABLE)
   add_test(NAME test_home_motion_cache_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_motion_cache_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
-  set_tests_properties(test_home_motion_cache_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  set_tests_properties(test_home_motion_cache_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
   add_test(NAME test_home_snapshot_custom_elements_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_snapshot_custom_elements_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
