@@ -649,13 +649,16 @@ if(Node_EXECUTABLE)
            COMMAND ${Node_EXECUTABLE} --test ${CMAKE_CURRENT_SOURCE_DIR}/test_community_client.js
                    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_registration.js)
   add_test(NAME test_community_v2_protocol COMMAND ${Node_EXECUTABLE} --test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_v2.js ${CMAKE_CURRENT_SOURCE_DIR}/test_community_bridge.js ${CMAKE_CURRENT_SOURCE_DIR}/test_community_review.js ${CMAKE_CURRENT_SOURCE_DIR}/test_community_avatar.js)
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_v2.js ${CMAKE_CURRENT_SOURCE_DIR}/test_community_compliance.js ${CMAKE_CURRENT_SOURCE_DIR}/test_community_bridge.js ${CMAKE_CURRENT_SOURCE_DIR}/test_community_review.js ${CMAKE_CURRENT_SOURCE_DIR}/test_community_avatar.js)
   add_test(NAME test_community_v2_webengine COMMAND ${Node_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_community_v2_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_community_v2_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_watch_together_webengine COMMAND ${Node_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_watch_together_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_watch_together_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  add_test(NAME test_community_compliance_webengine COMMAND ${Node_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_community_compliance_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_community_compliance_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
   add_test(NAME test_community_unified_webengine COMMAND ${Node_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_community_unified_ui.cjs $<TARGET_FILE:${MAIN_TARGET}> --webengine)
   set_tests_properties(test_community_unified_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
