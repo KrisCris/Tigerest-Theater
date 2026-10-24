@@ -65,9 +65,13 @@ withBrowser(routes, async ({evaluate, call}) => {
         appRouter.showItem({Id: 'work', Type: 'Movie', ServerId: 's'});
         return node.getBoundingClientRect().toJSON(); };
       // The poster is the innermost box of the flight stack added to the body.
+      // Slow software rendering can drop the frame after the last sample, so the
+      // final rectangle is also read just before the flight layer is removed.
+      const tracked = [], remove = Element.prototype.remove;
+      Element.prototype.remove = function () { for (const [flight, node] of tracked) if (node.isConnected && this.contains(node)) flight.last = node.getBoundingClientRect().toJSON(); return remove.call(this); };
       new MutationObserver(records => records.forEach(r => r.addedNodes.forEach(added => {
         const node = added.querySelector?.('.tigerest-motion-poster'); if (!node) return;
-        const flight = {first: node.getBoundingClientRect().toJSON(), last: null}; flights.push(flight);
+        const flight = {first: node.getBoundingClientRect().toJSON(), last: null}; flights.push(flight); tracked.push([flight, node]);
         const sample = () => { if (!node.isConnected) return; flight.last = node.getBoundingClientRect().toJSON(); requestAnimationFrame(sample); }; sample();
       }))).observe(document.body, {childList: true});
       return true;
@@ -91,7 +95,7 @@ withBrowser(routes, async ({evaluate, call}) => {
     assert.ok(opened.flight, 'pressing a Jellyfin card starts a poster flight');
     assert.ok(near(opened.flight.first, pressed) < 1, 'the flight starts from the pressed card: ' + JSON.stringify(opened.flight.first));
     assert.ok(opened.metric.kind === 'poster' && !opened.metric.fallback && opened.metric.landingErrorPx < 2, 'the card lands on the detail poster: ' + JSON.stringify(opened.metric));
-    assert.ok(near(opened.flight.last, opened.target) < 2, 'the last frame covers the detail poster');
+    assert.ok(near(opened.flight.last, opened.target) < 2, 'the last frame covers the detail poster: ' + JSON.stringify({last: opened.flight.last, target: opened.target}));
     assert.ok(opened.target.y >= opened.header, 'the detail poster is below the header');
     await evaluate('appRouter.back()');
     await settle();
