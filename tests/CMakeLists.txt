@@ -571,11 +571,11 @@ if(Node_EXECUTABLE)
   add_test(NAME test_episode_motion_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_episode_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
-  set_tests_properties(test_episode_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  set_tests_properties(test_episode_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
   add_test(NAME test_jellyfin_motion_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_jellyfin_motion_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)
-  set_tests_properties(test_jellyfin_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+  set_tests_properties(test_jellyfin_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
   add_test(NAME test_web_appearance_worlds_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_web_appearance_worlds_ui.cjs
                    $<TARGET_FILE:${MAIN_TARGET}> --webengine)

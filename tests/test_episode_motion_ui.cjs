@@ -16,6 +16,8 @@ const routes={
  '/transitions.js':{path:path.join(root,'native/homeTransitions.js')},'/motion.js':{path:path.join(root,'native/homeMotion.js')}
 };
 withBrowser(routes,async({evaluate,call})=>{
+ const software=await withBrowser.softwareRenderer(evaluate);
+ if(software){console.log('SKIP: frame-precise motion needs a hardware GPU ('+software+')');process.exitCode=withBrowser.SKIP_CODE;return;}
  await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
  await evaluate(`window.fixture={state:{params:{id:'series'},contextPath:'/item?id=series'},show(name,id){document.querySelectorAll('.page').forEach(p=>p.classList.toggle('hide',p.id!==name));this.state.params={id};this.state.contextPath='/item?id='+id;},
   route(name,id){return new Promise(resolve=>setTimeout(()=>{this.show(name,id);resolve();},120));}};

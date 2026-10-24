@@ -34,6 +34,8 @@ const routes = {
 };
 const library = '#/movies?topParentId=L&collectionType=movies';
 withBrowser(routes, async ({evaluate, call}) => {
+    const software = await withBrowser.softwareRenderer(evaluate);
+    if (software) { console.log('SKIP: frame-precise motion needs a hardware GPU (' + software + ')'); process.exitCode = withBrowser.SKIP_CODE; return; }
     await call('Emulation.setEmulatedMedia', {features: [{name: 'prefers-reduced-motion', value: 'no-preference'}]});
     await call('Emulation.setDeviceMetricsOverride', {width: 847, height: 948, deviceScaleFactor: 1, mobile: true});
     // Jellyfin's router: the address selects the page, show() waits for the
