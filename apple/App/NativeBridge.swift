@@ -54,7 +54,7 @@ import AppleCore
                 let info = try JSONDecoder().decode(JSONValue.self, from: body)
                 let success = response.statusCode == 200 && (info["Id"].string != nil || info["Version"].string != nil)
                 emit("system", "serverConnectivityResult", [arg(0), .bool(success), .string(address.endpoint("web/index.html").absoluteString), .string(success ? "" : "无法连接 Emby 或 Jellyfin 服务器")]); return .bool(success)
-            case "hello": return .string("大河影院 iPad")
+            case "hello": return .string("大河影院 Universal")
             case "getUserAgent": return .string(model.web.view.customUserAgent ?? "TigerestTheater/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown")")
             case "finishServerSelection": return .bool(await model.finishServerSelection(arg(0).string ?? "", mode: arg(1).string ?? "", target: arg(2).string ?? "", history: arg(3).string))
             case "takeServerSelectionError": return .bool(model.takeServerSelectionError())

@@ -204,6 +204,14 @@
             }
         }
     }
+    // The element that scrolls a card: Emby's library is its own scroller, Jellyfin's the document.
+    function scrollerOf(node) {
+        for (let n = node?.parentElement; n && n !== document.body; n = n.parentElement) {
+            const overflow = getComputedStyle(n).overflowY;
+            if ((overflow === 'auto' || overflow === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+        }
+        return document.scrollingElement;
+    }
     // Where the detail poster is drawn in a desktop-sized window, measured on
     // Emby 4.10 and on Jellyfin 10.11 with jellyfinPlugin.js's layout: a first
     // press flies straight there. A landing remembered from an earlier press
@@ -289,6 +297,11 @@
                         findTarget: () => pressed() || posterNode(targetId), prepareTarget: nested ? undefined : async signal => {
                             targetId = await prepareLibraryPoster(returning.itemId,signal,returning.presentationKey,fromHome ? returning.library : null) || targetId;
                         }, navigate, direction: 'return', landingRect: returning.sourceRect, revealCards: !nested,
+                        // Emby restores the wall up to a card row off where it was left (87 px on iPad).
+                        restoreScroll: () => {
+                            const kept = returning.sourceScroll;
+                            if (kept?.node.isConnected && Math.abs(kept.node.scrollTop - kept.top) > .5) kept.node.scrollTop = kept.top;
+                        },
                         landingKey: fromHome ? ['wall', window.TigerestServer?.kind || '', returning.libraryPath, returning.itemId].join('|') : undefined});
                     if (ticket === revision && returning.account === account()) {
                         entry = returning.parent;
@@ -357,7 +370,8 @@
             entry = {itemId: card.item.Id, presentationKey: card.item.PresentationUniqueKey, library, account: account(), origin,
                 homeOwned: !nested && (origin === 'home' || !!matchesLibrary()), favoritesReturn: libraryContext?.favoritesReturn,
                 libraryPath: origin === 'home' ? libraryUrl(library) : path(), parent, source: nested ? source : null,
-                sourceRect: origin === 'home' || !source?.getBoundingClientRect ? null : (({x, y, width, height}) => ({x, y, width, height}))(source.getBoundingClientRect())};
+                sourceRect: origin === 'home' || !source?.getBoundingClientRect ? null : (({x, y, width, height}) => ({x, y, width, height}))(source.getBoundingClientRect()),
+                sourceScroll: origin === 'home' || nested || !source ? null : (node => node && {node, top: node.scrollTop})(scrollerOf(source))};
             const shape = posterShape(card.item);
             try {
                 return await effect('poster', {source, itemId: card.item.Id, findTarget: () => posterNode(card.item.Id, true), navigate, direction: 'enter',

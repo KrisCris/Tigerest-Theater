@@ -1,7 +1,6 @@
 name: build-ios
 
-# Unsigned universal iOS IPA (iPhone and iPad; the project, bundle ID and
-# release file keep their "ipad" names), packaged like the release
+# Unsigned universal iOS IPA (iPhone and iPad), packaged like the release
 # attachment: recipients sign it with their own Apple identity. Native RIFE
 # needs the compiled Core ML model the macOS arm64 build produces in the
 # same workflow run.

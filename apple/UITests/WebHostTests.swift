@@ -426,7 +426,7 @@ extension WebHostTests {
         XCTAssertTrue(app.staticTexts["桥接校验通过"].waitForExistence(timeout:20))
         let entry=app.descendants(matching:.any).matching(NSPredicate(format:"label == %@ OR label BEGINSWITH %@","客户端更新","客户端有新版本")).firstMatch
         XCTAssertTrue(entry.waitForExistence(timeout:5),app.debugDescription);entry.tap()
-        let result=app.staticTexts.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@","iPad 版本发布情况","发现新版本","检查完成")).firstMatch
+        let result=app.staticTexts.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@","iPad / iPhone 版本发布情况","发现新版本","检查完成")).firstMatch
         XCTAssertTrue(result.waitForExistence(timeout:35),app.debugDescription)
         XCTAssertTrue(app.buttons["查看发布说明"].exists)
         XCTAssertFalse(app.buttons["立即更新"].exists);XCTAssertFalse(app.buttons["安装更新"].exists)

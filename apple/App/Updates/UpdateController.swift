@@ -31,9 +31,9 @@ import AppleCore
             let result:JSONValue
             do {
                 let releases=try await releaseList()
-                var value=IPadUpdatePolicy.state(releases:releases,currentVersion:currentVersion).object!
+                var value=UniversalUpdatePolicy.state(releases:releases,currentVersion:currentVersion).object!
                 value["manual"] = .bool(manualCheck)
-                if !manualCheck,value["version"]?.string==defaults.string(forKey:"TigerestSkippedIPadVersion"),value["status"]?.string=="available" {value["status"] = .string("idle")}
+                if !manualCheck,value["version"]?.string==defaults.string(forKey:"TigerestSkippedUniversalVersion"),value["status"]?.string=="available" {value["status"] = .string("idle")}
                 result = .object(value)
             } catch {
                 result = .object(["status":.string("error"),"currentVersion":.string(currentVersion),"checkOnly":.bool(true),"manual":.bool(manualCheck),"error":.string("暂时无法连接发布服务，请稍后重新检查。")])
@@ -60,7 +60,7 @@ import AppleCore
     /// A 200 response of at most 2 MiB, read within `timeout` seconds overall. Redirects are not followed.
     private func body(_ base:URLRequest,timeout:TimeInterval) async throws -> Data {
         var request=base
-        request.setValue("TigerestTheater-iPad/"+currentVersion,forHTTPHeaderField:"User-Agent")
+        request.setValue("TigerestTheater-Universal/"+currentVersion,forHTTPHeaderField:"User-Agent")
         request.timeoutInterval=timeout
         let http=self.http,limit=ReleaseFeed.maximumEnvelopeBytes
         return try await withThrowingTaskGroup(of:Data.self) { group in
@@ -78,7 +78,7 @@ import AppleCore
     }
     func skip() {
         guard state["status"].string=="available",let version=state["version"].string,!version.isEmpty else {return}
-        defaults.set(version,forKey:"TigerestSkippedIPadVersion")
+        defaults.set(version,forKey:"TigerestSkippedUniversalVersion")
         var value=state.object!;value["status"] = .string("idle");publish(.object(value))
     }
     func deferUpdate() {var value=state.object ?? [:];value["deferred"] = .bool(true);publish(.object(value))}

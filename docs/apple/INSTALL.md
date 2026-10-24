@@ -1,8 +1,10 @@
-# iPad 安装与构建
+# iPad / iPhone 安装与构建
 
-2.9.3 的系统要求为 iPadOS 26 及以后版本。发行附件 [`TigerestTheater-2.9.3-ipad.ipa`](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.3/TigerestTheater-2.9.3-ipad.ipa) 是完整的设备版应用，但**未签名，必须先用自己的 Apple 身份重签名才能安装**。它不含作者的个人开发签名、设备名单、证书或账号。不是 App Store 或 TestFlight 安装包，也不能直接在“文件”中点开安装。
+2.9.4 的系统要求为 iPadOS / iOS 26 及以后版本。发行附件 [`TigerestTheater-2.9.4-universal.ipa`](https://github.com/Tigerest/Tigerest-Theater/releases/download/v2.9.4/TigerestTheater-2.9.4-universal.ipa) 是 iPad 与 iPhone 通用的完整设备版应用，但**未签名，必须先用自己的 Apple 身份重签名才能安装**。它不含作者的个人开发签名、设备名单、证书或账号。不是 App Store 或 TestFlight 安装包，也不能直接在“文件”中点开安装。
 
 已有侧载签名工具的用户，可以导入 IPA 并使用自己的账号签名。免费账号的签名有有效期，需要按 Apple 的规则续签。覆盖更新时保持原来的应用标识与签名身份；不要先卸载应用，以免丢失配置和离线媒体。
+
+2.9.4 起应用标识改为 `top.tigerest.theater.universal`，安装包改名为 `universal.ipa`。系统会把它当成新应用：不会覆盖 2.9.3 及更早的 iPad 版，登录、服务器列表、设置和离线媒体不会迁移，需要重新登录；确认新版正常后可以手动删除旧版。
 
 ## 使用 Mac 与 Xcode 27
 
@@ -10,7 +12,7 @@
 
 1. 选择 Xcode 27，运行 `python3 apple/tools/generate_project.py` 生成工程。
 2. 打开 `apple/TigerestTheater.xcodeproj`，选择 TigerestTheater → Signing & Capabilities → Team，选自己的 Personal Team。
-3. 选择已配对的 iPad；首次配对、开发者模式及设备信任需在设备上确认。
+3. 选择已配对的 iPad 或 iPhone；首次配对、开发者模式及设备信任需在设备上确认。
 4. 点击运行。后续可以通过已配对的无线设备连接覆盖安装；可用性取决于设备与 Mac 的连接状态。
 
 账户和密码在 Xcode／设备上自行输入，不需要写进源码。个人签名配置保持本地，不提交或附加到发行包。

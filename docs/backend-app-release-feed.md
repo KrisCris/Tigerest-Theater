@@ -82,7 +82,7 @@ GET <社区服务地址>/api/tigerest/v1/app/releases
 - 只输出满足下面两条的 release，不满足的整项丢掉：
   - `html_url` 等于 `https://github.com/Tigerest/Tigerest-Theater/releases/tag/<tag_name>`
   - 每个 asset 的 `browser_download_url` 都以 `https://github.com/Tigerest/Tigerest-Theater/releases/download/<tag_name>/` 开头
-- 所有 asset 照原样传，不按平台筛选。iPad 用的 `-ipad.ipa`、`SHA256SUMS` 等也保留。
+- 所有 asset 照原样传，不按平台筛选。iPad / iPhone 用的 `-universal.ipa`（2.9.3 及以前为 `-ipad.ipa`）、`SHA256SUMS` 等也保留。
 - 解码后的载荷不超过 1 MiB，超出时从最旧的 release 开始删。
 
 ### 数据新鲜度
@@ -188,7 +188,7 @@ const publicKeyBase64 = Buffer.from(jwk.x, 'base64url').toString('base64');
 3. Windows、Mac 和 Android 下载仍然走 gh-proxy.com → ghproxy.net → GitHub 原址，按载荷里的 `size` 和 `digest` 核验。Android 另外核对 APK 签名证书必须与已安装版本一致。
 4. 网盘链接取自 `body` 里的 `tigerest-mirrors` 标记，没有标记时用内置分享。
 5. **iPad 只提示，不下载。** iPad 目前是开发签名版，只能在 Mac 上用 Xcode 构建安装，没有其他分发渠道。
-   - iPad 在列表里找 `TigerestTheater-<版本>-ipad.ipa`：找到更新的版本时，提示用户在 Mac 上更新源码并用 Xcode 重新构建安装；没有时显示项目最新正式版的发布说明，并注明不代表已发布 iPad 包。
+   - iPad / iPhone 在列表里找 `TigerestTheater-<版本>-universal.ipa`（2.9.3 及以前的版本找 `-ipad.ipa`）：找到更新的版本时，提示用户在 Mac 上更新源码并用 Xcode 重新构建安装；没有时显示项目最新正式版的发布说明，并注明不代表已发布 iPad 包。
    - 服务器不需要为 iPad 做任何特殊处理，asset 照原样传即可。
 
 ## 后端验收

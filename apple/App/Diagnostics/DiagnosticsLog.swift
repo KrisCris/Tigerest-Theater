@@ -11,7 +11,7 @@ import AppleCore
     func record(_ level: String, _ message: String) {
         guard !scope.isEmpty else { return }
         let now = Date(), safe = ["info", "warning", "error"].contains(level) ? level : "info"
-        records.append((now, "\(now.ISO8601Format()) [\(safe)] iPad - \(DiagnosticRedactor.redact(message))\n"))
+        records.append((now, "\(now.ISO8601Format()) [\(safe)] Universal - \(DiagnosticRedactor.redact(message))\n"))
         records.removeAll { now.timeIntervalSince($0.0) > 600 }
         while records.count > 2048 || records.reduce(0, { $0 + $1.1.utf8.count }) > 1_048_576 { records.removeFirst(); truncated = true }
     }

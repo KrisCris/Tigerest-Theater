@@ -552,6 +552,11 @@ if(Node_EXECUTABLE)
   # gpu-hardware: needs GPU compositing (transition deadlines, D3D11 checks);
   # hosted CI runners have none and run ctest -LE gpu-hardware.
   set_tests_properties(test_home_motion_webengine PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE LABELS "gpu-hardware")
+  # Android's deferred poster route, simulated in the client's WebEngine.
+  add_test(NAME test_android_poster_route_webengine
+           COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_android_poster_route_ui.cjs
+                   $<TARGET_FILE:${MAIN_TARGET}> --webengine)
+  set_tests_properties(test_android_poster_route_webengine PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE LABELS "gpu-hardware")
   # The mpv.conf editor against the real native bridge, parser and files.
   add_test(NAME test_mpvconf_editor_webengine
            COMMAND ${Node_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_mpvconf_editor_ui.cjs

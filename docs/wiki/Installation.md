@@ -10,10 +10,10 @@
 | Windows 便携版 | TigerestTheater-2.9.3-x64.zip | 同上 |
 | Android | TigerestTheater-2.9.3-android.apk | Android 15+，arm64-v8a / x86_64 |
 | Apple Silicon Mac | TigerestTheater-2.9.3-arm64.dmg | macOS 26+，M 系列 |
-| iPad | TigerestTheater-2.9.3-ipad.ipa | iPadOS 26+，需要自行签名 |
+| iPad / iPhone | TigerestTheater-2.9.4-universal.ipa（2.9.3 及以前为 ipad.ipa） | iPadOS / iOS 26+，需要自行签名 |
 | Apple TV | TigerestTheater-2.9.3-tvos.ipa | tvOS 26+，需要自行签名 |
 
-Windows 安装版适合日常使用，由安装器管理程序目录；便携版适合把程序与配置放在同一个文件夹。Mac 正式附件目前仅提供 Apple Silicon 版本。Android 的系统版本和处理器架构必须同时满足要求。iPad 和 Apple TV 的 IPA 是两个不同的设备包，不能互换。
+Windows 安装版适合日常使用，由安装器管理程序目录；便携版适合把程序与配置放在同一个文件夹。Mac 正式附件目前仅提供 Apple Silicon 版本。Android 的系统版本和处理器架构必须同时满足要求。iPad / iPhone 通用包和 Apple TV 的 IPA 是两个不同的设备包，不能互换。
 
 无法访问 GitHub 时，可从固定的[夸克网盘](https://pan.quark.cn/s/88e6f7a795b4)或[百度网盘](https://pan.baidu.com/s/58azzOU4piiB3miyZqA1dig)分享文件夹下载 Windows／Android 安装包（Mac、iPad 与 Apple TV 的安装包目前只在 GitHub 发行页提供）。每个版本一个子文件夹，附件与发行页相同，请用其中的 `SHA256SUMS.txt` 校验。
 
@@ -53,12 +53,13 @@ Windows 安装版适合日常使用，由安装器管理程序目录；便携版
 
 应用内更新交给系统安装器时，需要允许“大河影院”安装应用。取消系统安装后仍可返回客户端重试。
 
-## iPad
+## iPad / iPhone
 
-1. 下载 `ipad.ipa`。它是完整的设备版应用，但**没有签名**，不能直接在“文件”里点开安装，也不是 App Store 或 TestFlight 安装包。
-2. 用自己的 Apple 身份签名后安装：已有侧载签名工具时，导入 IPA 并用自己的账号签名；也可以在 Mac 上用 Xcode 从源码构建安装，见 [iPad 安装与构建](https://github.com/Tigerest/Tigerest-Theater/blob/main/docs/apple/INSTALL.md)。
+1. 下载 `universal.ipa`（2.9.3 及以前叫 `ipad.ipa`）。它是完整的设备版应用，但**没有签名**，不能直接在“文件”里点开安装，也不是 App Store 或 TestFlight 安装包。
+2. 用自己的 Apple 身份签名后安装：已有侧载签名工具时，导入 IPA 并用自己的账号签名；也可以在 Mac 上用 Xcode 从源码构建安装，见 [iPad / iPhone 安装与构建](https://github.com/Tigerest/Tigerest-Theater/blob/main/docs/apple/INSTALL.md)。
 3. 免费账号的签名有有效期，需要按 Apple 的规则续签。
 4. 更新时重新签名并覆盖安装，保持原来的应用标识和签名身份。不要先卸载，以免丢失配置和离线媒体。
+5. 2.9.4 起应用标识改为 `top.tigerest.theater.universal`，安装包改名为 `universal.ipa`。系统会把它当成新应用：不会覆盖 2.9.3 及更早的 iPad 版，登录、服务器列表、设置和离线媒体不会迁移，需要重新登录；确认新版正常后可以手动删除旧版。
 
 IPA 不含作者的签名、设备名单或证书。应用内可以检查新版本、阅读说明和忽略本次更新，但不会自动替换安装。
 

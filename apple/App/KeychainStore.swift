@@ -5,7 +5,7 @@ struct KeychainStore {
     let profile: UUID
     private func query(server: String, account: String) -> [String: Any] {
         let key = SHA256.hash(data: Data((server + "\n" + account).utf8)).map { String(format: "%02x", $0) }.joined()
-        return [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "top.tigerest.theater.ipad.\(profile)", kSecAttrAccount as String: key]
+        return [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "top.tigerest.theater.universal.\(profile)", kSecAttrAccount as String: key]
     }
     func read(server: String, account: String) -> Data? {
         var request = query(server: server, account: account)
