@@ -26,15 +26,10 @@ const jellyfin = fs.readFileSync(path.join(__dirname, 'fixtures/jellyfin-detail/
 // Explicit tab font/Latin labels keep this pixel fixture deterministic:
 // identical unoptimized reloads otherwise changed 464 CJK glyph pixels on
 // Windows. Chinese title/native-control coverage remains in the top row.
-// The top row keeps its styled height (123.84 px) from the start. The header
-// controls style arrives after the first paint and lifted the tabs 33.6 px;
-// after that move Chromium drew the active tab's 2 px underline one row lower
-// on a few percent of reloads (88 pixels, on Windows, macOS and Linux).
 const stripes = Array.from({length: 60}, (_, i) => `<div style="height:14px;background:hsl(${i * 47 % 360} 90% ${40 + i % 3 * 15}%)"></div>`).join('');
 const icon = 'headerButton paper-icon-button-light';
 const page = `<!doctype html><meta charset="utf-8"><style>${jellyfin}
 body{font:16px system-ui}
-.headerTop{box-sizing:border-box;height:124px}
 /* jellyfin-web emby-button.scss */
 .paper-icon-button-light{position:relative;display:inline-flex;align-items:center;justify-content:center;font-size:1.5em;color:inherit;margin:0 .29em;background:transparent;text-align:center;padding:.556em;vertical-align:middle;border:0;border-radius:50%;outline:none!important;overflow:hidden;z-index:0;flex-shrink:0}
 .headerTabs{display:flex;justify-content:center}.emby-tabs-slider{display:flex;border-radius:50px}
@@ -87,16 +82,39 @@ async function run({evaluate, call}) {
         return (await call('Page.captureScreenshot', {format: 'png', clip: {x: 0, y: 0, width: 600, scale: 1,
             height: Math.ceil(await evaluate(`document.querySelector('.skinHeader').getBoundingClientRect().bottom`))}})).data;
     };
+    // Right after a reload a pointer move can reach the page late, leaving the
+    // capture without its hover state: wait until the element reports :hover,
+    // nudging the pointer again if it does not.
     const pointAt = async selector => {
-        const at = await evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
-        await call('Input.dispatchMouseEvent', {type: 'mouseMoved', x: at[0], y: at[1]}); await frames();
+        const target = JSON.stringify(selector);
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const at = await evaluate(`(() => { const r = document.querySelector(${target}).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+            await call('Input.dispatchMouseEvent', {type: 'mouseMoved', x: at[0] + attempt % 2, y: at[1]});
+            for (let i = 0; i < 20; i++) {
+                if (await evaluate(`document.querySelector(${target}).matches(':hover')`)) { await frames(); return; }
+                await new Promise(r => setTimeout(r, 25));
+            }
+        }
+        assert.fail('the pointer never hovered ' + selector);
     };
     const hover = async () => { await pointAt('#search'); const image = await shot(); await away(); await frames(); return image; };
+    // The compositor may snap text to a different pixel row between loads; each
+    // pixel matches its closest neighbour within 1px, which a lost filter (it
+    // changes the whole glass) cannot pass.
     const compare = (a, b) => evaluate(`(async () => {
       async function pixels(data) { const image = await createImageBitmap(await (await fetch('data:image/png;base64,' + data)).blob());
-        const c = new OffscreenCanvas(image.width, image.height), x = c.getContext('2d'); x.drawImage(image, 0, 0); return x.getImageData(0, 0, c.width, c.height).data; }
-      const a = await pixels(${JSON.stringify(a)}), b = await pixels(${JSON.stringify(b)}), d = [];
-      for (let i = 0; i < a.length; i += 4) d.push(Math.max(...[0, 1, 2].map(k => Math.abs(a[i + k] - b[i + k]))));
+        const c = new OffscreenCanvas(image.width, image.height), x = c.getContext('2d'); x.drawImage(image, 0, 0); return {w: c.width, h: c.height, data: x.getImageData(0, 0, c.width, c.height).data}; }
+      const A = await pixels(${JSON.stringify(a)}), B = await pixels(${JSON.stringify(b)}), d = [];
+      const at = (image, x, y, k) => image.data[(y * image.w + x) * 4 + k];
+      for (let y = 0; y < A.h; y++) for (let x = 0; x < A.w; x++) {
+        let best = 255;
+        for (let dy = -1; dy <= 1 && best; dy++) for (let dx = -1; dx <= 1 && best; dx++) {
+          const u = x + dx, v = y + dy;
+          if (u < 0 || v < 0 || u >= B.w || v >= B.h) continue;
+          best = Math.min(best, Math.max(...[0, 1, 2].map(k => Math.abs(at(A, x, y, k) - at(B, u, v, k)))));
+        }
+        d.push(best);
+      }
       d.sort((x, y) => x - y);
       return {mean: d.reduce((s, v) => s + v, 0) / d.length, p99: d[Math.floor(d.length * .99)], over20: d.filter(v => v > 20).length, max: d.at(-1)};
     })()`);
@@ -120,8 +138,8 @@ async function run({evaluate, call}) {
         assert.equal(await evaluate(`document.querySelectorAll('[data-tigerest-flat-glass]').length`), 0,
             'the actual older engine creates no flat replacements');
         const rest = await compare(await shot(), nested.rest), hovered = await compare(await hover(), nested.hover);
-        for (const diff of [rest, hovered]) assert.ok(diff.mean < .8 && diff.p99 <= 8 && diff.over20 <= 80,
-            'retaining the old engine filter stack preserves its pixels: ' + JSON.stringify(diff));
+        for (const [name, diff] of Object.entries({rest, hovered})) assert.ok(diff.mean < .8 && diff.p99 <= 8 && diff.over20 <= 80,
+            'retaining the old engine filter stack preserves its pixels (' + name + '): ' + JSON.stringify(diff));
         console.log(JSON.stringify({passed: true, chromiumVersion, path: 'original filters', shipped, rest, hovered}));
         return;
     }

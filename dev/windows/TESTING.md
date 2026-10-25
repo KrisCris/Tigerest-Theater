@@ -48,4 +48,4 @@ node tests/test_community_messages_ui.cjs 'build/output/Tigerest Theater.exe' --
 
 `test_webengine_runtime_deployment` 检查缺少同步补丁运行库、版本或 SHA256 不匹配时配置必须失败。`test_webengine_startup` 除软件渲染参数检查外，还使用独立临时配置启动正常硬件加速窗口，确认 D3D11 合成启用且日志实际出现 `D3D11 fence sync: producer fence ready` 与 `consumer fence ready`（无 `fence sync disabled`）；再以 `TIGEREST_D3D11_FENCE_SYNC=0` 启动一次，确认回退路径出现 `D3D11 producer wait: completed=1, reset=0`。该测试不能代替媒体库悬停、滚动时的实际画面检查；不能因软件渲染测试通过就宣称花屏已修复。
 
-`test_webengine_startup` 与首页、剧集、Jellyfin、Android 路由四项海报转场测试带 CTest 标签 `gpu-hardware`：前者检查 D3D11 硬件合成，后四项在软件合成下赶不上落地时限。GitHub 托管的 Windows／macOS runner 没有 GPU，CI 用 `ctest -LE gpu-hardware` 排除这五项；它们仍须在有 GPU 的机器上运行，CI 通过不代表它们已验证。
+`test_webengine_startup` 带 CTest 标签 `gpu-hardware`：它检查 D3D11 硬件合成。GitHub 托管的 Windows／macOS runner 没有 GPU，CI 用 `ctest -LE gpu-hardware` 排除它。首页、剧集、Jellyfin、Android 路由和首页缓存几项海报转场测试在软件渲染器上报告跳过（返回码 77）。这些测试都须在有 GPU 的机器上运行，CI 通过不代表它们已验证。
