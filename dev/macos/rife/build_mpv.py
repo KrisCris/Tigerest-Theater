@@ -23,7 +23,7 @@ def setup_meson(meson,out,source,arguments,env):
     subprocess.run([meson,'setup',*(['--reconfigure','--clearcache'] if (out/'build.ninja').exists() else []),
                     str(out),str(source),*arguments,'-Dpkg_config_path='+json.dumps(pkg_paths)],env=env,check=True)
 
-def build(destination,meson,runtime_python=None,deployment_target='15.0'):
+def build(destination,meson,runtime_python=None,deployment_target='26.0'):
     destination=destination.resolve();destination.mkdir(parents=True,exist_ok=True)
     archive=destination/f'mpv-v{VERSION}.tar.gz'
     if not archive.exists():
@@ -70,7 +70,7 @@ if __name__=='__main__':
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--meson',default=shutil.which('meson'))
     parser.add_argument('--vapoursynth-python',type=Path)
-    parser.add_argument('--deployment-target',default='15.0',
+    parser.add_argument('--deployment-target',default='26.0',
                         help='Minimum macOS; must not be newer than the bundle LSMinimumSystemVersion')
     args=parser.parse_args()
     if not args.meson:parser.error('Install Meson 1.9.2 in the build environment')

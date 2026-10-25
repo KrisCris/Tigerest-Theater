@@ -23,13 +23,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.architecture == 'x86_64' && '[{"runner":"macos-15-intel","artifact":"macos-x86_64"}]' || (inputs.apple_silicon_only || inputs.architecture == 'arm64') && '[{"runner":"macos-15","artifact":"macos-arm64"}]' || '[{"runner":"macos-15","artifact":"macos-arm64"},{"runner":"macos-15-intel","artifact":"macos-x86_64"}]') }}
+        # One package per minimum macOS (target):
+        # - macos-arm64, the release candidate: macOS 26+, built like the
+        #   release with Xcode 27. macOS 27 treats a main executable linked
+        #   with SDK 26.x as an older app, and its playback falls behind.
+        # - macos15-arm64: macOS 15+, SDK 26.2 (no Xcode 27 runs on macOS 15).
+        #   Not a release candidate until it is validated on macOS 15.
+        # - macos-x86_64: manual runs only.
+        # Bundled Homebrew libraries carry the macOS their bottles were built
+        # for as their minimum, so each package pours its target's bottles;
+        # bottles names the macOS to pour for when the runner's is newer.
+        include: >-
+          ${{ fromJSON(
+          inputs.architecture == 'x86_64' && '[{"runner":"macos-15-intel","artifact":"macos-x86_64","dmg":"x86_64","target":"15.0","sdk":"26.2","bottles":""}]'
+          || inputs.apple_silicon_only && '[{"runner":"xcode-27","artifact":"macos-arm64","dmg":"arm64","target":"26.0","sdk":"27.2","bottles":"26.0"}]'
+          || inputs.architecture == 'arm64' && '[{"runner":"xcode-27","artifact":"macos-arm64","dmg":"arm64","target":"26.0","sdk":"27.2","bottles":"26.0"},{"runner":"macos-15","artifact":"macos15-arm64","dmg":"macos15-arm64","target":"15.0","sdk":"26.2","bottles":""}]'
+          || '[{"runner":"xcode-27","artifact":"macos-arm64","dmg":"arm64","target":"26.0","sdk":"27.2","bottles":"26.0"},{"runner":"macos-15","artifact":"macos15-arm64","dmg":"macos15-arm64","target":"15.0","sdk":"26.2","bottles":""},{"runner":"macos-15-intel","artifact":"macos-x86_64","dmg":"x86_64","target":"15.0","sdk":"26.2","bottles":""}]') }}
     runs-on: ${{ matrix.runner }}
     env:
-      # Homebrew pours bottles built for the runner's macOS, and they are
-      # bundled as-is. Keep the runner on this version so a bottle built for a
-      # newer macOS cannot reach the DMG (dyld "Symbol not found" at launch).
-      MACOS_DEPLOYMENT_TARGET: '15.0'
+      MACOS_DEPLOYMENT_TARGET: ${{ matrix.target }}
+      MACOS_SDK: ${{ matrix.sdk }}
       # The display-link WebEngine (dev/macos/qt/README.md) is built by hand;
       # releases copy it from the previous release bundle, and so does CI.
       # It is arm64 only and built for macOS 12.0.
@@ -51,20 +64,41 @@ jobs:
         arch: clang_64
         modules: 'qtwebengine qtwebchannel qtpositioning'
     - name: Install dependencies
+      env:
+        BOTTLES_MACOS: ${{ matrix.bottles }}
       run: |
-        brew update
-        brew install mpv molten-vk vapoursynth python@3.13 ninja
-    - name: Select Xcode 26
+        formulae=(mpv molten-vk vapoursynth python@3.13)
+        if [ -n "$BOTTLES_MACOS" ]; then
+          # The runner's macOS is newer than the target. HOMEBREW_FAKE_MACOS
+          # makes Homebrew pour bottles for the target instead; the image's
+          # preinstalled formulae were poured for its own macOS, so pour the
+          # whole dependency closure again. tests/test_macos_bundle.py checks
+          # every bundled library against the target.
+          export HOMEBREW_FAKE_MACOS="$BOTTLES_MACOS"
+          brew update
+          brew install "${formulae[@]}" ninja
+          # shellcheck disable=SC2046
+          brew reinstall $(brew deps --union "${formulae[@]}") "${formulae[@]}"
+        else
+          brew update
+          brew install "${formulae[@]}" ninja
+        fi
+    - name: Select Xcode for the macOS ${{ matrix.sdk }} SDK
       run: |
-        # Build with the newest SDK, as upstream does, while
-        # MACOS_DEPLOYMENT_TARGET still sets where the app runs. The runner's
-        # default Xcode 16.4 links our code (RIFE engine, mpv) against the
-        # macOS 15 SDK, so macOS 26 can run it with older-SDK behaviour.
-        xcode=$(printf '%s\n' /Applications/Xcode_26*.app | grep -v -i -E 'beta|release_candidate' | sort -V | tail -1)
-        if [ ! -d "$xcode" ]; then echo "No Xcode 26 on this runner" >&2; exit 1; fi
+        # The SDK our code links against (app, mpv, RIFE engine and model)
+        # decides which OS behaviours apply, while MACOS_DEPLOYMENT_TARGET
+        # sets where the app runs. Pick the Xcode whose macOS SDK is exactly
+        # the pinned one, betas included, and fail if the runner has none.
+        xcode=""
+        for app in /Applications/Xcode*.app; do
+          settings="$app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/SDKSettings.plist"
+          sdk=$(plutil -extract Version raw "$settings" 2>/dev/null) || continue
+          if [ "$sdk" = "$MACOS_SDK" ]; then xcode=$app; fi
+        done
+        if [ -z "$xcode" ]; then echo "No Xcode with the macOS $MACOS_SDK SDK on this runner" >&2; exit 1; fi
         sudo xcode-select -s "$xcode"
         xcodebuild -version
-        xcrun --sdk macosx --show-sdk-version
+        test "$(xcrun --sdk macosx --show-sdk-version)" = "$MACOS_SDK"
     - name: Build pinned playback runtime and RIFE model
       run: |
         "$(brew --prefix python@3.13)/bin/python3.13" -m venv build/rife/venv
@@ -103,7 +137,7 @@ jobs:
     # Handed to the iOS job through the Actions cache, not as a run artifact:
     # artifacts are kept for the app packages only.
     - name: Save compiled RIFE model for the iOS build
-      if: env.TIGEREST_RIFE_MODEL_DIR != ''
+      if: env.TIGEREST_RIFE_MODEL_DIR != '' && matrix.artifact == 'macos-arm64'
       uses: actions/cache/save@v6
       with:
         key: rife-model-${{ github.run_id }}
@@ -112,7 +146,7 @@ jobs:
     # stock engine limits the web UI to 60 Hz. use_patched_webengine.py
     # refuses a source whose QtWebEngineCore is not the patched build.
     - name: Install the patched WebEngine from the pinned release
-      if: matrix.artifact == 'macos-arm64'
+      if: runner.arch == 'ARM64'
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
@@ -126,13 +160,14 @@ jobs:
           --bundle "build/output/Tigerest Theater.app"
         hdiutil detach "$source/mount"
     - name: Sign and create dmg
+      env:
+        DMG_SUFFIX: ${{ matrix.dmg }}
       run: |
         python3 dev/macos/sign_bundle.py "./build/output/Tigerest Theater.app"
         python3 tests/test_macos_bundle.py "build/output/Tigerest Theater.app"
         brew install create-dmg
         VERSION=$(cat VERSION)
-        ARCH=$(uname -m)
-        DMG_NAME="TigerestTheater-${VERSION}-${ARCH}.dmg"
+        DMG_NAME="TigerestTheater-${VERSION}-${DMG_SUFFIX}.dmg"
         create-dmg \
           --volname "Tigerest Theater v${VERSION}" \
           --no-internet-enable \

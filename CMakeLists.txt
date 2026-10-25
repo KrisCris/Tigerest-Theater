@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.10...3.31 FATAL_ERROR)
 
-# The bundled Homebrew media libraries are built for the macOS that produced
-# them, so release bundles must be built on this macOS version (not newer).
-# tests/test_macos_bundle.py rejects any bundled Mach-O built for a later one.
+# The bundled Homebrew media libraries carry the macOS their bottles were built
+# for as their minimum, so a bundle for an older macOS (e.g. 15.0) must use
+# that macOS's bottles. tests/test_macos_bundle.py rejects any bundled Mach-O
+# built for a later macOS than this target.
 if(APPLE AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
-  set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum supported macOS version")
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "Minimum supported macOS version")
 endif()
 
 # use a toolchain file if any for Embedded
