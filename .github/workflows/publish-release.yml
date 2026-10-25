@@ -8,11 +8,11 @@ on:
         required: true
         type: string
       windows_run_id:
-        description: Successful build-windows run ID
+        description: Successful build or build-windows run ID
         required: true
         type: string
       macos_run_id:
-        description: Optional successful build-macos run ID containing tigerest-theater-macos-arm64
+        description: Optional successful build or build-macos run ID containing tigerest-theater-macos-arm64
         required: false
         default: ''
         type: string
@@ -45,7 +45,9 @@ jobs:
             RUN="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
             test "$(jq -r .conclusion <<< "$RUN")" = success
             test "$(jq -r .head_sha <<< "$RUN")" = "$RELEASE_SHA"
-            test "$(jq -r .path <<< "$RUN")" = ".github/workflows/$WORKFLOW"
+            # build.yml builds every platform through the same workflows.
+            RUN_PATH="$(jq -r .path <<< "$RUN")"
+            [[ "$RUN_PATH" == ".github/workflows/$WORKFLOW" || "$RUN_PATH" == .github/workflows/build.yml ]]
           done
 
       - name: Download successful build artifacts
